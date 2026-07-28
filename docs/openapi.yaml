@@ -1,0 +1,41 @@
+openapi: 3.1.0
+info:
+  title: Dontus Operations API
+  version: 1.0.0
+paths:
+  /api/operations:
+    get:
+      summary: Retorna a visão operacional autorizada
+      responses:
+        "200":
+          description: Snapshot com clientes, workflows, agenda, aprovações, decisões e auditoria
+    post:
+      summary: Executa um comando operacional
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum:
+                    - createCustomer
+                    - createWorkItem
+                    - transitionWorkItem
+                    - createAppointment
+                    - decideApproval
+                    - seedDemo
+      responses:
+        "200":
+          description: Operação concluída
+        "201":
+          description: Registro criado
+        "400":
+          description: Validação
+        "403":
+          description: Autorização ou segregação
+        "409":
+          description: Conflito de estado, agenda ou concorrência
