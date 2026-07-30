@@ -1,28 +1,37 @@
-# Runbook
+# Runbook local
 
-## Verificação
+## Subida e verificação
 
-1. Executar `npm run build`.
-2. Executar `npm test`.
-3. Confirmar a migration em `drizzle/`.
-4. Validar que `.openai/hosting.json` contém apenas `project_id` e bindings lógicos.
+1. Copiar `.env.example` para `.env` e trocar a senha.
+2. Executar `docker compose up --build`.
+3. Abrir `http://localhost:3000`.
+4. Confirmar `http://localhost:8080/health/ready`.
+5. Confirmar os três serviços com `docker compose ps`.
 
-## Publicação
+## Banco e migrations
 
-Publicar somente uma versão construída e testada. A versão precisa corresponder ao commit enviado ao repositório da plataforma. Preferir acesso privado.
+A API executa `Database.MigrateAsync` com tentativas progressivas na inicialização. A migration inicial está versionada em `backend/src/Dontus.Operations.Infrastructure/Migrations`.
 
-## Rollback
+Para criar uma nova migration:
 
-Selecionar a última versão salva com status estável e republicá-la. Não executar correções diretamente no ambiente de produção sem uma nova versão.
+```powershell
+dotnet ef migrations add NomeDaMudanca `
+  --project backend/src/Dontus.Operations.Infrastructure `
+  --startup-project backend/src/Dontus.Operations.Api `
+  --output-dir Migrations
+```
 
-## Incidente
+Não editar ou excluir `audit_events` pela aplicação.
 
-1. Registrar impacto, início, clientes afetados e contorno.
-2. Estabilizar P0 e registrar a demanda imediatamente.
-3. Preservar correlação entre ticket, demanda e deploy.
-4. Se necessário, realizar rollback.
-5. Comunicar usuários e registrar causa, correção e prevenção.
+## Logs e diagnóstico
 
-## Banco
+```powershell
+docker compose ps
+docker compose logs --follow api
+docker compose logs --follow web
+docker compose logs --follow database
+```
 
-As criações são idempotentes. Migrations são a fonte versionada. Não editar ou excluir `audit_events` pela aplicação.
+## Encerramento
+
+`docker compose down` preserva o volume do PostgreSQL. `docker compose down --volumes` apaga os dados locais e deve ser usado somente quando a perda for intencional.

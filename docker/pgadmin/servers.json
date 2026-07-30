@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Dontus PostgreSQL",
+      "Group": "Dontus",
+      "Host": "database",
+      "Port": 5432,
+      "MaintenanceDB": "dontus",
+      "Username": "dontus",
+      "SSLMode": "prefer"
+    }
+  }
+}

@@ -9,8 +9,11 @@ export const MODULES = {
   finance: { label: "Financeiro", short: "Financeiro" },
   procurement: { label: "Compras e patrimônio", short: "Compras" },
   approvals: { label: "Aprovações", short: "Aprovações" },
-  work: { label: "Agenda e tarefas", short: "Agenda" },
+  work: { label: "Agenda", short: "Agenda" },
+  tasks: { label: "Tarefas", short: "Tarefas" },
+  chat: { label: "Atendimento", short: "Chat" },
   reporting: { label: "Indicadores", short: "Indicadores" },
+  catalogs: { label: "Cadastros", short: "Cadastros" },
   admin: { label: "Administração", short: "Admin" },
 } as const;
 

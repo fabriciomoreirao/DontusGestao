@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.next
+.vinext
+.wrangler
+backend
+dist
+node_modules
+outputs
+work
+*.log
+coverage

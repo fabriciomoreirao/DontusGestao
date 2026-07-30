@@ -28,6 +28,18 @@ paths:
                     - createAppointment
                     - decideApproval
                     - seedDemo
+                    - createAccessUser
+                    - updateAccessUser
+                    - createAccessGroup
+                    - updateAccessGroup
+                    - createTask
+                    - changeTaskStatus
+                    - changeTaskPriority
+                    - changeTaskSla
+                    - transferTask
+                    - assignTask
+                    - addTaskComment
+                    - communicateWithClient
       responses:
         "200":
           description: Operação concluída
@@ -39,3 +51,53 @@ paths:
           description: Autorização ou segregação
         "409":
           description: Conflito de estado, agenda ou concorrência
+  /api/tasks/{taskId}/attachments:
+    post:
+      summary: Armazena anexos privados de uma tarefa na AWS S3
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: Anexos armazenados e registrados no histórico
+        "400":
+          description: Arquivo inválido, vazio, bloqueado ou acima de 25 MB
+        "403":
+          description: Usuário sem acesso de edição à tarefa
+        "503":
+          description: Integração S3 indisponível ou não configurada
+  /api/tasks/attachments/{attachmentId}:
+    get:
+      summary: Redireciona para um link privado temporário do anexo
+      parameters:
+        - in: path
+          name: attachmentId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "302":
+          description: Link AWS S3 assinado com validade de 10 minutos
+        "403":
+          description: Usuário sem acesso à tarefa
+        "404":
+          description: Anexo não encontrado

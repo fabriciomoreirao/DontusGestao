@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Dontus.Operations.Api/Dontus.Operations.Api.csproj" />
+    <Project Path="src/Dontus.Operations.Application/Dontus.Operations.Application.csproj" />
+    <Project Path="src/Dontus.Operations.Domain/Dontus.Operations.Domain.csproj" />
+    <Project Path="src/Dontus.Operations.Infrastructure/Dontus.Operations.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Dontus.Operations.Tests/Dontus.Operations.Tests.csproj" />
+  </Folder>
+</Solution>

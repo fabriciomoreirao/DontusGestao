@@ -1,0 +1,91 @@
+name: dontus-gestao
+
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dontus}
+      POSTGRES_USER: ${POSTGRES_USER:-dontus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dontus_local_change_me}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - dontus_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dontus} -d ${POSTGRES_DB:-dontus}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:9
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@dontus.com.br}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-dontus_pgadmin_change_me}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - dontus_pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Authentication__DevelopmentBypass: "true"
+      AccessControl__BootstrapAdminEmail: ${LOCAL_USER_EMAIL:-gestor@dontus.local}
+      AccessControl__BootstrapAdminName: ${LOCAL_USER_NAME:-Gestor Dontus}
+      TaskFiles__BucketName: ${AWS_S3_BUCKET:-controle-prod}
+      TaskFiles__Region: ${AWS_REGION:-us-east-1}
+      Chat__DataProtectionKeysPath: /app/data-protection-keys
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      ConnectionStrings__Operations: >-
+        Host=database;Port=5432;Database=${POSTGRES_DB:-dontus};
+        Username=${POSTGRES_USER:-dontus};Password=${POSTGRES_PASSWORD:-dontus_local_change_me}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - dontus_chat_keys:/app/data-protection-keys
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-ae8b-200-233-92-241.ngrok-free.app}
+    environment:
+      API_INTERNAL_URL: http://api:8080
+      APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-ae8b-200-233-92-241.ngrok-free.app}
+      LOCAL_USER_EMAIL: ${LOCAL_USER_EMAIL:-gestor@dontus.local}
+      LOCAL_USER_NAME: ${LOCAL_USER_NAME:-Gestor Dontus}
+      LOCAL_USER_ROLE: ${LOCAL_USER_ROLE:-Administrador técnico}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dontus_postgres_data:
+    name: dontus_postgres_data
+  dontus_chat_keys:
+    name: dontus_chat_keys
+  dontus_pgadmin_data:
+    name: dontus_pgadmin_data
