@@ -12,6 +12,7 @@ public static class WorkflowPolicy
             ["ti"] = ["Nova", "EmTriagem", "AguardandoInformacoes", "Classificada", "EmAnaliseTecnica", "Priorizada", "EmDesenvolvimento", "EmCorrecao", "EmTeste", "AguardandoHomologacao", "AguardandoTerceiro", "AguardandoDeploy", "Concluida", "Cancelada", "Reprovada", "Reaberta"],
             ["finance"] = ["Rascunho", "PendenteAprovacao", "Aprovada", "Agendada", "Paga", "Vencida", "Cancelada", "Estornada"],
             ["procurement"] = ["Solicitada", "EmCotacao", "PendenteAprovacao", "Aprovada", "Comprada", "Recebida", "Patrimoniada", "Cancelada"],
+            ["diary"] = ["Pendente", "Em andamento", "Concluída", "Cancelada"],
             ["work"] = ["A fazer", "Em andamento", "Bloqueada", "Concluída", "Cancelada"],
         };
 

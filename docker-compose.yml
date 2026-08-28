@@ -42,12 +42,21 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      Authentication__DevelopmentBypass: "true"
+      Authentication__DevelopmentBypass: ${DEVELOPMENT_AUTH_BYPASS:-false}
+      Authentication__LocalPasswordEnabled: ${LOCAL_AUTH_ENABLED:-true}
+      Authentication__BootstrapPassword: ${LOCAL_ADMIN_PASSWORD:-dontus_teste_2026}
       AccessControl__BootstrapAdminEmail: ${LOCAL_USER_EMAIL:-gestor@dontus.local}
       AccessControl__BootstrapAdminName: ${LOCAL_USER_NAME:-Gestor Dontus}
+      Email__Smtp__Host: ${SMTP_HOST:-}
+      Email__Smtp__Port: ${SMTP_PORT:-587}
+      Email__Smtp__UseSsl: ${SMTP_USE_SSL:-true}
+      Email__Smtp__Username: ${SMTP_USERNAME:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__Smtp__From: ${SMTP_FROM:-}
       TaskFiles__BucketName: ${AWS_S3_BUCKET:-controle-prod}
       TaskFiles__Region: ${AWS_REGION:-us-east-1}
       Chat__DataProtectionKeysPath: /app/data-protection-keys
+      InternalChat__FilesPath: /app/internal-chat-files
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
@@ -58,6 +67,7 @@ services:
       - "${API_PORT:-8080}:8080"
     volumes:
       - dontus_chat_keys:/app/data-protection-keys
+      - dontus_internal_chat_files:/app/internal-chat-files
     depends_on:
       database:
         condition: service_healthy
@@ -87,5 +97,7 @@ volumes:
     name: dontus_postgres_data
   dontus_chat_keys:
     name: dontus_chat_keys
+  dontus_internal_chat_files:
+    name: dontus_internal_chat_files
   dontus_pgadmin_data:
     name: dontus_pgadmin_data

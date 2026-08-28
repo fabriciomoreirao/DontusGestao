@@ -35,16 +35,17 @@ public sealed record TaskTypeDto(
     IReadOnlyCollection<Guid> AllowedStatusIds, bool Active);
 
 public sealed record TaskCollaboratorDto(
-    Guid Id, string Name, string Email, string Phone, string JobTitle, bool Active,
+    Guid Id, string Name, string Email, string Phone, string JobTitle, string PhotoDataUrl, bool Active,
     IReadOnlyCollection<Guid> DepartmentIds, IReadOnlyCollection<Guid> CoordinatorDepartmentIds);
 
 public sealed record TaskCommentDto(
-    Guid Id, Guid AuthorUserId, string AuthorName, string Body, bool Internal, DateTimeOffset CreatedAt);
+    Guid Id, Guid AuthorUserId, string AuthorName, string Body, bool Internal, DateTimeOffset CreatedAt,
+    IReadOnlyCollection<TaskAttachmentDto> Attachments);
 
 public sealed record TaskHistoryDto(
     Guid Id, string EventType, string Summary, string ActorName, string PreviousValue,
     string NewValue, string Source, string Justification, DateTimeOffset CreatedAt);
-public sealed record TaskAttachmentDto(Guid Id, string FileName, string Url, DateTimeOffset CreatedAt);
+public sealed record TaskAttachmentDto(Guid Id, Guid? CommentId, string FileName, string Url, DateTimeOffset CreatedAt);
 
 public sealed record TaskNotificationDto(
     Guid Id, Guid TaskId, long TaskNumber, string EventType, string Message,
@@ -56,12 +57,14 @@ public sealed record CorporateTaskDto(
     Guid StatusId, string StatusName, Guid? SlaPolicyId, Guid SourceDepartmentId, Guid CurrentDepartmentId,
     string DepartmentName, Guid CreatorUserId, string CreatorName, Guid? AssigneeUserId,
     string AssigneeName, Guid? CustomerId, string CustomerCode, string CustomerName,
-    string ExternalLink, string InternalNotes, DateTimeOffset? DueAt,
+    string ClientWhatsApp, string ClientNotificationState, DateTimeOffset? ClientNotificationRequestedAt,
+    DateTimeOffset? ClientNotifiedAt, string ExternalLink, string InternalNotes, DateTimeOffset? DueAt,
     DateTimeOffset? FirstResponseDueAt, DateTimeOffset? ServiceStartDueAt,
     DateTimeOffset? SlaDueAt, string SlaState, DateTimeOffset? CompletedAt,
-    bool Cancelled, long Version, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    IReadOnlyCollection<TaskCommentDto> Comments, IReadOnlyCollection<TaskHistoryDto> History,
-    IReadOnlyCollection<TaskAttachmentDto> Attachments);
+    bool Cancelled, bool CancellationRequest, long Version, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    bool CanModify,
+    IReadOnlyCollection<Guid> ParticipantUserIds, IReadOnlyCollection<TaskCommentDto> Comments,
+    IReadOnlyCollection<TaskHistoryDto> History, IReadOnlyCollection<TaskAttachmentDto> Attachments);
 
 public sealed record TaskModuleDto(
     IReadOnlyCollection<CorporateTaskDto> Tasks,
@@ -76,8 +79,8 @@ public sealed record TaskModuleDto(
 public sealed record CreateCorporateTaskCommand(
     string Title, string Description, Guid TypeId, Guid? PriorityId,
     Guid? StatusId, Guid SourceDepartmentId, Guid CurrentDepartmentId, Guid? AssigneeUserId,
-    Guid? CustomerId, string? CustomerCode, string? CustomerName, string? ExternalLink,
-    string? InternalNotes, DateTimeOffset? DueAt, Guid? SlaPolicyId,
+    Guid? CustomerId, string? CustomerCode, string? CustomerName, string ClientWhatsApp, string? ExternalLink,
+    string? InternalNotes, DateTimeOffset? DueAt, Guid? SlaPolicyId, bool CancellationRequest,
     IReadOnlyCollection<Guid>? ParticipantUserIds, IReadOnlyCollection<string>? AttachmentLinks);
 
 public sealed record ChangeTaskStatusCommand(
@@ -90,8 +93,15 @@ public sealed record TransferTaskCommand(
     bool RecalculateSla, long Version);
 
 public sealed record AssignTaskCommand(Guid TaskId, Guid? AssigneeUserId, long Version);
+public sealed record UpdateCorporateTaskCommand(
+    Guid TaskId, string Title, string Description, Guid TypeId, Guid? CustomerId,
+    string? CustomerCode, string? CustomerName, string ClientWhatsApp,
+    bool CancellationRequest, IReadOnlyCollection<Guid>? ParticipantUserIds, long Version);
+public sealed record DeleteCorporateTaskCommand(Guid TaskId, long Version);
 public sealed record AddTaskCommentCommand(Guid TaskId, string Body, IReadOnlyCollection<Guid>? MentionedUserIds);
 public sealed record ClientCommunicationCommand(Guid TaskId, string Action, string Channel, string Message);
+
+public sealed record CreatedCorporateTaskDto(Guid Id, string Protocol);
 
 public sealed record SaveTaskDepartmentCommand(
     Guid? Id, string Name, string Description, bool Active, bool RequiresAssigneeOnTransfer,
@@ -126,7 +136,7 @@ public sealed record CreateTaskCollaboratorCommand(
     IReadOnlyCollection<Guid> DepartmentIds, IReadOnlyCollection<Guid> CoordinatorDepartmentIds);
 
 public sealed record UploadTaskAttachmentCommand(
-    Guid TaskId, string FileName, string ContentType, long SizeBytes, Stream Content);
+    Guid TaskId, Guid? CommentId, string FileName, string ContentType, long SizeBytes, Stream Content);
 
 public sealed record TaskAttachmentDownloadDto(string Url);
 
@@ -143,12 +153,14 @@ public interface ITaskService
 {
     Task InitializeAsync(CancellationToken cancellationToken = default);
     Task<TaskModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
-    Task<Guid> CreateAsync(CreateCorporateTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<CreatedCorporateTaskDto> CreateAsync(CreateCorporateTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangeStatusAsync(ChangeTaskStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangePriorityAsync(ChangeTaskPriorityCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangeSlaAsync(ChangeTaskSlaCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task TransferAsync(TransferTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task AssignAsync(AssignTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task UpdateAsync(UpdateCorporateTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteAsync(DeleteCorporateTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> AddCommentAsync(AddTaskCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task CommunicateWithClientAsync(ClientCommunicationCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SaveDepartmentAsync(SaveTaskDepartmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
@@ -158,7 +170,9 @@ public interface ITaskService
     Task<Guid> SaveTypeAsync(SaveTaskTypeCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateCollaboratorAsync(CreateTaskCollaboratorCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task SaveCollaboratorAsync(SaveTaskCollaboratorCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteCatalogEntryAsync(string catalog, Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> UploadAttachmentAsync(UploadTaskAttachmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<TaskAttachmentDownloadDto> GetAttachmentDownloadAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteAttachmentAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default);
     Task MarkNotificationReadAsync(Guid notificationId, ActorContext actor, CancellationToken cancellationToken = default);
 }

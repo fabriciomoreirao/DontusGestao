@@ -13,6 +13,8 @@ async function proxy(request: Request) {
     incoming.set("x-user-email", headerValue(incoming.get("oai-authenticated-user-email") ?? process.env.LOCAL_USER_EMAIL ?? "gestor@dontus.local"));
     incoming.set("x-user-name", headerValue(process.env.LOCAL_USER_NAME ?? "Gestor Dontus"));
     incoming.set("x-user-role", headerValue(process.env.LOCAL_USER_ROLE ?? "Administrador técnico"));
+    const localSession = request.headers.get("cookie")?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
+    if (localSession) incoming.set("x-local-session", decodeURIComponent(localSession));
     incoming.delete("host");
     incoming.delete("content-length");
 

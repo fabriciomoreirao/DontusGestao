@@ -38,6 +38,15 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+    options.AddPolicy("password-recovery", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(15),
+                QueueLimit = 0,
+            }));
 });
 
 var app = builder.Build();
@@ -75,6 +84,50 @@ app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken can
         ? Results.Ok(new { status = "ready" })
         : Results.Problem(statusCode: 503, title: "Banco indisponível"));
 
+var localAuth = app.MapGroup("/api/auth");
+localAuth.MapPost("/login", async (
+    LocalLoginRequest request,
+    IConfiguration configuration,
+    ILocalAuthenticationService authentication,
+    CancellationToken cancellationToken) =>
+{
+    if (!configuration.GetValue("Authentication:LocalPasswordEnabled", false))
+        throw new DomainException("O login local está desabilitado.", 404);
+    return Results.Ok(await authentication.LoginAsync(request.Email ?? "", request.Password ?? "", cancellationToken));
+});
+localAuth.MapPost("/forgot-password", async (
+    LocalPasswordRecoveryRequest request,
+    IConfiguration configuration,
+    ILocalAuthenticationService authentication,
+    CancellationToken cancellationToken) =>
+{
+    if (!configuration.GetValue("Authentication:LocalPasswordEnabled", false))
+        throw new DomainException("O login local está desabilitado.", 404);
+    await authentication.RequestPasswordRecoveryAsync(request.Email ?? "", cancellationToken);
+    return Results.Accepted();
+}).RequireRateLimiting("password-recovery");
+localAuth.MapPost("/signout", async (
+    HttpRequest request,
+    ILocalAuthenticationService authentication,
+    CancellationToken cancellationToken) =>
+{
+    await authentication.SignOutAsync(request.Headers["X-Local-Session"].FirstOrDefault() ?? "", cancellationToken);
+    return Results.NoContent();
+});
+localAuth.MapPost("/change-password", async (
+    LocalPasswordChangeRequest request,
+    ClaimsPrincipal principal,
+    ILocalAuthenticationService authentication,
+    CancellationToken cancellationToken) =>
+{
+    await authentication.ChangePasswordAsync(
+        principal.ToIdentity().Email,
+        request.CurrentPassword ?? "",
+        request.NewPassword ?? "",
+        cancellationToken);
+    return Results.NoContent();
+}).RequireAuthorization();
+
 var operations = app.MapGroup("/api/operations")
     .RequireAuthorization()
     .RequireRateLimiting("operations");
@@ -82,17 +135,34 @@ var operations = app.MapGroup("/api/operations")
 operations.MapGet("", async (
     ClaimsPrincipal principal,
     IOperationsService service,
+    IAgendaService agendaService,
+    ISuggestionService suggestionService,
     ITaskService taskService,
     IChatService chatService,
+    IInternalChatService internalChatService,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);
+    if (actor.HasPermission("diary", "view"))
+        snapshot = snapshot with { DiaryModule = await service.GetDiaryModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("notes", "view"))
+        snapshot = snapshot with { NotesModule = await service.GetNotesModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("work", "view"))
+        snapshot = snapshot with { AgendaModule = await agendaService.GetModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("suggestions", "view"))
+        snapshot = snapshot with { SuggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("tasks", "view") || actor.HasPermission("catalogs", "view"))
         snapshot = snapshot with { TaskModule = await taskService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("chat", "view"))
         snapshot = snapshot with { ChatModule = await chatService.GetModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("internalChat", "view"))
+        snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("notices", "view"))
+        snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view"))
+        snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("admin", "manage"))
         snapshot = snapshot with { Access = await accessControl.GetManagementAsync(actor, cancellationToken) };
     return Results.Ok(snapshot);
@@ -104,6 +174,7 @@ var taskFiles = app.MapGroup("/api/tasks")
 
 taskFiles.MapPost("/{taskId:guid}/attachments", async (
     Guid taskId,
+    Guid? commentId,
     HttpRequest request,
     ClaimsPrincipal principal,
     ITaskService taskService,
@@ -124,7 +195,7 @@ taskFiles.MapPost("/{taskId:guid}/attachments", async (
     {
         await using var content = file.OpenReadStream();
         ids.Add(await taskService.UploadAttachmentAsync(new UploadTaskAttachmentCommand(
-            taskId, file.FileName, file.ContentType, file.Length, content), actor, cancellationToken));
+            taskId, commentId, file.FileName, file.ContentType, file.Length, content), actor, cancellationToken));
     }
     return Results.Created($"/api/tasks/{taskId}/attachments", new { ok = true, ids });
 }).DisableAntiforgery();
@@ -139,6 +210,18 @@ taskFiles.MapGet("/attachments/{attachmentId:guid}", async (
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var download = await taskService.GetAttachmentDownloadAsync(attachmentId, actor, cancellationToken);
     return Results.Redirect(download.Url);
+});
+
+taskFiles.MapDelete("/attachments/{attachmentId:guid}", async (
+    Guid attachmentId,
+    ClaimsPrincipal principal,
+    ITaskService taskService,
+    IAccessControlService accessControl,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    await taskService.DeleteAttachmentAsync(attachmentId, actor, cancellationToken);
+    return Results.NoContent();
 });
 
 var chatFiles = app.MapGroup("/api/chats")
@@ -179,6 +262,55 @@ chatFiles.MapGet("/attachments/{messageId:guid}", async (
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var download = await chatService.GetAttachmentDownloadAsync(messageId, actor, cancellationToken);
     return Results.Redirect(download.Url);
+});
+
+var internalChatFiles = app.MapGroup("/api/internal-chats")
+    .RequireAuthorization()
+    .RequireRateLimiting("operations");
+
+internalChatFiles.MapGet("", async (
+    ClaimsPrincipal principal,
+    IInternalChatService internalChatService,
+    IAccessControlService accessControl,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    return Results.Ok(await internalChatService.GetModuleAsync(actor, cancellationToken));
+});
+
+internalChatFiles.MapPost("/{roomId:guid}/attachments", async (
+    Guid roomId,
+    HttpRequest request,
+    ClaimsPrincipal principal,
+    IInternalChatService internalChatService,
+    IAccessControlService accessControl,
+    CancellationToken cancellationToken) =>
+{
+    if (!request.HasFormContentType) throw new DomainException("Envie o arquivo no formato multipart/form-data.");
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    var form = await request.ReadFormAsync(cancellationToken);
+    if (form.Files.Count == 0) throw new DomainException("Selecione ao menos um arquivo.");
+    if (form.Files.Count > 10) throw new DomainException("É permitido enviar no máximo 10 arquivos por vez.");
+    var ids = new List<Guid>();
+    foreach (var file in form.Files)
+    {
+        await using var content = file.OpenReadStream();
+        ids.Add(await internalChatService.UploadAttachmentAsync(new UploadInternalChatAttachmentCommand(
+            roomId, file.FileName, file.ContentType, file.Length, content), actor, cancellationToken));
+    }
+    return Results.Created($"/api/internal-chats/{roomId}/attachments", new { ok = true, ids });
+}).DisableAntiforgery();
+
+internalChatFiles.MapGet("/attachments/{messageId:guid}", async (
+    Guid messageId,
+    ClaimsPrincipal principal,
+    IInternalChatService internalChatService,
+    IAccessControlService accessControl,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    var attachment = await internalChatService.GetAttachmentAsync(messageId, actor, cancellationToken);
+    return Results.File(attachment.FullPath, attachment.ContentType, fileDownloadName: null, enableRangeProcessing: true);
 });
 
 app.MapGet("/api/integrations/whatsapp/webhook", async (
@@ -315,13 +447,18 @@ operations.MapPost("", async (
     OperationsRequest request,
     ClaimsPrincipal principal,
     IOperationsService service,
+    IAgendaService agendaService,
+    ISuggestionService suggestionService,
     ITaskService taskService,
     IChatService chatService,
+    IInternalChatService internalChatService,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     Guid? id = null;
+    string? temporaryPassword = null;
+    string? createdProtocol = null;
 
     switch (request.Action?.Trim())
     {
@@ -335,7 +472,35 @@ operations.MapPost("", async (
                 request.CsOwner,
                 request.ClinicsCount ?? 1,
                 request.MonthlyRevenueCents ?? 0,
-                request.Strategic ?? false), actor, cancellationToken);
+                request.Strategic ?? false,
+                request.Status, request.Project, request.ProductVersion, request.DueDay,
+                request.Server, request.PaymentMethod, request.InvoiceCompany, request.GraceDays,
+                request.DueDays, request.Subscription, request.Email, request.Phone, request.Website,
+                request.Notes, request.Address, request.City, request.State), actor, cancellationToken);
+            break;
+
+        case "saveCustomerCatalog":
+            id = await service.SaveCustomerCatalogAsync(request.Id, request.Catalog ?? "", request.Name ?? "", request.CatalogDescription, request.Active ?? true, actor, cancellationToken);
+            break;
+
+        case "deleteCustomerCatalog":
+            await service.DeleteCustomerCatalogAsync(request.Id ?? throw new DomainException("Cadastro obrigatório."), actor, cancellationToken);
+            break;
+
+        case "saveNote":
+            id = await service.SaveNoteAsync(request.Id, request.Title ?? "", request.Description, request.Color, actor, cancellationToken);
+            break;
+
+        case "deleteNote":
+            await service.DeleteNoteAsync(request.Id ?? throw new DomainException("Anotação obrigatória."), actor, cancellationToken);
+            break;
+
+        case "duplicateNote":
+            id = await service.DuplicateNoteAsync(request.Id ?? throw new DomainException("Anotação obrigatória."), actor, cancellationToken);
+            break;
+
+        case "reorderNotes":
+            await service.ReorderNotesAsync(request.NoteIds ?? [], actor, cancellationToken);
             break;
 
         case "createWorkItem":
@@ -354,7 +519,25 @@ operations.MapPost("", async (
                 request.Description,
                 request.Tags,
                 request.OriginType,
-                request.OriginId), actor, cancellationToken);
+                request.OriginId,
+                request.Status), actor, cancellationToken);
+            break;
+
+        case "updateWorkItem":
+            await service.UpdateWorkItemAsync(new UpdateWorkItemCommand(
+                request.Id ?? throw new DomainException("ID obrigatório."),
+                request.Title ?? "",
+                request.Owner,
+                request.AmountCents ?? 0,
+                request.Description,
+                request.RecordType,
+                request.CustomerName,
+                request.Version ?? 0), actor, cancellationToken);
+            break;
+
+        case "deleteWorkItem":
+            await service.DeleteWorkItemAsync(
+                request.Id ?? throw new DomainException("ID obrigatório."), actor, cancellationToken);
             break;
 
         case "transitionWorkItem":
@@ -408,6 +591,162 @@ operations.MapPost("", async (
                 request.GroupIds ?? []), actor, cancellationToken);
             break;
 
+        case "saveAgendaCalendar":
+            id = await agendaService.SaveCalendarAsync(new SaveAgendaCalendarCommand(
+                request.Id, request.Name ?? "", request.Description,
+                request.DepartmentId ?? throw new DomainException("Setor obrigatório."), request.Active ?? true), actor, cancellationToken);
+            break;
+
+        case "saveAgendaType":
+            id = await agendaService.SaveTypeAsync(new SaveAgendaTypeCommand(
+                request.Id, request.Name ?? "", request.Description, request.Color, request.Active ?? true), actor, cancellationToken);
+            break;
+
+        case "saveAgendaStatus":
+            id = await agendaService.SaveStatusAsync(new SaveAgendaStatusCommand(
+                request.Id, request.Name ?? "", request.Description, request.Color, request.Active ?? true), actor, cancellationToken);
+            break;
+
+        case "deleteAgendaCalendar":
+            await agendaService.DeleteCalendarAsync(request.Id ?? throw new DomainException("Agenda obrigatória."), actor, cancellationToken);
+            break;
+
+        case "deleteAgendaType":
+            await agendaService.DeleteTypeAsync(request.Id ?? throw new DomainException("Tipo obrigatório."), actor, cancellationToken);
+            break;
+
+        case "deleteAgendaStatus":
+            await agendaService.DeleteStatusAsync(request.Id ?? throw new DomainException("Status obrigatório."), actor, cancellationToken);
+            break;
+
+        case "createAgendaCommitment":
+            var commitments = await agendaService.CreateCommitmentAsync(new CreateAgendaCommitmentCommand(
+                request.AgendaId ?? throw new DomainException("Agenda obrigatória."),
+                request.AgendaTypeId ?? throw new DomainException("Tipo obrigatório."),
+                request.AgendaStatusId ?? throw new DomainException("Status obrigatório."),
+                request.ResponsibleUserId ?? throw new DomainException("Responsável obrigatório."),
+                request.Title ?? "", request.Description,
+                request.StartsAt ?? throw new DomainException("Início obrigatório."),
+                request.EndsAt ?? throw new DomainException("Término obrigatório."),
+                request.ParticipantUserIds, request.Recurrence), actor, cancellationToken);
+            id = commitments.FirstOrDefault();
+            break;
+
+        case "updateAgendaCommitment":
+            await agendaService.UpdateCommitmentAsync(new UpdateAgendaCommitmentCommand(
+                request.Id ?? throw new DomainException("Compromisso obrigatório."),
+                request.AgendaId ?? throw new DomainException("Agenda obrigatória."),
+                request.AgendaTypeId ?? throw new DomainException("Tipo obrigatório."),
+                request.AgendaStatusId ?? throw new DomainException("Status obrigatório."),
+                request.ResponsibleUserId ?? throw new DomainException("Responsável obrigatório."),
+                request.Title ?? "", request.Description,
+                request.StartsAt ?? throw new DomainException("Início obrigatório."),
+                request.EndsAt ?? throw new DomainException("Término obrigatório."), request.ParticipantUserIds), actor, cancellationToken);
+            break;
+
+        case "changeAgendaCommitmentStatus":
+            await agendaService.ChangeCommitmentStatusAsync(new ChangeAgendaCommitmentStatusCommand(
+                request.Id ?? throw new DomainException("Compromisso obrigatório."),
+                request.AgendaStatusId ?? throw new DomainException("Status obrigatório.")), actor, cancellationToken);
+            break;
+
+        case "deleteAgendaCommitment":
+            await agendaService.DeleteCommitmentAsync(request.Id ?? throw new DomainException("Compromisso obrigatório."), actor, cancellationToken);
+            break;
+
+        case "saveSuggestionPriority":
+            id = await suggestionService.SavePriorityAsync(new SaveSuggestionPriorityCommand(
+                request.Id, request.Name ?? "", request.Description, request.Color, request.DisplayOrder ?? 0, request.Active ?? true), actor, cancellationToken);
+            break;
+
+        case "saveSuggestionStatus":
+            id = await suggestionService.SaveStatusAsync(new SaveSuggestionStatusCommand(
+                request.Id, request.Name ?? "", request.Description, request.KanbanColumn, request.Color, request.DisplayOrder ?? 0,
+                request.IsInitial ?? false, request.Active ?? true), actor, cancellationToken);
+            break;
+
+        case "deleteSuggestionPriority":
+            await suggestionService.DeletePriorityAsync(
+                request.Id ?? throw new DomainException("Prioridade obrigatória."), actor, cancellationToken);
+            break;
+
+        case "deleteSuggestionStatus":
+            await suggestionService.DeleteStatusAsync(
+                request.Id ?? throw new DomainException("Status obrigatório."), actor, cancellationToken);
+            break;
+
+        case "createSuggestion":
+            var createdSuggestion = await suggestionService.CreateSuggestionAsync(new CreateSuggestionCommand(
+                request.Name ?? "", request.Description, request.CustomerId,
+                request.PriorityId ?? throw new DomainException("Prioridade obrigatória."),
+                request.StrategicClient ?? false, request.CancellationRisk ?? false), actor, cancellationToken);
+            id = createdSuggestion.Id;
+            createdProtocol = createdSuggestion.Protocol;
+            break;
+
+        case "changeSuggestionStatus":
+            await suggestionService.ChangeStatusAsync(new ChangeSuggestionStatusCommand(
+                request.Id ?? throw new DomainException("Sugestão obrigatória."),
+                request.StatusId ?? throw new DomainException("Status obrigatório."),
+                request.Version ?? 0), actor, cancellationToken);
+            break;
+
+        case "addSuggestionComment":
+            id = await suggestionService.AddCommentAsync(new AddSuggestionCommentCommand(
+                request.Id ?? throw new DomainException("Sugestão obrigatória."), request.Body ?? ""), actor, cancellationToken);
+            break;
+
+        case "deleteSuggestion":
+            await suggestionService.DeleteSuggestionAsync(
+                request.Id ?? throw new DomainException("Sugestão obrigatória."), actor, cancellationToken);
+            break;
+
+        case "createEmployee":
+            var createdEmployee = await accessControl.CreateEmployeeAsync(new CreateEmployeeCommand(
+                request.DisplayName ?? "",
+                request.Email ?? "",
+                request.BirthDate,
+                request.StartedAt,
+                request.DepartmentIds ?? (request.DepartmentId is { } employeeDepartmentId ? [employeeDepartmentId] : []),
+                request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
+                request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
+                request.SubordinateUserIds), actor, cancellationToken);
+            id = createdEmployee.Id;
+            temporaryPassword = createdEmployee.TemporaryPassword;
+            break;
+
+        case "updateEmployee":
+            await accessControl.UpdateEmployeeAsync(new UpdateEmployeeCommand(
+                request.Id ?? throw new DomainException("Colaborador obrigatório."),
+                request.DisplayName ?? "", request.Email ?? "", request.BirthDate, request.StartedAt,
+                request.DepartmentIds ?? (request.DepartmentId is { } departmentId ? [departmentId] : []),
+                request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
+                request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
+                request.SubordinateUserIds, request.Active ?? true), actor, cancellationToken);
+            break;
+
+        case "deleteEmployee":
+            await accessControl.DeleteEmployeeAsync(request.Id ?? throw new DomainException("Colaborador obrigatório."), actor, cancellationToken);
+            break;
+
+        case "saveEmployeeDepartment":
+            id = await accessControl.SaveEmployeeDepartmentAsync(
+                new SaveEmployeeDepartmentCommand(request.Id, request.Name ?? "", request.Description, request.Active ?? true), actor, cancellationToken);
+            break;
+
+        case "saveEmployeeLevel":
+            id = await accessControl.SaveEmployeeLevelAsync(
+                new SaveEmployeeLevelCommand(request.Id, request.Name ?? "", request.Description, request.Active ?? true), actor, cancellationToken);
+            break;
+
+        case "deleteEmployeeDepartment":
+            await accessControl.DeleteEmployeeDepartmentAsync(request.Id ?? throw new DomainException("Setor obrigatório."), actor, cancellationToken);
+            break;
+
+        case "deleteEmployeeLevel":
+            await accessControl.DeleteEmployeeLevelAsync(request.Id ?? throw new DomainException("Nível obrigatório."), actor, cancellationToken);
+            break;
+
         case "createAccessGroup":
             id = await accessControl.CreateGroupAsync(new CreateAccessGroupCommand(
                 request.Name ?? "",
@@ -424,16 +763,23 @@ operations.MapPost("", async (
                 request.Permissions ?? []), actor, cancellationToken);
             break;
 
+        case "deleteAccessGroup":
+            await accessControl.DeleteGroupAsync(request.Id ?? throw new DomainException("Grupo obrigatório."), actor, cancellationToken);
+            break;
+
         case "createTask":
-            id = await taskService.CreateAsync(new CreateCorporateTaskCommand(
+            var createdTask = await taskService.CreateAsync(new CreateCorporateTaskCommand(
                 request.Title ?? "", request.Description ?? "",
                 request.TypeId ?? throw new DomainException("Tipo obrigatório."),
                 request.PriorityId, request.StatusId,
                 request.SourceDepartmentId ?? throw new DomainException("Setor de origem obrigatório."),
                 request.CurrentDepartmentId ?? throw new DomainException("Setor atual obrigatório."),
                 request.AssigneeUserId, request.CustomerId, request.CustomerCode,
-                request.CustomerName, request.ExternalLink, request.InternalNotes,
-                request.DueAt, request.SlaPolicyId, request.ParticipantUserIds, request.AttachmentLinks), actor, cancellationToken);
+                request.CustomerName, request.ClientWhatsApp ?? "", request.ExternalLink, request.InternalNotes,
+                request.DueAt, request.SlaPolicyId, request.CancellationRequest ?? false,
+                request.ParticipantUserIds, request.AttachmentLinks), actor, cancellationToken);
+            id = createdTask.Id;
+            createdProtocol = createdTask.Protocol;
             break;
 
         case "changeTaskStatus":
@@ -468,6 +814,46 @@ operations.MapPost("", async (
             await taskService.AssignAsync(new AssignTaskCommand(
                 request.TaskId ?? request.Id ?? throw new DomainException("Tarefa obrigatória."),
                 request.AssigneeUserId, request.Version ?? 0), actor, cancellationToken);
+            break;
+
+        case "updateTask":
+            await taskService.UpdateAsync(new UpdateCorporateTaskCommand(
+                request.TaskId ?? request.Id ?? throw new DomainException("Tarefa obrigatória."),
+                request.Title ?? "", request.Description ?? "",
+                request.TypeId ?? throw new DomainException("Tipo obrigatório."),
+                request.CustomerId, request.CustomerCode, request.CustomerName,
+                request.ClientWhatsApp ?? "", request.CancellationRequest ?? false,
+                request.ParticipantUserIds, request.Version ?? 0), actor, cancellationToken);
+            break;
+
+        case "deleteTask":
+            await taskService.DeleteAsync(new DeleteCorporateTaskCommand(
+                request.TaskId ?? request.Id ?? throw new DomainException("Tarefa obrigatória."),
+                request.Version ?? 0), actor, cancellationToken);
+            break;
+
+        case "saveNotice":
+            id = await service.SaveNoticeAsync(
+                request.Id, request.Title ?? "", request.Body ?? "",
+                request.NoticeType ?? "Informativo", request.NoticeKind ?? "Aviso",
+                request.Audience ?? "Todos", request.TargetUserId,
+                request.EventAt, request.ExpiresAt, request.ImageDataUrl,
+                request.Active ?? true, actor, cancellationToken);
+            break;
+
+        case "deleteNotice":
+            await service.DeleteNoticeAsync(
+                request.Id ?? throw new DomainException("Aviso obrigatório."), actor, cancellationToken);
+            break;
+
+        case "markNoticeRead":
+            await service.MarkNoticeReadAsync(
+                request.Id ?? throw new DomainException("Aviso obrigatório."), actor, cancellationToken);
+            break;
+
+        case "markNoticeViewed":
+            await service.MarkNoticeViewedAsync(
+                request.Id ?? throw new DomainException("Aviso obrigatório."), actor, cancellationToken);
             break;
 
         case "addTaskComment":
@@ -527,6 +913,12 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? [], request.CoordinatorDepartmentIds ?? []), actor, cancellationToken);
             break;
 
+        case "deleteTaskCatalog":
+            await taskService.DeleteCatalogEntryAsync(
+                request.Catalog ?? throw new DomainException("Cadastro obrigatório."),
+                request.Id ?? request.UserId ?? throw new DomainException("Registro obrigatório."), actor, cancellationToken);
+            break;
+
         case "createTaskCollaborator":
             id = await taskService.CreateCollaboratorAsync(new CreateTaskCollaboratorCommand(
                 request.DisplayName ?? "", request.Email ?? "", request.Phone ?? "",
@@ -539,12 +931,39 @@ operations.MapPost("", async (
                 request.NotificationId ?? throw new DomainException("Notificação obrigatória."), actor, cancellationToken);
             break;
 
+        case "createInternalChatRoom":
+            id = await internalChatService.CreateRoomAsync(new CreateInternalChatRoomCommand(
+                request.Name, request.PhotoDataUrl, request.IsGroup ?? false, request.MemberUserIds), actor, cancellationToken);
+            break;
+
+        case "sendInternalChatMessage":
+            id = await internalChatService.SendMessageAsync(new SendInternalChatMessageCommand(
+                request.RoomId ?? throw new DomainException("Conversa obrigatória."),
+                request.Body, request.MessageType), actor, cancellationToken);
+            break;
+
+        case "setInternalChatRoomArchived":
+            await internalChatService.SetArchivedAsync(new SetInternalChatRoomArchivedCommand(
+                request.RoomId ?? throw new DomainException("Conversa obrigatória."), request.Archived ?? true), actor, cancellationToken);
+            break;
+
+        case "markInternalChatRoomRead":
+            await internalChatService.MarkReadAsync(new MarkInternalChatRoomReadCommand(
+                request.RoomId ?? throw new DomainException("Conversa obrigatória.")), actor, cancellationToken);
+            break;
+
+        case "updateInternalChatGroup":
+            await internalChatService.UpdateGroupAsync(new UpdateInternalChatGroupCommand(
+                request.RoomId ?? throw new DomainException("Grupo obrigatório."), request.Name, request.PhotoDataUrl), actor, cancellationToken);
+            break;
+
         case "createChatConversation":
             id = await chatService.CreateConversationAsync(new CreateChatConversationCommand(
                 request.ContactName ?? "", request.Phone ?? "", request.Email ?? "", request.CustomerId,
                 request.CompanyName ?? "", request.ChannelId ?? throw new DomainException("Canal obrigatório."),
                 request.QueueId, request.AssigneeUserId, request.Subject ?? "", request.Priority ?? "Normal",
-                request.InitialMessage), actor, cancellationToken);
+                request.InitialMessage, request.IsGroup ?? false, request.GroupName,
+                request.GroupParticipants), actor, cancellationToken);
             break;
 
         case "sendChatMessage":
@@ -556,7 +975,8 @@ operations.MapPost("", async (
         case "updateChatConversation":
             await chatService.UpdateConversationAsync(new UpdateChatConversationCommand(
                 request.ConversationId ?? throw new DomainException("Conversa obrigatória."),
-                request.Status, request.Priority, request.Favorite, request.MarkRead, request.Version ?? 0), actor, cancellationToken);
+                request.Status, request.Priority, request.Favorite, request.MarkRead, request.Subject,
+                request.SatisfactionScore, request.SatisfactionComment, request.Version ?? 0), actor, cancellationToken);
             break;
 
         case "assignChatConversation":
@@ -574,6 +994,11 @@ operations.MapPost("", async (
                 request.AssigneeUserId, request.Reason ?? "", request.Version ?? 0), actor, cancellationToken);
             break;
 
+        case "batchCloseChatConversations":
+            await chatService.BatchCloseAsync(new BatchCloseChatConversationsCommand(
+                request.ConversationIds ?? []), actor, cancellationToken);
+            break;
+
         case "saveChatQueue":
             id = await chatService.SaveQueueAsync(new SaveChatQueueCommand(
                 request.Id, request.Name ?? "", request.CatalogDescription ?? "",
@@ -587,7 +1012,8 @@ operations.MapPost("", async (
                 request.DepartmentId ?? throw new DomainException("Setor obrigatório."),
                 request.QueueId, request.AssigneeUserId, request.Active ?? true,
                 request.AiEnabled ?? false, request.AllowTransfer ?? true, request.AutoCreateTask ?? false,
-                request.GreetingMessage ?? "", request.AwayMessage ?? ""), actor, cancellationToken);
+                request.GreetingMessage ?? "", request.AwayMessage ?? "",
+                request.SendClosingMessage ?? false, request.ClosingMessage ?? ""), actor, cancellationToken);
             break;
 
         case "saveChatWhatsAppNumber":
@@ -644,14 +1070,28 @@ operations.MapPost("", async (
 
     actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);
+    if (actor.HasPermission("diary", "view"))
+        snapshot = snapshot with { DiaryModule = await service.GetDiaryModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("notes", "view"))
+        snapshot = snapshot with { NotesModule = await service.GetNotesModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("work", "view"))
+        snapshot = snapshot with { AgendaModule = await agendaService.GetModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("suggestions", "view"))
+        snapshot = snapshot with { SuggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("tasks", "view") || actor.HasPermission("catalogs", "view"))
         snapshot = snapshot with { TaskModule = await taskService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("chat", "view"))
         snapshot = snapshot with { ChatModule = await chatService.GetModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("internalChat", "view"))
+        snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("notices", "view"))
+        snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view"))
+        snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     var access = actor.HasPermission("admin", "manage")
         ? await accessControl.GetManagementAsync(actor, cancellationToken)
         : null;
-    var response = snapshot with { Ok = true, Id = id, Access = access };
+    var response = snapshot with { Ok = true, Id = id, TemporaryPassword = temporaryPassword, CreatedProtocol = createdProtocol, Access = access };
     return id.HasValue ? Results.Json(response, statusCode: StatusCodes.Status201Created) : Results.Ok(response);
 });
 
@@ -694,6 +1134,8 @@ static async Task InitializeDatabaseAsync(WebApplication app)
             await taskService.InitializeAsync();
             var chatService = scope.ServiceProvider.GetRequiredService<IChatService>();
             await chatService.InitializeAsync();
+            var suggestionService = scope.ServiceProvider.GetRequiredService<ISuggestionService>();
+            await suggestionService.InitializeAsync();
             return;
         }
         catch when (attempt < 10)
@@ -711,17 +1153,37 @@ public sealed class OperationsRequest
     public string? RecordType { get; init; }
     public string? Title { get; init; }
     public Guid? CustomerId { get; init; }
+    public Guid? AgendaId { get; init; }
+    public Guid? AgendaTypeId { get; init; }
+    public Guid? AgendaStatusId { get; init; }
+    public Guid? ResponsibleUserId { get; init; }
     public string? CustomerName { get; init; }
     public string? LegalName { get; init; }
     public string? TradeName { get; init; }
     public string? DocumentMasked { get; init; }
     public string? Segment { get; init; }
+    public string? Project { get; init; }
+    public string? ProductVersion { get; init; }
+    public string? DueDay { get; init; }
+    public string? Server { get; init; }
+    public string? PaymentMethod { get; init; }
+    public string? InvoiceCompany { get; init; }
+    public string? GraceDays { get; init; }
+    public string? DueDays { get; init; }
+    public string? Subscription { get; init; }
+    public string? Website { get; init; }
+    public string? Notes { get; init; }
+    public string? Address { get; init; }
+    public string? City { get; init; }
+    public string? State { get; init; }
     public string? Owner { get; init; }
     public string? CsOwner { get; init; }
     public string? Team { get; init; }
     public int? ClinicsCount { get; init; }
     public long? MonthlyRevenueCents { get; init; }
     public bool? Strategic { get; init; }
+    public bool? StrategicClient { get; init; }
+    public bool? CancellationRisk { get; init; }
     public string? Priority { get; init; }
     public string? Status { get; init; }
     public DateTimeOffset? DueAt { get; init; }
@@ -742,8 +1204,14 @@ public sealed class OperationsRequest
     public string? Justification { get; init; }
     public string? Email { get; init; }
     public string? DisplayName { get; init; }
+    public DateOnly? BirthDate { get; init; }
+    public DateOnly? StartedAt { get; init; }
+    public Guid? EmployeeLevelId { get; init; }
+    public string? PhotoDataUrl { get; init; }
     public string? Department { get; init; }
     public bool? Active { get; init; }
+    public bool? IsCoordinator { get; init; }
+    public IReadOnlyCollection<Guid>? SubordinateUserIds { get; init; }
     public IReadOnlyCollection<Guid>? GroupIds { get; init; }
     public string? Name { get; init; }
     public string? GroupDescription { get; init; }
@@ -758,22 +1226,34 @@ public sealed class OperationsRequest
     public Guid? AssigneeUserId { get; init; }
     public Guid? SlaPolicyId { get; init; }
     public string? CustomerCode { get; init; }
+    public string? ClientWhatsApp { get; init; }
     public string? ExternalLink { get; init; }
     public string? InternalNotes { get; init; }
     public IReadOnlyCollection<Guid>? ParticipantUserIds { get; init; }
     public IReadOnlyCollection<string>? AttachmentLinks { get; init; }
     public string? Reason { get; init; }
     public bool? RecalculateSla { get; init; }
+    public bool? CancellationRequest { get; init; }
     public string? Body { get; init; }
+    public string? NoticeType { get; init; }
+    public string? NoticeKind { get; init; }
+    public string? Audience { get; init; }
+    public Guid? TargetUserId { get; init; }
+    public DateTimeOffset? EventAt { get; init; }
+    public DateTimeOffset? ExpiresAt { get; init; }
+    public string? ImageDataUrl { get; init; }
     public IReadOnlyCollection<Guid>? MentionedUserIds { get; init; }
+    public IReadOnlyCollection<Guid>? NoteIds { get; init; }
     public string? ClientAction { get; init; }
     public string? Channel { get; init; }
     public string? Message { get; init; }
     public string? CatalogDescription { get; init; }
+    public string? Catalog { get; init; }
     public bool? RequiresAssigneeOnTransfer { get; init; }
     public IReadOnlyCollection<Guid>? CoordinatorUserIds { get; init; }
     public int? SeverityOrder { get; init; }
     public string? Color { get; init; }
+    public string? Recurrence { get; init; }
     public int? DefaultDueMinutes { get; init; }
     public int? DisplayOrder { get; init; }
     public string? KanbanColumn { get; init; }
@@ -802,6 +1282,14 @@ public sealed class OperationsRequest
     public IReadOnlyCollection<Guid>? CoordinatorDepartmentIds { get; init; }
     public Guid? NotificationId { get; init; }
     public Guid? ConversationId { get; init; }
+    public IReadOnlyCollection<Guid>? ConversationIds { get; init; }
+    public Guid? RoomId { get; init; }
+    public bool? IsGroup { get; init; }
+    public string? GroupName { get; init; }
+    public IReadOnlyCollection<string>? GroupParticipants { get; init; }
+    public bool? Archived { get; init; }
+    public IReadOnlyCollection<Guid>? MemberUserIds { get; init; }
+    public string? MessageType { get; init; }
     public string? ContactName { get; init; }
     public string? CompanyName { get; init; }
     public Guid? ChannelId { get; init; }
@@ -822,6 +1310,8 @@ public sealed class OperationsRequest
     public bool? AutoCreateTask { get; init; }
     public string? GreetingMessage { get; init; }
     public string? AwayMessage { get; init; }
+    public bool? SendClosingMessage { get; init; }
+    public string? ClosingMessage { get; init; }
     public string? InternalName { get; init; }
     public string? PhoneNumberId { get; init; }
     public string? WabaId { get; init; }
@@ -837,6 +1327,25 @@ public sealed class OperationsRequest
     public string? Shortcut { get; init; }
     public Guid? TagId { get; init; }
     public bool? Remove { get; init; }
+    public int? SatisfactionScore { get; init; }
+    public string? SatisfactionComment { get; init; }
+}
+
+public sealed class LocalLoginRequest
+{
+    public string? Email { get; init; }
+    public string? Password { get; init; }
+}
+
+public sealed class LocalPasswordChangeRequest
+{
+    public string? CurrentPassword { get; init; }
+    public string? NewPassword { get; init; }
+}
+
+public sealed class LocalPasswordRecoveryRequest
+{
+    public string? Email { get; init; }
 }
 
 internal static class ClaimsPrincipalExtensions
@@ -851,18 +1360,36 @@ internal sealed class LocalAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    IServiceScopeFactory scopeFactory)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var enabled = configuration.GetValue("Authentication:DevelopmentBypass", false);
-        if (!enabled)
-            return Task.FromResult(AuthenticateResult.Fail("A autenticação local está desabilitada."));
+        if (configuration.GetValue("Authentication:LocalPasswordEnabled", false))
+        {
+            var token = Request.Headers["X-Local-Session"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var authentication = scope.ServiceProvider.GetRequiredService<ILocalAuthenticationService>();
+                var identity = await authentication.ResolveSessionAsync(token, Context.RequestAborted);
+                if (identity is not null)
+                    return Authenticate(identity.Email, identity.DisplayName, "Colaborador");
+            }
+        }
+
+        if (!configuration.GetValue("Authentication:DevelopmentBypass", false))
+            return AuthenticateResult.Fail("Autenticação necessária.");
 
         var email = DecodeHeader("X-User-Email", "gestor@dontus.local");
         var name = DecodeHeader("X-User-Name", "Gestor Dontus");
         var role = DecodeHeader("X-User-Role", "Administrador técnico");
+        return Authenticate(email, name, role);
+    }
+
+    private AuthenticateResult Authenticate(string email, string name, string role)
+    {
         var claims = new[]
         {
             new Claim(ClaimTypes.Email, email),
@@ -872,7 +1399,7 @@ internal sealed class LocalAuthenticationHandler(
         };
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name);
-        return Task.FromResult(AuthenticateResult.Success(ticket));
+        return AuthenticateResult.Success(ticket);
     }
 
     private string DecodeHeader(string name, string fallback)

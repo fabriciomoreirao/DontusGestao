@@ -22,6 +22,8 @@ public sealed class ChatChannel : Entity
     public bool AutoCreateTask { get; set; }
     public string GreetingMessage { get; set; } = "";
     public string AwayMessage { get; set; } = "";
+    public bool SendClosingMessage { get; set; }
+    public string ClosingMessage { get; set; } = "Agradecemos o contato. Seu atendimento foi finalizado e permanecemos à disposição.";
 }
 
 public sealed class ChatWhatsAppNumber : Entity
@@ -70,6 +72,9 @@ public sealed class ChatConversation : Entity
     public Guid QueueId { get; set; }
     public Guid? AssigneeUserId { get; set; }
     public string Subject { get; set; } = "";
+    public bool IsGroup { get; set; }
+    public string GroupName { get; set; } = "";
+    public string GroupParticipantsJson { get; set; } = "[]";
     public string Status { get; set; } = "Aberta";
     public string Priority { get; set; } = "Normal";
     public bool Favorite { get; set; }
@@ -80,6 +85,9 @@ public sealed class ChatConversation : Entity
     public DateTimeOffset? SlaDueAt { get; set; }
     public string AiSummary { get; set; } = "";
     public string Sentiment { get; set; } = "Neutro";
+    public int? SatisfactionScore { get; set; }
+    public string SatisfactionComment { get; set; } = "";
+    public DateTimeOffset? SatisfactionRespondedAt { get; set; }
 }
 
 public sealed class ChatMessage : Entity

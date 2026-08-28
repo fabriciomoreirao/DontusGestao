@@ -9,7 +9,11 @@ public sealed record AccessUserDto(
     string Email,
     string DisplayName,
     string Department,
+    string PhotoDataUrl,
+    string JobTitle,
+    bool IsCoordinator,
     bool Active,
+    DateTimeOffset? BlockedAt,
     IReadOnlyCollection<Guid> GroupIds,
     IReadOnlyCollection<string> GroupNames,
     DateTimeOffset? LastAccessAt,
@@ -37,7 +41,62 @@ public sealed record AccessGroupDto(
 public sealed record AccessManagementDto(
     IReadOnlyCollection<ScreenDto> Screens,
     IReadOnlyCollection<AccessUserDto> Users,
-    IReadOnlyCollection<AccessGroupDto> Groups);
+    IReadOnlyCollection<AccessGroupDto> Groups,
+    IReadOnlyCollection<EmployeeDto> Employees,
+    IReadOnlyCollection<EmployeeDepartmentDto> Departments,
+    IReadOnlyCollection<EmployeeLevelDto> Levels);
+
+public sealed record EmployeeDto(
+    Guid Id,
+    string DisplayName,
+    string Email,
+    DateOnly? BirthDate,
+    DateOnly? StartedAt,
+    Guid? DepartmentId,
+    string DepartmentName,
+    IReadOnlyCollection<Guid> DepartmentIds,
+    IReadOnlyCollection<string> DepartmentNames,
+    Guid? LevelId,
+    string LevelName,
+    string PhotoDataUrl,
+    string JobTitle,
+    bool IsCoordinator,
+    IReadOnlyCollection<Guid> SubordinateUserIds,
+    bool Active,
+    DateTimeOffset? BlockedAt);
+
+public sealed record EmployeeDepartmentDto(Guid Id, string Name, string Description, bool Active);
+public sealed record EmployeeLevelDto(Guid Id, string Name, string Description, bool Active);
+
+public sealed record CreateEmployeeCommand(
+    string DisplayName,
+    string Email,
+    DateOnly? BirthDate,
+    DateOnly? StartedAt,
+    IReadOnlyCollection<Guid>? DepartmentIds,
+    Guid LevelId,
+    string? PhotoDataUrl,
+    string? JobTitle,
+    bool IsCoordinator,
+    IReadOnlyCollection<Guid>? SubordinateUserIds);
+
+public sealed record UpdateEmployeeCommand(
+    Guid Id,
+    string DisplayName,
+    string Email,
+    DateOnly? BirthDate,
+    DateOnly? StartedAt,
+    IReadOnlyCollection<Guid>? DepartmentIds,
+    Guid LevelId,
+    string? PhotoDataUrl,
+    string? JobTitle,
+    bool IsCoordinator,
+    IReadOnlyCollection<Guid>? SubordinateUserIds,
+    bool Active);
+
+public sealed record CreateEmployeeResult(Guid Id, string TemporaryPassword);
+public sealed record SaveEmployeeDepartmentCommand(Guid? Id, string Name, string? Description, bool Active);
+public sealed record SaveEmployeeLevelCommand(Guid? Id, string Name, string? Description, bool Active);
 
 public sealed record CreateAccessUserCommand(
     string Email,
@@ -83,6 +142,25 @@ public interface IAccessControlService
         UpdateAccessUserCommand command,
         ActorContext actor,
         CancellationToken cancellationToken = default);
+    Task<CreateEmployeeResult> CreateEmployeeAsync(
+        CreateEmployeeCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default);
+    Task UpdateEmployeeAsync(
+        UpdateEmployeeCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default);
+    Task DeleteEmployeeAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<Guid> SaveEmployeeDepartmentAsync(
+        SaveEmployeeDepartmentCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default);
+    Task<Guid> SaveEmployeeLevelAsync(
+        SaveEmployeeLevelCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default);
+    Task DeleteEmployeeDepartmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteEmployeeLevelAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateGroupAsync(
         CreateAccessGroupCommand command,
         ActorContext actor,
@@ -91,4 +169,5 @@ public interface IAccessControlService
         UpdateAccessGroupCommand command,
         ActorContext actor,
         CancellationToken cancellationToken = default);
+    Task DeleteGroupAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
 }

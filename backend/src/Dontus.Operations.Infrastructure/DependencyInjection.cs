@@ -24,8 +24,13 @@ public static class DependencyInjection
             }));
         services.AddScoped<IOperationsService, OperationsService>();
         services.AddScoped<IAccessControlService, AccessControlService>();
+        services.AddScoped<IAgendaService, AgendaService>();
+        services.AddScoped<ISuggestionService, SuggestionService>();
+        services.AddSingleton<IPasswordRecoveryEmailSender, SmtpPasswordRecoveryEmailSender>();
+        services.AddScoped<ILocalAuthenticationService, LocalAuthenticationService>();
         services.AddSingleton<ITaskFileStorage, S3TaskFileStorage>();
         services.AddScoped<ITaskService, TaskService>();
+        services.AddScoped<IInternalChatService, InternalChatService>();
         var keyPath = configuration["Chat:DataProtectionKeysPath"]
             ?? Path.Combine(AppContext.BaseDirectory, "data-protection-keys");
         services.AddDataProtection()

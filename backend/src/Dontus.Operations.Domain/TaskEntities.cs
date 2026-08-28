@@ -105,6 +105,11 @@ public sealed class CorporateTask : Entity
     public Guid? CustomerId { get; set; }
     public string CustomerCode { get; set; } = "";
     public string CustomerName { get; set; } = "";
+    public string ClientWhatsApp { get; set; } = "";
+    public string ClientNotificationState { get; set; } = "Pendente";
+    public DateTimeOffset? ClientNotificationRequestedAt { get; set; }
+    public DateTimeOffset? ClientNotifiedAt { get; set; }
+    public Guid? ClientNotifiedByUserId { get; set; }
     public string ExternalLink { get; set; } = "";
     public string InternalNotes { get; set; } = "";
     public DateTimeOffset? DueAt { get; set; }
@@ -115,6 +120,7 @@ public sealed class CorporateTask : Entity
     public DateTimeOffset? SlaPausedAt { get; set; }
     public int AccumulatedPauseMinutes { get; set; }
     public bool Cancelled { get; set; }
+    public bool CancellationRequest { get; set; }
 }
 
 public sealed class TaskParticipant
@@ -136,6 +142,7 @@ public sealed class TaskComment : Entity
 public sealed class TaskAttachment : Entity
 {
     public Guid TaskId { get; set; }
+    public Guid? CommentId { get; set; }
     public Guid UploadedByUserId { get; set; }
     public required string FileName { get; set; }
     public string ContentType { get; set; } = "application/octet-stream";

@@ -21,7 +21,10 @@ public sealed class AccessControlServiceTests
         Assert.True(actor.HasPermission("admin", "manage"));
         Assert.Equal(ScreenCatalog.All.Count, actor.Permissions!.Count);
         Assert.Single(await db.Users.ToListAsync());
-        Assert.Single(await db.AccessGroups.ToListAsync());
+        var groups = await db.AccessGroups.OrderBy(group => group.Name).ToListAsync();
+        Assert.Equal(2, groups.Count);
+        Assert.Contains(groups, group => group.Name == "Administradores");
+        Assert.Contains(groups, group => group.Name == "Colaboradores");
     }
 
     [Fact]
@@ -89,6 +92,48 @@ public sealed class AccessControlServiceTests
             service.ResolveActorAsync(new AuthenticatedIdentity("desconhecido@dontus.local", "Desconhecido")));
 
         Assert.Equal(403, exception.StatusCode);
+    }
+
+    [Fact]
+    public async Task Persists_coordinator_hierarchy_and_blocks_login_with_the_current_date()
+    {
+        await using var db = CreateContext();
+        var service = CreateService(db);
+        await service.InitializeAsync();
+        var admin = await service.ResolveActorAsync(new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
+        var departmentId = await service.SaveEmployeeDepartmentAsync(
+            new SaveEmployeeDepartmentCommand(null, "Suporte", "Atendimento e sucesso do cliente.", true), admin);
+        var levelId = await service.SaveEmployeeLevelAsync(
+            new SaveEmployeeLevelCommand(null, "Nível 1", "Entrada da trilha profissional.", true), admin);
+        var subordinate = await service.CreateEmployeeAsync(new CreateEmployeeCommand(
+            "Analista Dontus", "analista@dontus.local", new DateOnly(1995, 5, 12), new DateOnly(2025, 1, 10),
+            departmentId, levelId, null, "Analista de Suporte", false, []), admin);
+        var coordinator = await service.CreateEmployeeAsync(new CreateEmployeeCommand(
+            "Coordenador Dontus", "coordenador@dontus.local", new DateOnly(1990, 2, 20), new DateOnly(2024, 3, 15),
+            departmentId, levelId, null, "Coordenador de Suporte", true, [subordinate.Id]), admin);
+
+        db.LocalAuthSessions.Add(new LocalAuthSession
+        {
+            UserId = coordinator.Id,
+            TokenHash = "test-session",
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+        });
+        await db.SaveChangesAsync();
+        await service.UpdateEmployeeAsync(new UpdateEmployeeCommand(
+            coordinator.Id, "Coordenador Dontus", "coordenador@dontus.local", new DateOnly(1990, 2, 20),
+            new DateOnly(2024, 3, 15), departmentId, levelId, null, "Coordenador de Suporte", true,
+            [subordinate.Id], false), admin);
+
+        var management = await service.GetManagementAsync(admin);
+        var saved = management.Employees.Single(entry => entry.Id == coordinator.Id);
+        Assert.True(saved.IsCoordinator);
+        Assert.Contains(subordinate.Id, saved.SubordinateUserIds);
+        Assert.False(saved.Active);
+        Assert.NotNull(saved.BlockedAt);
+        Assert.InRange(saved.BlockedAt!.Value, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
+        Assert.NotNull((await db.LocalAuthSessions.SingleAsync(entry => entry.UserId == coordinator.Id)).RevokedAt);
+        await Assert.ThrowsAsync<DomainException>(() =>
+            new LocalAuthenticationService(db).LoginAsync("coordenador@dontus.local", coordinator.TemporaryPassword));
     }
 
     private static AccessControlService CreateService(OperationsDbContext db)

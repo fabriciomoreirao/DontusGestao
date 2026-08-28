@@ -11,9 +11,11 @@ export async function POST(request: Request) {
     "x-user-name": headerValue(process.env.LOCAL_USER_NAME ?? "Gestor Dontus"),
     "x-user-role": headerValue(process.env.LOCAL_USER_ROLE ?? "Administrador técnico"),
   });
+  const contentType = request.headers.get("content-type");
+  if (contentType) headers.set("content-type", contentType);
   try {
     const response = await fetch(`${apiBase()}/api/chats/${encodeURIComponent(conversationId)}/attachments`, {
-      method: "POST", headers, body: await request.formData(), cache: "no-store", signal: AbortSignal.timeout(120_000),
+      method: "POST", headers, body: request.body, cache: "no-store", signal: AbortSignal.timeout(120_000),
     });
     return new Response(response.body, { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json" } });
   } catch {

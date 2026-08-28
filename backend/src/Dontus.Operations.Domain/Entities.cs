@@ -25,7 +25,31 @@ public sealed class Customer : Entity
     public bool Strategic { get; set; }
     public int ClinicsCount { get; set; } = 1;
     public long MonthlyRevenueCents { get; set; }
+    public string Project { get; set; } = "";
+    public string ProductVersion { get; set; } = "";
+    public string DueDay { get; set; } = "";
+    public string Server { get; set; } = "";
+    public string PaymentMethod { get; set; } = "";
+    public string InvoiceCompany { get; set; } = "";
+    public string GraceDays { get; set; } = "";
+    public string DueDays { get; set; } = "";
+    public string Subscription { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string Website { get; set; } = "";
+    public string Notes { get; set; } = "";
+    public string Address { get; set; } = "";
+    public string City { get; set; } = "";
+    public string State { get; set; } = "";
     public required string CreatedBy { get; set; }
+}
+
+public sealed class CustomerCatalogOption : Entity
+{
+    public required string Catalog { get; set; }
+    public required string Name { get; set; }
+    public string Description { get; set; } = "";
+    public bool Active { get; set; } = true;
 }
 
 public sealed class WorkItem : Entity
@@ -120,10 +144,43 @@ public sealed class AppUser : Entity
     public string Department { get; set; } = "Gestão";
     public string Phone { get; set; } = "";
     public string JobTitle { get; set; } = "";
+    public string PasswordHash { get; set; } = "";
+    public string PhotoDataUrl { get; set; } = "";
+    public DateOnly? BirthDate { get; set; }
+    public DateOnly? StartedAt { get; set; }
+    public Guid? EmployeeLevelId { get; set; }
     public bool Active { get; set; } = true;
+    public DateTimeOffset? BlockedAt { get; set; }
+    public bool IsCoordinator { get; set; }
     public DateTimeOffset? LastAccessAt { get; set; }
     public required string CreatedBy { get; set; }
     public ICollection<UserAccessGroup> Groups { get; set; } = [];
+}
+
+public sealed class EmployeeLevel : Entity
+{
+    public required string Name { get; set; }
+    public string Description { get; set; } = "";
+    public bool Active { get; set; } = true;
+}
+
+public sealed class EmployeeSupervision
+{
+    public Guid CoordinatorUserId { get; set; }
+    public AppUser CoordinatorUser { get; set; } = null!;
+    public Guid SubordinateUserId { get; set; }
+    public AppUser SubordinateUser { get; set; } = null!;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class LocalAuthSession
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public required string TokenHash { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? RevokedAt { get; set; }
 }
 
 public sealed class AccessGroup : Entity

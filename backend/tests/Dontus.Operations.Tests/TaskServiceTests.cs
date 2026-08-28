@@ -17,7 +17,7 @@ public sealed class TaskServiceTests
         var type = await db.TaskTypes.SingleAsync();
         var assignee = await db.Users.SingleAsync();
 
-        var taskId = await service.CreateAsync(new CreateCorporateTaskCommand(
+        var createdTask = await service.CreateAsync(new CreateCorporateTaskCommand(
             "Cliente não consegue emitir relatório",
             "A emissão apresenta erro e precisa ser analisada.",
             type.Id,
@@ -29,15 +29,18 @@ public sealed class TaskServiceTests
             null,
             "230229",
             "Clínica exemplo",
+            "5511999990000",
             null,
             "Evidência registrada",
             null,
             null,
+            false,
             [], []), actor);
+        var taskId = createdTask.Id;
 
         var task = await db.CorporateTasks.SingleAsync(x => x.Id == taskId);
-        Assert.NotNull(task.SlaDueAt);
-        Assert.Matches(@"^DON-\d{8}-\d{6}$", task.Protocol);
+        Assert.Null(task.SlaDueAt);
+        Assert.Matches(@"^T\d{6}$", task.Protocol);
         Assert.Single(await db.TaskHistory.Where(x => x.TaskId == taskId).ToListAsync());
         Assert.Single(await db.TaskNotifications.Where(x => x.TaskId == taskId).ToListAsync());
 
@@ -65,7 +68,7 @@ public sealed class TaskServiceTests
         var exception = await Assert.ThrowsAsync<DomainException>(() => service.CreateAsync(
             new CreateCorporateTaskCommand(
                 "Tarefa inválida", "Descrição", type.Id, null, null,
-                support.Id, support.Id, outsider.Id, null, null, null, null, null, null, null, [], []),
+                support.Id, support.Id, outsider.Id, null, null, null, "5511999990000", null, null, null, null, false, [], []),
             actor));
 
         Assert.Contains("não pertence", exception.Message);
@@ -78,9 +81,9 @@ public sealed class TaskServiceTests
         var (service, admin) = await InitializeAsync(db);
         var support = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte");
         var type = await db.TaskTypes.SingleAsync();
-        var taskId = await service.CreateAsync(new CreateCorporateTaskCommand(
+        var taskId = (await service.CreateAsync(new CreateCorporateTaskCommand(
             "Analisar protocolo", "Descrição suficiente", type.Id, null, null,
-            support.Id, support.Id, null, null, null, null, null, null, null, null, [], []), admin);
+            support.Id, support.Id, null, null, null, null, "5511999990000", null, null, null, null, false, [], []), admin)).Id;
         var task = await db.CorporateTasks.SingleAsync(x => x.Id == taskId);
         var next = await db.TaskStatuses.SingleAsync(x => x.Name == "Em andamento");
 
@@ -144,14 +147,14 @@ public sealed class TaskServiceTests
         var (service, actor) = await InitializeAsync(db, storage);
         var support = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte");
         var type = await db.TaskTypes.SingleAsync();
-        var taskId = await service.CreateAsync(new CreateCorporateTaskCommand(
+        var taskId = (await service.CreateAsync(new CreateCorporateTaskCommand(
             "Analisar evidência", "Descrição suficiente", type.Id, null, null,
-            support.Id, support.Id, null, null, null, null, null, null, null, null, [], []), actor);
+            support.Id, support.Id, null, null, null, null, "5511999990000", null, null, null, null, false, [], []), actor)).Id;
         await using var content = new MemoryStream("conteúdo do anexo"u8.ToArray());
 
         var attachmentId = await service.UploadAttachmentAsync(
             new UploadTaskAttachmentCommand(
-                taskId, "evidencia.pdf", "application/pdf", content.Length, content), actor);
+                taskId, null, "evidencia.pdf", "application/pdf", content.Length, content), actor);
 
         var attachment = await db.TaskAttachments.SingleAsync(x => x.Id == attachmentId);
         var download = await service.GetAttachmentDownloadAsync(attachmentId, actor);
@@ -161,6 +164,99 @@ public sealed class TaskServiceTests
         Assert.Contains(attachment.StorageKey, download.Url);
         Assert.Contains(await db.TaskHistory.ToListAsync(),
             entry => entry.TaskId == taskId && entry.EventType == "attachment_added");
+    }
+
+    [Fact]
+    public async Task Transfer_moves_task_exclusively_to_destination_department()
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        var support = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte");
+        var type = await db.TaskTypes.SingleAsync();
+        var destination = new TaskDepartment
+        {
+            Name = "Financeiro",
+            Description = "Demandas financeiras",
+            Active = true,
+        };
+        db.TaskDepartments.Add(destination);
+        db.TaskTypeDepartments.Add(new TaskTypeDepartment
+        {
+            TaskTypeId = type.Id,
+            DepartmentId = destination.Id,
+        });
+        await db.SaveChangesAsync();
+
+        var created = await service.CreateAsync(new CreateCorporateTaskCommand(
+            "Conferir repasse", "Validar o repasse do contrato.", type.Id, null, null,
+            support.Id, support.Id, null, null, null, null, "5511999990000",
+            null, null, null, null, false, [], []), actor);
+        var task = await db.CorporateTasks.SingleAsync(x => x.Id == created.Id);
+
+        await service.TransferAsync(new TransferTaskCommand(
+            task.Id, destination.Id, null, "Análise do setor financeiro", true, task.Version), actor);
+
+        var transferred = await db.CorporateTasks.SingleAsync(x => x.Id == task.Id);
+        var module = await service.GetModuleAsync(actor);
+        Assert.Equal(destination.Id, transferred.CurrentDepartmentId);
+        Assert.Equal("Financeiro", module.Tasks.Single(x => x.Id == task.Id).DepartmentName);
+        Assert.Single(await db.TaskTransfers.Where(x => x.TaskId == task.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Comment_preserves_line_breaks_and_emojis()
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        var support = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte");
+        var type = await db.TaskTypes.SingleAsync();
+        var created = await service.CreateAsync(new CreateCorporateTaskCommand(
+            "Revisar retorno", "Descrição suficiente", type.Id, null, null,
+            support.Id, support.Id, null, null, null, null, "5511999990000",
+            null, null, null, null, false, [], []), actor);
+        const string body = "Primeira atualização\n\nCliente retornou com sucesso ✅😀";
+
+        await service.AddCommentAsync(new AddTaskCommentCommand(created.Id, body, []), actor);
+
+        var module = await service.GetModuleAsync(actor);
+        Assert.Equal(body, module.Tasks.Single(x => x.Id == created.Id).Comments.Single().Body);
+    }
+
+    [Fact]
+    public async Task Only_creator_or_assignee_can_update_or_delete_task()
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        var support = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte");
+        var type = await db.TaskTypes.SingleAsync();
+        var created = await service.CreateAsync(new CreateCorporateTaskCommand(
+            "Título inicial", "Descrição inicial", type.Id, null, null,
+            support.Id, support.Id, null, null, "1001", null, "5511999990000",
+            null, null, null, null, false, [], []), actor);
+        var task = await db.CorporateTasks.SingleAsync(x => x.Id == created.Id);
+
+        await service.UpdateAsync(new UpdateCorporateTaskCommand(
+            task.Id, "Título atualizado", "Descrição atualizada", type.Id, null,
+            "1001", null, "5511988880000", false, [], task.Version), actor);
+        task = await db.CorporateTasks.SingleAsync(x => x.Id == created.Id);
+        Assert.Equal("Título atualizado", task.Title);
+
+        var outsider = new AppUser
+        {
+            Email = "outro@dontus.local",
+            DisplayName = "Outro usuário",
+            CreatedBy = "tests@dontus.local"
+        };
+        db.Users.Add(outsider);
+        await db.SaveChangesAsync();
+        var outsiderActor = actor with { Email = outsider.Email, DisplayName = outsider.DisplayName };
+        var denied = await Assert.ThrowsAsync<DomainException>(() => service.UpdateAsync(
+            new UpdateCorporateTaskCommand(task.Id, task.Title, task.Description, type.Id, null,
+                task.CustomerCode, null, task.ClientWhatsApp, false, [], task.Version), outsiderActor));
+        Assert.Equal(403, denied.StatusCode);
+
+        await service.DeleteAsync(new DeleteCorporateTaskCommand(task.Id, task.Version), actor);
+        Assert.False(await db.CorporateTasks.AnyAsync(x => x.Id == task.Id));
     }
 
     private static async Task<(TaskService Service, ActorContext Actor)> InitializeAsync(

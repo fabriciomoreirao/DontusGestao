@@ -138,6 +138,55 @@ public sealed class OperationsServiceTests
         Assert.Equal(409, exception.StatusCode);
     }
 
+    [Fact]
+    public async Task Publishes_company_notice_and_tracks_read_confirmation()
+    {
+        await using var db = CreateContext();
+        var manager = new AppUser
+        {
+            Email = Actor.Email,
+            DisplayName = Actor.DisplayName,
+            CreatedBy = "tests@dontus.local"
+        };
+        var recipient = new AppUser
+        {
+            Email = "colaborador@dontus.local",
+            DisplayName = "Colaborador Teste",
+            CreatedBy = Actor.Email
+        };
+        db.Users.AddRange(manager, recipient);
+        await db.SaveChangesAsync();
+        var service = new OperationsService(db);
+        var recipientActor = new ActorContext(
+            recipient.Email, recipient.DisplayName, "Colaboradores", "Suporte",
+            [new EffectivePermission("notices", true, false, false, false, false)]);
+
+        var id = await service.SaveNoticeAsync(
+            null, "Encontro da equipe", "Confirme sua presença no encontro.",
+            "Importante", "Evento", "Colaborador", recipient.Id,
+            DateTimeOffset.UtcNow.AddDays(1), DateTimeOffset.UtcNow.AddDays(2),
+            "data:image/png;base64,AA==", true, Actor);
+        var beforeRead = await service.GetNoticesModuleAsync(recipientActor);
+        var pending = beforeRead.Notices.Single(x => x.Id == id);
+        Assert.False(pending.IsRead);
+        Assert.True(pending.VisibleToCurrentUser);
+        Assert.Equal("Evento", pending.Kind);
+
+        await service.MarkNoticeViewedAsync(id, recipientActor);
+        var afterView = await service.GetNoticesModuleAsync(Actor);
+        Assert.Equal(1, afterView.Notices.Single(x => x.Id == id).ViewedCount);
+        Assert.Equal(0, afterView.Notices.Single(x => x.Id == id).ReadCount);
+
+        await service.MarkNoticeReadAsync(id, recipientActor);
+
+        var afterRead = await service.GetNoticesModuleAsync(Actor);
+        var notice = afterRead.Notices.Single(x => x.Id == id);
+        Assert.False(notice.VisibleToCurrentUser);
+        Assert.Equal(1, notice.ReadCount);
+        Assert.Single(notice.Recipients);
+        Assert.NotNull(notice.Recipients.Single().ConfirmedAt);
+    }
+
     private static OperationsDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<OperationsDbContext>()

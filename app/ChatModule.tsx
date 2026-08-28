@@ -1,9 +1,9 @@
 "use client";
 
 import {
-  Archive, ArrowRightLeft, BarChart3, Check, ChevronRight, CirclePlus, Clock3,
+  Archive, ArrowLeft, ArrowRightLeft, BarChart3, CalendarRange, Check, CheckCheck, ChevronRight, CirclePlus, Clock3,
   Hash, Headphones, Inbox, MessageCircleMore, MessageSquareText, MoreHorizontal,
-  Paperclip, Pencil, Phone, Plus, RefreshCw, Save, Search, Send, Settings2, ShieldCheck, Star, Tag, UserCheck, Users,
+  Paperclip, Pencil, Phone, Plus, RefreshCw, Save, Search, Send, Settings2, ShieldCheck, Smile, Star, Tag, UserCheck, Users,
   Wifi, X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -21,8 +21,10 @@ export type ChatConversation = {
   channelId: string; channelName: string; departmentId: string; departmentName: string;
   queueId: string; queueName: string; assigneeUserId: string | null; assigneeName: string;
   subject: string; status: string; priority: string; favorite: boolean; unreadCount: number;
-  lastMessageAt: string; firstResponseAt: string | null; closedAt: string | null; slaDueAt: string | null;
+  isGroup: boolean; groupName: string; groupParticipants: string[];
+  createdAt: string; lastMessageAt: string; firstResponseAt: string | null; closedAt: string | null; slaDueAt: string | null;
   aiSummary: string; sentiment: string; version: number; messages: ChatMessage[]; tags: ChatTag[];
+  satisfactionScore: number | null; satisfactionComment: string; satisfactionRespondedAt: string | null;
   transfers: Array<{ id: string; fromDepartmentId: string; toDepartmentId: string; fromChannelId: string; toChannelId: string; reason: string; actorName: string; createdAt: string }>;
 };
 export type ChatModuleData = {
@@ -30,7 +32,7 @@ export type ChatModuleData = {
   departments: Array<{ id: string; name: string; active: boolean }>;
   users: Array<{ id: string; name: string; email: string; departmentIds: string[]; active: boolean }>;
   queues: Array<{ id: string; name: string; description: string; departmentId: string; departmentName: string; distributionStrategy: string; active: boolean }>;
-  channels: Array<{ id: string; name: string; type: string; departmentId: string; departmentName: string; defaultQueueId: string | null; defaultAssigneeUserId: string | null; active: boolean; aiEnabled: boolean; allowTransfer: boolean; autoCreateTask: boolean; greetingMessage: string; awayMessage: string }>;
+  channels: Array<{ id: string; name: string; type: string; departmentId: string; departmentName: string; defaultQueueId: string | null; defaultAssigneeUserId: string | null; active: boolean; aiEnabled: boolean; allowTransfer: boolean; autoCreateTask: boolean; greetingMessage: string; awayMessage: string; sendClosingMessage: boolean; closingMessage: string }>;
   whatsAppNumbers: Array<{
     id: string; channelId: string; departmentId: string; departmentName: string;
     internalName: string; displayName: string; phoneNumber: string; phoneNumberId: string;
@@ -43,6 +45,7 @@ export type ChatModuleData = {
   tags: ChatTag[];
   quickReplies: Array<{ id: string; shortcut: string; title: string; body: string; departmentId: string | null; active: boolean }>;
   metrics: { open: number; waiting: number; unassigned: number; closedToday: number; averageFirstResponseMinutes: number; averageResolutionMinutes: number };
+  currentUserId: string;
 };
 
 type Props = {
@@ -54,6 +57,7 @@ type Props = {
   capabilities: string[];
   operate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>;
   uploadAttachments: (conversationId: string, files: File[], internal: boolean) => Promise<boolean>;
+  onExit: () => void;
 };
 type View = "inbox" | "dashboard" | "settings";
 type SettingsSection = "queues" | "channels" | "whatsapp" | "tags" | "replies";
@@ -108,7 +112,7 @@ const formatTime = (value: string) => new Intl.DateTimeFormat("pt-BR", { hour: "
 const formatDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
-export default function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities, operate, uploadAttachments }: Props) {
+export default function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities, operate, uploadAttachments, onExit }: Props) {
   const [view, setView] = useState<View>("inbox");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("queues");
   const [selectedId, setSelectedId] = useState(module.conversations[0]?.id ?? "");
@@ -118,19 +122,44 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
   const [newConversation, setNewConversation] = useState(false);
   const [composer, setComposer] = useState("");
   const [internal, setInternal] = useState(false);
+  const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
+  const [conversationKind, setConversationKind] = useState<"contacts" | "groups">("contacts");
+  const [prefill, setPrefill] = useState<{ phone: string; subject: string } | null>(null);
   const has = (capability: string) => canManage || capabilities.includes(capability);
+  const effectiveDepartmentId = module.departments.some((department) => department.id === departmentId && department.active) ? departmentId : "";
 
   useEffect(() => {
     if (!selectedId && module.conversations[0]) setSelectedId(module.conversations[0].id);
   }, [module.conversations, selectedId]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const phone = (params.get("phone") ?? "").replace(/\D/g, "");
+    if (!phone) return;
+    const existing = module.conversations.find((conversation) => conversation.contact.phone.replace(/\D/g, "") === phone);
+    if (existing) {
+      setSelectedId(existing.id);
+      setConversationKind(existing.isGroup ? "groups" : "contacts");
+      setNewConversation(false);
+      setPrefill(null);
+    } else {
+      setSelectedId("");
+      setConversationKind("contacts");
+      setSearch(phone);
+      setNewConversation(false);
+      setPrefill(null);
+    }
+  }, [module.conversations, canCreate]);
+
   const filtered = useMemo(() => module.conversations.filter((conversation) => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
     return (!query || `${conversation.protocol} ${conversation.contact.name} ${conversation.contact.phone} ${conversation.subject}`.toLocaleLowerCase("pt-BR").includes(query))
       && (status === "Todos" || conversation.status === status)
-      && (!departmentId || conversation.departmentId === departmentId);
-  }), [module.conversations, search, status, departmentId]);
-  const selected = module.conversations.find((conversation) => conversation.id === selectedId) ?? filtered[0] ?? null;
+      && (!effectiveDepartmentId || conversation.departmentId === effectiveDepartmentId);
+  }), [module.conversations, search, status, effectiveDepartmentId]);
+  const visibleConversations = filtered.filter((conversation) => conversationKind === "groups" ? conversation.isGroup : !conversation.isGroup);
+  const selected = module.conversations.find((conversation) => conversation.id === selectedId && (conversationKind === "groups" ? conversation.isGroup : !conversation.isGroup)) ?? visibleConversations[0] ?? null;
+  const batchCandidates = visibleConversations.filter((conversation) => conversation.status !== "Encerrada");
 
   const send = async () => {
     if (!selected || !composer.trim()) return;
@@ -140,7 +169,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
 
   return <section className="chat-module">
     <header className="chat-page-head">
-      <div><span className="eyebrow">ATENDIMENTO INTEGRADO</span><h1>Central omnichannel</h1><p>Conversas, setores, filas e canais em uma única operação.</p></div>
+      <div className="chat-title-with-back"><button className="chat-back-button" onClick={onExit}><ArrowLeft size={18} /> Voltar</button><span><span className="eyebrow">ATENDIMENTO INTEGRADO</span><h1>WhatsApp · Central de atendimento</h1><p>Uma tela dedicada para conversas individuais e grupos de atendimento.</p></span></div>
       <div className="chat-view-switch">
         <button className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={16} /> Caixa de entrada</button>
         <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}><BarChart3 size={16} /> Indicadores</button>
@@ -151,36 +180,49 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
     {view === "inbox" && <div className="chat-workspace">
       <aside className="chat-inbox-column">
         <div className="chat-inbox-head">
-          <div><h2>Conversas</h2><span>{filtered.length} atendimentos</span></div>
+          <div><h2>{conversationKind === "groups" ? "Grupos" : "Conversas"}</h2><span>{visibleConversations.length} atendimentos</span></div>
           {canCreate && <button className="chat-new-button" onClick={() => setNewConversation(true)} aria-label="Novo atendimento"><Plus size={18} /></button>}
         </div>
         <label className="chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar nome ou protocolo" /></label>
         <div className="chat-filters">
           <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            {["Todos", "Aberta", "Em atendimento", "Aguardando cliente", "Aguardando setor", "Resolvida", "Encerrada"].map((item) => <option key={item}>{item}</option>)}
+            {["Todos", "Aberta", "Em atendimento", "Aguardando cliente", "Aguardando setor", "Resolvida", ...(has("viewHistory") ? ["Encerrada"] : [])].map((item) => <option key={item}>{item}</option>)}
           </select>
-          <select value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
+          <select value={effectiveDepartmentId} onChange={(event) => setDepartmentId(event.target.value)}>
             <option value="">Todos os setores</option>
-            {module.departments.map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}
+            {module.departments.filter((department) => department.active).map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}
           </select>
         </div>
+        <div className="chat-list-tabs"><button className={conversationKind === "contacts" ? "active" : ""} onClick={() => setConversationKind("contacts")}><MessageCircleMore size={15} /> Clientes <b>{filtered.filter((item) => !item.isGroup).length}</b></button><button className={conversationKind === "groups" ? "active" : ""} onClick={() => setConversationKind("groups")}><Users size={15} /> Grupos <b>{filtered.filter((item) => item.isGroup).length}</b></button></div>
+        {canEdit && has("batchClose") && batchCandidates.length > 0 && <div className="chat-batch-toolbar">
+          <label><input type="checkbox" checked={batchCandidates.every((conversation) => selectedConversationIds.includes(conversation.id))} onChange={(event) => setSelectedConversationIds(event.target.checked ? batchCandidates.map((conversation) => conversation.id) : [])} /> Selecionar</label>
+          <button disabled={busy || selectedConversationIds.length === 0} onClick={async () => {
+            const count = selectedConversationIds.length;
+            const result = await operate({ action: "batchCloseChatConversations", conversationIds: selectedConversationIds }, `${count} atendimento${count === 1 ? "" : "s"} finalizado${count === 1 ? "" : "s"}.`);
+            if (result) setSelectedConversationIds([]);
+          }}><CheckCheck size={14} /> Finalizar ({selectedConversationIds.length})</button>
+        </div>}
         <div className="conversation-list">
-          {filtered.length === 0 && <div className="chat-empty"><MessageCircleMore size={26} /><b>Nenhuma conversa</b><span>Ajuste os filtros ou inicie um atendimento.</span></div>}
-          {filtered.map((conversation) => {
+          {visibleConversations.length === 0 && <div className="chat-empty"><MessageCircleMore size={26} /><b>{conversationKind === "groups" ? "Nenhum grupo" : "Nenhuma conversa"}</b><span>Ajuste os filtros ou inicie um atendimento.</span></div>}
+          {visibleConversations.map((conversation) => {
             const last = conversation.messages.at(-1);
-            return <button key={conversation.id} className={selected?.id === conversation.id ? "active" : ""} onClick={() => {
-              setSelectedId(conversation.id);
-              if (conversation.unreadCount) void operate({ action: "updateChatConversation", conversationId: conversation.id, markRead: true, version: conversation.version }, "Conversa marcada como lida.");
-            }}>
-              <span className="chat-avatar">{initials(conversation.contact.name)}</span>
-              <span className="conversation-copy">
-                <span><strong>{conversation.contact.name}</strong><time>{formatTime(conversation.lastMessageAt)}</time></span>
-                <b>{conversation.subject}</b>
-                <small>{last?.internal ? "Nota interna: " : ""}{last?.body ?? "Atendimento iniciado"}</small>
-                <em><i>{conversation.departmentName}</i><i>{conversation.channelName}</i></em>
-              </span>
-              {conversation.unreadCount > 0 && <b className="unread-badge">{conversation.unreadCount}</b>}
-            </button>;
+            const displayName = conversation.isGroup ? conversation.groupName : conversation.contact.name;
+            return <div className={`conversation-row ${selected?.id === conversation.id ? "active" : ""}`} key={conversation.id}>
+              {canEdit && has("batchClose") && conversation.status !== "Encerrada" && <label className="conversation-select" title="Selecionar para finalizar"><input type="checkbox" checked={selectedConversationIds.includes(conversation.id)} onChange={(event) => setSelectedConversationIds((current) => event.target.checked ? [...new Set([...current, conversation.id])] : current.filter((id) => id !== conversation.id))} /></label>}
+              <button onClick={() => {
+                setSelectedId(conversation.id);
+                if (conversation.unreadCount) void operate({ action: "updateChatConversation", conversationId: conversation.id, markRead: true, version: conversation.version }, "Conversa marcada como lida.");
+              }}>
+                <span className={`chat-avatar ${conversation.isGroup ? "group" : ""}`}>{conversation.isGroup ? <Users size={16} /> : initials(displayName)}</span>
+                <span className="conversation-copy">
+                  <span><strong>{displayName}</strong><time>{formatTime(conversation.lastMessageAt)}</time></span>
+                  <b>{conversation.subject}</b>
+                  <small>{last?.internal ? "Nota interna: " : ""}{last?.body ?? "Atendimento iniciado"}</small>
+                  <em><i>{conversation.departmentName}</i><i>{conversation.channelName}</i></em>
+                </span>
+                {conversation.unreadCount > 0 && <b className="unread-badge">{conversation.unreadCount}</b>}
+              </button>
+            </div>;
           })}
         </div>
       </aside>
@@ -188,8 +230,8 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
       <main className="chat-thread-column">
         {!selected ? <div className="chat-thread-empty"><MessageSquareText size={42} /><h2>Selecione uma conversa</h2><p>O histórico completo aparecerá aqui.</p></div> : <>
           <header className="chat-thread-head">
-            <div className="chat-avatar large">{initials(selected.contact.name)}</div>
-            <div><h2>{selected.contact.name}</h2><p>{selected.protocol} · {selected.channelName}</p></div>
+            <div className={`chat-avatar large ${selected.isGroup ? "group" : ""}`}>{selected.isGroup ? <Users size={19} /> : initials(selected.contact.name)}</div>
+            <div><h2>{selected.isGroup ? selected.groupName : selected.contact.name}</h2><p>{selected.protocol} · {selected.channelName}{selected.isGroup ? ` · ${selected.groupParticipants.length} participantes` : ""}</p></div>
             <span className={`conversation-status ${selected.status.toLowerCase().replaceAll(" ", "-")}`}>{selected.status}</span>
             {canEdit && <button className={selected.favorite ? "favorite active" : "favorite"} onClick={() => operate({ action: "updateChatConversation", conversationId: selected.id, favorite: !selected.favorite, version: selected.version }, selected.favorite ? "Removida dos favoritos." : "Adicionada aos favoritos.")}><Star size={18} fill={selected.favorite ? "currentColor" : "none"} /></button>}
             <button><MoreHorizontal size={19} /></button>
@@ -233,11 +275,11 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
       {selected && <ConversationDetails conversation={selected} module={module} busy={busy} canEdit={canEdit} has={has} operate={operate} />}
     </div>}
 
-    {view === "dashboard" && <ChatDashboard module={module} />}
+    {view === "dashboard" && <ChatDashboard module={module} busy={busy} has={has} operate={operate} />}
     {view === "settings" && canManage && <ChatSettings module={module} section={settingsSection} onSection={setSettingsSection} busy={busy} has={has} operate={operate} />}
-    {newConversation && <NewConversationModal module={module} busy={busy} onClose={() => setNewConversation(false)} onSubmit={async (payload) => {
+    {newConversation && <NewConversationModal module={module} busy={busy} initialPhone={prefill?.phone} initialSubject={prefill?.subject} onClose={() => { setNewConversation(false); setPrefill(null); }} onSubmit={async (payload) => {
       const result = await operate({ action: "createChatConversation", ...payload }, "Atendimento criado.");
-      if (result) { setNewConversation(false); if (result.id) setSelectedId(result.id); }
+      if (result) { setNewConversation(false); setPrefill(null); if (result.id) setSelectedId(result.id); }
     }} />}
   </section>;
 }
@@ -254,9 +296,11 @@ function ConversationDetails({ conversation, module, busy, canEdit, has, operate
   const assignable = module.users.filter((user) => user.departmentIds.includes(conversation.departmentId));
   return <aside className="chat-detail-column">
     <div className="contact-card">
-      <span className="chat-avatar xl">{initials(conversation.contact.name)}</span>
-      <h3>{conversation.contact.name}</h3><p>{conversation.contact.companyName || "Contato sem empresa vinculada"}</p>
-      <div><a href={`tel:${conversation.contact.phone}`}><Phone size={14} /> {conversation.contact.phone || "Sem telefone"}</a><span>{conversation.contact.email || "Sem e-mail"}</span></div>
+      <span className={`chat-avatar xl ${conversation.isGroup ? "group" : ""}`}>{conversation.isGroup ? <Users size={22} /> : initials(conversation.contact.name)}</span>
+      <h3>{conversation.isGroup ? conversation.groupName : conversation.contact.name}</h3><p>{conversation.isGroup ? "Grupo de atendimento" : conversation.contact.companyName || "Contato sem empresa vinculada"}</p>
+      {conversation.isGroup
+        ? <div className="chat-group-members">{conversation.groupParticipants.map((participant) => <span key={participant}><UserCheck size={13} /> {participant}</span>)}</div>
+        : <div><a href={`tel:${conversation.contact.phone}`}><Phone size={14} /> {conversation.contact.phone || "Sem telefone"}</a><span>{conversation.contact.email || "Sem e-mail"}</span></div>}
     </div>
     <div className="detail-block"><h4>Atendimento</h4>
       <label>Status<select disabled={!canEdit} value={conversation.status} onChange={(event) => void operate({ action: "updateChatConversation", conversationId: conversation.id, status: event.target.value, version: conversation.version }, "Status atualizado.")}>
@@ -293,22 +337,101 @@ function ConversationDetails({ conversation, module, busy, canEdit, has, operate
   </aside>;
 }
 
-function ChatDashboard({ module }: { module: ChatModuleData }) {
+function ChatDashboard({ module, busy, has, operate }: {
+  module: ChatModuleData; busy: boolean; has: (capability: string) => boolean; operate: Props["operate"];
+}) {
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  const dateValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const [dateFrom, setDateFrom] = useState(dateValue(firstDay));
+  const [dateTo, setDateTo] = useState(dateValue(today));
+  const [assigneeId, setAssigneeId] = useState("");
+  const [subject, setSubject] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [editing, setEditing] = useState<ChatConversation | null>(null);
+  const canViewAll = has("viewAllReports");
+
+  const subjects = [...new Set(module.conversations.map((item) => item.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const clients = [...new Map(module.conversations.map((item) => [item.contact.id, { id: item.contact.id, name: item.contact.companyName || item.contact.name }])).values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const conversations = useMemo(() => {
+    const start = new Date(`${dateFrom}T00:00:00`);
+    const end = new Date(`${dateTo}T23:59:59.999`);
+    return module.conversations.filter((conversation) => {
+      const created = new Date(conversation.createdAt);
+      return (canViewAll || conversation.assigneeUserId === module.currentUserId)
+        && created >= start && created <= end
+        && (!assigneeId || conversation.assigneeUserId === assigneeId)
+        && (!subject || conversation.subject === subject)
+        && (!clientId || conversation.contact.id === clientId);
+    });
+  }, [module.conversations, module.currentUserId, canViewAll, dateFrom, dateTo, assigneeId, subject, clientId]);
+
+  const closed = conversations.filter((item) => item.closedAt);
+  const durations = closed.map((item) => Math.max(0, (new Date(item.closedAt!).getTime() - new Date(item.createdAt).getTime()) / 60000));
+  const averageDuration = durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0;
+  const satisfaction = conversations.filter((item) => item.satisfactionScore !== null);
+  const satisfactionAverage = satisfaction.length ? satisfaction.reduce((sum, item) => sum + (item.satisfactionScore ?? 0), 0) / satisfaction.length : 0;
+  const transferred = conversations.filter((item) => item.transfers.length > 0).length;
+  const formatDuration = (minutes: number) => minutes >= 60 ? `${Math.floor(minutes / 60)}h ${Math.round(minutes % 60)}min` : `${Math.round(minutes)} min`;
+
+  const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, count: conversations.filter((item) => new Date(item.createdAt).getHours() === hour).length }));
+  const peak = hours.reduce((best, item) => item.count > best.count ? item : best, hours[0]);
+  const byAssignee = module.users.map((user) => ({ label: user.name, count: conversations.filter((item) => item.assigneeUserId === user.id).length })).filter((item) => item.count > 0).sort((a, b) => b.count - a.count);
+  const bySubject = subjects.map((label) => ({ label, count: conversations.filter((item) => item.subject === label).length })).filter((item) => item.count > 0).sort((a, b) => b.count - a.count);
+  const maxBreakdown = Math.max(1, ...byAssignee.map((item) => item.count), ...bySubject.map((item) => item.count));
+
+  const volume: Array<{ date: string; label: string; count: number }> = [];
+  const cursor = new Date(`${dateFrom}T12:00:00`);
+  const endDate = new Date(`${dateTo}T12:00:00`);
+  while (cursor <= endDate && volume.length < 62) {
+    const key = dateValue(cursor);
+    volume.push({ date: key, label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(cursor), count: conversations.filter((item) => item.createdAt.slice(0, 10) === key).length });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  const maxVolume = Math.max(1, ...volume.map((item) => item.count));
+
   const cards = [
-    ["Conversas abertas", module.metrics.open, Inbox, "blue"],
-    ["Aguardando cliente", module.metrics.waiting, Clock3, "amber"],
-    ["Sem responsável", module.metrics.unassigned, Users, "violet"],
-    ["Encerradas hoje", module.metrics.closedToday, Archive, "green"],
+    ["Atendimentos no período", conversations.length, Inbox, "blue"],
+    ["Duração média", formatDuration(averageDuration), Clock3, "amber"],
+    ["Com transferência", transferred, ArrowRightLeft, "violet"],
+    ["Satisfação média", satisfaction.length ? `${satisfactionAverage.toFixed(1)} / 5` : "Sem respostas", Smile, "green"],
   ] as const;
-  const byDepartment = module.departments.map((department) => ({ ...department, count: module.conversations.filter((item) => item.departmentId === department.id && item.status !== "Encerrada").length }));
-  const max = Math.max(1, ...byDepartment.map((item) => item.count));
-  return <div className="chat-dashboard">
-    <div className="chat-metric-grid">{cards.map(([label, value, Icon, tone]) => <article className={tone} key={label}><span><Icon size={20} /></span><div><strong>{value}</strong><p>{label}</p></div></article>)}</div>
-    <div className="chat-analytics-grid">
-      <article className="panel"><header><div><span className="eyebrow">DESEMPENHO</span><h3>Tempo de atendimento</h3></div></header><div className="time-metrics"><div><strong>{module.metrics.averageFirstResponseMinutes} min</strong><span>Primeira resposta média</span></div><div><strong>{module.metrics.averageResolutionMinutes} min</strong><span>Resolução média</span></div></div></article>
-      <article className="panel"><header><div><span className="eyebrow">CARGA ATUAL</span><h3>Conversas por setor</h3></div></header><div className="department-bars">{byDepartment.map((department) => <div key={department.id}><span>{department.name}</span><i><b style={{ width: `${(department.count / max) * 100}%` }} /></i><strong>{department.count}</strong></div>)}</div></article>
+
+  return <div className="chat-dashboard chat-reporting">
+    <header className="chat-report-head">
+      <div><span className="eyebrow">RELATÓRIOS E INDICADORES</span><h2>Desempenho dos atendimentos</h2><p>{canViewAll ? "Visão consolidada de todos os colaboradores." : "Visão limitada aos seus próprios atendimentos."}</p></div>
+      <div className="chat-report-scope"><ShieldCheck size={15} /> {canViewAll ? "Relatório completo" : "Relatório individual"}</div>
+    </header>
+    <div className="chat-report-filters">
+      <label><span>Data inicial</span><input type="date" value={dateFrom} max={dateTo} onChange={(event) => setDateFrom(event.target.value)} /></label>
+      <label><span>Data final</span><input type="date" value={dateTo} min={dateFrom} onChange={(event) => setDateTo(event.target.value)} /></label>
+      <label><span>Colaborador</span><select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} disabled={!canViewAll}><option value="">Todos</option>{module.users.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</select></label>
+      <label><span>Assunto</span><select value={subject} onChange={(event) => setSubject(event.target.value)}><option value="">Todos os assuntos</option>{subjects.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label><span>Cliente</span><select value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="">Todos os clientes</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</select></label>
     </div>
+    <div className="chat-metric-grid">{cards.map(([label, value, Icon, tone]) => <article className={tone} key={label}><span><Icon size={20} /></span><div><strong>{value}</strong><p>{label}</p></div></article>)}</div>
+
+    <div className="chat-report-grid">
+      <article className="panel chat-volume-panel"><header><div><span className="eyebrow">VOLUME POR PERÍODO</span><h3>Quantidade de atendimentos</h3></div><CalendarRange size={20} /></header><div className="chat-volume-chart">{volume.map((item) => <div key={item.date} title={`${item.label}: ${item.count}`}><b style={{ height: `${Math.max(item.count ? 8 : 2, (item.count / maxVolume) * 100)}%` }}><i>{item.count}</i></b><span>{item.label}</span></div>)}</div></article>
+      <article className="panel chat-peak-panel"><header><div><span className="eyebrow">HORÁRIOS DE PICO</span><h3>Distribuição por hora</h3></div><strong>{String(peak.hour).padStart(2, "0")}:00</strong></header><div className="chat-hour-grid">{hours.map((item) => <i className={item.hour === peak.hour && item.count > 0 ? "peak" : ""} style={{ opacity: .18 + (item.count / Math.max(1, peak.count)) * .82 }} key={item.hour} title={`${String(item.hour).padStart(2, "0")}:00 · ${item.count} atendimento(s)`}><span>{item.hour}</span></i>)}</div></article>
+      <article className="panel chat-breakdown"><header><div><span className="eyebrow">EQUIPE</span><h3>Atendimentos por colaborador</h3></div></header><div className="department-bars">{byAssignee.length ? byAssignee.map((item) => <div key={item.label}><span>{item.label}</span><i><b style={{ width: `${(item.count / maxBreakdown) * 100}%` }} /></i><strong>{item.count}</strong></div>) : <p className="chat-report-empty">Nenhum atendimento no período.</p>}</div></article>
+      <article className="panel chat-breakdown"><header><div><span className="eyebrow">ASSUNTOS</span><h3>Atendimentos por assunto</h3></div></header><div className="department-bars">{bySubject.length ? bySubject.map((item) => <div key={item.label}><span>{item.label}</span><i><b style={{ width: `${(item.count / maxBreakdown) * 100}%` }} /></i><strong>{item.count}</strong></div>) : <p className="chat-report-empty">Nenhum assunto encontrado.</p>}</div></article>
+      <article className="panel chat-satisfaction-panel"><header><div><span className="eyebrow">SATISFAÇÃO</span><h3>Avaliação dos atendimentos</h3></div><strong>{satisfaction.length} resposta{satisfaction.length === 1 ? "" : "s"}</strong></header><div className="satisfaction-score"><b>{satisfaction.length ? satisfactionAverage.toFixed(1) : "—"}</b><span>{"★".repeat(Math.round(satisfactionAverage))}{"☆".repeat(5 - Math.round(satisfactionAverage))}</span></div><div className="satisfaction-bars">{[5, 4, 3, 2, 1].map((score) => { const count = satisfaction.filter((item) => item.satisfactionScore === score).length; return <div key={score}><span>{score} estrelas</span><i><b style={{ width: `${satisfaction.length ? count / satisfaction.length * 100 : 0}%` }} /></i><strong>{count}</strong></div>; })}</div></article>
+    </div>
+
+    <article className="panel chat-report-table-panel"><header><div><span className="eyebrow">DETALHAMENTO</span><h3>Relatório de atendimentos</h3></div><span>{conversations.length} registro{conversations.length === 1 ? "" : "s"}</span></header><div className="chat-report-table-wrap"><table className="chat-report-table"><thead><tr><th>Protocolo</th><th>Cliente</th><th>Assunto</th><th>Colaborador</th><th>Início</th><th>Término</th><th>Duração</th><th>Transferência</th><th>Satisfação</th>{has("editReports") && <th>Ações</th>}</tr></thead><tbody>{conversations.map((conversation) => { const duration = conversation.closedAt ? (new Date(conversation.closedAt).getTime() - new Date(conversation.createdAt).getTime()) / 60000 : null; return <tr key={conversation.id}><td><b>{conversation.protocol}</b></td><td>{conversation.contact.companyName || conversation.contact.name}</td><td>{conversation.subject}</td><td>{conversation.assigneeName || "Não atribuído"}</td><td>{formatDate(conversation.createdAt)}</td><td>{conversation.closedAt ? formatDate(conversation.closedAt) : "Em andamento"}</td><td>{duration === null ? "—" : formatDuration(duration)}</td><td>{conversation.transfers.length ? `Sim (${conversation.transfers.length})` : "Não"}</td><td>{conversation.satisfactionScore ? `${conversation.satisfactionScore}/5` : "Pendente"}</td>{has("editReports") && <td><button className="chat-report-edit" onClick={() => setEditing(conversation)}><Pencil size={13} /> Editar</button></td>}</tr>; })}{conversations.length === 0 && <tr><td colSpan={has("editReports") ? 10 : 9}><div className="chat-report-empty">Nenhum atendimento encontrado com estes filtros.</div></td></tr>}</tbody></table></div></article>
+    {editing && <ReportEditModal conversation={editing} busy={busy} onClose={() => setEditing(null)} onSubmit={async (payload) => {
+      const result = await operate({ action: "updateChatConversation", conversationId: editing.id, version: editing.version, ...payload }, "Dados do relatório atualizados.");
+      if (result) setEditing(null);
+    }} />}
   </div>;
+}
+
+function ReportEditModal({ conversation, busy, onClose, onSubmit }: { conversation: ChatConversation; busy: boolean; onClose: () => void; onSubmit: (payload: Record<string, unknown>) => void }) {
+  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className="modal chat-report-modal" role="dialog" aria-modal="true" aria-label="Editar relatório do atendimento"><div className="modal-head"><div><span className="eyebrow">RELATÓRIO · {conversation.protocol}</span><h2>Dados do atendimento</h2><p>Atualize o assunto principal e a satisfação informada pelo cliente.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div><form className="form-grid" onSubmit={(event) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget); const score = Number(form.get("satisfactionScore"));
+    onSubmit({ subject: form.get("subject"), satisfactionScore: score || null, satisfactionComment: form.get("satisfactionComment") });
+  }}><label className="wide">Assunto principal<input name="subject" required defaultValue={conversation.subject} /></label><label>Avaliação<select name="satisfactionScore" defaultValue={conversation.satisfactionScore ?? ""}><option value="">Não respondida</option><option value="5">5 · Excelente</option><option value="4">4 · Muito bom</option><option value="3">3 · Bom</option><option value="2">2 · Regular</option><option value="1">1 · Ruim</option></select></label><label className="wide">Comentário do cliente<textarea name="satisfactionComment" rows={4} defaultValue={conversation.satisfactionComment} placeholder="Registre o comentário recebido na pesquisa de satisfação." /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><Save size={16} /> Salvar relatório</button></div></form></div></div>;
 }
 
 function ChatSettings({ module, section, onSection, busy, has, operate }: {
@@ -349,8 +472,11 @@ function QueueSettings({ module, busy, allowed, operate }: { module: ChatModuleD
 }
 function ChannelSettings({ module, busy, allowed, operate }: { module: ChatModuleData; busy: boolean; allowed: boolean; operate: Props["operate"] }) {
   return <><SettingsHeader title="Canais" description="Cada canal pertence exclusivamente a um setor e pode definir fila e responsável padrão." />
-    {allowed && <form className="chat-settings-form wide" onSubmit={submitSettings(operate, "saveChatChannel", "Canal salvo.")}><input name="name" required placeholder="Nome do canal" /><select name="channelType"><option>Interno</option><option>WhatsApp</option><option>E-mail</option><option>Instagram</option><option>Webchat</option></select><DepartmentSelect module={module} /><select name="queueId"><option value="">Fila padrão</option>{module.queues.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.departmentName} · {item.name}</option>)}</select><input name="greetingMessage" placeholder="Mensagem de saudação" /><input name="awayMessage" placeholder="Mensagem fora do horário" /><label className="chat-checkbox"><input name="allowTransfer" type="checkbox" defaultChecked /> Permitir transferência</label><label className="chat-checkbox"><input name="aiEnabled" type="checkbox" /> Recursos de IA</label><label className="chat-checkbox"><input name="autoCreateTask" type="checkbox" /> Criar tarefa automaticamente</label><ActiveInput /><button disabled={busy}><Plus size={16} /> Adicionar canal</button></form>}
-    <SettingsList items={module.channels.map((item) => ({ id: item.id, title: item.name, subtitle: `${item.type} · ${item.departmentName}`, active: item.active }))} />
+    {allowed && <form className="chat-settings-form wide" onSubmit={submitSettings(operate, "saveChatChannel", "Canal salvo.")}><input name="name" required placeholder="Nome do canal" /><select name="channelType"><option>Interno</option><option>WhatsApp</option><option>E-mail</option><option>Instagram</option><option>Webchat</option></select><DepartmentSelect module={module} /><select name="queueId"><option value="">Fila padrão</option>{module.queues.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.departmentName} · {item.name}</option>)}</select><input name="greetingMessage" placeholder="Mensagem de saudação" /><input name="awayMessage" placeholder="Mensagem fora do horário" /><textarea name="closingMessage" rows={3} defaultValue="Agradecemos o contato. Seu atendimento foi finalizado e permanecemos à disposição." placeholder="Mensagem automática de despedida" /><label className="chat-checkbox"><input name="sendClosingMessage" type="checkbox" /> Enviar despedida ao finalizar</label><label className="chat-checkbox"><input name="allowTransfer" type="checkbox" defaultChecked /> Permitir transferência</label><label className="chat-checkbox"><input name="aiEnabled" type="checkbox" /> Recursos de IA</label><label className="chat-checkbox"><input name="autoCreateTask" type="checkbox" /> Criar tarefa automaticamente</label><ActiveInput /><button disabled={busy}><Plus size={16} /> Adicionar canal</button></form>}
+    <div className="channel-closing-list">{module.channels.map((item) => <article key={item.id}><div><i className={item.active ? "active" : ""} /><span><strong>{item.name}</strong><small>{item.type} · {item.departmentName}</small></span><em className={item.sendClosingMessage ? "active" : ""}>{item.sendClosingMessage ? "Despedida ativa" : "Despedida desativada"}</em></div>{allowed && <form onSubmit={async (event) => {
+      event.preventDefault(); const form = new FormData(event.currentTarget);
+      await operate({ action: "saveChatChannel", id: item.id, name: item.name, channelType: item.type, departmentId: item.departmentId, queueId: item.defaultQueueId, assigneeUserId: item.defaultAssigneeUserId, active: item.active, aiEnabled: item.aiEnabled, allowTransfer: item.allowTransfer, autoCreateTask: item.autoCreateTask, greetingMessage: item.greetingMessage, awayMessage: item.awayMessage, sendClosingMessage: form.has("sendClosingMessage"), closingMessage: form.get("closingMessage") }, "Mensagem de despedida atualizada.");
+    }}><label><input name="sendClosingMessage" type="checkbox" defaultChecked={item.sendClosingMessage} /> Enviar automaticamente ao finalizar</label><input name="closingMessage" defaultValue={item.closingMessage || "Agradecemos o contato. Seu atendimento foi finalizado e permanecemos à disposição."} placeholder="Mensagem de despedida" /><button disabled={busy}><Save size={14} /> Salvar</button></form>}</article>)}</div>
   </>;
 }
 function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModuleData; busy: boolean; allowed: boolean; operate: Props["operate"] }) {
@@ -503,10 +629,10 @@ function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModu
   </>;
 }
 function TagSettings({ module, busy, allowed, operate }: { module: ChatModuleData; busy: boolean; allowed: boolean; operate: Props["operate"] }) {
-  return <><SettingsHeader title="Etiquetas" description="Classifique conversas por tema, urgência ou contexto comercial." />{allowed && <form className="chat-settings-form" onSubmit={submitSettings(operate, "saveChatTag", "Etiqueta salva.")}><input name="name" required placeholder="Nome da etiqueta" /><input name="color" type="color" defaultValue="#2563eb" /><select name="departmentId"><option value="">Todos os setores</option>{module.departments.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><ActiveInput /><button disabled={busy}><Plus size={16} /> Adicionar etiqueta</button></form>}<SettingsList items={module.tags.map((item) => ({ id: item.id, title: item.name, subtitle: item.departmentId ? module.departments.find((department) => department.id === item.departmentId)?.name ?? "Setor" : "Todos os setores", active: item.active, color: item.color }))} /></>;
+  return <><SettingsHeader title="Etiquetas" description="Classifique conversas por tema, urgência ou contexto comercial." />{allowed && <form className="chat-settings-form" onSubmit={submitSettings(operate, "saveChatTag", "Etiqueta salva.")}><input name="name" required placeholder="Nome da etiqueta" /><input name="color" type="color" defaultValue="#2563eb" /><select name="departmentId"><option value="">Todos os setores</option>{module.departments.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><ActiveInput /><button disabled={busy}><Plus size={16} /> Adicionar etiqueta</button></form>}<SettingsList items={module.tags.map((item) => ({ id: item.id, title: item.name, subtitle: item.departmentId ? module.departments.find((department) => department.id === item.departmentId)?.name ?? "Setor" : "Todos os setores", active: item.active, color: item.color }))} /></>;
 }
 function ReplySettings({ module, busy, allowed, operate }: { module: ChatModuleData; busy: boolean; allowed: boolean; operate: Props["operate"] }) {
-  return <><SettingsHeader title="Respostas rápidas" description="Padronize mensagens frequentes e acelere o atendimento." />{allowed && <form className="chat-settings-form wide" onSubmit={submitSettings(operate, "saveChatQuickReply", "Resposta rápida salva.")}><input name="shortcut" required placeholder="/atalho" /><input name="title" required placeholder="Título" /><select name="departmentId"><option value="">Todos os setores</option>{module.departments.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><textarea name="body" required rows={3} placeholder="Texto da resposta rápida" /><ActiveInput /><button disabled={busy}><Plus size={16} /> Adicionar resposta</button></form>}<SettingsList items={module.quickReplies.map((item) => ({ id: item.id, title: `${item.shortcut} · ${item.title}`, subtitle: item.body, active: item.active }))} /></>;
+  return <><SettingsHeader title="Respostas rápidas" description="Padronize mensagens frequentes e acelere o atendimento." />{allowed && <form className="chat-settings-form wide" onSubmit={submitSettings(operate, "saveChatQuickReply", "Resposta rápida salva.")}><input name="shortcut" required placeholder="/atalho" /><input name="title" required placeholder="Título" /><select name="departmentId"><option value="">Todos os setores</option>{module.departments.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><textarea name="body" required rows={3} placeholder="Texto da resposta rápida" /><ActiveInput /><button disabled={busy}><Plus size={16} /> Adicionar resposta</button></form>}<SettingsList items={module.quickReplies.map((item) => ({ id: item.id, title: `${item.shortcut} · ${item.title}`, subtitle: item.body, active: item.active }))} /></>;
 }
 function submitSettings(operate: Props["operate"], action: string, success: string) {
   return async (event: FormEvent<HTMLFormElement>) => {
@@ -515,6 +641,7 @@ function submitSettings(operate: Props["operate"], action: string, success: stri
     form.forEach((value, key) => { payload[key] = value; });
     payload.active = form.has("active"); payload.allowTransfer = form.has("allowTransfer");
     payload.aiEnabled = form.has("aiEnabled"); payload.autoCreateTask = form.has("autoCreateTask");
+    payload.sendClosingMessage = form.has("sendClosingMessage");
     if (await operate(payload, success)) event.currentTarget.reset();
   };
 }
@@ -522,13 +649,16 @@ function SettingsList({ items }: { items: Array<{ id: string; title: string; sub
   return <div className="chat-settings-list">{items.map((item) => <article key={item.id}><i style={{ background: item.color }} /><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><em className={item.active ? "active" : ""}>{item.active ? "Ativo" : "Inativo"}</em></article>)}</div>;
 }
 
-function NewConversationModal({ module, busy, onClose, onSubmit }: { module: ChatModuleData; busy: boolean; onClose: () => void; onSubmit: (payload: Record<string, unknown>) => void }) {
+function NewConversationModal({ module, busy, initialPhone = "", initialSubject = "", onClose, onSubmit }: { module: ChatModuleData; busy: boolean; initialPhone?: string; initialSubject?: string; onClose: () => void; onSubmit: (payload: Record<string, unknown>) => void }) {
   const [channelId, setChannelId] = useState(module.channels.find((item) => item.active)?.id ?? "");
+  const [isGroup, setIsGroup] = useState(false);
   const channel = module.channels.find((item) => item.id === channelId);
   return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className="modal chat-new-modal"><div className="modal-head"><div><span className="eyebrow">NOVO ATENDIMENTO</span><h2>Iniciar conversa</h2><p>O protocolo será gerado automaticamente.</p></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><form className="form-grid" onSubmit={(event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
-    onSubmit({ contactName: form.get("contactName"), phone: form.get("phone"), email: form.get("email"), companyName: form.get("companyName"), customerId: form.get("customerId") || null, channelId, queueId: form.get("queueId") || null, assigneeUserId: form.get("assigneeUserId") || null, subject: form.get("subject"), priority: form.get("priority"), initialMessage: form.get("initialMessage") });
+    onSubmit({ contactName: isGroup ? form.get("groupName") : form.get("contactName"), phone: form.get("phone"), email: form.get("email"), companyName: form.get("companyName"), customerId: form.get("customerId") || null, channelId, queueId: form.get("queueId") || null, assigneeUserId: form.get("assigneeUserId") || null, subject: form.get("subject"), priority: form.get("priority"), initialMessage: form.get("initialMessage"), isGroup, groupName: form.get("groupName"), groupParticipants: String(form.get("groupParticipants") ?? "").split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean) });
   }}>
-    <label>Nome do contato<input name="contactName" required /></label><label>Telefone<input name="phone" placeholder="55 11 99999-9999" /></label><label>E-mail<input name="email" type="email" /></label><label>Empresa<input name="companyName" /></label><label className="wide">Assunto<input name="subject" required /></label><label>Canal<select required value={channelId} onChange={(event) => setChannelId(event.target.value)}><option value="">Selecione</option>{module.channels.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.departmentName} · {item.name}</option>)}</select></label><label>Fila<select name="queueId" required><option value="">Selecione</option>{module.queues.filter((item) => item.active && item.departmentId === channel?.departmentId).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Responsável<select name="assigneeUserId"><option value="">Fila compartilhada</option>{module.users.filter((item) => item.departmentIds.includes(channel?.departmentId ?? "")).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Prioridade<select name="priority"><option>Normal</option><option>Baixa</option><option>Alta</option><option>Urgente</option></select></label><label className="wide">Mensagem inicial<textarea name="initialMessage" rows={4} placeholder="Contexto recebido do cliente" /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><CirclePlus size={16} /> Criar atendimento</button></div>
+    <label className="wide chat-group-toggle"><input type="checkbox" checked={isGroup} onChange={(event) => setIsGroup(event.target.checked)} /><span><b>Atendimento em grupo</b><small>Crie uma conversa compartilhada e acompanhe os participantes ao lado.</small></span></label>
+    {isGroup ? <><label className="wide">Nome do grupo<input name="groupName" required placeholder="Ex.: Implantação · Clínica Sorriso" /></label><label className="wide">Participantes<textarea name="groupParticipants" required rows={4} placeholder={'Informe nome ou telefone, um por linha\nAna · 5511999999999\nCarlos · 5511888888888'} /></label></> : <><label>Nome do contato<input name="contactName" required /></label><label>Telefone<input name="phone" required defaultValue={initialPhone} placeholder="55 11 99999-9999" /></label><label>E-mail<input name="email" type="email" /></label><label>Empresa<input name="companyName" /></label></>}
+    <label className="wide">Assunto<input name="subject" required defaultValue={initialSubject} /></label><label>Canal<select required value={channelId} onChange={(event) => setChannelId(event.target.value)}><option value="">Selecione</option>{module.channels.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.departmentName} · {item.name}</option>)}</select></label><label>Fila<select name="queueId" required><option value="">Selecione</option>{module.queues.filter((item) => item.active && item.departmentId === channel?.departmentId).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Responsável<select name="assigneeUserId"><option value="">Fila compartilhada</option>{module.users.filter((item) => item.departmentIds.includes(channel?.departmentId ?? "")).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Prioridade<select name="priority"><option>Normal</option><option>Baixa</option><option>Alta</option><option>Urgente</option></select></label><label className="wide">Mensagem inicial<textarea name="initialMessage" rows={4} placeholder="Contexto recebido do cliente" /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><CirclePlus size={16} /> Criar atendimento</button></div>
   </form></div></div>;
 }

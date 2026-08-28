@@ -11,6 +11,7 @@ public sealed class AccessControlService(
     IConfiguration configuration) : IAccessControlService
 {
     private const string AdministratorsGroup = "Administradores";
+    private const string CollaboratorsGroup = "Colaboradores";
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -60,6 +61,133 @@ public sealed class AccessControlService(
             });
         }
 
+        var collaboratorsGroup = await db.AccessGroups
+            .Include(group => group.Permissions)
+            .SingleOrDefaultAsync(group => group.Name == CollaboratorsGroup, cancellationToken);
+        if (collaboratorsGroup is null)
+        {
+            collaboratorsGroup = new AccessGroup
+            {
+                Name = CollaboratorsGroup,
+                Description = "Acesso inicial dos colaboradores cadastrados.",
+                CreatedBy = "system@dontus.local",
+            };
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "dashboard",
+                CanView = true,
+            });
+            db.AccessGroups.Add(collaboratorsGroup);
+        }
+        var collaboratorAgendaPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "work");
+        if (collaboratorAgendaPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "work",
+                CanView = true,
+                CanCreate = true,
+            });
+        }
+        else
+        {
+            collaboratorAgendaPermission.CanView = true;
+            collaboratorAgendaPermission.CanCreate = true;
+        }
+
+        var collaboratorDiaryPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "diary");
+        if (collaboratorDiaryPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "diary",
+                CanView = true,
+                CanCreate = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorDiaryPermission.CanView = true;
+            collaboratorDiaryPermission.CanCreate = true;
+            collaboratorDiaryPermission.CanEdit = true;
+        }
+
+        var collaboratorNotesPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "notes");
+        if (collaboratorNotesPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "notes",
+                CanView = true,
+                CanCreate = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorNotesPermission.CanView = true;
+            collaboratorNotesPermission.CanCreate = true;
+            collaboratorNotesPermission.CanEdit = true;
+        }
+
+        var collaboratorChatPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "internalChat");
+        if (collaboratorChatPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "internalChat",
+                CanView = true,
+                CanCreate = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorChatPermission.CanView = true;
+            collaboratorChatPermission.CanCreate = true;
+            collaboratorChatPermission.CanEdit = true;
+        }
+
+        var collaboratorSuggestionPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "suggestions");
+        if (collaboratorSuggestionPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "suggestions",
+                CanView = true,
+                CanCreate = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorSuggestionPermission.CanView = true;
+            collaboratorSuggestionPermission.CanCreate = true;
+            collaboratorSuggestionPermission.CanEdit = true;
+        }
+
+        var collaboratorNoticePermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "notices");
+        if (collaboratorNoticePermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "notices",
+                CanView = true,
+            });
+        }
+        else
+        {
+            collaboratorNoticePermission.CanView = true;
+        }
+
         var bootstrapEmail = NormalizeEmail(
             configuration["AccessControl:BootstrapAdminEmail"] ?? "gestor@dontus.local");
         var bootstrapName = configuration["AccessControl:BootstrapAdminName"] ?? "Gestor Dontus";
@@ -78,6 +206,10 @@ public sealed class AccessControlService(
             };
             db.Users.Add(bootstrapUser);
         }
+
+        if (string.IsNullOrWhiteSpace(bootstrapUser.PasswordHash))
+            bootstrapUser.PasswordHash = PasswordSecurity.Hash(
+                configuration["Authentication:BootstrapPassword"] ?? "dontus_teste_2026");
 
         if (bootstrapUser.Groups.All(membership => membership.GroupId != adminGroup.Id))
         {
@@ -155,6 +287,23 @@ public sealed class AccessControlService(
             .Include(group => group.Permissions)
             .OrderBy(group => group.Name)
             .ToListAsync(cancellationToken);
+        var departments = await db.TaskDepartments.AsNoTracking()
+            .OrderBy(department => department.Name)
+            .ToListAsync(cancellationToken);
+        var levels = await db.EmployeeLevels.AsNoTracking()
+            .OrderBy(level => level.Name)
+            .ToListAsync(cancellationToken);
+        var userDepartments = await db.UserDepartments.AsNoTracking()
+            .ToListAsync(cancellationToken);
+        var supervisions = await db.EmployeeSupervisions.AsNoTracking()
+            .ToListAsync(cancellationToken);
+        var departmentNames = departments.ToDictionary(department => department.Id, department => department.Name);
+        var levelNames = levels.ToDictionary(level => level.Id, level => level.Name);
+        var primaryDepartments = userDepartments
+            .GroupBy(entry => entry.UserId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(entry => entry.IsPrimary).First().DepartmentId);
 
         return new AccessManagementDto(
             ScreenCatalog.All
@@ -166,7 +315,11 @@ public sealed class AccessControlService(
                 user.Email,
                 user.DisplayName,
                 user.Department,
+                user.PhotoDataUrl,
+                user.JobTitle,
+                user.IsCoordinator,
                 user.Active,
+                user.BlockedAt,
                 user.Groups.Select(membership => membership.GroupId).ToArray(),
                 user.Groups.Select(membership => membership.Group.Name).Order().ToArray(),
                 user.LastAccessAt,
@@ -182,7 +335,33 @@ public sealed class AccessControlService(
                     .OrderBy(permission => ScreenOrder(permission.Screen))
                     .Select(ToDto)
                     .ToArray(),
-                group.CreatedAt)).ToArray());
+                group.CreatedAt)).ToArray(),
+            users.Select(user =>
+            {
+                var departmentId = primaryDepartments.GetValueOrDefault(user.Id);
+                var employeeDepartmentIds = userDepartments.Where(entry => entry.UserId == user.Id).Select(entry => entry.DepartmentId).Distinct().ToArray();
+                var employeeDepartmentNames = employeeDepartmentIds.Select(id => departmentNames.GetValueOrDefault(id, "Setor não informado")).ToArray();
+                return new EmployeeDto(
+                    user.Id,
+                    user.DisplayName,
+                    user.Email,
+                    user.BirthDate,
+                    user.StartedAt,
+                    departmentId == Guid.Empty ? null : departmentId,
+                    departmentId == Guid.Empty ? user.Department : departmentNames.GetValueOrDefault(departmentId, user.Department),
+                    employeeDepartmentIds,
+                    employeeDepartmentNames,
+                    user.EmployeeLevelId,
+                    user.EmployeeLevelId is { } levelId ? levelNames.GetValueOrDefault(levelId, "Não informado") : "Não informado",
+                    user.PhotoDataUrl,
+                    user.JobTitle,
+                    user.IsCoordinator,
+                    supervisions.Where(entry => entry.CoordinatorUserId == user.Id).Select(entry => entry.SubordinateUserId).ToArray(),
+                    user.Active,
+                    user.BlockedAt);
+            }).ToArray(),
+            departments.Select(department => new EmployeeDepartmentDto(department.Id, department.Name, department.Description, department.Active)).ToArray(),
+            levels.Select(level => new EmployeeLevelDto(level.Id, level.Name, level.Description, level.Active)).ToArray());
     }
 
     public async Task<Guid> CreateUserAsync(
@@ -203,6 +382,7 @@ public sealed class AccessControlService(
             DisplayName = command.DisplayName.Trim(),
             Department = CleanDepartment(command.Department),
             Active = command.Active,
+            BlockedAt = command.Active ? null : DateTimeOffset.UtcNow,
             CreatedBy = actor.Email,
         };
         foreach (var groupId in groupIds)
@@ -236,15 +416,228 @@ public sealed class AccessControlService(
         user.DisplayName = command.DisplayName.Trim();
         user.Department = CleanDepartment(command.Department);
         user.Active = command.Active;
+        user.BlockedAt = command.Active ? null : user.BlockedAt ?? DateTimeOffset.UtcNow;
         user.UpdatedAt = DateTimeOffset.UtcNow;
         user.Version++;
         db.UserAccessGroups.RemoveRange(user.Groups);
         user.Groups = groupIds
             .Select(groupId => new UserAccessGroup { UserId = user.Id, GroupId = groupId })
             .ToList();
+        if (!command.Active)
+        {
+            var sessions = await db.LocalAuthSessions.Where(entry => entry.UserId == user.Id && entry.RevokedAt == null).ToListAsync(cancellationToken);
+            foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
+        }
 
         AddAudit(actor, "Update", "user", user.Id.ToString(), new { user.Email, user.Active, Groups = groupIds });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<CreateEmployeeResult> CreateEmployeeAsync(
+        CreateEmployeeCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var email = NormalizeEmail(command.Email);
+        ValidateUser(command.DisplayName, email);
+        if (await db.Users.AnyAsync(user => user.Email == email, cancellationToken))
+            throw new DomainException("Já existe um colaborador cadastrado com este e-mail.", 409);
+        if (command.BirthDate is null || command.StartedAt is null)
+            throw new DomainException("Informe a data de nascimento e a data de início.");
+        if (command.BirthDate >= DateOnly.FromDateTime(DateTime.UtcNow))
+            throw new DomainException("Informe uma data de nascimento válida.");
+        if (command.StartedAt > DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1))
+            throw new DomainException("A data de início não pode estar no futuro.");
+
+        var departmentIds = await ValidateEmployeeDepartmentsAsync(command.DepartmentIds, cancellationToken);
+        var departments = await db.TaskDepartments.Where(entry => departmentIds.Contains(entry.Id)).ToListAsync(cancellationToken);
+        var primaryDepartment = departments.Single(entry => entry.Id == departmentIds[0]);
+        var level = await db.EmployeeLevels.SingleOrDefaultAsync(
+            entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
+            ?? throw new DomainException("Selecione um nível ativo.");
+        var photo = ValidatePhoto(command.PhotoDataUrl);
+        var subordinateIds = await ValidateSubordinatesAsync(command.IsCoordinator, command.SubordinateUserIds, null, cancellationToken);
+        var temporaryPassword = PasswordSecurity.GenerateTemporaryPassword();
+        var user = new AppUser
+        {
+            DisplayName = command.DisplayName.Trim(),
+            Email = email,
+            Department = primaryDepartment.Name,
+            EmployeeLevelId = level.Id,
+            BirthDate = command.BirthDate,
+            StartedAt = command.StartedAt,
+            PhotoDataUrl = photo,
+            JobTitle = CleanJobTitle(command.JobTitle),
+            IsCoordinator = command.IsCoordinator,
+            PasswordHash = PasswordSecurity.Hash(temporaryPassword),
+            CreatedBy = actor.Email,
+        };
+        var employeeGroupId = await db.AccessGroups
+            .Where(group => group.Name == CollaboratorsGroup)
+            .Select(group => group.Id)
+            .SingleAsync(cancellationToken);
+        user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = employeeGroupId });
+        db.Users.Add(user);
+        foreach (var departmentId in departmentIds)
+            db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
+        db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
+        {
+            CoordinatorUserId = user.Id,
+            SubordinateUserId = subordinateId,
+        }));
+        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), Level = level.Name });
+        await db.SaveChangesAsync(cancellationToken);
+        return new CreateEmployeeResult(user.Id, temporaryPassword);
+    }
+
+    public async Task UpdateEmployeeAsync(
+        UpdateEmployeeCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var user = await db.Users.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
+            ?? throw new DomainException("Colaborador não encontrado.", 404);
+        var email = NormalizeEmail(command.Email);
+        ValidateUser(command.DisplayName, email);
+        if (await db.Users.AnyAsync(entry => entry.Email == email && entry.Id != user.Id, cancellationToken))
+            throw new DomainException("Já existe outro colaborador cadastrado com este e-mail.", 409);
+        if (command.BirthDate is null || command.StartedAt is null || command.BirthDate >= DateOnly.FromDateTime(DateTime.UtcNow) || command.StartedAt > DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1))
+            throw new DomainException("Informe datas de nascimento e início válidas.");
+        var departmentIds = await ValidateEmployeeDepartmentsAsync(command.DepartmentIds, cancellationToken);
+        var departments = await db.TaskDepartments.Where(entry => departmentIds.Contains(entry.Id)).ToListAsync(cancellationToken);
+        var primaryDepartment = departments.Single(entry => entry.Id == departmentIds[0]);
+        var level = await db.EmployeeLevels.SingleOrDefaultAsync(entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
+            ?? throw new DomainException("Selecione um nível ativo.");
+        var subordinateIds = await ValidateSubordinatesAsync(command.IsCoordinator, command.SubordinateUserIds, user.Id, cancellationToken);
+
+        user.DisplayName = command.DisplayName.Trim();
+        user.Email = email;
+        user.Department = primaryDepartment.Name;
+        user.EmployeeLevelId = level.Id;
+        user.BirthDate = command.BirthDate;
+        user.StartedAt = command.StartedAt;
+        user.JobTitle = CleanJobTitle(command.JobTitle);
+        user.IsCoordinator = command.IsCoordinator;
+        user.Active = command.Active;
+        user.BlockedAt = command.Active ? null : user.BlockedAt ?? DateTimeOffset.UtcNow;
+        if (command.PhotoDataUrl is not null) user.PhotoDataUrl = ValidatePhoto(command.PhotoDataUrl);
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        user.Version++;
+        db.UserDepartments.RemoveRange(await db.UserDepartments.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
+        foreach (var departmentId in departmentIds)
+            db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
+        db.EmployeeSupervisions.RemoveRange(await db.EmployeeSupervisions.Where(entry => entry.CoordinatorUserId == user.Id).ToListAsync(cancellationToken));
+        db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
+        {
+            CoordinatorUserId = user.Id,
+            SubordinateUserId = subordinateId,
+        }));
+        if (!command.Active)
+        {
+            var sessions = await db.LocalAuthSessions.Where(entry => entry.UserId == user.Id && entry.RevokedAt == null).ToListAsync(cancellationToken);
+            foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
+        }
+        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), Level = level.Name });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteEmployeeAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var user = await db.Users.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
+            ?? throw new DomainException("Colaborador não encontrado.", 404);
+        if (string.Equals(user.Email, actor.Email, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("Você não pode excluir o próprio acesso.", 409);
+        user.Active = false;
+        user.BlockedAt ??= DateTimeOffset.UtcNow;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        user.Version++;
+        var sessions = await db.LocalAuthSessions.Where(entry => entry.UserId == user.Id && entry.RevokedAt == null).ToListAsync(cancellationToken);
+        foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
+        AddAudit(actor, "Delete", "employee", user.Id.ToString(), new { user.Email, Mode = "access_revoked" });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteEmployeeDepartmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var department = await db.TaskDepartments.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
+            ?? throw new DomainException("Setor não encontrado.", 404);
+        department.Active = false;
+        department.UpdatedAt = DateTimeOffset.UtcNow;
+        AddAudit(actor, "Delete", "employee_department", id.ToString(), new { department.Name, Mode = "inactive" });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteEmployeeLevelAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var level = await db.EmployeeLevels.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
+            ?? throw new DomainException("Nível não encontrado.", 404);
+        level.Active = false;
+        level.UpdatedAt = DateTimeOffset.UtcNow;
+        AddAudit(actor, "Delete", "employee_level", id.ToString(), new { level.Name, Mode = "inactive" });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<Guid> SaveEmployeeDepartmentAsync(
+        SaveEmployeeDepartmentCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var name = CleanCatalogName(command.Name, "setor");
+        var department = command.Id.HasValue
+            ? await db.TaskDepartments.SingleOrDefaultAsync(entry => entry.Id == command.Id.Value, cancellationToken)
+                ?? throw new DomainException("Setor não encontrado.", 404)
+            : new TaskDepartment { Name = name };
+        var normalizedName = name.ToUpperInvariant();
+        var existingWithName = await db.TaskDepartments
+            .FirstOrDefaultAsync(entry => entry.Name.ToUpper() == normalizedName && entry.Id != department.Id, cancellationToken);
+        if (existingWithName is not null)
+        {
+            if (existingWithName.Active)
+                throw new DomainException("Já existe um setor ativo com este nome.", 409);
+            existingWithName.Description = CleanCatalogDescription(command.Description);
+            existingWithName.Active = true;
+            existingWithName.UpdatedAt = DateTimeOffset.UtcNow;
+            AddAudit(actor, "Reactivate", "employee_department", existingWithName.Id.ToString(), new { existingWithName.Name });
+            await db.SaveChangesAsync(cancellationToken);
+            return existingWithName.Id;
+        }
+        department.Name = name;
+        department.Description = CleanCatalogDescription(command.Description);
+        department.Active = command.Active;
+        department.UpdatedAt = DateTimeOffset.UtcNow;
+        if (!command.Id.HasValue) db.TaskDepartments.Add(department);
+        AddAudit(actor, command.Id.HasValue ? "Update" : "Create", "employee_department", department.Id.ToString(), new { department.Name, department.Active });
+        await db.SaveChangesAsync(cancellationToken);
+        return department.Id;
+    }
+
+    public async Task<Guid> SaveEmployeeLevelAsync(
+        SaveEmployeeLevelCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var name = CleanCatalogName(command.Name, "nível");
+        var level = command.Id.HasValue
+            ? await db.EmployeeLevels.SingleOrDefaultAsync(entry => entry.Id == command.Id.Value, cancellationToken)
+                ?? throw new DomainException("Nível não encontrado.", 404)
+            : new EmployeeLevel { Name = name };
+        if (await db.EmployeeLevels.AnyAsync(entry => entry.Name == name && entry.Id != level.Id, cancellationToken))
+            throw new DomainException("Já existe um nível com este nome.", 409);
+        level.Name = name;
+        level.Description = CleanCatalogDescription(command.Description);
+        level.Active = command.Active;
+        level.UpdatedAt = DateTimeOffset.UtcNow;
+        if (!command.Id.HasValue) db.EmployeeLevels.Add(level);
+        AddAudit(actor, command.Id.HasValue ? "Update" : "Create", "employee_level", level.Id.ToString(), new { level.Name, level.Active });
+        await db.SaveChangesAsync(cancellationToken);
+        return level.Id;
     }
 
     public async Task<Guid> CreateGroupAsync(
@@ -320,6 +713,20 @@ public sealed class AccessControlService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task DeleteGroupAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var group = await db.AccessGroups.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
+            ?? throw new DomainException("Grupo não encontrado.", 404);
+        if (group.IsSystem)
+            throw new DomainException("Grupos de sistema não podem ser excluídos.", 409);
+        group.Active = false;
+        group.UpdatedAt = DateTimeOffset.UtcNow;
+        group.Version++;
+        AddAudit(actor, "Delete", "access_group", group.Id.ToString(), new { group.Name, Mode = "inactive" });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task<Guid[]> ValidateGroupsAsync(
         IReadOnlyCollection<Guid> requestedIds,
         CancellationToken cancellationToken)
@@ -332,6 +739,42 @@ public sealed class AccessControlService(
         if (existing.Length != ids.Length)
             throw new DomainException("Um ou mais grupos selecionados não existem ou estão inativos.");
         return existing;
+    }
+
+    private async Task<Guid[]> ValidateSubordinatesAsync(
+        bool isCoordinator,
+        IReadOnlyCollection<Guid>? requestedIds,
+        Guid? coordinatorId,
+        CancellationToken cancellationToken)
+    {
+        if (!isCoordinator) return [];
+        var ids = (requestedIds ?? []).Where(id => id != coordinatorId).Distinct().ToArray();
+        if (ids.Length == 0) return [];
+        var valid = await db.Users.AsNoTracking()
+            .Where(user => ids.Contains(user.Id) && user.Active)
+            .Select(user => user.Id)
+            .ToArrayAsync(cancellationToken);
+        if (valid.Length != ids.Length)
+            throw new DomainException("Um ou mais subordinados selecionados não existem ou estão inativos.");
+        return valid;
+    }
+
+    private async Task<Guid[]> ValidateEmployeeDepartmentsAsync(
+        IReadOnlyCollection<Guid>? requestedIds,
+        CancellationToken cancellationToken)
+    {
+        var selected = (requestedIds ?? []).Where(id => id != Guid.Empty).Distinct().ToArray();
+        if (selected.Length == 0)
+            throw new DomainException("Selecione ao menos um setor ativo.");
+
+        var activeIds = await db.TaskDepartments.AsNoTracking()
+            .Where(entry => entry.Active && selected.Contains(entry.Id))
+            .Select(entry => entry.Id)
+            .ToArrayAsync(cancellationToken);
+        if (activeIds.Length != selected.Length)
+            throw new DomainException("Um ou mais setores selecionados estão inativos ou não existem.");
+
+        return selected;
     }
 
     private async Task EnsureAdministrationRemainsAsync(
@@ -431,6 +874,37 @@ public sealed class AccessControlService(
 
     private static string CleanDepartment(string department) =>
         string.IsNullOrWhiteSpace(department) ? "Não informado" : department.Trim();
+
+    private static string CleanCatalogName(string value, string label)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new DomainException($"Informe o nome do {label}.");
+        return value.Trim();
+    }
+
+    private static string CleanCatalogDescription(string? value)
+    {
+        var description = value?.Trim() ?? "";
+        if (description.Length > 600)
+            throw new DomainException("A descrição deve ter no máximo 600 caracteres.");
+        return description;
+    }
+
+    private static string CleanJobTitle(string? value)
+    {
+        var jobTitle = value?.Trim() ?? "";
+        if (jobTitle.Length > 120)
+            throw new DomainException("A função na empresa deve ter no máximo 120 caracteres.");
+        return jobTitle;
+    }
+
+    private static string ValidatePhoto(string? photoDataUrl)
+    {
+        if (string.IsNullOrWhiteSpace(photoDataUrl)) return "";
+        if (!photoDataUrl.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) || photoDataUrl.Length > 2_800_000)
+            throw new DomainException("Envie uma foto de até 2 MB em formato de imagem.");
+        return photoDataUrl;
+    }
 
     private static string CleanGroupName(string name)
     {

@@ -5,14 +5,15 @@ public static class ChatCapabilities
     public static readonly IReadOnlyCollection<string> All =
     [
         "sendMessages", "internalNotes", "assign", "transfer", "viewOtherDepartments",
-        "supervise", "manageChannels", "manageWhatsApp", "manageCatalogs", "createTask"
+        "supervise", "manageChannels", "manageWhatsApp", "manageCatalogs", "createTask",
+        "viewAllReports", "viewHistory", "editReports", "batchClose"
     ];
 }
 
 public sealed record ChatDepartmentDto(Guid Id, string Name, bool Active);
 public sealed record ChatUserDto(Guid Id, string Name, string Email, IReadOnlyCollection<Guid> DepartmentIds, bool Active);
 public sealed record ChatQueueDto(Guid Id, string Name, string Description, Guid DepartmentId, string DepartmentName, string DistributionStrategy, bool Active);
-public sealed record ChatChannelDto(Guid Id, string Name, string Type, Guid DepartmentId, string DepartmentName, Guid? DefaultQueueId, Guid? DefaultAssigneeUserId, bool Active, bool AiEnabled, bool AllowTransfer, bool AutoCreateTask, string GreetingMessage, string AwayMessage);
+public sealed record ChatChannelDto(Guid Id, string Name, string Type, Guid DepartmentId, string DepartmentName, Guid? DefaultQueueId, Guid? DefaultAssigneeUserId, bool Active, bool AiEnabled, bool AllowTransfer, bool AutoCreateTask, string GreetingMessage, string AwayMessage, bool SendClosingMessage, string ClosingMessage);
 public sealed record ChatWhatsAppNumberDto(
     Guid Id, Guid ChannelId, Guid DepartmentId, string DepartmentName, string InternalName,
     string DisplayName, string PhoneNumber, string PhoneNumberId, string WabaId,
@@ -28,9 +29,11 @@ public sealed record ChatTransferDto(Guid Id, Guid FromDepartmentId, Guid ToDepa
 public sealed record ChatConversationDto(
     Guid Id, long Number, string Protocol, ChatContactDto Contact, Guid ChannelId, string ChannelName,
     Guid DepartmentId, string DepartmentName, Guid QueueId, string QueueName, Guid? AssigneeUserId,
-    string AssigneeName, string Subject, string Status, string Priority, bool Favorite, int UnreadCount,
-    DateTimeOffset LastMessageAt, DateTimeOffset? FirstResponseAt, DateTimeOffset? ClosedAt,
+    string AssigneeName, string Subject, bool IsGroup, string GroupName,
+    IReadOnlyCollection<string> GroupParticipants, string Status, string Priority, bool Favorite, int UnreadCount,
+    DateTimeOffset CreatedAt, DateTimeOffset LastMessageAt, DateTimeOffset? FirstResponseAt, DateTimeOffset? ClosedAt,
     DateTimeOffset? SlaDueAt, string AiSummary, string Sentiment, long Version,
+    int? SatisfactionScore, string SatisfactionComment, DateTimeOffset? SatisfactionRespondedAt,
     IReadOnlyCollection<ChatMessageDto> Messages, IReadOnlyCollection<ChatTagDto> Tags,
     IReadOnlyCollection<ChatTransferDto> Transfers);
 public sealed record ChatMetricsDto(int Open, int Waiting, int Unassigned, int ClosedToday, double AverageFirstResponseMinutes, double AverageResolutionMinutes);
@@ -43,15 +46,20 @@ public sealed record ChatModuleDto(
     IReadOnlyCollection<ChatWhatsAppNumberDto> WhatsAppNumbers,
     IReadOnlyCollection<ChatTagDto> Tags,
     IReadOnlyCollection<ChatQuickReplyDto> QuickReplies,
-    ChatMetricsDto Metrics);
+    ChatMetricsDto Metrics,
+    Guid CurrentUserId);
 
-public sealed record CreateChatConversationCommand(string ContactName, string Phone, string Email, Guid? CustomerId, string CompanyName, Guid ChannelId, Guid? QueueId, Guid? AssigneeUserId, string Subject, string Priority, string? InitialMessage);
+public sealed record CreateChatConversationCommand(string ContactName, string Phone, string Email, Guid? CustomerId,
+    string CompanyName, Guid ChannelId, Guid? QueueId, Guid? AssigneeUserId, string Subject,
+    string Priority, string? InitialMessage, bool IsGroup, string? GroupName,
+    IReadOnlyCollection<string>? GroupParticipants);
 public sealed record SendChatMessageCommand(Guid ConversationId, string Body, bool Internal, Guid? ReplyToMessageId);
-public sealed record UpdateChatConversationCommand(Guid ConversationId, string? Status, string? Priority, bool? Favorite, bool? MarkRead, long Version);
+public sealed record UpdateChatConversationCommand(Guid ConversationId, string? Status, string? Priority, bool? Favorite, bool? MarkRead, string? Subject, int? SatisfactionScore, string? SatisfactionComment, long Version);
 public sealed record AssignChatConversationCommand(Guid ConversationId, Guid? AssigneeUserId, Guid? QueueId, long Version);
 public sealed record TransferChatConversationCommand(Guid ConversationId, Guid ToDepartmentId, Guid ToChannelId, Guid ToQueueId, Guid? ToAssigneeUserId, string Reason, long Version);
+public sealed record BatchCloseChatConversationsCommand(IReadOnlyCollection<Guid> ConversationIds);
 public sealed record SaveChatQueueCommand(Guid? Id, string Name, string Description, Guid DepartmentId, string DistributionStrategy, bool Active);
-public sealed record SaveChatChannelCommand(Guid? Id, string Name, string Type, Guid DepartmentId, Guid? DefaultQueueId, Guid? DefaultAssigneeUserId, bool Active, bool AiEnabled, bool AllowTransfer, bool AutoCreateTask, string GreetingMessage, string AwayMessage);
+public sealed record SaveChatChannelCommand(Guid? Id, string Name, string Type, Guid DepartmentId, Guid? DefaultQueueId, Guid? DefaultAssigneeUserId, bool Active, bool AiEnabled, bool AllowTransfer, bool AutoCreateTask, string GreetingMessage, string AwayMessage, bool SendClosingMessage, string ClosingMessage);
 public sealed record SaveChatWhatsAppNumberCommand(
     Guid? Id, Guid ChannelId, Guid DepartmentId, string InternalName, string DisplayName,
     string PhoneNumber, string PhoneNumberId, string WabaId, string BusinessManagerId,
@@ -77,6 +85,7 @@ public interface IChatService
     Task UpdateConversationAsync(UpdateChatConversationCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task AssignAsync(AssignChatConversationCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task TransferAsync(TransferChatConversationCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<int> BatchCloseAsync(BatchCloseChatConversationsCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SaveQueueAsync(SaveChatQueueCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SaveChannelAsync(SaveChatChannelCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SaveWhatsAppNumberAsync(SaveChatWhatsAppNumberCommand command, ActorContext actor, CancellationToken cancellationToken = default);

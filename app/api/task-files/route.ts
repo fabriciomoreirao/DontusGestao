@@ -13,14 +13,20 @@ function authenticationHeaders(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const taskId = new URL(request.url).searchParams.get("taskId");
+  const search = new URL(request.url).searchParams;
+  const taskId = search.get("taskId");
+  const commentId = search.get("commentId");
   if (!taskId) return Response.json({ detail: "Tarefa obrigatória." }, { status: 400 });
 
   try {
-    const response = await fetch(`${apiBase()}/api/tasks/${encodeURIComponent(taskId)}/attachments`, {
+    const suffix = commentId ? `?commentId=${encodeURIComponent(commentId)}` : "";
+    const headers = authenticationHeaders(request);
+    const contentType = request.headers.get("content-type");
+    if (contentType) headers.set("content-type", contentType);
+    const response = await fetch(`${apiBase()}/api/tasks/${encodeURIComponent(taskId)}/attachments${suffix}`, {
       method: "POST",
-      headers: authenticationHeaders(request),
-      body: await request.formData(),
+      headers,
+      body: request.body,
       cache: "no-store",
       signal: AbortSignal.timeout(120_000),
     });
@@ -37,5 +43,24 @@ export async function POST(request: Request) {
       status: 503,
       detail: "Não foi possível enviar os anexos para a API.",
     }, { status: 503 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const attachmentId = new URL(request.url).searchParams.get("id");
+  if (!attachmentId) return Response.json({ detail: "Anexo obrigatório." }, { status: 400 });
+  try {
+    const response = await fetch(`${apiBase()}/api/tasks/attachments/${encodeURIComponent(attachmentId)}`, {
+      method: "DELETE",
+      headers: authenticationHeaders(request),
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
+    });
+    return new Response(response.body, {
+      status: response.status,
+      headers: { "content-type": response.headers.get("content-type") ?? "application/json; charset=utf-8" },
+    });
+  } catch {
+    return Response.json({ detail: "Não foi possível excluir o anexo na API." }, { status: 503 });
   }
 }

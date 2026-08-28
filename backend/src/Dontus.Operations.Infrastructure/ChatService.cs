@@ -72,7 +72,9 @@ public sealed class ChatService(
     public async Task<ChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("chat", "view");
+        var currentUser = await CurrentUserAsync(actor, cancellationToken);
         var allDepartments = actor.HasPermission("chat", "manage") || actor.HasCapability("chat", "viewOtherDepartments");
+        var canViewHistory = actor.HasPermission("chat", "manage") || actor.HasCapability("chat", "viewHistory");
         var visibleDepartmentIds = await VisibleDepartmentIdsAsync(actor, allDepartments, cancellationToken);
 
         var departments = await db.TaskDepartments.AsNoTracking()
@@ -90,7 +92,8 @@ public sealed class ChatService(
         var users = await db.Users.AsNoTracking().Where(x => x.Active).OrderBy(x => x.DisplayName).ToListAsync(cancellationToken);
         var memberships = await db.UserDepartments.AsNoTracking().ToListAsync(cancellationToken);
         var conversations = await db.ChatConversations.AsNoTracking()
-            .Where(x => allDepartments || visibleDepartmentIds.Contains(x.DepartmentId))
+            .Where(x => (allDepartments || visibleDepartmentIds.Contains(x.DepartmentId)) &&
+                        (canViewHistory || x.Status != "Encerrada"))
             .OrderByDescending(x => x.LastMessageAt).Take(300).ToListAsync(cancellationToken);
         var conversationIds = conversations.Select(x => x.Id).ToArray();
         var contactIds = conversations.Select(x => x.ContactId).ToArray();
@@ -135,8 +138,10 @@ public sealed class ChatService(
                     departmentNames.GetValueOrDefault(c.DepartmentId, "Setor"), c.QueueId,
                     queueNames.GetValueOrDefault(c.QueueId, "Fila"), c.AssigneeUserId,
                     c.AssigneeUserId.HasValue ? userNames.GetValueOrDefault(c.AssigneeUserId.Value, "Colaborador") : "",
-                    c.Subject, c.Status, c.Priority, c.Favorite, c.UnreadCount, c.LastMessageAt,
+                    c.Subject, c.IsGroup, c.GroupName, DeserializeGroupParticipants(c.GroupParticipantsJson),
+                    c.Status, c.Priority, c.Favorite, c.UnreadCount, c.CreatedAt, c.LastMessageAt,
                     c.FirstResponseAt, c.ClosedAt, c.SlaDueAt, c.AiSummary, c.Sentiment, c.Version,
+                    c.SatisfactionScore, c.SatisfactionComment, c.SatisfactionRespondedAt,
                     messages.Where(x => x.ConversationId == c.Id).Select(ToMessageDto).ToArray(),
                     conversationTags.Where(x => x.ConversationId == c.Id && tagMap.ContainsKey(x.TagId))
                         .Select(x => ToTagDto(tagMap[x.TagId])).ToArray(),
@@ -151,7 +156,8 @@ public sealed class ChatService(
                 departmentNames.GetValueOrDefault(x.DepartmentId, "Setor"), x.DistributionStrategy, x.Active)).ToArray(),
             channels.Select(x => new ChatChannelDto(x.Id, x.Name, x.Type, x.DepartmentId,
                 departmentNames.GetValueOrDefault(x.DepartmentId, "Setor"), x.DefaultQueueId, x.DefaultAssigneeUserId,
-                x.Active, x.AiEnabled, x.AllowTransfer, x.AutoCreateTask, x.GreetingMessage, x.AwayMessage)).ToArray(),
+                x.Active, x.AiEnabled, x.AllowTransfer, x.AutoCreateTask, x.GreetingMessage, x.AwayMessage,
+                x.SendClosingMessage, x.ClosingMessage)).ToArray(),
             numbers.Select(x => new ChatWhatsAppNumberDto(x.Id, x.ChannelId, x.DepartmentId,
                 departmentNames.GetValueOrDefault(x.DepartmentId, "Setor"), x.InternalName, x.DisplayName,
                 x.PhoneNumber, x.PhoneNumberId, x.WabaId, x.BusinessManagerId, x.ConnectionMode,
@@ -168,7 +174,8 @@ public sealed class ChatService(
                 conversations.Count(x => !x.AssigneeUserId.HasValue && x.Status != "Encerrada"),
                 closedToday,
                 firstResponses.Length == 0 ? 0 : Math.Round(firstResponses.Average(), 1),
-                resolutions.Length == 0 ? 0 : Math.Round(resolutions.Average(), 1)));
+                resolutions.Length == 0 ? 0 : Math.Round(resolutions.Average(), 1)),
+            currentUser.Id);
     }
 
     public async Task<Guid> CreateConversationAsync(CreateChatConversationCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -182,6 +189,13 @@ public sealed class ChatService(
         await ValidateQueueAndAssigneeAsync(channel.DepartmentId, queueId, command.AssigneeUserId, cancellationToken);
 
         var phone = NormalizePhone(command.Phone);
+        var groupName = command.IsGroup ? Required(command.GroupName ?? command.ContactName, "Nome do grupo") : "";
+        var groupParticipants = command.IsGroup
+            ? (command.GroupParticipants ?? []).Select(x => x.Trim()).Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(50).ToArray()
+            : [];
+        if (command.IsGroup && groupParticipants.Length < 2)
+            throw new DomainException("Informe pelo menos dois participantes para o grupo de atendimento.");
         var contact = !string.IsNullOrWhiteSpace(phone)
             ? await db.ChatContacts.FirstOrDefaultAsync(x => x.Phone == phone, cancellationToken)
             : null;
@@ -207,6 +221,9 @@ public sealed class ChatService(
             QueueId = queueId,
             AssigneeUserId = command.AssigneeUserId ?? channel.DefaultAssigneeUserId,
             Subject = string.IsNullOrWhiteSpace(command.Subject) ? "Novo atendimento" : command.Subject.Trim(),
+            IsGroup = command.IsGroup,
+            GroupName = groupName,
+            GroupParticipantsJson = JsonSerializer.Serialize(groupParticipants),
             Priority = string.IsNullOrWhiteSpace(command.Priority) ? "Normal" : command.Priority.Trim(),
             SlaDueAt = DateTimeOffset.UtcNow.AddHours(4),
         };
@@ -253,7 +270,7 @@ public sealed class ChatService(
         if (!command.Internal)
         {
             var channel = await db.ChatChannels.AsNoTracking().SingleAsync(x => x.Id == conversation.ChannelId, cancellationToken);
-            if (channel.Type == "WhatsApp")
+            if (channel.Type == "WhatsApp" && !conversation.IsGroup)
             {
                 var number = await db.ChatWhatsAppNumbers.AsNoTracking()
                     .SingleOrDefaultAsync(x => x.ChannelId == channel.Id && x.Active, cancellationToken)
@@ -263,6 +280,8 @@ public sealed class ChatService(
                 await SendWhatsAppTextAsync(number, contactPhone, body, cancellationToken);
                 message.Status = "Aceita pela Meta";
             }
+            else if (conversation.IsGroup)
+                message.Status = "Enviada ao grupo de atendimento";
             conversation.FirstResponseAt ??= DateTimeOffset.UtcNow;
         }
 
@@ -280,8 +299,11 @@ public sealed class ChatService(
     public async Task UpdateConversationAsync(UpdateChatConversationCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("chat", "edit");
+        var editsReport = !string.IsNullOrWhiteSpace(command.Subject) || command.SatisfactionScore.HasValue || command.SatisfactionComment is not null;
+        if (editsReport) RequireCapabilityOrManage(actor, "editReports");
         var conversation = await AccessibleConversationAsync(command.ConversationId, actor, cancellationToken);
         EnsureVersion(conversation, command.Version);
+        var closingNow = string.Equals(command.Status, "Encerrada", StringComparison.Ordinal) && conversation.Status != "Encerrada";
         if (!string.IsNullOrWhiteSpace(command.Status))
         {
             var allowed = new[] { "Aberta", "Em atendimento", "Aguardando cliente", "Aguardando setor", "Resolvida", "Encerrada" };
@@ -292,8 +314,20 @@ public sealed class ChatService(
         if (!string.IsNullOrWhiteSpace(command.Priority)) conversation.Priority = command.Priority.Trim();
         if (command.Favorite.HasValue) conversation.Favorite = command.Favorite.Value;
         if (command.MarkRead == true) conversation.UnreadCount = 0;
+        if (!string.IsNullOrWhiteSpace(command.Subject)) conversation.Subject = command.Subject.Trim();
+        if (command.SatisfactionScore.HasValue)
+        {
+            if (command.SatisfactionScore is < 1 or > 5)
+                throw new DomainException("A satisfação deve ser informada de 1 a 5.");
+            conversation.SatisfactionScore = command.SatisfactionScore;
+            conversation.SatisfactionRespondedAt = DateTimeOffset.UtcNow;
+        }
+        if (command.SatisfactionComment is not null)
+            conversation.SatisfactionComment = command.SatisfactionComment.Trim();
+        if (closingNow)
+            await QueueClosingMessageAsync(conversation, actor, cancellationToken);
         Touch(conversation);
-        Audit(actor, "chat.conversation.updated", "chat_conversation", conversation.Id, new { command.Status, command.Priority, command.Favorite, command.MarkRead });
+        Audit(actor, "chat.conversation.updated", "chat_conversation", conversation.Id, new { command.Status, command.Priority, command.Favorite, command.MarkRead, command.Subject, command.SatisfactionScore });
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -365,6 +399,31 @@ public sealed class ChatService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<int> BatchCloseAsync(BatchCloseChatConversationsCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("chat", "edit");
+        RequireCapabilityOrManage(actor, "batchClose");
+        var ids = command.ConversationIds.Distinct().Take(200).ToArray();
+        if (ids.Length == 0) throw new DomainException("Selecione ao menos um atendimento.");
+
+        var closed = 0;
+        foreach (var id in ids)
+        {
+            var conversation = await AccessibleConversationAsync(id, actor, cancellationToken);
+            if (conversation.Status == "Encerrada") continue;
+            conversation.Status = "Encerrada";
+            conversation.ClosedAt = DateTimeOffset.UtcNow;
+            conversation.UnreadCount = 0;
+            await QueueClosingMessageAsync(conversation, actor, cancellationToken);
+            Touch(conversation);
+            Audit(actor, "chat.conversation.batch_closed", "chat_conversation", conversation.Id, new { BatchSize = ids.Length });
+            closed++;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        return closed;
+    }
+
     public async Task<Guid> SaveQueueAsync(SaveChatQueueCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         RequireManage(actor, "manageCatalogs");
@@ -403,6 +462,10 @@ public sealed class ChatService(
         entity.AutoCreateTask = command.AutoCreateTask;
         entity.GreetingMessage = command.GreetingMessage.Trim();
         entity.AwayMessage = command.AwayMessage.Trim();
+        entity.SendClosingMessage = command.SendClosingMessage;
+        entity.ClosingMessage = command.ClosingMessage.Trim();
+        if (entity.SendClosingMessage && string.IsNullOrWhiteSpace(entity.ClosingMessage))
+            throw new DomainException("Informe a mensagem automática de despedida.");
         if (!command.Id.HasValue) db.ChatChannels.Add(entity); else Touch(entity);
         Audit(actor, "chat.channel.saved", "chat_channel", entity.Id, new { entity.Name, entity.Type, entity.DepartmentId, entity.Active });
         await db.SaveChangesAsync(cancellationToken);
@@ -838,6 +901,47 @@ public sealed class ChatService(
             message.MediaStorageKey, message.MediaName, message.MediaContentType));
     }
 
+    private async Task QueueClosingMessageAsync(ChatConversation conversation, ActorContext actor, CancellationToken cancellationToken)
+    {
+        var channel = await db.ChatChannels.AsNoTracking().SingleAsync(x => x.Id == conversation.ChannelId, cancellationToken);
+        if (!channel.SendClosingMessage || string.IsNullOrWhiteSpace(channel.ClosingMessage)) return;
+
+        var user = await CurrentUserAsync(actor, cancellationToken);
+        var deliveryStatus = channel.Type == "WhatsApp" ? "Aguardando configuração" : "Registrada";
+        if (channel.Type == "WhatsApp")
+        {
+            var number = await db.ChatWhatsAppNumbers.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.ChannelId == channel.Id && x.Active, cancellationToken);
+            if (number is not null && !string.IsNullOrWhiteSpace(number.AccessTokenProtected))
+            {
+                var contactPhone = await db.ChatContacts.Where(x => x.Id == conversation.ContactId)
+                    .Select(x => x.Phone).SingleAsync(cancellationToken);
+                try
+                {
+                    await SendWhatsAppTextAsync(number, contactPhone, channel.ClosingMessage, cancellationToken);
+                    deliveryStatus = "Aceita pela Meta";
+                }
+                catch (DomainException)
+                {
+                    deliveryStatus = "Falha no envio automático";
+                }
+            }
+        }
+
+        db.ChatMessages.Add(new ChatMessage
+        {
+            ConversationId = conversation.Id,
+            Direction = "Saida",
+            Type = "Despedida",
+            Body = channel.ClosingMessage,
+            SenderUserId = user.Id,
+            SenderName = user.DisplayName,
+            Status = deliveryStatus,
+        });
+        conversation.LastMessageAt = DateTimeOffset.UtcNow;
+        Audit(actor, "chat.closing_message.queued", "chat_conversation", conversation.Id, new { channel.Id, deliveryStatus });
+    }
+
     private async Task SendWhatsAppTextAsync(ChatWhatsAppNumber number, string phone, string body, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(number.AccessTokenProtected) || string.IsNullOrWhiteSpace(number.PhoneNumberId))
@@ -987,4 +1091,10 @@ public sealed class ChatService(
             Module = "chat",
             DetailsJson = JsonSerializer.Serialize(details),
         });
+
+    private static IReadOnlyCollection<string> DeserializeGroupParticipants(string json)
+    {
+        try { return JsonSerializer.Deserialize<string[]>(json) ?? []; }
+        catch (JsonException) { return []; }
+    }
 }

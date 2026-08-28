@@ -7,13 +7,22 @@ namespace Dontus.Operations.Infrastructure;
 public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> options) : DbContext(options)
 {
     public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<CustomerCatalogOption> CustomerCatalogOptions => Set<CustomerCatalogOption>();
     public DbSet<WorkItem> WorkItems => Set<WorkItem>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<AgendaCalendar> AgendaCalendars => Set<AgendaCalendar>();
+    public DbSet<AgendaType> AgendaTypes => Set<AgendaType>();
+    public DbSet<AgendaStatus> AgendaStatuses => Set<AgendaStatus>();
+    public DbSet<AgendaCommitment> AgendaCommitments => Set<AgendaCommitment>();
+    public DbSet<AgendaCommitmentParticipant> AgendaCommitmentParticipants => Set<AgendaCommitmentParticipant>();
     public DbSet<Approval> Approvals => Set<Approval>();
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<DecisionItem> DecisionItems => Set<DecisionItem>();
     public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<EmployeeLevel> EmployeeLevels => Set<EmployeeLevel>();
+    public DbSet<EmployeeSupervision> EmployeeSupervisions => Set<EmployeeSupervision>();
+    public DbSet<LocalAuthSession> LocalAuthSessions => Set<LocalAuthSession>();
     public DbSet<AccessGroup> AccessGroups => Set<AccessGroup>();
     public DbSet<UserAccessGroup> UserAccessGroups => Set<UserAccessGroup>();
     public DbSet<GroupPermission> GroupPermissions => Set<GroupPermission>();
@@ -45,6 +54,15 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<ChatTransfer> ChatTransfers => Set<ChatTransfer>();
     public DbSet<ChatQuickReply> ChatQuickReplies => Set<ChatQuickReply>();
     public DbSet<ChatWebhookEvent> ChatWebhookEvents => Set<ChatWebhookEvent>();
+    public DbSet<InternalChatRoom> InternalChatRooms => Set<InternalChatRoom>();
+    public DbSet<InternalChatRoomMember> InternalChatRoomMembers => Set<InternalChatRoomMember>();
+    public DbSet<InternalChatMessage> InternalChatMessages => Set<InternalChatMessage>();
+    public DbSet<SuggestionPriority> SuggestionPriorities => Set<SuggestionPriority>();
+    public DbSet<SuggestionStatus> SuggestionStatuses => Set<SuggestionStatus>();
+    public DbSet<Suggestion> Suggestions => Set<Suggestion>();
+    public DbSet<SuggestionComment> SuggestionComments => Set<SuggestionComment>();
+    public DbSet<CompanyNotice> CompanyNotices => Set<CompanyNotice>();
+    public DbSet<CompanyNoticeRead> CompanyNoticeReads => Set<CompanyNoticeRead>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -119,8 +137,106 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.Department).HasMaxLength(120);
             entity.Property(x => x.Phone).HasMaxLength(32);
             entity.Property(x => x.JobTitle).HasMaxLength(120);
+            entity.Property(x => x.PasswordHash).HasMaxLength(512);
+            entity.Property(x => x.PhotoDataUrl).HasColumnType("text");
             entity.HasIndex(x => x.Email).IsUnique();
             entity.HasIndex(x => x.Active);
+            entity.HasIndex(x => x.IsCoordinator);
+            entity.HasIndex(x => x.EmployeeLevelId);
+            entity.HasOne<EmployeeLevel>().WithMany().HasForeignKey(x => x.EmployeeLevelId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        ConfigureEntity(modelBuilder.Entity<CustomerCatalogOption>(), "customer_catalog_options");
+        modelBuilder.Entity<CustomerCatalogOption>(entity =>
+        {
+            entity.Property(x => x.Catalog).HasMaxLength(64);
+            entity.Property(x => x.Name).HasMaxLength(160);
+            entity.Property(x => x.Description).HasMaxLength(600);
+            entity.HasIndex(x => new { x.Catalog, x.Name }).IsUnique();
+            entity.HasIndex(x => new { x.Catalog, x.Active });
+        });
+
+        ConfigureEntity(modelBuilder.Entity<AgendaCalendar>(), "agenda_calendars");
+        modelBuilder.Entity<AgendaCalendar>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.Description).HasMaxLength(600);
+            entity.HasIndex(x => new { x.DepartmentId, x.Name }).IsUnique();
+            entity.HasIndex(x => x.Active);
+            entity.HasOne<TaskDepartment>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        ConfigureEntity(modelBuilder.Entity<AgendaType>(), "agenda_types");
+        modelBuilder.Entity<AgendaType>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.Description).HasMaxLength(600);
+            entity.Property(x => x.Color).HasMaxLength(16);
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => x.Active);
+        });
+
+        ConfigureEntity(modelBuilder.Entity<AgendaStatus>(), "agenda_statuses");
+        modelBuilder.Entity<AgendaStatus>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.Description).HasMaxLength(600);
+            entity.Property(x => x.Color).HasMaxLength(16);
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => x.Active);
+        });
+
+        ConfigureEntity(modelBuilder.Entity<AgendaCommitment>(), "agenda_commitments");
+        modelBuilder.Entity<AgendaCommitment>(entity =>
+        {
+            entity.Property(x => x.Title).HasMaxLength(240);
+            entity.Property(x => x.Description).HasColumnType("text");
+            entity.Property(x => x.CreatedBy).HasMaxLength(254);
+            entity.HasIndex(x => new { x.AgendaId, x.StartsAt });
+            entity.HasIndex(x => new { x.ResponsibleUserId, x.StartsAt, x.EndsAt });
+            entity.HasOne<AgendaCalendar>().WithMany().HasForeignKey(x => x.AgendaId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AgendaType>().WithMany().HasForeignKey(x => x.AgendaTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<AgendaStatus>().WithMany().HasForeignKey(x => x.AgendaStatusId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.ResponsibleUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AgendaCommitmentParticipant>(entity =>
+        {
+            entity.ToTable("agenda_commitment_participants");
+            entity.HasKey(x => new { x.CommitmentId, x.UserId });
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne<AgendaCommitment>().WithMany().HasForeignKey(x => x.CommitmentId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        ConfigureEntity(modelBuilder.Entity<EmployeeLevel>(), "employee_levels");
+        modelBuilder.Entity<EmployeeLevel>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(100);
+            entity.Property(x => x.Description).HasMaxLength(600);
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => x.Active);
+        });
+
+        modelBuilder.Entity<EmployeeSupervision>(entity =>
+        {
+            entity.ToTable("employee_supervisions");
+            entity.HasKey(x => new { x.CoordinatorUserId, x.SubordinateUserId });
+            entity.HasIndex(x => x.SubordinateUserId);
+            entity.HasOne(x => x.CoordinatorUser).WithMany()
+                .HasForeignKey(x => x.CoordinatorUserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.SubordinateUser).WithMany()
+                .HasForeignKey(x => x.SubordinateUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LocalAuthSession>(entity =>
+        {
+            entity.ToTable("local_auth_sessions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.TokenHash).HasMaxLength(128);
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => new { x.UserId, x.ExpiresAt });
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         ConfigureEntity(modelBuilder.Entity<AccessGroup>(), "access_groups");
@@ -160,6 +276,127 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
 
         ConfigureTaskModule(modelBuilder);
         ConfigureChatModule(modelBuilder);
+        ConfigureInternalChatModule(modelBuilder);
+        ConfigureSuggestionModule(modelBuilder);
+        ConfigureNoticeModule(modelBuilder);
+    }
+
+    private static void ConfigureNoticeModule(ModelBuilder modelBuilder)
+    {
+        ConfigureEntity(modelBuilder.Entity<CompanyNotice>(), "company_notices");
+        modelBuilder.Entity<CompanyNotice>(entity =>
+        {
+            entity.Property(x => x.Title).HasMaxLength(240);
+            entity.Property(x => x.Body).HasColumnType("text");
+            entity.Property(x => x.Type).HasMaxLength(40);
+            entity.Property(x => x.Kind).HasMaxLength(24);
+            entity.Property(x => x.Audience).HasMaxLength(40);
+            entity.Property(x => x.ImageDataUrl).HasColumnType("text");
+            entity.HasIndex(x => new { x.Active, x.PublishedAt });
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.HasIndex(x => x.TargetUserId);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.AuthorUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.TargetUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CompanyNoticeRead>(entity =>
+        {
+            entity.ToTable("company_notice_reads");
+            entity.HasKey(x => new { x.NoticeId, x.UserId });
+            entity.HasIndex(x => new { x.UserId, x.ReadAt });
+            entity.HasOne<CompanyNotice>().WithMany().HasForeignKey(x => x.NoticeId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureSuggestionModule(ModelBuilder modelBuilder)
+    {
+        modelBuilder.HasSequence<long>("suggestion_number_seq").StartsAt(1);
+
+        ConfigureEntity(modelBuilder.Entity<SuggestionPriority>(), "suggestion_priorities");
+        modelBuilder.Entity<SuggestionPriority>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(80);
+            entity.Property(x => x.Description).HasMaxLength(600);
+            entity.Property(x => x.Color).HasMaxLength(16);
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => new { x.Active, x.DisplayOrder });
+        });
+
+        ConfigureEntity(modelBuilder.Entity<SuggestionStatus>(), "suggestion_statuses");
+        modelBuilder.Entity<SuggestionStatus>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(100);
+            entity.Property(x => x.Description).HasMaxLength(600);
+            entity.Property(x => x.KanbanColumn).HasMaxLength(100);
+            entity.Property(x => x.Color).HasMaxLength(16);
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => new { x.Active, x.DisplayOrder });
+        });
+
+        ConfigureEntity(modelBuilder.Entity<Suggestion>(), "suggestions");
+        modelBuilder.Entity<Suggestion>(entity =>
+        {
+            entity.Property(x => x.Number)
+                .HasDefaultValueSql("nextval('suggestion_number_seq')")
+                .ValueGeneratedOnAdd();
+            entity.Property(x => x.Protocol).HasMaxLength(20);
+            entity.Property(x => x.Name).HasMaxLength(240);
+            entity.Property(x => x.Description).HasColumnType("text");
+            entity.Property(x => x.CreatedBy).HasMaxLength(254);
+            entity.HasIndex(x => x.Number).IsUnique();
+            entity.HasIndex(x => x.Protocol).IsUnique();
+            entity.HasIndex(x => new { x.StatusId, x.UpdatedAt });
+            entity.HasIndex(x => x.PriorityId);
+            entity.HasIndex(x => x.ResponsibleUserId);
+            entity.HasIndex(x => x.CustomerId);
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.ResponsibleUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<SuggestionPriority>().WithMany().HasForeignKey(x => x.PriorityId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<SuggestionStatus>().WithMany().HasForeignKey(x => x.StatusId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        ConfigureEntity(modelBuilder.Entity<SuggestionComment>(), "suggestion_comments");
+        modelBuilder.Entity<SuggestionComment>(entity =>
+        {
+            entity.Property(x => x.Body).HasColumnType("text");
+            entity.HasIndex(x => new { x.SuggestionId, x.CreatedAt });
+            entity.HasOne<Suggestion>().WithMany().HasForeignKey(x => x.SuggestionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.AuthorUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureInternalChatModule(ModelBuilder modelBuilder)
+    {
+        ConfigureEntity(modelBuilder.Entity<InternalChatRoom>(), "internal_chat_rooms");
+        modelBuilder.Entity<InternalChatRoom>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.PhotoDataUrl).HasColumnType("text");
+            entity.HasIndex(x => x.LastMessageAt);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<InternalChatRoomMember>(entity =>
+        {
+            entity.ToTable("internal_chat_room_members");
+            entity.HasKey(x => new { x.RoomId, x.UserId });
+            entity.HasIndex(x => new { x.UserId, x.RoomId });
+            entity.HasOne<InternalChatRoom>().WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        ConfigureEntity(modelBuilder.Entity<InternalChatMessage>(), "internal_chat_messages");
+        modelBuilder.Entity<InternalChatMessage>(entity =>
+        {
+            entity.Property(x => x.Type).HasMaxLength(20);
+            entity.Property(x => x.Body).HasColumnType("text");
+            entity.Property(x => x.FileName).HasMaxLength(260);
+            entity.Property(x => x.ContentType).HasMaxLength(120);
+            entity.Property(x => x.StorageKey).HasMaxLength(600);
+            entity.HasIndex(x => new { x.RoomId, x.CreatedAt });
+            entity.HasOne<InternalChatRoom>().WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.SenderUserId).OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     private static void ConfigureChatModule(ModelBuilder modelBuilder)
@@ -180,6 +417,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         {
             entity.Property(x => x.Name).HasMaxLength(120);
             entity.Property(x => x.Type).HasMaxLength(40);
+            entity.Property(x => x.ClosingMessage).HasMaxLength(1200);
             entity.HasIndex(x => new { x.DepartmentId, x.Name }).IsUnique();
             entity.HasOne<TaskDepartment>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ChatQueue>().WithMany().HasForeignKey(x => x.DefaultQueueId).OnDelete(DeleteBehavior.Restrict);
@@ -222,6 +460,9 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.Protocol).HasMaxLength(80);
             entity.Property(x => x.Status).HasMaxLength(40);
             entity.Property(x => x.Priority).HasMaxLength(30);
+            entity.Property(x => x.GroupName).HasMaxLength(180);
+            entity.Property(x => x.GroupParticipantsJson).HasColumnType("jsonb");
+            entity.Property(x => x.SatisfactionComment).HasMaxLength(1600);
             entity.HasIndex(x => x.Number).IsUnique();
             entity.HasIndex(x => new { x.DepartmentId, x.Status, x.LastMessageAt });
             entity.HasIndex(x => x.AssigneeUserId);
@@ -300,6 +541,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         modelBuilder.Entity<TaskDepartment>(entity =>
         {
             entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.Description).HasMaxLength(600);
             entity.HasIndex(x => x.Name).IsUnique();
             entity.HasIndex(x => x.Active);
         });
@@ -376,6 +618,8 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.Title).HasMaxLength(240);
             entity.Property(x => x.CustomerCode).HasMaxLength(80);
             entity.Property(x => x.CustomerName).HasMaxLength(180);
+            entity.Property(x => x.ClientWhatsApp).HasMaxLength(20);
+            entity.Property(x => x.ClientNotificationState).HasMaxLength(40);
             entity.Property(x => x.ExternalLink).HasMaxLength(1000);
             entity.HasIndex(x => x.Number).IsUnique();
             entity.HasIndex(x => new { x.CurrentDepartmentId, x.StatusId });
@@ -406,6 +650,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.ContentType).HasMaxLength(120);
             entity.Property(x => x.StorageKey).HasMaxLength(600);
             entity.HasIndex(x => x.TaskId);
+            entity.HasIndex(x => x.CommentId);
         });
 
         modelBuilder.Entity<TaskHistory>(entity =>
@@ -501,6 +746,8 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             .HasForeignKey(x => x.AuthorUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<TaskAttachment>().HasOne<CorporateTask>().WithMany()
             .HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<TaskAttachment>().HasOne<TaskComment>().WithMany()
+            .HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<TaskAttachment>().HasOne<AppUser>().WithMany()
             .HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<TaskHistory>().HasOne<CorporateTask>().WithMany()
