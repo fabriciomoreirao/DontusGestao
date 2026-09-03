@@ -12,6 +12,7 @@ public static class ScreenCatalog
         new("cs", "Customer Success", "Operação", 40),
         new("lia", "Implantação LIA", "Operação", 50),
         new("support", "Suporte", "Operação", 60),
+        new("marketing", "Gestão de Marketing", "Operação", 65),
         new("ti", "Demandas de TI", "Operação", 70),
         new("finance", "Financeiro", "Gestão", 80),
         new("procurement", "Compras e Patrimônio", "Gestão", 90),

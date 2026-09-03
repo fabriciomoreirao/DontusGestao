@@ -173,7 +173,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
       <div className="chat-view-switch">
         <button className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={16} /> Caixa de entrada</button>
         <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}><BarChart3 size={16} /> Indicadores</button>
-        {canManage && <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}><Settings2 size={16} /> Configurações</button>}
+        {canManage && <button className={`chat-settings-icon ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")} aria-label="Configurar WhatsApp" title="Configurar WhatsApp"><Settings2 size={16} /></button>}
       </div>
     </header>
 

@@ -3,11 +3,13 @@
 import { CalendarDays, Check, ChevronRight, ClipboardCheck, List, MessageSquareText, Pencil, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AgendaModuleData } from "@/app/AgendaModule";
+import LiaPromptAdjustmentsModule from "@/app/LiaPromptAdjustmentsModule";
 
 type Item = { id:string; module:string; record_type:string; title:string; customer_id:string|null; customer_name:string; owner:string; team:string; status:string; priority:string; amount_cents:number; description:string; version:number; updated_at:string; created_at:string };
 type Employee = { id:string; displayName:string; departmentName:string; active:boolean };
+type Catalog = { id:string; catalog:string; name:string; active:boolean };
 type Operation = (payload: Record<string, unknown>, success: string) => Promise<unknown>;
-type CommonProps = { items:Item[]; employees:Employee[]; currentUser:string; canEdit:boolean; busy:boolean; operate:Operation; onOpenSettings:()=>void; agendaModule?:AgendaModuleData|null };
+type CommonProps = { items:Item[]; employees:Employee[]; catalogs?:Catalog[]; currentUser:string; canEdit:boolean; busy:boolean; operate:Operation; onOpenSettings:()=>void; agendaModule?:AgendaModuleData|null };
 type Detail = { kind?:string; clientId?:string; whatsapp?:string; crmUrl?:string; startDate?:string; kickoffDate?:string; kickoffTime?:string; kickoffReadUrl?:string; checklist?:Array<{id:string;label:string;done:boolean}>; issues?:Array<{id:string;text:string;resolved:boolean}>; history?:Array<{id:string;text:string;at:string;author:string}>; requestType?:string; sector?:string };
 
 const LIA_STAGES = [
@@ -23,17 +25,18 @@ function daysSince(value?:string) { if(!value) return 0; return Math.max(0,Math.
 function mergeDetail(item:Item, detail:Detail) { return { action:"updateWorkItem", id:item.id, title:item.title, owner:item.owner, customerName:item.customer_name, amountCents:item.amount_cents, version:item.version, description:JSON.stringify(detail) }; }
 
 export function LiaJourneyModule(props:CommonProps) {
-  const {items,employees,currentUser,canEdit,busy,operate,onOpenSettings,agendaModule}=props;
-  const records=useMemo(()=>items.filter(i=>i.module==="lia"),[items]);
-  const [tab,setTab]=useState("onboarding"); const [query,setQuery]=useState(""); const [owner,setOwner]=useState(""); const [selected,setSelected]=useState<Item|null>(null); const [comment,setComment]=useState(""); const [month,setMonth]=useState(new Date().toISOString().slice(0,7));
+  const {items,employees,catalogs=[],currentUser,canEdit,busy,operate,onOpenSettings,agendaModule}=props;
+  const records=useMemo(()=>items.filter(i=>i.module==="lia"&&i.record_type!=="Ajuste de Prompt"),[items]);
+  const [tab,setTab]=useState("onboarding"); const [query,setQuery]=useState(""); const [owner,setOwner]=useState(""); const [selected,setSelected]=useState<Item|null>(null); const [comment,setComment]=useState(""); const [month,setMonth]=useState(new Date().toISOString().slice(0,7)); const [promptAdjustments,setPromptAdjustments]=useState(false);
   const stage=LIA_STAGES.find(s=>s.key===tab)!;
   const visible=records.filter(i=>stage.statuses.includes(i.status as never) && (!query || `${i.title} ${i.customer_id} ${i.customer_name}`.toLowerCase().includes(query.toLowerCase())) && (!owner || i.owner===owner) && (tab!=="completed" || i.updated_at.slice(0,7)===month));
   async function update(item:Item, patch:Partial<Detail>, success:string){ const detail={...parseDetail(item.description),...patch}; await operate(mergeDetail(item,detail),success); setSelected({...item,description:JSON.stringify(detail)}); }
   async function status(item:Item,next:string){ await operate({action:"moveWorkItem",id:item.id,status:next},"Etapa atualizada com sucesso."); setSelected({...item,status:next}); }
   async function addComment(){ if(!selected||!comment.trim())return; const d=parseDetail(selected.description); await update(selected,{history:[...(d.history??[]),{id:crypto.randomUUID(),text:comment.trim(),at:new Date().toISOString(),author:currentUser}]},"Comentário registrado."); setComment(""); }
   const nextStatus:Record<string,string>={KickoffAgendado:"ConfiguracaoInicial",ConfiguracaoInicial:"EmTesteCliente",EmTesteCliente:"AguardandoAprovacao",EmAjustes:"AguardandoAprovacao",AguardandoAprovacao:"ConfigurandoCRC",ConfigurandoCRC:"Concluida",EmProducaoAssistida:"Concluida"};
+  if(promptAdjustments)return <LiaPromptAdjustmentsModule items={items} employees={employees} catalogs={catalogs} currentUser={currentUser} canEdit={canEdit} busy={busy} operate={operate} onBack={()=>setPromptAdjustments(false)} onOpenSettings={onOpenSettings}/>;
   return <section className="journey-module task-visual-standard">
-    <header className="journey-page-head"><div><p className="eyebrow">OPERAÇÃO · LIA</p><h1>Acompanhamento LIA</h1><p>Onboarding, configuração, testes e ativação em uma jornada auditável.</p></div><button className="icon-button" onClick={onOpenSettings} title="Configurações da LIA"><Settings size={18}/></button></header>
+    <header className="journey-page-head"><div><p className="eyebrow">OPERAÇÃO · LIA</p><h1>Acompanhamento LIA</h1><p>Onboarding, configuração, testes e ativação em uma jornada auditável.</p></div><div className="button-row"><button className="secondary-button lia-prompt-button" onClick={()=>setPromptAdjustments(true)}><List size={16}/> Ajustes Prompt</button><button className="icon-button" onClick={onOpenSettings} title="Configurações da LIA"><Settings size={18}/></button></div></header>
     <div className="journey-tabs">{LIA_STAGES.map(s=><button key={s.key} className={tab===s.key?"active":""} onClick={()=>setTab(s.key)}>{s.label}<span>{records.filter(i=>s.statuses.includes(i.status as never)).length}</span></button>)}</div>
     <div className="journey-filterbar"><label><Search size={16}/><input placeholder="Pesquisar cliente, ID ou responsável" value={query} onChange={e=>setQuery(e.target.value)}/></label><select value={owner} onChange={e=>setOwner(e.target.value)}><option value="">Todos os responsáveis</option>{employees.filter(e=>e.active).map(e=><option key={e.id}>{e.displayName}</option>)}</select>{tab==="completed"&&<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/>}<strong>{visible.length} cliente(s)</strong></div>
     <div className={tab==="completed"?"journey-list":"journey-board"}>{visible.map(item=>{const d=parseDetail(item.description);return <article className="journey-card" key={item.id} onClick={()=>setSelected(item)}><div className="journey-card-top"><span className="journey-avatar">{(item.customer_name||item.title).slice(0,2).toUpperCase()}</span><span className="status-pill">{item.status}</span></div><h3>{item.customer_name||item.title}</h3><small>ID {d.clientId||item.customer_id||item.id.slice(0,6)}</small><div className="journey-meta"><span><CalendarDays size={14}/>{daysSince(d.startDate||item.created_at)} dias em acompanhamento</span><span>{item.owner||"Fila compartilhada"}</span></div><footer><span>{d.whatsapp||"WhatsApp não informado"}</span><ChevronRight size={17}/></footer></article>})}{!visible.length&&<div className="empty-state"><ClipboardCheck/><strong>Nenhum cliente nesta etapa.</strong></div>}</div>

@@ -134,7 +134,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
     <div className="tasks-heading">
       <div><span className="eyebrow">OPERAÇÃO CORPORATIVA</span><h1>Tarefas</h1><p>Demandas internas, responsáveis, setores e SLA em um fluxo auditável.</p></div>
       <div className="tasks-heading-actions">
-        <button type="button" className="task-settings-button" onClick={onOpenSettings} aria-label="Configurar opções de tarefas" title="Configurar tipos, prioridades, SLA, status e Kanban"><Settings size={17} /><span>Configurações</span></button>
+        <button type="button" className="task-settings-button icon-only" onClick={onOpenSettings} aria-label="Configurar opções de tarefas" title="Configurar tipos, prioridades, SLA, status e Kanban"><Settings size={17} /></button>
         {canCreate && <button className="primary-button" onClick={() => setCreating(true)}><Plus size={17} /> Nova tarefa</button>}
       </div>
     </div>

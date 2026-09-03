@@ -46,8 +46,8 @@ function FlagBadges({ suggestion, compact = false }: { suggestion: Suggestion; c
   </span>;
 }
 
-export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate }: {
-  module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate;
+export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate, onOpenSettings }: {
+  module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; onOpenSettings: () => void;
 }) {
   const [view, setView] = useState<"list" | "kanban">("list");
   const [search, setSearch] = useState("");
@@ -106,7 +106,7 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
   return <section className="suggestions-page">
     <header className="suggestions-header">
       <div><span className="eyebrow">MÓDULO DE MELHORIAS</span><h1><Sparkles size={28} /> Sugestões</h1><p>Registre ideias, acompanhe decisões e visualize a evolução de cada sugestão.</p></div>
-      {canCreate && <button className="primary-button" disabled={!configured} onClick={() => setCreating(true)}><Plus size={17} /> Nova sugestão</button>}
+      <div className="commercial-header-actions"><button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Sugestões" title="Configurar Sugestões"><Settings2 size={18} /></button>{canCreate && <button className="primary-button" disabled={!configured} onClick={() => setCreating(true)}><Plus size={17} /> Nova sugestão</button>}</div>
     </header>
 
     {!configured && <div className="suggestion-setup-warning"><Settings2 size={20} /><span><strong>Cadastros necessários</strong><small>Configure ao menos uma prioridade e um status ativo em Cadastros › Sugestões.</small></span></div>}

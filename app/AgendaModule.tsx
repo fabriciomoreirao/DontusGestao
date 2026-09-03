@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, ChevronLeft, ChevronRight, Edit3, Filter, Plus, Save, Tag, Trash2, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Edit3, Filter, Plus, Save, Settings, Tag, Trash2, X } from "lucide-react";
 import { FormEvent, useMemo, useState, type CSSProperties } from "react";
 
 export type AgendaCalendar = { id: string; name: string; description: string; departmentId: string; departmentName: string; active: boolean };
@@ -97,7 +97,7 @@ function specialEventsForCalendar(month: Date, collaborators: AgendaCelebrant[])
   });
 }
 
-export default function AgendaModule({ module, busy, operate, currentEmail }: { module: AgendaModuleData; busy: boolean; operate: Operate; currentEmail: string }) {
+export default function AgendaModule({ module, busy, operate, currentEmail, onOpenSettings }: { module: AgendaModuleData; busy: boolean; operate: Operate; currentEmail: string; onOpenSettings: () => void }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [typeFilter, setTypeFilter] = useState("all");
   const [collaboratorFilter, setCollaboratorFilter] = useState("all");
@@ -114,7 +114,7 @@ export default function AgendaModule({ module, busy, operate, currentEmail }: { 
   const setupRequired = !module.calendars.some((item) => item.active) || !module.types.some((item) => item.active) || !module.statuses.some((item) => item.active);
 
   return <>
-    <div className="page-header agenda-header"><div><span className="eyebrow">MÓDULO · AGENDA</span><h1>Agenda</h1><p>Visualize os compromissos do seu setor e use os filtros para encontrar rapidamente o que precisa.</p></div><button className="primary-button" disabled={setupRequired} onClick={() => setCreating(true)}><Plus size={17} /> Novo compromisso</button></div>
+    <div className="page-header agenda-header"><div><span className="eyebrow">MÓDULO · AGENDA</span><h1>Agenda</h1><p>Visualize os compromissos do seu setor e use os filtros para encontrar rapidamente o que precisa.</p></div><div className="commercial-header-actions"><button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Agenda" title="Configurar Agenda"><Settings size={18} /></button><button className="primary-button" disabled={setupRequired} onClick={() => setCreating(true)}><Plus size={17} /> Novo compromisso</button></div></div>
     {setupRequired && <div className="agenda-setup-note"><CalendarDays size={19} /><span><strong>Os cadastros da Agenda precisam ser concluídos.</strong><small>Crie ao menos uma agenda, um tipo e um status em Cadastros › Agenda.</small></span></div>}
     <section className="agenda-filters"><Filter size={16} /><select value={effectiveCalendarFilter} onChange={(event) => setCalendarFilter(event.target.value)}><option value="all">Todas as agendas</option>{module.calendars.filter((calendar) => calendar.active).map((calendar) => <option key={calendar.id} value={calendar.id}>{calendar.name} · {calendar.departmentName}</option>)}</select><select value={effectiveTypeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Todos os tipos</option>{module.types.filter((type) => type.active).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select><select value={collaboratorFilter} onChange={(event) => setCollaboratorFilter(event.target.value)}><option value="all">Todos os colaboradores</option>{module.collaborators.map((collaborator) => <option key={`${collaborator.id}-${collaborator.departmentId}`} value={collaborator.id}>{collaborator.name}</option>)}</select></section>
     <MonthCalendar month={month} commitments={filtered} specialEvents={specialEventsForCalendar(month, module.celebrants ?? module.collaborators)} onPrevious={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))} onNext={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))} onOpen={setSelected} />
