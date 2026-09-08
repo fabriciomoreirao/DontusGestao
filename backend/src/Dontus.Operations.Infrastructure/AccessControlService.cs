@@ -188,6 +188,76 @@ public sealed class AccessControlService(
             collaboratorNoticePermission.CanView = true;
         }
 
+        var collaboratorWaitingQueuePermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "waitingQueue");
+        if (collaboratorWaitingQueuePermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "waitingQueue",
+                CanView = true,
+                CanCreate = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorWaitingQueuePermission.CanView = true;
+            collaboratorWaitingQueuePermission.CanCreate = true;
+            collaboratorWaitingQueuePermission.CanEdit = true;
+        }
+
+        var collaboratorReferralPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "referrals");
+        if (collaboratorReferralPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "referrals",
+                CanView = true,
+                CanCreate = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorReferralPermission.CanView = true;
+            collaboratorReferralPermission.CanCreate = true;
+            collaboratorReferralPermission.CanEdit = true;
+        }
+
+        var collaboratorCommissionPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "commissions");
+        if (collaboratorCommissionPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "commissions",
+                CanView = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorCommissionPermission.CanView = true;
+            collaboratorCommissionPermission.CanEdit = true;
+        }
+
+        var collaboratorGoalsPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "goals");
+        if (collaboratorGoalsPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "goals",
+                CanView = true,
+            });
+        }
+        else
+        {
+            collaboratorGoalsPermission.CanView = true;
+        }
+
         var bootstrapEmail = NormalizeEmail(
             configuration["AccessControl:BootstrapAdminEmail"] ?? "gestor@dontus.local");
         var bootstrapName = configuration["AccessControl:BootstrapAdminName"] ?? "Gestor Dontus";
@@ -357,6 +427,8 @@ public sealed class AccessControlService(
                     user.JobTitle,
                     user.IsCoordinator,
                     supervisions.Where(entry => entry.CoordinatorUserId == user.Id).Select(entry => entry.SubordinateUserId).ToArray(),
+                    user.Groups.Select(membership => membership.GroupId).ToArray(),
+                    user.Groups.Select(membership => membership.Group.Name).Order().ToArray(),
                     user.Active,
                     user.BlockedAt);
             }).ToArray(),
@@ -473,11 +545,11 @@ public sealed class AccessControlService(
             PasswordHash = PasswordSecurity.Hash(temporaryPassword),
             CreatedBy = actor.Email,
         };
-        var employeeGroupId = await db.AccessGroups
-            .Where(group => group.Name == CollaboratorsGroup)
-            .Select(group => group.Id)
-            .SingleAsync(cancellationToken);
-        user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = employeeGroupId });
+        var groupIds = command.GroupIds is { Count: > 0 }
+            ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
+            : [await db.AccessGroups.Where(group => group.Name == CollaboratorsGroup).Select(group => group.Id).SingleAsync(cancellationToken)];
+        foreach (var groupId in groupIds)
+            user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = groupId });
         db.Users.Add(user);
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
@@ -497,7 +569,7 @@ public sealed class AccessControlService(
         CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("admin", "manage");
-        var user = await db.Users.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
+        var user = await db.Users.Include(entry => entry.Groups).SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Colaborador não encontrado.", 404);
         var email = NormalizeEmail(command.Email);
         ValidateUser(command.DisplayName, email);
@@ -511,6 +583,10 @@ public sealed class AccessControlService(
         var level = await db.EmployeeLevels.SingleOrDefaultAsync(entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um nível ativo.");
         var subordinateIds = await ValidateSubordinatesAsync(command.IsCoordinator, command.SubordinateUserIds, user.Id, cancellationToken);
+        var groupIds = command.GroupIds is { Count: > 0 }
+            ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
+            : user.Groups.Select(membership => membership.GroupId).ToArray();
+        await EnsureAdministrationRemainsAsync(user, command.Active, groupIds, cancellationToken);
 
         user.DisplayName = command.DisplayName.Trim();
         user.Email = email;
@@ -525,6 +601,8 @@ public sealed class AccessControlService(
         if (command.PhotoDataUrl is not null) user.PhotoDataUrl = ValidatePhoto(command.PhotoDataUrl);
         user.UpdatedAt = DateTimeOffset.UtcNow;
         user.Version++;
+        db.UserAccessGroups.RemoveRange(user.Groups);
+        user.Groups = groupIds.Select(groupId => new UserAccessGroup { UserId = user.Id, GroupId = groupId }).ToList();
         db.UserDepartments.RemoveRange(await db.UserDepartments.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });

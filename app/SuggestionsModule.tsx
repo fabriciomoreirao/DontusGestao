@@ -47,7 +47,7 @@ function FlagBadges({ suggestion, compact = false }: { suggestion: Suggestion; c
 }
 
 export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate, onOpenSettings }: {
-  module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; onOpenSettings: () => void;
+  module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; onOpenSettings?: () => void;
 }) {
   const [view, setView] = useState<"list" | "kanban">("list");
   const [search, setSearch] = useState("");
@@ -104,9 +104,9 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
 
   const configured = activeStatuses.length > 0 && activePriorities.length > 0;
   return <section className="suggestions-page">
-    <header className="suggestions-header">
-      <div><span className="eyebrow">MÓDULO DE MELHORIAS</span><h1><Sparkles size={28} /> Sugestões</h1><p>Registre ideias, acompanhe decisões e visualize a evolução de cada sugestão.</p></div>
-      <div className="commercial-header-actions"><button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Sugestões" title="Configurar Sugestões"><Settings2 size={18} /></button>{canCreate && <button className="primary-button" disabled={!configured} onClick={() => setCreating(true)}><Plus size={17} /> Nova sugestão</button>}</div>
+    <header className="suggestions-header module-page-header">
+      <div className="module-page-title"><span className="module-page-title-icon"><Sparkles size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO DE MELHORIAS</span><h1>Sugestões</h1><p>Registre ideias, acompanhe decisões e visualize a evolução de cada sugestão.</p></span></div>
+      <div className="commercial-header-actions module-page-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Sugestões" title="Configurar Sugestões"><Settings2 size={18} /></button>}{canCreate && <button className="primary-button" disabled={!configured} onClick={() => setCreating(true)}><Plus size={17} /> Nova sugestão</button>}</div>
     </header>
 
     {!configured && <div className="suggestion-setup-warning"><Settings2 size={20} /><span><strong>Cadastros necessários</strong><small>Configure ao menos uma prioridade e um status ativo em Cadastros › Sugestões.</small></span></div>}
@@ -259,7 +259,7 @@ export function SuggestionCatalogsModule({ module, busy, operate }: { module: Su
   const [editingStatus, setEditingStatus] = useState<SuggestionStatus | null | undefined>(undefined);
   const items = section === "priorities" ? module.priorities : module.statuses;
   return <section className="suggestion-catalog-page">
-    <header className="suggestions-header"><div><span className="eyebrow">CADASTROS · SUGESTÕES</span><h1><Settings2 size={27} /> Sugestões</h1><p>Configure as opções usadas no cadastro, nos filtros e nas colunas do Kanban.</p></div><button className="primary-button" onClick={() => section === "priorities" ? setEditingPriority(null) : setEditingStatus(null)}><Plus size={17} /> {section === "priorities" ? "Nova prioridade" : "Novo status"}</button></header>
+    <header className="suggestions-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Settings2 size={21} /></span><span className="module-page-copy"><span className="eyebrow">CADASTROS · SUGESTÕES</span><h1>Sugestões</h1><p>Configure as opções usadas no cadastro, nos filtros e nas colunas do Kanban.</p></span></div><div className="module-page-actions"><button className="primary-button" onClick={() => section === "priorities" ? setEditingPriority(null) : setEditingStatus(null)}><Plus size={17} /> {section === "priorities" ? "Nova prioridade" : "Novo status"}</button></div></header>
     <div className="suggestion-schema-strip">
       <span><Hash size={16} /><small>ID</small><strong>Protocolo automático</strong></span><span><Sparkles size={16} /><small>Nome</small><strong>Informado no cadastro</strong></span><span><UserRound size={16} /><small>Responsável</small><strong>Usuário criador</strong></span><span><Flag size={16} /><small>Prioridade</small><strong>Cadastro abaixo</strong></span><span><CircleDot size={16} /><small>Status</small><strong>Cadastro abaixo</strong></span><span><Columns3 size={16} /><small>Kanban</small><strong>Ordem configurável</strong></span>
     </div>

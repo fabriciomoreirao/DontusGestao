@@ -63,10 +63,10 @@ export default function NotesModule({ module, busy, operate }: { module: NotesMo
   };
 
   return <>
-    <div className="page-header notes-header">
-      <div><span className="eyebrow">MÓDULO PESSOAL</span><h1><StickyNote size={22} /> Anotações</h1><p>{module.notes.length} {module.notes.length === 1 ? "anotação" : "anotações"} · arraste os cartões para reorganizar.</p></div>
-      <button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={17} /> Nova anotação</button>
-    </div>
+    <header className="page-header notes-header module-page-header">
+      <div className="module-page-title"><span className="module-page-title-icon"><StickyNote size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO PESSOAL</span><h1>Anotações</h1><p>{module.notes.length} {module.notes.length === 1 ? "anotação" : "anotações"} · arraste os cartões para reorganizar.</p></span></div>
+      <div className="module-page-actions"><button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={17} /> Nova anotação</button></div>
+    </header>
 
     <div className="notes-toolbar">
       <label className="notes-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar anotações..." /></label>

@@ -168,9 +168,9 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
   };
 
   return <section className="chat-module">
-    <header className="chat-page-head">
-      <div className="chat-title-with-back"><button className="chat-back-button" onClick={onExit}><ArrowLeft size={18} /> Voltar</button><span><span className="eyebrow">ATENDIMENTO INTEGRADO</span><h1>WhatsApp · Central de atendimento</h1><p>Uma tela dedicada para conversas individuais e grupos de atendimento.</p></span></div>
-      <div className="chat-view-switch">
+    <header className="chat-page-head module-page-header">
+      <div className="chat-title-with-back module-page-title"><button className="chat-back-button" onClick={onExit}><ArrowLeft size={18} /> Voltar</button><span className="module-page-title-icon"><Headphones size={21} /></span><span className="module-page-copy"><span className="eyebrow">ATENDIMENTO INTEGRADO</span><h1>WhatsApp · Central de atendimento</h1><p>Uma tela dedicada para conversas individuais e grupos de atendimento.</p></span></div>
+      <div className="chat-view-switch module-page-actions">
         <button className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={16} /> Caixa de entrada</button>
         <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}><BarChart3 size={16} /> Indicadores</button>
         {canManage && <button className={`chat-settings-icon ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")} aria-label="Configurar WhatsApp" title="Configurar WhatsApp"><Settings2 size={16} /></button>}

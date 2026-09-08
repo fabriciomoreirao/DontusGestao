@@ -36,6 +36,7 @@ type Props = {
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
   markRead: (roomId: string) => Promise<void>;
   uploadAttachments: (roomId: string, files: File[]) => Promise<boolean>;
+  onOpenProfile: (userId: string) => void;
 };
 type Conversation = {
   key: string; name: string; photoDataUrl: string; isGroup: boolean;
@@ -46,7 +47,7 @@ const stickers = ["😀", "😂", "😍", "🥳", "👏", "👍", "🙏", "🔥"
 const messageTime = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const roomTime = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
 
-export default function InternalChatModule({ module, busy, canCreate, operate, markRead, uploadAttachments }: Props) {
+export default function InternalChatModule({ module, busy, canCreate, operate, markRead, uploadAttachments, onOpenProfile }: Props) {
   const [selectedKey, setSelectedKey] = useState("");
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
@@ -130,10 +131,10 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   };
 
   return <div className="internal-chat-page">
-    <div className="page-header internal-chat-page-header">
-      <div><span className="eyebrow">MÓDULO · COMUNICAÇÃO</span><h1><MessageCircleMore size={30} /> Chat interno</h1><p>Todos os colaboradores disponíveis, conversas privadas e grupos da sua equipe.</p></div>
-      <button className="primary-button" disabled={!canCreate} onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button>
-    </div>
+    <header className="page-header internal-chat-page-header module-page-header">
+      <div className="module-page-title"><span className="module-page-title-icon"><MessageCircleMore size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · COMUNICAÇÃO</span><h1>Chat interno</h1><p>Todos os colaboradores disponíveis, conversas privadas e grupos da sua equipe.</p></span></div>
+      <div className="module-page-actions"><button className="primary-button" disabled={!canCreate} onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button></div>
+    </header>
 
     <section className="internal-chat-shell">
       <aside className="internal-chat-sidebar">
@@ -159,10 +160,10 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
       <main className="internal-chat-conversation">
         {!selectedConversation ? <div className="internal-chat-welcome"><div><MessageCircleMore size={38} /></div><h2>Escolha um colaborador</h2><p>A conversa será criada automaticamente ao enviar a primeira mensagem.</p></div> : <>
           <header className="internal-chat-conversation-head">
-            <span className="internal-chat-group-photo-wrap"><Avatar name={selectedConversation.name} photo={selectedConversation.photoDataUrl} group={selectedConversation.isGroup} coordinator={selectedConversation.user?.isCoordinator} />
+            <span className="internal-chat-group-photo-wrap" role={selectedConversation.user?"button":undefined} tabIndex={selectedConversation.user?0:undefined} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)}><Avatar name={selectedConversation.name} photo={selectedConversation.photoDataUrl} group={selectedConversation.isGroup} coordinator={selectedConversation.user?.isCoordinator} />
               {selectedRoom?.isGroup && selectedRoom.canManage && <><input ref={groupPhotoInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void updateGroupPhoto(event.target.files?.[0])} /><button type="button" onClick={() => groupPhotoInput.current?.click()} aria-label="Alterar foto do grupo" title="Alterar foto do grupo"><Camera size={11} /></button></>}
             </span>
-            <div><h2>{selectedConversation.name}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · Grupo privado` : selectedConversation.user?.jobTitle || "Conversa privada"}</p></div>
+            <div className={selectedConversation.user?"internal-chat-profile-link":""} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)}><h2>{selectedConversation.name}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · Grupo privado` : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}</p></div>
             <span className="internal-chat-secure"><LockKeyhole size={13} /> Privado</span>
             {selectedRoom && <button type="button" className="internal-chat-archive" onClick={() => void archive()} title={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"} aria-label={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"}>{selectedRoom.isArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>}
           </header>

@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarDays, ChevronLeft, ChevronRight, Edit3, Filter, Plus, Save, Settings, Tag, Trash2, X } from "lucide-react";
-import { FormEvent, useMemo, useState, type CSSProperties } from "react";
+import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 export type AgendaCalendar = { id: string; name: string; description: string; departmentId: string; departmentName: string; active: boolean };
 export type AgendaDepartment = { id: string; name: string; active: boolean };
@@ -97,13 +97,28 @@ function specialEventsForCalendar(month: Date, collaborators: AgendaCelebrant[])
   });
 }
 
-export default function AgendaModule({ module, busy, operate, currentEmail, onOpenSettings }: { module: AgendaModuleData; busy: boolean; operate: Operate; currentEmail: string; onOpenSettings: () => void }) {
+export default function AgendaModule({ module, busy, operate, currentEmail, onOpenSettings }: { module: AgendaModuleData; busy: boolean; operate: Operate; currentEmail: string; onOpenSettings?: () => void }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [typeFilter, setTypeFilter] = useState("all");
   const [collaboratorFilter, setCollaboratorFilter] = useState("all");
   const [calendarFilter, setCalendarFilter] = useState("all");
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<AgendaCommitment | null>(null);
+  useEffect(() => {
+    const commitmentId = new URLSearchParams(window.location.search).get("commitment");
+    if (!commitmentId) return;
+    const commitment = module.commitments.find((entry) => entry.id === commitmentId);
+    if (!commitment) return;
+    const date = new Date(commitment.startsAt);
+    setMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+    setSelected(commitment);
+  }, [module.commitments]);
+  const closeSelected = () => {
+    setSelected(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("commitment");
+    window.history.replaceState({}, "", url);
+  };
   const effectiveCalendarFilter = calendarFilter === "all" || module.calendars.some((item) => item.id === calendarFilter && item.active) ? calendarFilter : "all";
   const effectiveTypeFilter = typeFilter === "all" || module.types.some((item) => item.id === typeFilter && item.active) ? typeFilter : "all";
   const filtered = useMemo(() => module.commitments.filter((entry) =>
@@ -114,12 +129,12 @@ export default function AgendaModule({ module, busy, operate, currentEmail, onOp
   const setupRequired = !module.calendars.some((item) => item.active) || !module.types.some((item) => item.active) || !module.statuses.some((item) => item.active);
 
   return <>
-    <div className="page-header agenda-header"><div><span className="eyebrow">MÓDULO · AGENDA</span><h1>Agenda</h1><p>Visualize os compromissos do seu setor e use os filtros para encontrar rapidamente o que precisa.</p></div><div className="commercial-header-actions"><button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Agenda" title="Configurar Agenda"><Settings size={18} /></button><button className="primary-button" disabled={setupRequired} onClick={() => setCreating(true)}><Plus size={17} /> Novo compromisso</button></div></div>
+    <header className="page-header agenda-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · AGENDA</span><h1>Agenda</h1><p>Visualize os compromissos do seu setor e use os filtros para encontrar rapidamente o que precisa.</p></span></div><div className="module-page-actions commercial-header-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Agenda" title="Configurar Agenda"><Settings size={18} /></button>}<button className="primary-button" disabled={setupRequired} onClick={() => setCreating(true)}><Plus size={17} /> Novo compromisso</button></div></header>
     {setupRequired && <div className="agenda-setup-note"><CalendarDays size={19} /><span><strong>Os cadastros da Agenda precisam ser concluídos.</strong><small>Crie ao menos uma agenda, um tipo e um status em Cadastros › Agenda.</small></span></div>}
     <section className="agenda-filters"><Filter size={16} /><select value={effectiveCalendarFilter} onChange={(event) => setCalendarFilter(event.target.value)}><option value="all">Todas as agendas</option>{module.calendars.filter((calendar) => calendar.active).map((calendar) => <option key={calendar.id} value={calendar.id}>{calendar.name} · {calendar.departmentName}</option>)}</select><select value={effectiveTypeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Todos os tipos</option>{module.types.filter((type) => type.active).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select><select value={collaboratorFilter} onChange={(event) => setCollaboratorFilter(event.target.value)}><option value="all">Todos os colaboradores</option>{module.collaborators.map((collaborator) => <option key={`${collaborator.id}-${collaborator.departmentId}`} value={collaborator.id}>{collaborator.name}</option>)}</select></section>
     <MonthCalendar month={month} commitments={filtered} specialEvents={specialEventsForCalendar(month, module.celebrants ?? module.collaborators)} onPrevious={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))} onNext={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))} onOpen={setSelected} />
     {creating && <CommitmentModal module={module} busy={busy} currentEmail={currentEmail} onClose={() => setCreating(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Compromisso agendado com sucesso."); if (result) setCreating(false); }} />}
-    {selected && <AgendaCommitmentModal module={module} commitment={selected} busy={busy} currentEmail={currentEmail} onClose={() => setSelected(null)} onSave={async (payload) => { const result = await operate({ action: "updateAgendaCommitment", id: selected.id, ...payload }, "Compromisso atualizado com sucesso."); if (result) setSelected(null); }} onDelete={async () => { const result = await operate({ action: "deleteAgendaCommitment", id: selected.id }, "Compromisso excluído com sucesso."); if (result) setSelected(null); }} onChangeStatus={async (agendaStatusId) => { const result = await operate({ action: "changeAgendaCommitmentStatus", id: selected.id, agendaStatusId }, "Status do compromisso atualizado com sucesso."); if (!result) return false; const status = module.statuses.find((item) => item.id === agendaStatusId); if (status) setSelected((current) => current ? { ...current, agendaStatusId: status.id, statusName: status.name, statusColor: status.color } : current); return true; }} />}
+    {selected && <AgendaCommitmentModal module={module} commitment={selected} busy={busy} currentEmail={currentEmail} onClose={closeSelected} onSave={async (payload) => { const result = await operate({ action: "updateAgendaCommitment", id: selected.id, ...payload }, "Compromisso atualizado com sucesso."); if (result) closeSelected(); }} onDelete={async () => { const result = await operate({ action: "deleteAgendaCommitment", id: selected.id }, "Compromisso excluído com sucesso."); if (result) closeSelected(); }} onChangeStatus={async (agendaStatusId) => { const result = await operate({ action: "changeAgendaCommitmentStatus", id: selected.id, agendaStatusId }, "Status do compromisso atualizado com sucesso."); if (!result) return false; const status = module.statuses.find((item) => item.id === agendaStatusId); if (status) setSelected((current) => current ? { ...current, agendaStatusId: status.id, statusName: status.name, statusColor: status.color } : current); return true; }} />}
   </>;
 }
 
@@ -130,7 +145,7 @@ export function AgendaCatalogsModule({ module, busy, operate }: { module: Agenda
   const [status, setStatus] = useState<AgendaStatus | null | undefined>(undefined);
   const remove = async (action: string, id: string, label: string) => { await operate({ action, id }, `${label} excluído com sucesso.`); };
   return <>
-    <div className="page-header agenda-header"><div><span className="eyebrow">CADASTROS · AGENDA</span><h1>Cadastros da Agenda</h1><p>Gerencie agendas por setor, tipos de agendamento e os status que determinam a cor dos compromissos.</p></div></div>
+    <header className="page-header agenda-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21} /></span><span className="module-page-copy"><span className="eyebrow">CADASTROS · AGENDA</span><h1>Cadastros da Agenda</h1><p>Gerencie agendas por setor, tipos de agendamento e os status que determinam a cor dos compromissos.</p></span></div></header>
     <div className="agenda-tabs"><button className={tab === "calendars" ? "active" : ""} onClick={() => setTab("calendars")}><CalendarDays size={15} /> Agendas</button><button className={tab === "types" ? "active" : ""} onClick={() => setTab("types")}><Tag size={15} /> Tipos</button><button className={tab === "statuses" ? "active" : ""} onClick={() => setTab("statuses")}><Tag size={15} /> Status</button></div>
     <section className="agenda-catalog-card"><div className="agenda-catalog-head"><div><span className="eyebrow">{tab === "calendars" ? "AGENDAS" : tab === "types" ? "TIPOS" : "STATUS"}</span><h2>{tab === "calendars" ? "Agendas por setor" : tab === "types" ? "Tipos de agendamento" : "Status do compromisso"}</h2><p>{tab === "calendars" ? "Cada agenda é exibida apenas para colaboradores vinculados ao seu setor." : tab === "types" ? "Nenhuma opção padrão é criada automaticamente." : "A cor do status é aplicada diretamente no compromisso do calendário."}</p></div><button className="primary-button" onClick={() => tab === "calendars" ? setCalendar(null) : tab === "types" ? setType(null) : setStatus(null)}><Plus size={16} /> Novo</button></div>
       {tab === "calendars" && <CatalogList items={module.calendars} icon={<CalendarDays size={18} />} onEdit={(item) => setCalendar(item)} onDelete={(item) => void remove("deleteAgendaCalendar", item.id, "agenda")} render={(item) => <><strong>{item.name}</strong><small>{item.description || item.departmentName}</small></>} />}

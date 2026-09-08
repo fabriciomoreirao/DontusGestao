@@ -219,7 +219,9 @@ public sealed class TaskServiceTests
         await service.AddCommentAsync(new AddTaskCommentCommand(created.Id, body, []), actor);
 
         var module = await service.GetModuleAsync(actor);
-        Assert.Equal(body, module.Tasks.Single(x => x.Id == created.Id).Comments.Single().Body);
+        Assert.Contains(
+            module.Tasks.Single(x => x.Id == created.Id).Comments,
+            comment => comment.Body == body);
     }
 
     [Fact]

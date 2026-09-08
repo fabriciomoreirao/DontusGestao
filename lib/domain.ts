@@ -18,6 +18,11 @@ export const MODULES = {
   work: { label: "Agenda", short: "Agenda" },
   tasks: { label: "Tarefas", short: "Tarefas" },
   chat: { label: "Atendimento", short: "Chat" },
+  waitingQueue: { label: "Fila de Espera", short: "Fila" },
+  referrals: { label: "Indicações", short: "Indicações" },
+  commissions: { label: "Comissões", short: "Comissões" },
+  goals: { label: "Metas", short: "Metas" },
+  surveys: { label: "Pesquisa de satisfação", short: "Pesquisas" },
   access: { label: "Acesso", short: "Acesso" },
   reporting: { label: "Indicadores", short: "Indicadores" },
   catalogs: { label: "Cadastros", short: "Cadastros" },
@@ -62,6 +67,9 @@ export const STATE_MACHINES: Record<string, readonly string[]> = {
     "Comprada", "Recebida", "Patrimoniada", "Cancelada",
   ],
   work: ["A fazer", "Em andamento", "Bloqueada", "Concluída", "Cancelada"],
+  commissions: ["Pendente", "Aprovada", "Reprovada"],
+  goals: ["Ativa", "Encerrada"],
+  surveys: ["Ativa", "Inativa"],
 };
 
 const TERMINAL = new Set([
@@ -76,10 +84,12 @@ export function initialStatus(module: string): string {
 
 export function allowedNextStatuses(module: string, current: string): string[] {
   const states = STATE_MACHINES[module] ?? [];
+  if (module === "marketing" && current === "Novo") return [...states];
   const index = states.indexOf(current);
-  if (index < 0 || TERMINAL.has(current)) return [];
+  if (index < 0 || (TERMINAL.has(current) && !(module === "marketing" && current === "Recebida"))) return [];
   const next = states[index + 1];
   const options = next ? [next] : [];
+  if (module === "lia" && current === "EmTesteCliente") options.push("AguardandoAprovacao");
   if (module === "commercial") options.push("Perdido", "Cancelado");
   if (module === "cs") options.push("AguardandoCliente", "Pausado", "Cancelado");
   if (module === "lia") options.push("BloqueadaPeloCliente", "Pausada", "Cancelada");
@@ -104,6 +114,8 @@ export const RECORD_TYPES: Record<string, string[]> = {
   finance: ["Estorno", "Conta a pagar", "Boleto", "Cobrança", "DRE", "Nota de parceiro"],
   procurement: ["Compra", "Suprimento", "Ativo", "Manutenção"],
   work: ["Tarefa", "Compromisso", "Lembrete"],
+  commissions: ["Comissão comercial", "Comissão de Sucesso do Cliente"],
+  goals: ["Meta"],
 };
 
 export const PRIORITIES = ["P0", "P1", "P2", "P3", "P4"] as const;

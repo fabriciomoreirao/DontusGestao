@@ -62,6 +62,8 @@ public sealed record EmployeeDto(
     string JobTitle,
     bool IsCoordinator,
     IReadOnlyCollection<Guid> SubordinateUserIds,
+    IReadOnlyCollection<Guid> GroupIds,
+    IReadOnlyCollection<string> GroupNames,
     bool Active,
     DateTimeOffset? BlockedAt);
 
@@ -78,7 +80,8 @@ public sealed record CreateEmployeeCommand(
     string? PhotoDataUrl,
     string? JobTitle,
     bool IsCoordinator,
-    IReadOnlyCollection<Guid>? SubordinateUserIds);
+    IReadOnlyCollection<Guid>? SubordinateUserIds,
+    IReadOnlyCollection<Guid>? GroupIds = null);
 
 public sealed record UpdateEmployeeCommand(
     Guid Id,
@@ -92,7 +95,8 @@ public sealed record UpdateEmployeeCommand(
     string? JobTitle,
     bool IsCoordinator,
     IReadOnlyCollection<Guid>? SubordinateUserIds,
-    bool Active);
+    bool Active,
+    IReadOnlyCollection<Guid>? GroupIds = null);
 
 public sealed record CreateEmployeeResult(Guid Id, string TemporaryPassword);
 public sealed record SaveEmployeeDepartmentCommand(Guid? Id, string Name, string? Description, bool Active);

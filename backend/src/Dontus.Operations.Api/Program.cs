@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Encodings.Web;
 using System.Threading.RateLimiting;
 using Dontus.Operations.Application;
@@ -127,6 +128,76 @@ localAuth.MapPost("/change-password", async (
         cancellationToken);
     return Results.NoContent();
 }).RequireAuthorization();
+
+// Links públicos de pesquisa usam tokens individuais e não expõem o restante
+// do snapshot operacional. As respostas continuam persistidas no PostgreSQL.
+app.MapGet("/api/public-surveys/{token}", async (string token, OperationsDbContext db, CancellationToken cancellationToken) =>
+{
+    var surveys = await db.WorkItems.AsNoTracking().Where(item => item.Module == "surveys").ToListAsync(cancellationToken);
+    foreach (var item in surveys)
+    {
+        JsonObject? detail;
+        try { detail = JsonNode.Parse(item.Description)?.AsObject(); } catch { continue; }
+        if (detail?["kind"]?.GetValue<string>() != "satisfactionSurvey" || detail["active"]?.GetValue<bool>() == false) continue;
+        var assignment = detail["assignments"]?.AsArray().FirstOrDefault(entry => entry?["token"]?.GetValue<string>() == token);
+        if (assignment is null) continue;
+        return Results.Ok(new
+        {
+            name = detail["name"]?.GetValue<string>() ?? item.Title,
+            sectorName = detail["sectorName"]?.GetValue<string>() ?? item.Team,
+            collaboratorName = assignment["employeeName"]?.GetValue<string>() ?? "Equipe Dontus",
+            questions = detail["questions"]
+        });
+    }
+    return Results.Problem(statusCode: 404, title: "Pesquisa não encontrada", detail: "Este link não existe ou a pesquisa não está mais ativa.");
+}).RequireRateLimiting("operations");
+
+app.MapPost("/api/public-surveys/{token}", async (string token, PublicSurveyResponseRequest request, HttpContext httpContext, OperationsDbContext db, CancellationToken cancellationToken) =>
+{
+    var surveys = await db.WorkItems.Where(item => item.Module == "surveys").ToListAsync(cancellationToken);
+    foreach (var item in surveys)
+    {
+        JsonObject? detail;
+        try { detail = JsonNode.Parse(item.Description)?.AsObject(); } catch { continue; }
+        if (detail?["kind"]?.GetValue<string>() != "satisfactionSurvey" || detail["active"]?.GetValue<bool>() == false) continue;
+        var assignment = detail["assignments"]?.AsArray().FirstOrDefault(entry => entry?["token"]?.GetValue<string>() == token);
+        if (assignment is null) continue;
+        var responses = detail["responses"] as JsonArray ?? new JsonArray();
+        detail["responses"] = responses;
+        var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        var ipAddress = !string.IsNullOrWhiteSpace(forwardedFor)
+            ? forwardedFor.Split(',')[0].Trim()
+            : httpContext.Connection.RemoteIpAddress?.ToString() ?? "Não identificado";
+        var employeeName = assignment["employeeName"]?.GetValue<string>() ?? "Equipe Dontus";
+        responses.Add(JsonSerializer.SerializeToNode(new
+        {
+            id = Guid.NewGuid().ToString(), token,
+            employeeId = assignment["employeeId"]?.GetValue<string>() ?? "",
+            employeeName,
+            respondentName = request.RespondentName?.Trim() ?? "",
+            submittedAt = DateTimeOffset.UtcNow,
+            ipAddress,
+            userAgent = httpContext.Request.Headers.UserAgent.ToString(),
+            answers = request.Answers ?? new Dictionary<string, string>()
+        }));
+        item.Description = detail.ToJsonString();
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.Version++;
+        db.AuditEvents.Add(new AuditEvent
+        {
+            ActorEmail = "pesquisa-publica",
+            Action = "SurveyResponse",
+            Resource = "SatisfactionSurvey",
+            ResourceId = item.Id.ToString(),
+            Module = "surveys",
+            DetailsJson = JsonSerializer.Serialize(new { IpAddress = ipAddress, Employee = employeeName, Survey = item.Title, Token = token }),
+            Result = "Sucesso"
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(new { submitted = true });
+    }
+    return Results.Problem(statusCode: 404, title: "Pesquisa não encontrada", detail: "Este link não existe ou a pesquisa não está mais ativa.");
+}).RequireRateLimiting("operations");
 
 var operations = app.MapGroup("/api/operations")
     .RequireAuthorization()
@@ -545,7 +616,8 @@ operations.MapPost("", async (
                 request.Id ?? throw new DomainException("ID obrigatório."),
                 request.NextStatus ?? "",
                 request.Version ?? 0,
-                request.Confirmed ?? false), actor, cancellationToken);
+                request.Confirmed ?? false,
+                request.BoardMove ?? false), actor, cancellationToken);
             break;
 
         case "createAppointment":
@@ -710,7 +782,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } employeeDepartmentId ? [employeeDepartmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.GroupIds), actor, cancellationToken);
             id = createdEmployee.Id;
             temporaryPassword = createdEmployee.TemporaryPassword;
             break;
@@ -722,7 +794,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } departmentId ? [departmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.Active ?? true), actor, cancellationToken);
+                request.SubordinateUserIds, request.Active ?? true, request.GroupIds), actor, cancellationToken);
             break;
 
         case "deleteEmployee":
@@ -752,6 +824,13 @@ operations.MapPost("", async (
                 request.Name ?? "",
                 request.GroupDescription ?? "",
                 request.Active ?? true), actor, cancellationToken);
+            if (request.Permissions is { Count: > 0 })
+                await accessControl.UpdateGroupAsync(new UpdateAccessGroupCommand(
+                    id.Value,
+                    request.Name ?? "",
+                    request.GroupDescription ?? "",
+                    request.Active ?? true,
+                    request.Permissions), actor, cancellationToken);
             break;
 
         case "updateAccessGroup":
@@ -1196,6 +1275,7 @@ public sealed class OperationsRequest
     public string? NextStatus { get; init; }
     public long? Version { get; init; }
     public bool? Confirmed { get; init; }
+    public bool? BoardMove { get; init; }
     public string? Kind { get; init; }
     public DateTimeOffset? StartsAt { get; init; }
     public DateTimeOffset? EndsAt { get; init; }
@@ -1335,6 +1415,12 @@ public sealed class LocalLoginRequest
 {
     public string? Email { get; init; }
     public string? Password { get; init; }
+}
+
+public sealed class PublicSurveyResponseRequest
+{
+    public string? RespondentName { get; init; }
+    public Dictionary<string, string>? Answers { get; init; }
 }
 
 public sealed class LocalPasswordChangeRequest

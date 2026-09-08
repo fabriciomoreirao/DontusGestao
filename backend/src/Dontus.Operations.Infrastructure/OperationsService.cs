@@ -63,8 +63,18 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .Where(permission => permission.CanView)
             .Select(permission => permission.Screen)
             .ToArray();
+        var canManageCommissions = actor.HasPermission("commissions", "manage") || actor.HasPermission("commissions", "approve");
+        var canManageGoals = actor.HasPermission("goals", "manage") || actor.HasPermission("goals", "edit");
 
-        var customerEntities = actor.HasPermission("customers", "view")
+        var canViewCustomers = actor.HasPermission("customers", "view")
+            || actor.HasPermission("catalogs", "view")
+            || actor.HasPermission("commercial", "view")
+            || actor.HasPermission("cs", "view")
+            || actor.HasPermission("lia", "view")
+            || actor.HasPermission("tasks", "view")
+            || actor.HasPermission("waitingQueue", "view")
+            || actor.HasPermission("referrals", "view");
+        var customerEntities = canViewCustomers
             ? await db.Customers.AsNoTracking()
             .OrderByDescending(x => x.UpdatedAt)
             .Take(100)
@@ -86,9 +96,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .ToList();
 
         var items = await db.WorkItems.AsNoTracking()
-            .Where(x => visibleModules.Contains(x.Module))
+            .Where(x => visibleModules.Contains(x.Module)
+                && (x.Module != "commissions" || canManageCommissions || x.Owner == actor.DisplayName)
+                && (x.Module != "goals" || canManageGoals || x.Owner == actor.DisplayName || x.Team == actor.Department))
             .OrderByDescending(x => x.UpdatedAt)
-            .Take(250)
+            .Take(1000)
             .Select(x => new WorkItemDto(
                 x.Id, x.Module, x.RecordType, x.Title, x.CustomerId, x.CustomerName,
                 x.Owner, x.Team, x.Status, x.Priority, x.DueAt, x.SlaDueAt,
@@ -511,7 +523,12 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("customers", "create");
+        if (!actor.HasPermission("customers", "create")
+            && !actor.HasPermission("catalogs", "create")
+            && !actor.HasPermission("commercial", "create")
+            && !actor.HasPermission("cs", "create")
+            && !actor.HasPermission("admin", "manage"))
+            throw new DomainException("Seu acesso não permite cadastrar clientes.", 403);
         if (string.IsNullOrWhiteSpace(command.LegalName))
             throw new DomainException("Informe a razão social.");
 
@@ -568,13 +585,14 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     public async Task<Guid> SaveCustomerCatalogAsync(Guid? id, string catalog, string name, string? description, bool active, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("catalogs", "manage");
-        var allowed = new[] { "commercialProduct", "acquisitionChannel", "commercialLabel", "followUpType", "lossReason", "temperature", "funnelStage", "csFunnel", "csFollowUp", "csLabel", "csTemperature", "csUsage", "csReason", "csFeature", "csStatus", "csCallStatus", "csFinalStatus", "csFeatureActive", "csFeatureBase", "csFeaturePlus", "csRejectionReason", "csApprovalReason", "enterpriseNetworkStatus", "enterpriseUnitStatus", "enterpriseUsageStatus", "enterpriseFeatureActive", "enterpriseFeatureBase", "enterpriseFeaturePlus", "recruitmentVacancy", "recruitmentStage" };
-        if (!allowed.Contains(catalog, StringComparer.OrdinalIgnoreCase)) throw new DomainException("Tipo de cadastro inválido.");
+        var catalogKey = catalog.Trim();
+        if (catalogKey.Length is < 2 or > 80 || !char.IsLetter(catalogKey[0]) || catalogKey.Any(character => !char.IsLetterOrDigit(character) && character != '_'))
+            throw new DomainException("Identificador do cadastro inválido. Use somente letras, números e sublinhado.");
         if (string.IsNullOrWhiteSpace(name)) throw new DomainException("Informe o nome do cadastro.");
         var entry = id.HasValue
             ? await db.CustomerCatalogOptions.SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken) ?? throw new DomainException("Cadastro não encontrado.", 404)
-            : new CustomerCatalogOption { Catalog = catalog.Trim(), Name = name.Trim() };
-        entry.Catalog = catalog.Trim(); entry.Name = name.Trim(); entry.Description = description?.Trim() ?? ""; entry.Active = active; entry.UpdatedAt = DateTimeOffset.UtcNow;
+            : new CustomerCatalogOption { Catalog = catalogKey, Name = name.Trim() };
+        entry.Catalog = catalogKey; entry.Name = name.Trim(); entry.Description = description?.Trim() ?? ""; entry.Active = active; entry.UpdatedAt = DateTimeOffset.UtcNow;
         if (!id.HasValue) db.CustomerCatalogOptions.Add(entry);
         AddAudit(actor, id.HasValue ? "Update" : "Create", "customerCatalog", entry.Id.ToString(), "catalogs", new { entry.Catalog, entry.Name, entry.Active });
         await db.SaveChangesAsync(cancellationToken); return entry.Id;
@@ -619,8 +637,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             CustomerName = command.CustomerName?.Trim() ?? "",
             Owner = string.IsNullOrWhiteSpace(command.Owner) ? actor.DisplayName : command.Owner.Trim(),
             Team = command.Team?.Trim() ?? "",
-            Status = command.Module.Equals("admin", StringComparison.OrdinalIgnoreCase) &&
-                     !string.IsNullOrWhiteSpace(command.Status)
+            // Alguns fluxos operacionais (Marketing, Indicações e inserções manuais)
+            // já conhecem a etapa inicial correta. Preserve-a quando informada.
+            Status = !string.IsNullOrWhiteSpace(command.Status)
                 ? command.Status.Trim()
                 : WorkflowPolicy.InitialStatus(command.Module),
             Priority = string.IsNullOrWhiteSpace(command.Priority) ? "P3" : command.Priority.Trim(),
@@ -673,6 +692,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var item = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Registro não encontrado.", 404);
         actor.RequirePermission(item.Module, "edit");
+        if (item.Module == "commissions" && !actor.HasPermission("commissions", "approve") &&
+            !actor.HasPermission("commissions", "manage") &&
+            !string.Equals(item.Owner, actor.DisplayName, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("Você só pode registrar ciência nas suas próprias comissões.", 403);
         if (item.Version != command.Version)
             throw new DomainException("O registro foi alterado por outro usuário. Atualize a tela e tente novamente.", 409);
         if (string.IsNullOrWhiteSpace(command.Title))
@@ -746,9 +769,15 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var isApprovalStatus = command.NextStatus.Contains("aguardando aprova", StringComparison.OrdinalIgnoreCase);
         var isFinalStatus = command.NextStatus.Contains("conclu", StringComparison.OrdinalIgnoreCase) ||
                             command.NextStatus.Contains("resolvid", StringComparison.OrdinalIgnoreCase);
-        if (item.Module != "diary" && item.Module != "admin" && !isApprovalStatus && !isFinalStatus &&
+        var involvesConfiguredLiaStage = item.Module == "lia" && await db.CustomerCatalogOptions.AsNoTracking().AnyAsync(
+            entry => entry.Catalog == "liaWorkflowStage" && entry.Active && (entry.Name == command.NextStatus || entry.Name == item.Status),
+            cancellationToken);
+        if (!command.BoardMove && item.Module != "diary" && item.Module != "admin" && !isApprovalStatus && !isFinalStatus && !involvesConfiguredLiaStage &&
             !WorkflowPolicy.CanTransition(item.Module, item.Status, command.NextStatus))
             throw new DomainException($"Não é permitido mover {item.Status} para {command.NextStatus}.", 409);
+
+        if (command.BoardMove && string.IsNullOrWhiteSpace(command.NextStatus))
+            throw new DomainException("Selecione uma etapa válida para mover o card.");
 
         if (item.Module == "commercial" && command.NextStatus == "Ganho" &&
             (item.CustomerId is null || item.AmountCents <= 0))

@@ -113,7 +113,7 @@ public sealed record CreateWorkItemCommand(
     Guid? OriginId,
     string? Status = null);
 
-public sealed record TransitionWorkItemCommand(Guid Id, string NextStatus, long Version, bool Confirmed);
+public sealed record TransitionWorkItemCommand(Guid Id, string NextStatus, long Version, bool Confirmed, bool BoardMove = false);
 
 public sealed record UpdateWorkItemCommand(
     Guid Id,

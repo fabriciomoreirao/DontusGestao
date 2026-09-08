@@ -107,10 +107,10 @@ public sealed class AccessControlServiceTests
             new SaveEmployeeLevelCommand(null, "Nível 1", "Entrada da trilha profissional.", true), admin);
         var subordinate = await service.CreateEmployeeAsync(new CreateEmployeeCommand(
             "Analista Dontus", "analista@dontus.local", new DateOnly(1995, 5, 12), new DateOnly(2025, 1, 10),
-            departmentId, levelId, null, "Analista de Suporte", false, []), admin);
+            [departmentId], levelId, null, "Analista de Suporte", false, []), admin);
         var coordinator = await service.CreateEmployeeAsync(new CreateEmployeeCommand(
             "Coordenador Dontus", "coordenador@dontus.local", new DateOnly(1990, 2, 20), new DateOnly(2024, 3, 15),
-            departmentId, levelId, null, "Coordenador de Suporte", true, [subordinate.Id]), admin);
+            [departmentId], levelId, null, "Coordenador de Suporte", true, [subordinate.Id]), admin);
 
         db.LocalAuthSessions.Add(new LocalAuthSession
         {
@@ -121,7 +121,7 @@ public sealed class AccessControlServiceTests
         await db.SaveChangesAsync();
         await service.UpdateEmployeeAsync(new UpdateEmployeeCommand(
             coordinator.Id, "Coordenador Dontus", "coordenador@dontus.local", new DateOnly(1990, 2, 20),
-            new DateOnly(2024, 3, 15), departmentId, levelId, null, "Coordenador de Suporte", true,
+            new DateOnly(2024, 3, 15), [departmentId], levelId, null, "Coordenador de Suporte", true,
             [subordinate.Id], false), admin);
 
         var management = await service.GetManagementAsync(admin);
@@ -133,7 +133,8 @@ public sealed class AccessControlServiceTests
         Assert.InRange(saved.BlockedAt!.Value, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
         Assert.NotNull((await db.LocalAuthSessions.SingleAsync(entry => entry.UserId == coordinator.Id)).RevokedAt);
         await Assert.ThrowsAsync<DomainException>(() =>
-            new LocalAuthenticationService(db).LoginAsync("coordenador@dontus.local", coordinator.TemporaryPassword));
+            new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender())
+                .LoginAsync("coordenador@dontus.local", coordinator.TemporaryPassword));
     }
 
     private static AccessControlService CreateService(OperationsDbContext db)
@@ -172,5 +173,14 @@ public sealed class AccessControlServiceTests
             .UseInMemoryDatabase($"dontus-access-tests-{Guid.NewGuid():N}")
             .Options;
         return new OperationsDbContext(options);
+    }
+
+    private sealed class NullPasswordRecoveryEmailSender : IPasswordRecoveryEmailSender
+    {
+        public Task SendAsync(
+            string recipientEmail,
+            string recipientName,
+            string temporaryPassword,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
