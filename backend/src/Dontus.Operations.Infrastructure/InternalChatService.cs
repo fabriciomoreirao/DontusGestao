@@ -10,6 +10,10 @@ public sealed class InternalChatService(
     OperationsDbContext db,
     IConfiguration configuration) : IInternalChatService
 {
+    private sealed record PollOption(string Text, List<Guid> VoterUserIds);
+    private sealed record PollPayload(string Question, List<PollOption> Options);
+    private sealed record PinPayload(Guid MessageId, bool Pinned);
+    private static readonly JsonSerializerOptions ChatJsonOptions = new(JsonSerializerDefaults.Web);
     private const long MaxAttachmentBytes = 50 * 1024 * 1024;
     private readonly string filesRoot = Path.GetFullPath(configuration["InternalChat:FilesPath"]
         ?? Path.Combine(AppContext.BaseDirectory, "internal-chat-files"));
@@ -51,7 +55,20 @@ public sealed class InternalChatService(
                 ? room.Name
                 : directPartner?.DisplayName ?? "Conversa privada";
             var displayPhoto = room.IsGroup ? room.PhotoDataUrl : directPartner?.PhotoDataUrl ?? "";
-            var roomMessages = messages.Where(message => message.RoomId == room.Id)
+            var allRoomMessages = messages.Where(message => message.RoomId == room.Id)
+                .OrderBy(message => message.CreatedAt)
+                .ToArray();
+            var pinned = new Dictionary<Guid, bool>();
+            foreach (var pinEvent in allRoomMessages.Where(message => message.Type == "pin"))
+            {
+                try
+                {
+                    var payload = JsonSerializer.Deserialize<PinPayload>(pinEvent.Body, ChatJsonOptions);
+                    if (payload is not null) pinned[payload.MessageId] = payload.Pinned;
+                }
+                catch (JsonException) { }
+            }
+            var roomMessages = allRoomMessages.Where(message => message.Type != "pin")
                 .OrderBy(message => message.CreatedAt)
                 .Select(message =>
                 {
@@ -61,7 +78,7 @@ public sealed class InternalChatService(
                         sender?.DisplayName ?? "Colaborador removido", sender?.PhotoDataUrl ?? "",
                         sender?.IsCoordinator ?? false,
                         message.Type, message.Body, message.FileName, message.ContentType,
-                        !string.IsNullOrWhiteSpace(message.StorageKey), message.CreatedAt);
+                        !string.IsNullOrWhiteSpace(message.StorageKey), pinned.GetValueOrDefault(message.Id), message.CreatedAt);
                 }).ToArray();
             return new InternalChatRoomDto(
                 room.Id, displayName, displayPhoto, room.IsGroup, room.CreatedByUserId,
@@ -172,6 +189,89 @@ public sealed class InternalChatService(
         db.InternalChatMessages.Add(message);
         await db.SaveChangesAsync(cancellationToken);
         return message.Id;
+    }
+
+    public async Task<Guid> CreatePollAsync(CreateInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("internalChat", "create");
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
+        if (!room.IsGroup) throw new DomainException("Enquetes podem ser enviadas somente em grupos.");
+        var question = (command.Question ?? "").Trim();
+        if (question.Length < 3 || question.Length > 240)
+            throw new DomainException("Informe uma pergunta entre 3 e 240 caracteres.");
+        var options = (command.Options ?? [])
+            .Select(option => option.Trim())
+            .Where(option => option.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (options.Length is < 2 or > 8 || options.Any(option => option.Length > 120))
+            throw new DomainException("Informe de 2 a 8 opções, com até 120 caracteres cada.");
+        var message = new InternalChatMessage
+        {
+            RoomId = room.Id,
+            SenderUserId = actorUser.Id,
+            Type = "poll",
+            Body = JsonSerializer.Serialize(new PollPayload(question, options.Select(option => new PollOption(option, [])).ToList()), ChatJsonOptions),
+        };
+        await AddVisibleMessageAsync(room, message, actorUser.Id, cancellationToken);
+        AddAudit(actor, "Create", "internal_chat_poll", message.Id.ToString(), new { room.Id, OptionCount = options.Length });
+        await db.SaveChangesAsync(cancellationToken);
+        return message.Id;
+    }
+
+    public async Task VotePollAsync(VoteInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("internalChat", "create");
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
+        if (!room.IsGroup) throw new DomainException("Enquetes estão disponíveis somente em grupos.");
+        var message = await db.InternalChatMessages.SingleOrDefaultAsync(entry => entry.Id == command.MessageId && entry.RoomId == room.Id, cancellationToken)
+            ?? throw new DomainException("Enquete não encontrada.", 404);
+        if (message.Type != "poll") throw new DomainException("A mensagem selecionada não é uma enquete.");
+        PollPayload poll;
+        try { poll = JsonSerializer.Deserialize<PollPayload>(message.Body, ChatJsonOptions) ?? throw new JsonException(); }
+        catch (JsonException) { throw new DomainException("Não foi possível ler esta enquete."); }
+        if (command.OptionIndex < 0 || command.OptionIndex >= poll.Options.Count)
+            throw new DomainException("Selecione uma opção válida.");
+        foreach (var option in poll.Options) option.VoterUserIds.RemoveAll(id => id == actorUser.Id);
+        poll.Options[command.OptionIndex].VoterUserIds.Add(actorUser.Id);
+        message.Body = JsonSerializer.Serialize(poll, ChatJsonOptions);
+        message.UpdatedAt = DateTimeOffset.UtcNow;
+        AddAudit(actor, "Vote", "internal_chat_poll", message.Id.ToString(), new { room.Id, command.OptionIndex });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SetMessagePinnedAsync(SetInternalChatMessagePinnedCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("internalChat", "edit");
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
+        if (!room.IsGroup) throw new DomainException("Mensagens podem ser fixadas somente em grupos.");
+        var exists = await db.InternalChatMessages.AsNoTracking().AnyAsync(entry => entry.Id == command.MessageId && entry.RoomId == room.Id && entry.Type != "pin", cancellationToken);
+        if (!exists) throw new DomainException("Mensagem não encontrada.", 404);
+        db.InternalChatMessages.Add(new InternalChatMessage
+        {
+            RoomId = room.Id,
+            SenderUserId = actorUser.Id,
+            Type = "pin",
+            Body = JsonSerializer.Serialize(new PinPayload(command.MessageId, command.Pinned), ChatJsonOptions),
+        });
+        AddAudit(actor, command.Pinned ? "Pin" : "Unpin", "internal_chat_message", command.MessageId.ToString(), new { room.Id });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task AddVisibleMessageAsync(InternalChatRoom room, InternalChatMessage message, Guid actorUserId, CancellationToken cancellationToken)
+    {
+        room.LastMessageAt = message.CreatedAt;
+        room.UpdatedAt = DateTimeOffset.UtcNow;
+        var memberships = await db.InternalChatRoomMembers.Where(member => member.RoomId == room.Id).ToListAsync(cancellationToken);
+        foreach (var membership in memberships)
+        {
+            membership.ArchivedAt = null;
+            if (membership.UserId == actorUserId) membership.LastReadAt = message.CreatedAt;
+        }
+        db.InternalChatMessages.Add(message);
     }
 
     public async Task<Guid> UploadAttachmentAsync(UploadInternalChatAttachmentCommand command, ActorContext actor, CancellationToken cancellationToken = default)

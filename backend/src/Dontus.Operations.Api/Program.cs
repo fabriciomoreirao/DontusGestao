@@ -1021,6 +1021,25 @@ operations.MapPost("", async (
                 request.Body, request.MessageType), actor, cancellationToken);
             break;
 
+        case "createInternalChatPoll":
+            id = await internalChatService.CreatePollAsync(new CreateInternalChatPollCommand(
+                request.RoomId ?? throw new DomainException("Grupo obrigatório."), request.PollQuestion, request.PollOptions), actor, cancellationToken);
+            break;
+
+        case "voteInternalChatPoll":
+            await internalChatService.VotePollAsync(new VoteInternalChatPollCommand(
+                request.RoomId ?? throw new DomainException("Grupo obrigatório."),
+                request.Id ?? throw new DomainException("Enquete obrigatória."),
+                request.PollOptionIndex ?? throw new DomainException("Opção obrigatória.")), actor, cancellationToken);
+            break;
+
+        case "setInternalChatMessagePinned":
+            await internalChatService.SetMessagePinnedAsync(new SetInternalChatMessagePinnedCommand(
+                request.RoomId ?? throw new DomainException("Grupo obrigatório."),
+                request.Id ?? throw new DomainException("Mensagem obrigatória."),
+                request.Pinned ?? true), actor, cancellationToken);
+            break;
+
         case "setInternalChatRoomArchived":
             await internalChatService.SetArchivedAsync(new SetInternalChatRoomArchivedCommand(
                 request.RoomId ?? throw new DomainException("Conversa obrigatória."), request.Archived ?? true), actor, cancellationToken);
@@ -1370,6 +1389,10 @@ public sealed class OperationsRequest
     public bool? Archived { get; init; }
     public IReadOnlyCollection<Guid>? MemberUserIds { get; init; }
     public string? MessageType { get; init; }
+    public string? PollQuestion { get; init; }
+    public IReadOnlyCollection<string>? PollOptions { get; init; }
+    public int? PollOptionIndex { get; init; }
+    public bool? Pinned { get; init; }
     public string? ContactName { get; init; }
     public string? CompanyName { get; init; }
     public Guid? ChannelId { get; init; }

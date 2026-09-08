@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  Archive, ArchiveRestore, BadgeCheck, Camera, Download, FileText, LockKeyhole,
-  MessageCircleMore, Paperclip, Plus, Search, Send, SmilePlus, UsersRound, X,
+  Archive, ArchiveRestore, BadgeCheck, BarChart3, Camera, Download, FileText, LockKeyhole,
+  MessageCircleMore, Paperclip, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -14,8 +14,8 @@ export type InternalChatUser = {
 export type InternalChatMessage = {
   id: string; roomId: string; senderUserId: string; senderName: string; senderPhotoDataUrl: string;
   senderIsCoordinator: boolean;
-  type: "text" | "sticker" | "image" | "video" | "file"; body: string; fileName: string;
-  contentType: string; hasAttachment: boolean; createdAt: string;
+  type: "text" | "sticker" | "image" | "video" | "file" | "poll"; body: string; fileName: string;
+  contentType: string; hasAttachment: boolean; isPinned: boolean; createdAt: string;
 };
 
 export type InternalChatRoom = {
@@ -54,6 +54,8 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
   const [stickersOpen, setStickersOpen] = useState(false);
+  const [pollOpen, setPollOpen] = useState(false);
+  const [pinnedOpen, setPinnedOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const groupPhotoInput = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -67,6 +69,7 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   const selectedConversation = conversations.find((entry) => entry.key === effectiveSelectedKey);
   const selectedRoom = selectedConversation?.room;
   const archivedCount = module.rooms.filter((room) => room.isArchived).length;
+  const pinnedMessages = selectedRoom?.messages.filter((entry) => entry.isPinned) ?? [];
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -104,6 +107,22 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
     if (!roomId) return;
     const result = await operate({ action: "sendInternalChatMessage", roomId, body: sticker, messageType: "sticker" }, "Figurinha enviada.");
     if (result) setStickersOpen(false);
+  };
+
+  const createPoll = async (question: string, options: string[]) => {
+    if (!selectedRoom?.isGroup) return;
+    const result = await operate({ action: "createInternalChatPoll", roomId: selectedRoom.id, pollQuestion: question, pollOptions: options }, "Enquete enviada ao grupo.");
+    if (result) setPollOpen(false);
+  };
+
+  const votePoll = async (messageId: string, optionIndex: number) => {
+    if (!selectedRoom?.isGroup) return;
+    await operate({ action: "voteInternalChatPoll", roomId: selectedRoom.id, id: messageId, pollOptionIndex: optionIndex }, "Voto registrado.");
+  };
+
+  const togglePin = async (entry: InternalChatMessage) => {
+    if (!selectedRoom?.isGroup) return;
+    await operate({ action: "setInternalChatMessagePinned", roomId: selectedRoom.id, id: entry.id, pinned: !entry.isPinned }, entry.isPinned ? "Mensagem desafixada." : "Mensagem fixada no grupo.");
   };
 
   const upload = async (files: FileList | null) => {
@@ -165,17 +184,20 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
             </span>
             <div className={selectedConversation.user?"internal-chat-profile-link":""} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)}><h2>{selectedConversation.name}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · Grupo privado` : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}</p></div>
             <span className="internal-chat-secure"><LockKeyhole size={13} /> Privado</span>
+            {selectedRoom?.isGroup && <button type="button" className={`internal-chat-head-tool ${pinnedOpen ? "active" : ""}`} onClick={() => setPinnedOpen((value) => !value)} title="Mensagens fixadas"><Pin size={16} />{pinnedMessages.length > 0 && <b>{pinnedMessages.length}</b>}</button>}
             {selectedRoom && <button type="button" className="internal-chat-archive" onClick={() => void archive()} title={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"} aria-label={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"}>{selectedRoom.isArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>}
           </header>
+          {selectedRoom?.isGroup && pinnedOpen && <div className="internal-chat-pinned-panel"><header><span><Pin size={14} /> Mensagens fixadas</span><button type="button" onClick={() => setPinnedOpen(false)}><X size={14} /></button></header>{pinnedMessages.length ? pinnedMessages.map((entry) => <article key={entry.id}><b>{entry.senderName}</b><span>{messagePreview(entry)}</span><time>{roomTime.format(new Date(entry.createdAt))}</time></article>) : <p>Nenhuma mensagem foi fixada neste grupo.</p>}</div>}
           <div className="internal-chat-messages">
             {!selectedRoom?.messages.length && <div className="internal-chat-first-message"><SmilePlus size={23} /><strong>Diga olá!</strong><span>Envie a primeira mensagem para iniciar esta conversa privada.</span></div>}
-            {selectedRoom?.messages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} />)}
+            {selectedRoom?.messages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} currentUserId={module.currentUserId} group={selectedRoom.isGroup} busy={busy} onVote={votePoll} onPin={togglePin} />)}
             <div ref={endRef} />
           </div>
           <form className="internal-chat-composer" onSubmit={sendMessage}>
             <input ref={fileInput} hidden type="file" multiple accept="image/*,video/*,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" onChange={(event) => void upload(event.target.files)} />
             <button type="button" className="internal-chat-tool" onClick={() => fileInput.current?.click()} disabled={busy} aria-label="Anexar arquivo"><Paperclip size={19} /></button>
             <div className="internal-chat-sticker-wrap"><button type="button" className="internal-chat-tool" onClick={() => setStickersOpen((value) => !value)} disabled={busy} aria-label="Enviar figurinha"><SmilePlus size={19} /></button>{stickersOpen && <div className="internal-chat-stickers">{stickers.map((sticker) => <button type="button" key={sticker} onClick={() => void sendSticker(sticker)}>{sticker}</button>)}</div>}</div>
+            {selectedRoom?.isGroup && <button type="button" className="internal-chat-tool poll" onClick={() => setPollOpen(true)} disabled={busy} aria-label="Criar enquete" title="Criar enquete"><BarChart3 size={19} /></button>}
             <textarea rows={1} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Escreva uma mensagem..." maxLength={4000} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
             <button className="internal-chat-send" disabled={busy || !message.trim()} aria-label="Enviar mensagem"><Send size={18} /></button>
           </form>
@@ -183,6 +205,7 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
       </main>
     </section>
     {creatingGroup && <CreateGroupModal module={module} busy={busy} onClose={() => setCreatingGroup(false)} onCreate={async (payload) => { const result = await operate({ action: "createInternalChatRoom", isGroup: true, ...payload }, "Grupo criado com sucesso."); if (result) { setCreatingGroup(false); if (result.id) setSelectedKey(result.id); } }} />}
+    {pollOpen && selectedRoom?.isGroup && <CreatePollModal busy={busy} onClose={() => setPollOpen(false)} onCreate={createPoll} />}
   </div>;
 }
 
@@ -204,19 +227,36 @@ function buildConversations(module: InternalChatModuleData, archived: boolean): 
   });
 }
 
-function MessageBubble({ message, own }: { message: InternalChatMessage; own: boolean }) {
+function MessageBubble({ message, own, currentUserId, group, busy, onVote, onPin }: { message: InternalChatMessage; own: boolean; currentUserId: string; group: boolean; busy: boolean; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void }) {
   const fileUrl = `/api/internal-chat-files/${message.id}`;
   return <article className={`internal-chat-message ${own ? "own" : ""}`}>
     {!own && <Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator} />}
-    <div className="internal-chat-bubble-wrap">{!own && <strong>{message.senderName}</strong>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""}`}>
+    <div className="internal-chat-bubble-wrap">{!own && <strong>{message.senderName}</strong>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
+      {group && <button type="button" className={`internal-chat-pin-message ${message.isPinned ? "active" : ""}`} disabled={busy} onClick={() => onPin(message)} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={13} /> : <Pin size={13} />}</button>}
       {message.type === "text" && <p>{message.body}</p>}
       {message.type === "sticker" && <span className="internal-chat-sticker-message">{message.body}</span>}
       {message.type === "image" && <a href={fileUrl} target="_blank" rel="noreferrer"><img src={fileUrl} alt={message.fileName || "Imagem enviada"} loading="lazy" /></a>}
       {message.type === "video" && <video controls preload="metadata"><source src={fileUrl} type={message.contentType} />Seu navegador não suporta vídeo.</video>}
       {message.type === "file" && <a className="internal-chat-file" href={fileUrl} download={message.fileName}><FileText size={24} /><span><b>{message.fileName}</b><small>{message.contentType || "Arquivo"}</small></span><Download size={18} /></a>}
+      {message.type === "poll" && <PollMessage message={message} currentUserId={currentUserId} busy={busy} onVote={onVote} />}
       <time>{messageTime.format(new Date(message.createdAt))}</time>
     </div></div>
   </article>;
+}
+
+function PollMessage({ message, currentUserId, busy, onVote }: { message: InternalChatMessage; currentUserId: string; busy: boolean; onVote: (messageId: string, optionIndex: number) => void }) {
+  const poll = parsePoll(message.body);
+  if (!poll) return <p>Não foi possível exibir esta enquete.</p>;
+  const total = poll.options.reduce((sum, option) => sum + option.voterUserIds.length, 0);
+  const selected = poll.options.findIndex((option) => option.voterUserIds.includes(currentUserId));
+  return <div className="internal-chat-poll"><span className="internal-chat-poll-label"><BarChart3 size={14} /> ENQUETE</span><h3>{poll.question}</h3><div>{poll.options.map((option, index) => { const votes = option.voterUserIds.length; const width = total ? votes / total * 100 : 0; return <button type="button" key={`${option.text}-${index}`} className={selected === index ? "selected" : ""} disabled={busy} onClick={() => onVote(message.id, index)}><i style={{ width: `${width}%` }} /><span>{option.text}</span><b>{votes} · {Math.round(width)}%</b></button>; })}</div><small>{total} voto(s) · {selected >= 0 ? "seu voto está registrado" : "selecione uma opção"}</small></div>;
+}
+
+function CreatePollModal({ busy, onClose, onCreate }: { busy: boolean; onClose: () => void; onCreate: (question: string, options: string[]) => void }) {
+  const [question, setQuestion] = useState("");
+  const [options, setOptions] = useState(["", ""]);
+  const submit = (event: FormEvent) => { event.preventDefault(); onCreate(question.trim(), options.map((entry) => entry.trim()).filter(Boolean)); };
+  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className="modal internal-chat-modal internal-chat-poll-modal" role="dialog" aria-modal="true" aria-label="Nova enquete"><div className="modal-head"><div><span className="eyebrow">CHAT INTERNO · GRUPO</span><h2>Nova enquete</h2><p>Crie uma pergunta e acompanhe os votos em tempo real.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div><form onSubmit={submit}><label>Pergunta *<textarea value={question} onChange={(event) => setQuestion(event.target.value)} required minLength={3} maxLength={240} placeholder="O que você deseja perguntar ao grupo?" /></label><div className="internal-chat-poll-options"><strong>Opções de resposta</strong>{options.map((option, index) => <label key={index}><span>{index + 1}</span><input value={option} onChange={(event) => setOptions((current) => current.map((entry, currentIndex) => currentIndex === index ? event.target.value : entry))} required={index < 2} maxLength={120} placeholder={`Opção ${index + 1}`} />{options.length > 2 && <button type="button" onClick={() => setOptions((current) => current.filter((_, currentIndex) => currentIndex !== index))}><X size={14} /></button>}</label>)}</div>{options.length < 8 && <button type="button" className="internal-chat-add-option" onClick={() => setOptions((current) => [...current, ""])}><Plus size={15} /> Adicionar opção</button>}<div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || question.trim().length < 3 || options.filter((entry) => entry.trim()).length < 2} type="submit"><BarChart3 size={16} /> {busy ? "Enviando..." : "Enviar enquete"}</button></div></form></div></div>;
 }
 
 function CreateGroupModal({ module, busy, onClose, onCreate }: { module: InternalChatModuleData; busy: boolean; onClose: () => void; onCreate: (payload: { name: string; photoDataUrl: string; memberUserIds: string[] }) => void }) {
@@ -253,5 +293,19 @@ function messagePreview(message: InternalChatMessage) {
   if (message.type === "image") return "Imagem";
   if (message.type === "video") return "Vídeo";
   if (message.type === "file") return message.fileName || "Arquivo";
+  if (message.type === "poll") return `Enquete: ${parsePoll(message.body)?.question ?? "pergunta"}`;
   return message.body;
+}
+
+function parsePoll(raw: string): { question: string; options: { text: string; voterUserIds: string[] }[] } | null {
+  try {
+    const value = JSON.parse(raw) as { question?: unknown; options?: unknown };
+    if (typeof value.question !== "string" || !Array.isArray(value.options)) return null;
+    const options = value.options.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const option = entry as { text?: unknown; voterUserIds?: unknown };
+      return typeof option.text === "string" ? [{ text: option.text, voterUserIds: Array.isArray(option.voterUserIds) ? option.voterUserIds.filter((id): id is string => typeof id === "string") : [] }] : [];
+    });
+    return options.length >= 2 ? { question: value.question, options } : null;
+  } catch { return null; }
 }

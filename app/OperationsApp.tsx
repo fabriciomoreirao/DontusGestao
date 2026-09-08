@@ -1810,7 +1810,7 @@ function CommercialLeadsModule({ flow, catalogs, items, employees, agendaModule,
     await operate({ action: "updateWorkItem", id: leadItem.id, title: leadItem.title, owner: leadItem.owner, amountCents: leadItem.amount_cents, description: JSON.stringify(next), version: leadItem.version }, "Lead movido com sucesso.");
   };
 
-  if (directSalesOpen && flow !== "qualification") return <DirectSalesView flow={flow} catalogs={activeCatalogs} items={items} currentUser={currentUser} busy={busy} canCreate={canCreate} operate={operate} onBack={() => setDirectSalesOpen(false)} onOpenSettings={onOpenSettings} />;
+  if (directSalesOpen && flow !== "qualification") return <DirectSalesView flow={flow} catalogs={activeCatalogs} items={items} currentUser={currentUser} busy={busy} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} operate={operate} onBack={() => setDirectSalesOpen(false)} onOpenSettings={onOpenSettings} />;
 
   return <section className={`commercial-leads-module commercial-${view}-view`}>
     <PageHeader eyebrow={`OPERAÇÃO · ${commercialFlowLabel(flow).toUpperCase()}`} title={commercialFlowLabel(flow)} description="Acompanhe oportunidades, etapas, interações e próximos follow-ups em um só fluxo." action={<span className="commercial-header-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" type="button" onClick={onOpenSettings} aria-label={`Configurar ${commercialFlowLabel(flow)}`} title={`Configurar ${commercialFlowLabel(flow)}`}><Settings size={18} /></button>}{flow !== "qualification" && <button className="secondary-button direct-sales-shortcut" type="button" onClick={() => setDirectSalesOpen(true)}><CircleDollarSign size={17} /> Venda direta</button>}{canCreate && <button className="primary-button" onClick={() => setCreating(true)}><Plus size={17} /> Novo lead</button>}</span>} />
@@ -1842,13 +1842,14 @@ function CommercialLeadsModule({ flow, catalogs, items, employees, agendaModule,
   </section>;
 }
 
-function DirectSalesView({ flow, catalogs, items, currentUser, busy, canCreate, operate, onBack, onOpenSettings }: { flow: Exclude<CommercialFlow, "qualification">; catalogs: CustomerCatalogOption[]; items: WorkItem[]; currentUser: AppData["user"]; busy: boolean; canCreate: boolean; operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onBack: () => void; onOpenSettings?: () => void }) {
+function DirectSalesView({ flow, catalogs, items, currentUser, busy, canCreate, canEdit, canDelete, operate, onBack, onOpenSettings }: { flow: Exclude<CommercialFlow, "qualification">; catalogs: CustomerCatalogOption[]; items: WorkItem[]; currentUser: AppData["user"]; busy: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onBack: () => void; onOpenSettings?: () => void }) {
   const today = new Date().toLocaleDateString("en-CA");
   const [month, setMonth] = useState(today.slice(0, 7));
   const [seller, setSeller] = useState("all");
   const [product, setProduct] = useState("all");
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<{ item: WorkItem; detail: DirectSale } | null>(null);
   const sales = useMemo(() => items.map((item) => ({ item, detail: parseDirectSale(item.description) }))
     .filter((entry): entry is { item: WorkItem; detail: DirectSale } => Boolean(entry.detail && entry.item.record_type === directSaleRecordType(flow) && entry.detail.flow === flow)), [items, flow]);
   const sellers = [...new Set(sales.map(({ detail }) => detail.seller).filter(Boolean))];
@@ -1871,35 +1872,36 @@ function DirectSalesView({ flow, catalogs, items, currentUser, busy, canCreate, 
       <label>Produto<select value={product} onChange={(event) => setProduct(event.target.value)}><option value="all">Todos</option>{products.map((entry) => <option key={entry}>{entry}</option>)}</select></label>
     </section>
     <section className="direct-sales-list panel">
-      <div className="direct-sales-row direct-sales-head"><span>ID · DATA</span><span>CLIENTE</span><span>ORIGEM</span><span>PRODUTOS</span><span>VERSÃO</span><span>VENDEDOR</span><span>DESCONTO</span><span>VALOR FINAL</span></div>
-      {filtered.length === 0 ? <EmptyState text="Nenhuma venda direta encontrada para os filtros selecionados." /> : filtered.map(({ item, detail }) => <article className="direct-sales-row" key={item.id}><span><strong>{detail.saleId}</strong><small>{detail.saleDate ? new Date(`${detail.saleDate}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</small></span><span><strong>{detail.name}</strong><small>{commercialFlowLabel(flow)}</small></span><span>{detail.origin || "—"}</span><span><strong>{detail.products.length} produto(s)</strong><small>{detail.products.map((entry) => `${entry.product}${entry.plan ? ` · ${entry.plan}` : ""}`).join(", ")}</small></span><span>{detail.version || "—"}</span><span>{detail.seller || item.owner}</span><span>{detail.discountCents ? `− ${formatMoney(detail.discountCents)}` : "—"}</span><span className="direct-sale-value"><small>{formatMoney(detail.subtotalCents)}</small><strong>{formatMoney(detail.totalCents)}</strong></span></article>)}
+      <div className="direct-sales-row direct-sales-head"><span>ID · DATA</span><span>CLIENTE</span><span>ORIGEM</span><span>PRODUTOS</span><span>VERSÃO</span><span>VENDEDOR</span><span>DESCONTO</span><span>VALOR FINAL</span><span>AÇÕES</span></div>
+      {filtered.length === 0 ? <EmptyState text="Nenhuma venda direta encontrada para os filtros selecionados." /> : filtered.map(({ item, detail }) => <article className="direct-sales-row" key={item.id}><span><strong>{detail.saleId}</strong><small>{detail.saleDate ? new Date(`${detail.saleDate}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</small></span><span><strong>{detail.name}</strong><small>{commercialFlowLabel(flow)}</small></span><span>{detail.origin || "—"}</span><span><strong>{detail.products.length} produto(s)</strong><small>{detail.products.map((entry) => `${entry.product}${entry.plan ? ` · ${entry.plan}` : ""}`).join(", ")}</small></span><span>{detail.version || "—"}</span><span>{detail.seller || item.owner}</span><span>{detail.discountCents ? `− ${formatMoney(detail.discountCents)}` : "—"}</span><span className="direct-sale-value"><small>{formatMoney(detail.subtotalCents)}</small><strong>{formatMoney(detail.totalCents)}</strong></span><span className="direct-sales-actions">{canEdit && <button type="button" onClick={() => setEditing({ item, detail })} title="Editar venda direta" aria-label={`Editar venda direta ${detail.saleId}`}><Pencil size={14} /></button>}{canDelete && <button type="button" className="delete" onClick={() => void operate({ action: "deleteWorkItem", id: item.id }, "Venda direta excluída com sucesso.")} title="Excluir venda direta" aria-label={`Excluir venda direta ${detail.saleId}`}><Trash2 size={14} /></button>}{!canEdit && !canDelete && <small>—</small>}</span></article>)}
     </section>
     {creating && <DirectSaleModal flow={flow} catalogs={catalogs} items={items} currentUser={currentUser} busy={busy} onClose={() => setCreating(false)} onSave={async (detail) => { const result = await operate({ action: "createWorkItem", module: "commercial", recordType: directSaleRecordType(flow), title: `${detail.name} · ${detail.saleId}`, customerName: detail.name, owner: detail.seller, team: commercialFlowLabel(flow), priority: "P3", amountCents: detail.totalCents, description: JSON.stringify(detail) }, "Venda direta adicionada com sucesso."); if (!result) return; const isLia=detail.followUpTrack==="lia"; const journey = isLia?{kind:"liaJourney",clientId:detail.saleId,startDate:new Date().toISOString(),sector:"Comercial",requestType:"Venda direta",history:[{id:crypto.randomUUID(),text:`Venda direta ${detail.saleId} encaminhada para a LIA.`,at:new Date().toISOString(),author:detail.seller}]}:{kind:"csJourney",track:detail.followUpTrack,phase:"validation",sourceLeadId:result.id,clientId:detail.saleId,commerciallyApproved:true,status:"Pendente",featuresBase:[],featuresActive:[],featuresPlus:[],labels:[],follows:[{kind:"Origem comercial",text:`Venda direta ${detail.saleId} enviada para acompanhamento de ${followUpTrackLabel(detail.followUpTrack)}.`,createdAt:new Date().toISOString(),actor:detail.seller}]}; const routed = await operate({action:"createWorkItem",module:isLia?"lia":"cs",recordType:isLia?"Projeto LIA":detail.followUpTrack==="activation"?"Acompanhamento de ativação":"Acompanhamento de retenção",title:detail.name,customerName:detail.name,owner:isLia?"Coordenação de LIA":"Coordenação de CS",team:isLia?"LIA":detail.followUpTrack==="activation"?"Sucesso do Cliente · Ativação":"Sucesso do Cliente · Retenção",status:isLia?"AguardandoKickoff":undefined,priority:"P3",amountCents:detail.totalCents,description:JSON.stringify(journey)},`Cliente direcionado para acompanhamento ${followUpTrackLabel(detail.followUpTrack)}.`); if (routed) setCreating(false); }} />}
+    {editing && <DirectSaleModal flow={flow} catalogs={catalogs} items={items} currentUser={currentUser} busy={busy} sale={editing.detail} onClose={() => setEditing(null)} onSave={async (detail) => { const result = await operate({ action: "updateWorkItem", id: editing.item.id, title: `${detail.name} · ${detail.saleId}`, customerName: detail.name, owner: detail.seller, amountCents: detail.totalCents, version: editing.item.version, description: JSON.stringify(detail) }, "Venda direta atualizada com sucesso."); if (result) setEditing(null); }} />}
   </section>;
 }
 
-function DirectSaleModal({ flow, catalogs, items, currentUser, busy, onClose, onSave }: { flow: Exclude<CommercialFlow, "qualification">; catalogs: CustomerCatalogOption[]; items: WorkItem[]; currentUser: AppData["user"]; busy: boolean; onClose: () => void; onSave: (detail: DirectSale) => Promise<void> }) {
+function DirectSaleModal({ flow, catalogs, items, currentUser, busy, sale, onClose, onSave }: { flow: Exclude<CommercialFlow, "qualification">; catalogs: CustomerCatalogOption[]; items: WorkItem[]; currentUser: AppData["user"]; busy: boolean; sale?: DirectSale; onClose: () => void; onSave: (detail: DirectSale) => Promise<void> }) {
   const today = new Date().toLocaleDateString("en-CA");
   const existingIds = items.map((item) => parseDirectSale(item.description)?.saleId ?? "").filter(Boolean);
   const yearPrefix = String(new Date().getFullYear()).slice(-2);
   const yearNumbers = existingIds.filter((id) => id.startsWith(yearPrefix)).map((id) => Number(id.slice(2))).filter(Number.isFinite);
-  const saleId = `${yearPrefix}${String(Math.max(0, ...yearNumbers) + 1).padStart(4, "0")}`;
+  const saleId = sale?.saleId ?? `${yearPrefix}${String(Math.max(0, ...yearNumbers) + 1).padStart(4, "0")}`;
   const origins = catalogs.filter((entry) => entry.active && entry.catalog === "acquisitionChannel");
   const productCatalogs = catalogs.filter((entry) => entry.active && entry.catalog === "commercialProduct");
   const versionOptions = [...new Set([
     ...catalogs.filter((entry) => entry.active && /version/i.test(entry.catalog)).map((entry) => entry.name),
     ...productCatalogs.flatMap((entry) => (commercialDetails(entry.description).plans ?? []).filter((plan) => plan.active).map((plan) => plan.name)),
   ].filter(Boolean))];
-  const [saleDate, setSaleDate] = useState(today);
-  const [name, setName] = useState("");
-  const [origin, setOrigin] = useState("");
-  const [version, setVersion] = useState("");
+  const [saleDate, setSaleDate] = useState(sale?.saleDate ?? today);
+  const [name, setName] = useState(sale?.name ?? "");
+  const [origin, setOrigin] = useState(sale?.origin ?? "");
+  const [version, setVersion] = useState(sale?.version ?? "");
   const [productId, setProductId] = useState("");
   const [plan, setPlan] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [selectedProducts, setSelectedProducts] = useState<DirectSale["products"]>([]);
-  const [discount, setDiscount] = useState(0);
-  const [followUpTrack, setFollowUpTrack] = useState<FollowUpTrack>(flow === "retention" ? "retention" : "activation");
+  const [selectedProducts, setSelectedProducts] = useState<DirectSale["products"]>(sale?.products ?? []);
+  const [discount, setDiscount] = useState((sale?.discountCents ?? 0) / 100);
+  const [followUpTrack, setFollowUpTrack] = useState<FollowUpTrack>(sale?.followUpTrack ?? (flow === "retention" ? "retention" : "activation"));
   const selectedProduct = productCatalogs.find((entry) => entry.id === productId);
   const plans = (selectedProduct ? commercialDetails(selectedProduct.description).plans ?? [] : []).filter((entry) => entry.active);
   const selectedPlan = plans.find((entry) => entry.name === plan);
@@ -1917,20 +1919,20 @@ function DirectSaleModal({ flow, catalogs, items, currentUser, busy, onClose, on
     const effectiveProducts=selectedProducts.length?selectedProducts:selectedProduct?[{product:selectedProduct.name,plan,unitValue:Number(selectedPlan?.value??0),quantity}]:[];
     if (!name.trim() || !origin || !version || effectiveProducts.length === 0) return;
     const effectiveSubtotal=effectiveProducts.reduce((sum,entry)=>sum+Math.round(entry.unitValue*entry.quantity*100),0);const effectiveDiscount=Math.min(effectiveSubtotal,discountCents);const effectiveTotal=Math.max(0,effectiveSubtotal-effectiveDiscount);
-    await onSave({ kind: "directSale", flow, followUpTrack, saleId, saleDate, name: name.trim(), origin, version, seller: currentUser.displayName, products: effectiveProducts, subtotalCents:effectiveSubtotal, discountCents:effectiveDiscount, totalCents:effectiveTotal });
+    await onSave({ kind: "directSale", flow, followUpTrack, saleId, saleDate, name: name.trim(), origin, version, seller: sale?.seller || currentUser.displayName, products: effectiveProducts, subtotalCents:effectiveSubtotal, discountCents:effectiveDiscount, totalCents:effectiveTotal });
   };
-  return <ModalShell title="Adicionar venda direta" subtitle={`${commercialFlowLabel(flow)} · ID ${saleId} gerado automaticamente`} onClose={onClose}><form className="form-grid direct-sale-form" onSubmit={submit}>
+  return <ModalShell title={sale ? "Editar venda direta" : "Adicionar venda direta"} subtitle={`${commercialFlowLabel(flow)} · ID ${saleId}${sale ? "" : " gerado automaticamente"}`} onClose={onClose}><form className="form-grid direct-sale-form" onSubmit={submit}>
     <label>Data *<input type="date" required value={saleDate} onChange={(event) => setSaleDate(event.target.value)} /></label><label>ID da venda<input readOnly value={saleId} /></label>
     <label className="wide">Nome *<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome do cliente ou empresa" /></label>
     <label>Origem *<select required value={origin} onChange={(event) => setOrigin(event.target.value)}><option value="">Selecionar origem</option>{origins.map((entry) => <option value={entry.name} key={entry.id}>{entry.name}</option>)}</select></label>
     <label>Versão *<select required value={version} onChange={(event) => setVersion(event.target.value)}><option value="">Selecionar versão</option>{versionOptions.map((entry) => <option key={entry}>{entry}</option>)}</select></label>
-    <label className="wide direct-sale-routing">Tipo de acompanhamento *<select required value={followUpTrack} onChange={(event) => setFollowUpTrack(event.target.value as FollowUpTrack)}><option value="activation">Acompanhamento Ativação</option><option value="retention">Acompanhamento Retenção</option><option value="lia">Acompanhamento LIA</option></select><small>Ao salvar, o cliente será encaminhado automaticamente para a fila selecionada.</small></label>
+    <label className="wide direct-sale-routing">Tipo de acompanhamento *<select required value={followUpTrack} disabled={Boolean(sale)} onChange={(event) => setFollowUpTrack(event.target.value as FollowUpTrack)}><option value="activation">Acompanhamento Ativação</option><option value="retention">Acompanhamento Retenção</option><option value="lia">Acompanhamento LIA</option></select><small>{sale ? "O encaminhamento original é preservado durante a edição." : "Ao salvar, o cliente será encaminhado automaticamente para a fila selecionada."}</small></label>
     <fieldset className="wide direct-sale-products"><legend>Produtos da venda *</legend><div className="direct-sale-product-picker"><label>Produto<select value={productId} onChange={(event) => { setProductId(event.target.value); setPlan(""); }}><option value="">Selecionar produto</option>{productCatalogs.map((entry) => <option value={entry.id} key={entry.id}>{entry.name}</option>)}</select></label><label>Plano / versão<select value={plan} onChange={(event) => setPlan(event.target.value)} disabled={!selectedProduct}><option value="">Sem plano</option>{plans.map((entry) => <option value={entry.name} key={entry.name}>{entry.name} · R$ {entry.value}</option>)}</select></label><label>Valor unitário<input readOnly value={selectedProduct ? formatMoney(Math.round(Number(selectedPlan?.value ?? 0) * 100)) : "R$ 0,00"} /></label><label>Qtd.<input type="number" min="1" value={quantity} onChange={(event) => setQuantity(Math.max(1, Number(event.target.value) || 1))} /></label><button type="button" className="secondary-button" disabled={!selectedProduct} onClick={addProduct}><Plus size={15} /> Adicionar</button></div>
       <div className="direct-sale-selected-products">{selectedProducts.length === 0 ? <p>Adicione um ou mais produtos para calcular o valor.</p> : selectedProducts.map((entry, index) => <article key={`${entry.product}-${entry.plan}-${index}`}><span><strong>{entry.product}</strong><small>{entry.plan || "Sem plano"} · {entry.quantity} un.</small></span><b>{formatMoney(Math.round(entry.unitValue * entry.quantity * 100))}</b><button type="button" aria-label="Remover produto" onClick={() => setSelectedProducts((current) => current.filter((_, currentIndex) => currentIndex !== index))}><Trash2 size={15} /></button></article>)}</div>
     </fieldset>
     <label>Subtotal<input readOnly value={formatMoney(subtotalCents)} /></label><label>Desconto (R$)<input type="number" min="0" step="0.01" value={discount || ""} onChange={(event) => setDiscount(Math.max(0, Number(event.target.value) || 0))} placeholder="0,00" /></label>
     <div className="direct-sale-final-value wide"><span>Valor final da venda</span><strong>{formatMoney(totalCents)}</strong><small>{discountCents > 0 ? `${formatMoney(discountCents)} de desconto aplicado` : "Sem desconto aplicado"}</small></div>
-    <div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy || !name.trim() || !origin || !version || (selectedProducts.length === 0&&!selectedProduct)}><Save size={16} /> {busy ? "Salvando..." : "Salvar venda direta"}</button></div>
+    <div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy || !name.trim() || !origin || !version || (selectedProducts.length === 0&&!selectedProduct)}><Save size={16} /> {busy ? "Salvando..." : sale ? "Salvar alterações" : "Salvar venda direta"}</button></div>
   </form></ModalShell>;
 }
 
@@ -2889,6 +2891,7 @@ function BackgroundImageModal({ image, agendaVisual, onAgendaVisual, onClose, on
 function ConfirmationModal({ action, successMessage, busy, onCancel, onConfirm }: { action?: string; successMessage: string; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
   const actionLabels: Record<string, string> = {
     createCustomer: "criar este cliente", createWorkItem: "criar este registro", createAppointment: "reservar este compromisso",
+    updateWorkItem: "salvar as alterações deste registro", deleteWorkItem: "excluir este registro",
     createAgendaCommitment: "agendar este compromisso", updateAgendaCommitment: "salvar as alterações deste compromisso",
     saveNote: "salvar esta anotação", deleteNote: "excluir esta anotação", duplicateNote: "duplicar esta anotação",
     reorderNotes: "salvar a nova organização das anotações",
