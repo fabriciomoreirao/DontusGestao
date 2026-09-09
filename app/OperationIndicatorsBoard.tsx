@@ -1,11 +1,11 @@
 "use client";
 
-import { Activity, BarChart3, CheckCircle2, Clock3, Filter, Gauge, Lightbulb, TrendingUp, UsersRound, WalletCards, X } from "lucide-react";
+import { Activity, ArrowLeft, BarChart3, CheckCircle2, Clock3, Filter, Gauge, Lightbulb, TrendingUp, UsersRound, WalletCards } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type Item = {
   id: string; module: string; record_type: string; title: string; customer_name?: string; owner: string; team: string;
-  status: string; amount_cents: number; description?: string; created_at: string; updated_at: string;
+  status: string; amount_cents: number; description?: string; due_at?: string | null; created_at: string; updated_at: string;
 };
 type Employee = { id: string; displayName: string; departmentName: string; active: boolean; photoDataUrl?: string };
 type Detail = Record<string, unknown>;
@@ -353,14 +353,113 @@ function metricsFor(module: string, contextKey: string, rows: Item[]): Metric[] 
     const success = rows.filter((item) => finished(item.status) || /success|sucesso|ok/.test(clean(item.status))).length; const failed = rows.filter((item) => /fail|erro|negad|bloque/.test(clean(item.status))).length;
     return [{ label: "Acessos realizados", value: rows.length, note: "sistemas externos" }, { label: "Com sucesso", value: success, note: percent(success, rows.length) }, { label: "Falhas", value: failed, note: percent(failed, rows.length) }, { label: "Colaboradores", value: owners, note: "com movimentação" }, { label: "Sistemas externos", value: new Set(rows.map((item) => item.record_type)).size, note: "recursos distintos" }, { label: "Setores", value: teams, note: "origens dos acessos" }, { label: "Média por colaborador", value: owners ? (rows.length / owners).toFixed(1) : "0", note: "acessos por pessoa" }, { label: "Dias com acesso", value: new Set(rows.map((item) => dateKey(item.created_at))).size, note: "atividade registrada" }];
   }
+  if (module === "marketing") {
+    const stageOf = ({ item, detail }: { item: Item; detail: Detail }) => clean(detail.stage ?? item.status);
+    const backlog = details.filter((entry) => /solicit|backlog|aguard|pendente/.test(stageOf(entry))).length;
+    const producing = details.filter((entry) => /produ[cç][aã]o|fazendo|andamento|execu[cç][aã]o/.test(stageOf(entry))).length;
+    const reviewing = details.filter((entry) => /revis|aprova[cç][aã]o|ajuste/.test(stageOf(entry))).length;
+    const completed = details.filter(({ item, detail }) => finished(detail.stage ?? item.status)).length;
+    const comments = details.reduce((sum, { detail }) => sum + arrayOf(detail.comments ?? detail.history).length, 0);
+    const channels = new Set(details.map(({ detail }) => stringOf(detail.channel, detail.media, detail.campaignType)).filter(Boolean)).size;
+    return [
+      { label: "Solicitações", value: rows.length, note: "demandas no período" }, { label: "Backlog", value: backlog, note: "aguardando produção" },
+      { label: "Em produção", value: producing, note: percent(producing, rows.length) }, { label: "Em revisão", value: reviewing, note: "aguardando validação" },
+      { label: "Concluídas", value: completed, note: percent(completed, rows.length) }, { label: "Comentários", value: comments, note: "interações registradas" },
+      { label: "Canais ativos", value: channels, note: "origens de demanda" }, { label: "Responsáveis", value: owners, note: "equipe com movimentação" },
+    ];
+  }
+  if (module === "ti") {
+    const stageOf = ({ item, detail }: { item: Item; detail: Detail }) => clean(detail.processStage ?? detail.triageStage ?? detail.stage ?? item.status);
+    const triage = details.filter((entry) => /triagem|recebid|an[aá]lise/.test(stageOf(entry))).length;
+    const processing = details.filter((entry) => /processo|desenvolvimento|andamento|execu[cç][aã]o/.test(stageOf(entry))).length;
+    const version = details.filter((entry) => /vers[aã]o|homologa|teste|libera/.test(stageOf(entry))).length;
+    const completed = details.filter(({ item, detail }) => finished(detail.processStage ?? detail.stage ?? item.status)).length;
+    const blocked = details.filter((entry) => /bloque|imped|erro/.test(stageOf(entry))).length;
+    const history = details.reduce((sum, { detail }) => sum + arrayOf(detail.history ?? detail.comments).length, 0);
+    return [
+      { label: "Demandas", value: rows.length, note: "itens no período" }, { label: "Em triagem", value: triage, note: percent(triage, rows.length) },
+      { label: "Em processo", value: processing, note: percent(processing, rows.length) }, { label: "Em versão", value: version, note: "teste, homologação ou liberação" },
+      { label: "Concluídas", value: completed, note: percent(completed, rows.length) }, { label: "Bloqueadas", value: blocked, note: "pedem intervenção" },
+      { label: "Interações técnicas", value: history, note: "histórico registrado" }, { label: "Responsáveis", value: owners, note: "equipe envolvida" },
+    ];
+  }
   return generic;
+}
+
+function supplementaryMetricsFor(module: string, contextKey: string, rows: Item[]): Metric[] {
+  const details = rows.map((item) => ({ item, detail: parse(item.description) }));
+  const today = new Date().toLocaleDateString("en-CA");
+  const updatedToday = rows.filter((item) => dateKey(item.updated_at) === today).length;
+  const withCustomer = rows.filter((item) => Boolean(item.customer_name)).length;
+  const overdue = rows.filter((item) => item.due_at && new Date(item.due_at).getTime() < Date.now() && !finished(item.status)).length;
+  const base = [
+    { label: "Atualizados hoje", value: updatedToday, note: "movimentação no dia" },
+    { label: "Com cliente vinculado", value: withCustomer, note: percent(withCustomer, rows.length) },
+    { label: "Fora do prazo", value: overdue, note: "itens ativos vencidos" },
+    { label: "Tipos distintos", value: new Set(rows.map((item) => item.record_type).filter(Boolean)).size, note: "categorias no filtro" },
+  ];
+  if (module === "waitingQueue") {
+    const contactedToday = details.filter(({ item, detail }) => /contacted|contato feito/.test(clean(detail.state ?? item.status)) && dateKey(item.updated_at) === today).length;
+    const withPhone = details.filter(({ item, detail }) => Boolean(stringOf(detail.phone, detail.whatsapp, detail.mobile, item.customer_name))).length;
+    const waitingLong = details.filter(({ item, detail }) => /waiting|espera|aguard/.test(clean(detail.state ?? item.status)) && durationDays(item) >= 1).length;
+    return [{ label: "Contatos hoje", value: contactedToday, note: "concluídos no dia" }, { label: "Com WhatsApp", value: withPhone, note: percent(withPhone, rows.length) }, { label: "Espera acima de 1 dia", value: waitingLong, note: "pedem prioridade" }, base[3]];
+  }
+  if (module === "support") {
+    const text = details.map(({ item, detail }) => clean(`${item.status} ${JSON.stringify(detail)}`));
+    return [{ label: "1º contato", value: text.filter((value) => /1.? contato|primeiro contato/.test(value)).length, note: "marcadores registrados" }, { label: "2º contato", value: text.filter((value) => /2.? contato|segundo contato/.test(value)).length, note: "retornos realizados" }, { label: "Cancelamentos", value: text.filter((value) => /cancel/.test(value)).length, note: "no período" }, { label: "Mal uso", value: text.filter((value) => /mal uso|bad.?usage/.test(value)).length, note: "ocorrências identificadas" }];
+  }
+  if (module === "cs" && contextKey.includes("enterprise")) {
+    const units = details.flatMap(({ detail }) => arrayOf(detail.units).map((unit) => (typeof unit === "object" && unit ? unit : {}) as Detail));
+    const scores = units.map(scoreOf);
+    return [{ label: "Unidades ativas", value: units.filter((unit) => !/inativ|cancel/.test(clean(unit.status))).length, note: "em operação" }, { label: "Unidades inativas", value: units.filter((unit) => /inativ|cancel/.test(clean(unit.status))).length, note: "fora de operação" }, { label: "Score alto", value: scores.filter((score) => score >= 75).length, note: "unidades ≥ 75%" }, { label: "Score crítico", value: scores.filter((score) => score < 50).length, note: "unidades abaixo de 50%" }];
+  }
+  if (module === "cs" || module === "lia") {
+    const phases = details.map(({ item, detail }) => clean(detail.phase ?? detail.stage ?? item.status));
+    const conference = phases.filter((phase) => /confer/.test(phase)).length;
+    const onboarding = phases.filter((phase) => /onboarding|kick.?off|teste/.test(phase)).length;
+    const noReturn = details.filter(({ item, detail }) => /sem retorno|no.?return/.test(clean(detail.finalStatus ?? item.status))).length;
+    const featureUse = details.reduce((sum, { detail }) => sum + arrayOf(detail.featuresActive ?? detail.featuresInUse).length, 0);
+    return [{ label: module === "lia" ? "Kick off / testes" : "Em onboarding", value: onboarding, note: "etapas iniciais" }, { label: "Em conferência", value: conference, note: "aguardando validação" }, { label: "Sem retorno", value: noReturn, note: "clientes que pedem atenção" }, { label: "Features em uso", value: featureUse, note: "adoções registradas" }];
+  }
+  if (module === "commissions") {
+    const pending = details.filter(({ item, detail }) => !/aprov|reprov/.test(clean(detail.decision ?? item.status)));
+    const pendingValue = pending.reduce((sum, { item, detail }) => sum + numberOf(detail.commissionCents, detail.proposedCents, item.amount_cents), 0);
+    const viewed = details.filter(({ detail }) => Boolean(detail.viewedAt ?? detail.acknowledgedAt ?? detail.agreedAt)).length;
+    const accepted = details.filter(({ detail }) => Boolean(detail.agreedAt ?? detail.acceptedAt)).length;
+    return [{ label: "Valor pendente", value: money(pendingValue), note: `${pending.length} lançamento(s)` }, { label: "Visualizadas", value: viewed, note: "pelo colaborador" }, { label: "Aceites", value: accepted, note: "marcadas como concordo" }, { label: "Competências", value: new Set(rows.map((item) => monthKey(item.created_at))).size, note: "meses com lançamentos" }];
+  }
+  if (module === "goals") {
+    const progress = details.map(({ detail }) => numberOf(detail.progress, detail.progressPercent));
+    return [{ label: "Acima de 75%", value: progress.filter((value) => value >= 75).length, note: "próximas da conclusão" }, { label: "Abaixo de 50%", value: progress.filter((value) => value < 50).length, note: "pedem atenção" }, { label: "Metas de valor", value: details.filter(({ detail }) => /valor|receita|salesvalue/.test(clean(detail.metric))).length, note: "indicadores financeiros" }, { label: "Metas de quantidade", value: details.filter(({ detail }) => /quant|count|cliente|atendimento/.test(clean(detail.metric))).length, note: "indicadores de volume" }];
+  }
+  if (module === "referrals") {
+    const sold = details.filter(({ detail }) => Boolean(detail.hired ?? detail.contracted));
+    const soldValue = sold.reduce((sum, { detail }) => sum + numberOf(detail.valueCents, detail.saleValueCents, detail.value) * (numberOf(detail.valueCents, detail.saleValueCents) ? 1 : 100), 0);
+    return [{ label: "Encaminhadas com sucesso", value: details.filter(({ detail }) => Boolean(detail.forwardedSuccessfully ?? detail.forwarded)).length, note: "flag confirmada" }, { label: "Com contratação", value: sold.length, note: percent(sold.length, rows.length) }, { label: "Valor contratado", value: money(soldValue), note: "indicações convertidas" }, { label: "Módulos indicados", value: new Set(details.map(({ detail }) => stringOf(detail.moduleName, detail.productName)).filter(Boolean)).size, note: "produtos distintos" }];
+  }
+  if (module === "tasks") {
+    return [{ label: "Alta prioridade", value: rows.filter((item) => /p1|alta|urgente/.test(clean(item.record_type + " " + item.status + " " + item.description))).length, note: "tarefas críticas" }, { label: "Com comentários", value: details.filter(({ detail }) => numberOf(detail.comments) > 0).length, note: "tarefas discutidas" }, { label: "Com protocolo", value: details.filter(({ detail }) => Boolean(detail.protocol)).length, note: "rastreabilidade ativa" }, { label: "Sem prazo", value: rows.filter((item) => !item.due_at).length, note: "sem vencimento definido" }];
+  }
+  if (module === "work") {
+    const nextWeek = Date.now() + 7 * 86_400_000;
+    return [{ label: "Compromissos hoje", value: rows.filter((item) => dateKey(item.created_at) === today).length, note: "agenda do dia" }, { label: "Próximos 7 dias", value: rows.filter((item) => { const at = new Date(item.created_at).getTime(); return at >= Date.now() && at <= nextWeek; }).length, note: "agenda futura" }, { label: "Cancelados", value: rows.filter((item) => /cancel/.test(clean(item.status))).length, note: "no recorte" }, { label: "Com participantes", value: details.filter(({ detail }) => numberOf(detail.participants) > 0).length, note: "compromissos compartilhados" }];
+  }
+  if (module === "marketing") {
+    return [{ label: "Com cliente", value: withCustomer, note: percent(withCustomer, rows.length) }, { label: "Atualizadas hoje", value: updatedToday, note: "movimentação recente" }, { label: "Prazo vencido", value: overdue, note: "demandas atrasadas" }, { label: "Tipos de peça", value: new Set(rows.map((item) => item.record_type)).size, note: "formatos solicitados" }];
+  }
+  if (module === "ti") {
+    const sourcedFromTask = details.filter(({ detail }) => Boolean(detail.sourceTaskId)).length;
+    const attachments = details.reduce((sum, { detail }) => sum + arrayOf(detail.attachments ?? (detail.sourceSnapshot as Detail | undefined)?.attachments).length, 0);
+    return [{ label: "Vindas de tarefas", value: sourcedFromTask, note: percent(sourcedFromTask, rows.length) }, { label: "Com anexos", value: attachments, note: "evidências técnicas" }, { label: "Atualizadas hoje", value: updatedToday, note: "movimentação recente" }, { label: "Prazo vencido", value: overdue, note: "demandas atrasadas" }];
+  }
+  return base;
 }
 
 function GenericOperationIndicatorsBoard({ title, module, contextKey = "", items, employees, onClose }: { title: string; module: string; contextKey?: string; items: Item[]; employees: Employee[]; onClose: () => void }) {
   const base = useMemo(() => scopeItems(items, module, contextKey), [items, module, contextKey]);
   const [from, setFrom] = useState(""); const [to, setTo] = useState(""); const [owner, setOwner] = useState("all"); const [team, setTeam] = useState("all"); const [status, setStatus] = useState("all");
   const scoped = useMemo(() => base.filter((item) => (!from || dateKey(item.created_at) >= from) && (!to || dateKey(item.created_at) <= to) && (owner === "all" || (item.owner || "Não atribuído") === owner) && (team === "all" || (item.team || "Sem setor") === team) && (status === "all" || (item.status || "Sem status") === status)), [base, from, to, owner, team, status]);
-  const metrics = metricsFor(module, contextKey, scoped);
+  const metrics = [...metricsFor(module, contextKey, scoped), ...supplementaryMetricsFor(module, contextKey, scoped)];
   const charts = useMemo(() => chartConfigFor(module, contextKey, scoped), [module, contextKey, scoped]);
   const statuses = charts.statuses; const categories = charts.categories; const collaborators = charts.owners;
   const maxStatus = Math.max(1, ...statuses.map((entry) => entry.count)); const maxCategory = Math.max(1, ...categories.map((entry) => entry.count));
@@ -371,8 +470,8 @@ function GenericOperationIndicatorsBoard({ title, module, contextKey = "", items
     collaborators[0] ? `${collaborators[0].label} lidera o volume com ${collaborators[0].count} registro(s).` : "Ainda não há responsável com movimentação neste recorte.",
     categories[0] ? `${categories[0].label} lidera em ${charts.categoryTitle.toLowerCase()} com ${categories[0].count} registro(s).` : `Ainda não há dados para ${charts.categoryTitle.toLowerCase()}.`,
   ];
-  return <div className="operation-bi-backdrop" role="dialog" aria-modal="true" aria-labelledby="operation-bi-title"><section className="operation-bi-board">
-    <header><div><span className="operation-bi-mark"><BarChart3 /></span><span><small>INDICADORES · OPERAÇÃO</small><h1 id="operation-bi-title">{title} BI</h1><p>Métricas calculadas com os registros reais e filtros desta funcionalidade.</p></span></div><button onClick={onClose} aria-label="Fechar indicadores"><X /></button></header>
+  return <main className="operation-bi-page" aria-labelledby="operation-bi-title"><section className="operation-bi-board">
+    <header><div><span className="operation-bi-mark"><BarChart3 /></span><span><small>INDICADORES · OPERAÇÃO</small><h1 id="operation-bi-title">{title} BI</h1><p>Métricas calculadas com os registros reais e filtros desta funcionalidade.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para a funcionalidade"><ArrowLeft /><span>Voltar</span></button></header>
     <section className="operation-bi-filters"><Filter /><label>De<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>Até<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label><label>Responsável<select value={owner} onChange={(event) => setOwner(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.owner || "Não atribuído"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Setor<select value={team} onChange={(event) => setTeam(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.team || "Sem setor"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.status || "Sem status"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><button onClick={() => { setFrom(""); setTo(""); setOwner("all"); setTeam("all"); setStatus("all"); }}>Limpar</button><strong>{scoped.length} registro(s)</strong></section>
     <section className="operation-bi-kpis">{metrics.map((metric, index) => <article key={metric.label}>{index % 4 === 0 ? <Activity /> : index % 4 === 1 ? <CheckCircle2 /> : index % 4 === 2 ? <Gauge /> : <WalletCards />}<span><small>{metric.label}</small><strong>{metric.value}</strong><em>{metric.note}</em></span></article>)}</section>
     <section className="operation-bi-insights"><Lightbulb /><strong>Insights estratégicos</strong>{insights.map((entry) => <span key={entry}>{entry}</span>)}</section>
@@ -382,7 +481,7 @@ function GenericOperationIndicatorsBoard({ title, module, contextKey = "", items
       <section className="operation-bi-panel team-panel"><header><span><UsersRound />{charts.ownerTitle}</span><b>{collaborators.length} {charts.ownerUnit}</b></header><div className="operation-team-list">{collaborators.length ? collaborators.map((entry) => { const employee = employees.find((candidate) => candidate.displayName === entry.label); return <article key={entry.label}><i className={employee?.photoDataUrl ? "has-photo" : ""} style={employee?.photoDataUrl ? { backgroundImage: `url("${employee.photoDataUrl}")` } : undefined}>{!employee?.photoDataUrl && entry.label.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><span><strong>{entry.label}</strong><small>{employee?.departmentName || "Sem setor informado"}</small></span><b>{entry.count}</b><em>{percent(entry.count, scoped.length)}</em></article>; }) : <p>Sem responsáveis vinculados.</p>}</div></section>
       <section className="operation-bi-panel category-panel"><header><span><Clock3 />{charts.categoryTitle}</span><b>{categories.length} {charts.categoryUnit}</b></header><div className="operation-status-bars">{categories.length ? categories.map((entry) => <div key={entry.label}><span>{entry.label}</span><i><b style={{ width: `${entry.count / maxCategory * 100}%` }} /></i><strong>{entry.count}</strong></div>) : <p>Sem dados para este recorte.</p>}</div></section>
     </div>
-  </section></div>;
+  </section></main>;
 }
 
 type CommercialEntry = { item: Item; detail: Detail; date: string; seller: string; stage: string; origin: string; amount: number; direct: boolean; won: boolean; lia: boolean; follows: Detail[] };
@@ -429,14 +528,14 @@ function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClos
   const months = Array.from({ length: 6 }, (_, index) => { const date = new Date(`${month}-01T12:00:00`); date.setMonth(date.getMonth() - (5 - index)); const key = date.toLocaleDateString("en-CA").slice(0, 7); return { key, label: monthLabel(key), value: all.filter((entry) => entry.date.startsWith(key) && entry.won).reduce((sum, entry) => sum + entry.amount, 0) }; }); const maxRevenue = Math.max(1, ...months.map((entry) => entry.value));
   const valueProgress = Math.min(100, Math.round(revenue / Math.max(1, valueGoal) * 100)); const salesProgress = Math.min(100, Math.round(sales.length / Math.max(1, salesGoal) * 100));
   const activityCards = [{ label: "Leads novos", value: leads.length, delta: delta(leads.length, previous.filter((entry) => !entry.direct).length) }, { label: "Contatos realizados", value: contacts, delta: 0 }, { label: "Demonstrações", value: demos, delta: 0 }, { label: "Propostas enviadas", value: proposals, delta: 0 }, { label: "Vendas sistema", value: systemSales.length, delta: delta(systemSales.length, previousSales.filter((entry) => !entry.lia).length) }, { label: "Vendas LIA", value: liaSales.length, delta: delta(liaSales.length, previousSales.filter((entry) => entry.lia).length) }];
-  return <div className="operation-bi-backdrop" role="dialog" aria-modal="true" aria-labelledby="operation-bi-title"><section className="operation-bi-board commercial-bi-board">
-    <header><div><span className="operation-bi-mark"><BarChart3 /></span><span><small>INDICADORES · CRM</small><h1 id="operation-bi-title">{title} BI comercial</h1><p>Metas, receita, funil e desempenho calculados pelos registros reais do CRM.</p></span></div><button onClick={onClose} aria-label="Fechar indicadores"><X /></button></header>
+  return <main className="operation-bi-page" aria-labelledby="operation-bi-title"><section className="operation-bi-board commercial-bi-board">
+    <header><div><span className="operation-bi-mark"><BarChart3 /></span><span><small>INDICADORES · CRM</small><h1 id="operation-bi-title">{title} BI comercial</h1><p>Metas, receita, funil e desempenho calculados pelos registros reais do CRM.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para a funcionalidade"><ArrowLeft /><span>Voltar</span></button></header>
     <section className="operation-bi-filters commercial-bi-filters"><Filter /><label>Competência<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><label>Vendedor<select value={seller} onChange={(event) => setSeller(event.target.value)}><option value="all">Todos</option>{[...new Set(all.map((entry) => entry.seller))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Etapa<select value={stage} onChange={(event) => setStage(event.target.value)}><option value="all">Todas</option>{[...new Set(all.map((entry) => entry.stage))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Origem<select value={origin} onChange={(event) => setOrigin(event.target.value)}><option value="all">Todas</option>{[...new Set(all.map((entry) => entry.origin))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><button onClick={() => { setSeller("all"); setStage("all"); setOrigin("all"); }}>Limpar</button><strong>{scoped.length} oportunidade(s)</strong></section>
     <section className="commercial-bi-primary"><GoalKpi label="Meta de receita" value={money(revenue)} target={valueGoal ? money(valueGoal) : "Sem meta cadastrada"} progress={valueGoal ? valueProgress : 0} /><GoalKpi label="Meta de vendas" value={sales.length} target={salesGoal ? `Meta: ${salesGoal} vendas` : "Sem meta cadastrada"} progress={salesGoal ? salesProgress : 0} /><article><small>Receita total (mês)</small><strong>{money(revenue)}</strong><span>Ticket médio: <b>{money(Math.round(revenue / Math.max(1, sales.length)))}</b></span></article><article><small>Pipeline (previsão)</small><strong>{money(pipeline)}</strong><span>{scoped.filter((entry) => !entry.won && !rejected(entry.item.status)).length} oportunidades · valor médio {money(Math.round(pipeline / Math.max(1, scoped.length - sales.length)))}</span></article></section>
     <section className="commercial-bi-activity">{activityCards.map((entry) => <article key={entry.label}><small>{entry.label}</small><strong>{entry.value}</strong><span className={entry.delta >= 0 ? "positive" : "negative"}>{entry.delta >= 0 ? "+" : ""}{entry.delta}% vs mês anterior</span></article>)}</section>
     <section className="commercial-bi-charts"><article><header>Funil de vendas (quantidade)</header><div className="commercial-funnel">{funnel.map((entry) => <span key={entry.label} style={{ width: `${42 + entry.count / maxFunnel * 58}%` }}><b>{entry.label}</b><em>{entry.count}</em></span>)}</div></article><article><header>Conversão do funil</header><div className="commercial-conversion"><b>{percent(sales.length, Math.max(1, leads.length + directSales.length))}</b><span>Conversão geral</span><i><em style={{ width: percent(sales.length, Math.max(1, scoped.length)) }} /></i><small>{sales.length} vendas em {scoped.length} oportunidades</small></div></article><article><header>Evolução da receita</header><div className="commercial-revenue-chart">{months.map((entry) => <span key={entry.key}><i style={{ height: `${Math.max(5, entry.value / maxRevenue * 100)}%` }} /><b>{entry.value ? money(entry.value) : "—"}</b><small>{entry.label}</small></span>)}</div></article><article><header>Origem dos leads</header><div className="commercial-origin"><i style={{ background: originGradient(origins, originTotal) }} /><div>{origins.map((entry, index) => <span key={entry.label}><b style={{ background: `hsl(${215 - index * 31} 78% ${45 + index * 3}%)` }} />{entry.label}<em>{percent(entry.count, originTotal)}</em></span>)}</div></div></article></section>
     <section className="commercial-bi-bottom"><article><header>Ranking da equipe (mês)</header><div className="commercial-ranking">{team.length ? team.map((entry, index) => <span key={entry.name}><b>#{index + 1}</b><strong>{entry.name}</strong><em>{money(entry.revenue)}</em><small>{entry.sales} vendas · {entry.lia} LIA · {entry.conversion}%</small></span>) : <p>Sem vendas neste recorte.</p>}</div></article><article><header>Atividades pendentes</header><div className="commercial-pending"><span><b>{overdue}</b> follow-ups atrasados</span><span><b>{withoutContact}</b> oportunidades sem contato</span><span><b>{todayFollowups}</b> interações hoje</span><span><b>{directSales.length}</b> vendas diretas</span></div></article><article><header>Oportunidades quentes</header><div className="commercial-hot">{hot.length ? hot.map((entry) => <span key={entry.item.id}><strong>{entry.item.title}</strong><small>{entry.stage}</small><b>{money(entry.amount)}</b></span>) : <p>Nenhuma oportunidade quente no filtro.</p>}</div></article><article><header>Desempenho vs mês anterior</header><div className="commercial-performance"><span>Receita <b className={delta(revenue, previousRevenue) >= 0 ? "positive" : "negative"}>{delta(revenue, previousRevenue)}%</b></span><span>Leads <b className={delta(leads.length, previous.filter((entry) => !entry.direct).length) >= 0 ? "positive" : "negative"}>{delta(leads.length, previous.filter((entry) => !entry.direct).length)}%</b></span><span>Vendas <b className={delta(sales.length, previousSales.length) >= 0 ? "positive" : "negative"}>{delta(sales.length, previousSales.length)}%</b></span><span>Conversão <b>{percent(sales.length, scoped.length)}</b></span></div></article></section>
-  </section></div>;
+  </section></main>;
 }
 
 function GoalKpi({ label, value, target, progress }: { label: string; value: string | number; target: string; progress: number }) { return <article className="commercial-goal-kpi"><small>{label}</small><strong>{value}</strong><span>{target}</span><i><em style={{ width: `${progress}%` }} /></i><b style={{ "--goal-progress": `${progress}%` } as React.CSSProperties}>{progress}%</b></article>; }
