@@ -282,6 +282,14 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Título da tarefa é obrigatório.");
         var whatsAppDigits = new string((command.ClientWhatsApp ?? "").Where(char.IsDigit).ToArray());
+        if ((whatsAppDigits.Length < 10 || whatsAppDigits.Length > 15) && command.CustomerId.HasValue)
+        {
+            var registeredPhone = await db.Customers.AsNoTracking()
+                .Where(entry => entry.Id == command.CustomerId.Value)
+                .Select(entry => entry.Phone)
+                .SingleOrDefaultAsync(cancellationToken) ?? "";
+            whatsAppDigits = new string(registeredPhone.Where(char.IsDigit).ToArray());
+        }
         if (whatsAppDigits.Length < 10 || whatsAppDigits.Length > 15)
             throw new DomainException("Informe um número de WhatsApp válido do cliente, com DDD.");
         var user = await GetActorUserAsync(actor, cancellationToken);
@@ -571,6 +579,14 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (string.IsNullOrWhiteSpace(command.Description))
             throw new DomainException("Descrição da tarefa é obrigatória.");
         var whatsAppDigits = new string((command.ClientWhatsApp ?? "").Where(char.IsDigit).ToArray());
+        if ((whatsAppDigits.Length < 10 || whatsAppDigits.Length > 15) && command.CustomerId.HasValue)
+        {
+            var registeredPhone = await db.Customers.AsNoTracking()
+                .Where(entry => entry.Id == command.CustomerId.Value)
+                .Select(entry => entry.Phone)
+                .SingleOrDefaultAsync(cancellationToken) ?? "";
+            whatsAppDigits = new string(registeredPhone.Where(char.IsDigit).ToArray());
+        }
         if (whatsAppDigits.Length < 10 || whatsAppDigits.Length > 15)
             throw new DomainException("Informe um número de WhatsApp válido do cliente, com DDD.");
         var user = await GetActorUserAsync(actor, cancellationToken);

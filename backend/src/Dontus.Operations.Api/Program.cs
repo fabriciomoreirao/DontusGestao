@@ -85,6 +85,198 @@ app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken can
         ? Results.Ok(new { status = "ready" })
         : Results.Problem(statusCode: 503, title: "Banco indisponível"));
 
+app.MapGet("/api/public-overview", async (string? month, HttpResponse response, OperationsDbContext db, CancellationToken cancellationToken) =>
+{
+    response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+    var localNow = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3));
+    var reference = DateTime.TryParseExact(month, "yyyy-MM", null, System.Globalization.DateTimeStyles.None, out var parsedMonth)
+        ? parsedMonth
+        : new DateTime(localNow.Year, localNow.Month, 1);
+    var localStart = new DateTimeOffset(reference.Year, reference.Month, 1, 0, 0, 0, TimeSpan.FromHours(-3));
+    var localEnd = localStart.AddMonths(1);
+    var monthStart = localStart.ToUniversalTime();
+    var monthEnd = localEnd.ToUniversalTime();
+    var chartEnd = localNow.Year == reference.Year && localNow.Month == reference.Month
+        ? new DateTimeOffset(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, localNow.Offset).AddDays(1)
+        : localEnd;
+    var days = Enumerable.Range(0, Math.Max(1, (int)(chartEnd - localStart).TotalDays))
+        .Select(index => localStart.AddDays(index).Date)
+        .ToList();
+
+    var departments = await db.TaskDepartments.AsNoTracking()
+        .Where(entry => entry.Active)
+        .OrderBy(entry => entry.Name)
+        .Select(entry => new { entry.Id, entry.Name })
+        .ToListAsync(cancellationToken);
+    var users = await db.Users.AsNoTracking()
+        .Where(entry => entry.Active && entry.BlockedAt == null)
+        .Select(entry => new { entry.Id, entry.DisplayName, entry.JobTitle, entry.PhotoDataUrl })
+        .ToListAsync(cancellationToken);
+    var memberships = await db.UserDepartments.AsNoTracking()
+        .Select(entry => new { entry.UserId, entry.DepartmentId, entry.IsPrimary })
+        .ToListAsync(cancellationToken);
+    var tasks = await (
+        from task in db.CorporateTasks.AsNoTracking()
+        join status in db.TaskStatuses.AsNoTracking() on task.StatusId equals status.Id
+        where task.CreatedAt >= monthStart && task.CreatedAt < monthEnd
+        select new { task.CurrentDepartmentId, task.AssigneeUserId, task.CreatedAt, task.CompletedAt, task.Cancelled, status.IsFinal }
+    ).ToListAsync(cancellationToken);
+    var calendars = await db.AgendaCalendars.AsNoTracking()
+        .Where(entry => entry.Active)
+        .Select(entry => new { entry.Id, entry.DepartmentId })
+        .ToListAsync(cancellationToken);
+    var commitments = await db.AgendaCommitments.AsNoTracking()
+        .Where(entry => entry.StartsAt >= monthStart && entry.StartsAt < monthEnd)
+        .Select(entry => new { entry.AgendaId, entry.ResponsibleUserId, entry.StartsAt })
+        .ToListAsync(cancellationToken);
+    var workItems = await db.WorkItems.AsNoTracking()
+        .Where(entry => entry.Module == "goals" ||
+            ((entry.Module == "support" || entry.Module == "referrals" || entry.Module == "commercial") && entry.CreatedAt >= monthStart && entry.CreatedAt < monthEnd))
+        .Select(entry => new { entry.Module, entry.RecordType, entry.Team, entry.Owner, entry.Status, entry.AmountCents, entry.Description, entry.CreatedAt })
+        .ToListAsync(cancellationToken);
+
+    var services = workItems.Where(entry => entry.Module == "support")
+        .Select(entry => ParsePublicService(entry.Team, entry.Owner, entry.Status, entry.Description, entry.CreatedAt))
+        .ToList();
+    var referrals = workItems.Where(entry => entry.Module == "referrals")
+        .Select(entry => ParsePublicReferral(entry.Team, entry.Owner, entry.Description, entry.CreatedAt))
+        .Where(entry => entry is not null)
+        .Cast<PublicReferralEntry>()
+        .ToList();
+    var commercial = workItems.Where(entry => entry.Module == "commercial")
+        .Select(entry => ParsePublicCommercial(entry.Team, entry.Owner, entry.Status, entry.RecordType, entry.AmountCents, entry.Description, entry.CreatedAt))
+        .ToList();
+    var goals = workItems.Where(entry => entry.Module == "goals")
+        .Select(entry => ParsePublicGoal(entry.Team, entry.Owner, entry.Description))
+        .Where(entry => entry is not null && entry.Active && entry.PeriodStart < localEnd.Date && entry.PeriodEnd >= localStart.Date)
+        .Cast<PublicGoalEntry>()
+        .ToList();
+    var departmentMetrics = departments.Select(department =>
+    {
+        var employeeIds = memberships.Where(entry => entry.DepartmentId == department.Id).Select(entry => entry.UserId).ToHashSet();
+        var employeeNames = users.Where(entry => employeeIds.Contains(entry.Id)).Select(entry => entry.DisplayName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var primaryEmployeeIds = memberships.Where(entry => entry.DepartmentId == department.Id && entry.IsPrimary).Select(entry => entry.UserId).ToHashSet();
+        var primaryEmployeeNames = users.Where(entry => primaryEmployeeIds.Contains(entry.Id)).Select(entry => entry.DisplayName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var departmentTasks = tasks.Where(entry => entry.CurrentDepartmentId == department.Id).ToList();
+        var departmentCalendarIds = calendars.Where(entry => entry.DepartmentId == department.Id).Select(entry => entry.Id).ToHashSet();
+        var departmentCommitments = commitments.Where(entry => departmentCalendarIds.Contains(entry.AgendaId)).ToList();
+        var departmentServices = services.Where(entry => SameMetric(entry.Sector, department.Name) ||
+            (!departments.Any(known => SameMetric(entry.Sector, known.Name)) && primaryEmployeeNames.Contains(entry.Responsible))).ToList();
+        var departmentGoals = goals.Where(entry => RelatedMetric(entry.Department, department.Name) ||
+            (!string.IsNullOrWhiteSpace(entry.Employee) && primaryEmployeeNames.Contains(entry.Employee)) ||
+            (string.IsNullOrWhiteSpace(entry.Department) && string.IsNullOrWhiteSpace(entry.Employee) && IsCommercialDepartment(department.Name))).ToList();
+        var hasCommercialLink = IsCommercialDepartment(department.Name) || commercial.Any(entry => RelatedMetric(entry.Team, department.Name)) ||
+            departmentGoals.Any(entry => SameMetric(entry.Metric, "salesValue") || SameMetric(entry.Metric, "salesCount"));
+        var departmentCommercial = hasCommercialLink
+            ? commercial.Where(entry => RelatedMetric(entry.Team, department.Name) || primaryEmployeeNames.Contains(entry.Seller)).ToList()
+            : [];
+        var highlights = users.Where(entry => employeeIds.Contains(entry.Id)).Select(employee =>
+        {
+            var completedTasks = departmentTasks.Count(entry => entry.AssigneeUserId == employee.Id && (entry.IsFinal || entry.CompletedAt.HasValue) && !entry.Cancelled);
+            var solvedServices = departmentServices.Count(entry => SameMetric(entry.Responsible, employee.DisplayName) && IsPublicResolved(entry.Status));
+            return new { employee.Id, employee.DisplayName, employee.JobTitle, employee.PhotoDataUrl, Solutions = completedTasks + solvedServices };
+        }).Where(entry => entry.Solutions > 0).OrderByDescending(entry => entry.Solutions).ThenBy(entry => entry.DisplayName).Take(5).ToList();
+        var sales = departmentCommercial.Where(entry => entry.Won).ToList();
+        var revenueCents = sales.Sum(entry => entry.AmountCents);
+        var pipelineCents = departmentCommercial.Where(entry => !entry.Won && !entry.Rejected).Sum(entry => entry.AmountCents);
+        var valueGoalCents = (long)Math.Round(departmentGoals.Where(entry => SameMetric(entry.Metric, "salesValue")).Sum(entry => entry.Target) * 100);
+        var salesGoal = (int)Math.Round(departmentGoals.Where(entry => SameMetric(entry.Metric, "salesCount")).Sum(entry => entry.Target));
+        var sellerRanking = departmentCommercial.GroupBy(entry => entry.Seller)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group => new { name = group.Key, sales = group.Count(entry => entry.Won), revenueCents = group.Where(entry => entry.Won).Sum(entry => entry.AmountCents), opportunities = group.Count() })
+            .OrderByDescending(entry => entry.revenueCents).ThenByDescending(entry => entry.sales).Take(5).ToList();
+        return new
+        {
+            id = department.Id,
+            name = department.Name,
+            commitments = departmentCommitments.Count,
+            upcomingCommitments = departmentCommitments.Count(entry => entry.StartsAt >= DateTimeOffset.UtcNow),
+            tasks = departmentTasks.Count,
+            activeTasks = departmentTasks.Count(entry => !entry.IsFinal && !entry.CompletedAt.HasValue && !entry.Cancelled),
+            completedTasks = departmentTasks.Count(entry => (entry.IsFinal || entry.CompletedAt.HasValue) && !entry.Cancelled),
+            attendances = departmentServices.Count,
+            solvedAttendances = departmentServices.Count(entry => IsPublicResolved(entry.Status)),
+            collaborators = employeeIds.Count,
+            topCollaborators = highlights.Select(entry => new { id = entry.Id, name = entry.DisplayName, role = entry.JobTitle, photo = entry.PhotoDataUrl, solutions = entry.Solutions }),
+            activityByDay = days.Select(day => new
+            {
+                date = day.ToString("yyyy-MM-dd"),
+                commitments = departmentCommitments.Count(entry => LocalDate(entry.StartsAt) == day),
+                tasks = departmentTasks.Count(entry => LocalDate(entry.CreatedAt) == day),
+                attendances = departmentServices.Count(entry => LocalDate(entry.CreatedAt) == day),
+                sales = departmentCommercial.Count(entry => entry.Won && entry.Date == day)
+            }),
+            commercial = new
+            {
+                enabled = hasCommercialLink,
+                leads = departmentCommercial.Count(entry => !entry.Direct),
+                opportunities = departmentCommercial.Count,
+                sales = sales.Count,
+                directSales = sales.Count(entry => entry.Direct),
+                revenueCents,
+                pipelineCents,
+                conversionRate = Percentage(sales.Count, departmentCommercial.Count),
+                valueGoalCents,
+                salesGoal,
+                valueProgress = Percentage(revenueCents, valueGoalCents),
+                salesProgress = Percentage(sales.Count, salesGoal),
+                topSellers = sellerRanking
+            }
+        };
+    }).ToList();
+
+    var topSenders = referrals.GroupBy(entry => entry.SenderName)
+        .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+        .Select(group => new { name = group.Key, department = group.First().SenderDepartment, count = group.Count() })
+        .OrderByDescending(entry => entry.count).ThenBy(entry => entry.name).Take(3).ToList();
+    var referralModules = referrals.GroupBy(entry => string.IsNullOrWhiteSpace(entry.ModuleName) ? "Não informado" : entry.ModuleName)
+        .Select(group => new { name = group.Key, count = group.Count() })
+        .OrderByDescending(entry => entry.count).ThenBy(entry => entry.name).Take(3).ToList();
+    var referralSectors = referrals.GroupBy(entry => string.IsNullOrWhiteSpace(entry.SenderDepartment) ? "Não informado" : entry.SenderDepartment)
+        .Select(group => new { name = group.Key, count = group.Count() })
+        .OrderByDescending(entry => entry.count).ThenBy(entry => entry.name).Take(3).ToList();
+
+    return Results.Ok(new
+    {
+        generatedAt = DateTimeOffset.UtcNow,
+        month = localStart.ToString("yyyy-MM"),
+        monthLabel = localStart.ToString("MMMM 'de' yyyy", new System.Globalization.CultureInfo("pt-BR")),
+        refreshAfterSeconds = 15,
+        overview = new
+        {
+            departments = departmentMetrics.Count,
+            commitments = commitments.Count,
+            tasks = tasks.Count,
+            activeTasks = tasks.Count(entry => !entry.IsFinal && !entry.CompletedAt.HasValue && !entry.Cancelled),
+            completedTasks = tasks.Count(entry => (entry.IsFinal || entry.CompletedAt.HasValue) && !entry.Cancelled),
+            attendances = services.Count,
+            solvedAttendances = services.Count(entry => IsPublicResolved(entry.Status)),
+            collaborators = users.Count,
+            activityByDay = days.Select(day => new
+            {
+                date = day.ToString("yyyy-MM-dd"),
+                commitments = commitments.Count(entry => LocalDate(entry.StartsAt) == day),
+                tasks = tasks.Count(entry => LocalDate(entry.CreatedAt) == day),
+                attendances = services.Count(entry => LocalDate(entry.CreatedAt) == day),
+                referrals = referrals.Count(entry => LocalDate(entry.CreatedAt) == day),
+                sales = commercial.Count(entry => entry.Won && entry.Date == day)
+            })
+        },
+        departments = departmentMetrics,
+        referrals = new
+        {
+            total = referrals.Count,
+            forwarded = referrals.Count(entry => entry.Forwarded),
+            hired = referrals.Count(entry => entry.Hired),
+            configured = referrals.Count(entry => entry.Configured),
+            approved = referrals.Count(entry => SameMetric(entry.Phase, "approved")),
+            topSenders,
+            modules = referralModules,
+            sectors = referralSectors
+        }
+    });
+}).RequireRateLimiting("operations");
+
 var localAuth = app.MapGroup("/api/auth");
 localAuth.MapPost("/login", async (
     LocalLoginRequest request,
@@ -1196,6 +1388,163 @@ operations.MapPost("", async (
 await InitializeDatabaseAsync(app);
 await app.RunAsync();
 
+static PublicServiceEntry ParsePublicService(string team, string owner, string status, string description, DateTimeOffset createdAt)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(description);
+        var root = document.RootElement;
+        return new PublicServiceEntry(
+            PublicJsonString(root, "sector", team),
+            PublicJsonString(root, "responsible", owner),
+            PublicJsonString(root, "status", status),
+            PublicJsonString(root, "problem", "Atendimento"),
+            createdAt);
+    }
+    catch
+    {
+        return new PublicServiceEntry(team, owner, status, "Atendimento", createdAt);
+    }
+}
+
+static PublicReferralEntry? ParsePublicReferral(string team, string owner, string description, DateTimeOffset createdAt)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(description);
+        var root = document.RootElement;
+        if (!SameMetric(PublicJsonString(root, "kind", ""), "referral")) return null;
+        return new PublicReferralEntry(
+            PublicJsonString(root, "senderName", owner),
+            PublicJsonString(root, "senderDepartment", team),
+            PublicJsonString(root, "moduleName", "Não informado"),
+            PublicJsonString(root, "phase", "tracking"),
+            PublicJsonBoolean(root, "forwarded"),
+            PublicJsonBoolean(root, "hired"),
+            PublicJsonBoolean(root, "configured"),
+            createdAt);
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static PublicCommercialEntry ParsePublicCommercial(string team, string owner, string status, string recordType, long amountCents, string description, DateTimeOffset createdAt)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(description);
+        var root = document.RootElement;
+        var kind = PublicJsonString(root, "kind", recordType);
+        var stage = PublicJsonString(root, "stage", status);
+        var direct = RelatedMetric(kind, "directSale") || RelatedMetric(recordType, "venda direta");
+        var won = direct || IsPublicWon($"{stage} {status}");
+        var date = PublicJsonDate(root, "saleDate") ?? PublicJsonDate(root, "entryDate") ?? LocalDate(createdAt);
+        return new PublicCommercialEntry(
+            PublicJsonString(root, "team", team),
+            PublicJsonString(root, "seller", PublicJsonString(root, "sellerName", owner)),
+            stage,
+            PublicJsonString(root, "origin", PublicJsonString(root, "source", "Não informada")),
+            date,
+            Math.Max(0, PublicJsonLong(root, "totalCents", PublicJsonLong(root, "valueCents", amountCents))),
+            direct,
+            won,
+            IsPublicRejected($"{stage} {status}"));
+    }
+    catch
+    {
+        return new PublicCommercialEntry(team, owner, status, "Não informada", LocalDate(createdAt), Math.Max(0, amountCents), false, IsPublicWon(status), IsPublicRejected(status));
+    }
+}
+
+static PublicGoalEntry? ParsePublicGoal(string team, string owner, string description)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(description);
+        var root = document.RootElement;
+        if (!SameMetric(PublicJsonString(root, "kind", ""), "performanceGoal")) return null;
+        var start = PublicJsonDate(root, "periodStart");
+        var end = PublicJsonDate(root, "periodEnd");
+        if (!start.HasValue || !end.HasValue) return null;
+        return new PublicGoalEntry(
+            PublicJsonString(root, "departmentName", team),
+            PublicJsonString(root, "employeeName", owner),
+            PublicJsonString(root, "metric", ""),
+            PublicJsonDouble(root, "target"),
+            start.Value,
+            end.Value,
+            !root.TryGetProperty("active", out var active) || active.ValueKind != JsonValueKind.False);
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static string PublicJsonString(JsonElement root, string name, string fallback) =>
+    root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+        ? value.GetString() ?? fallback
+        : fallback;
+
+static bool PublicJsonBoolean(JsonElement root, string name) =>
+    root.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True;
+
+static double PublicJsonDouble(JsonElement root, string name) =>
+    root.TryGetProperty(name, out var value) && value.TryGetDouble(out var result) ? result : 0;
+
+static long PublicJsonLong(JsonElement root, string name, long fallback) =>
+    root.TryGetProperty(name, out var value) && value.TryGetInt64(out var result) ? result : fallback;
+
+static DateTime? PublicJsonDate(JsonElement root, string name) =>
+    root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && DateTime.TryParse(value.GetString(), out var result)
+        ? result.Date
+        : null;
+
+static DateTime LocalDate(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(-3)).Date;
+
+static int Percentage(long value, long total) => total > 0 ? (int)Math.Min(100, Math.Round(value * 100d / total)) : 0;
+
+static bool SameMetric(string? left, string? right) =>
+    string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+static string MetricKey(string? value) => (value ?? "").Trim().ToLowerInvariant()
+    .Replace("á", "a").Replace("à", "a").Replace("â", "a").Replace("ã", "a")
+    .Replace("é", "e").Replace("ê", "e").Replace("í", "i")
+    .Replace("ó", "o").Replace("ô", "o").Replace("õ", "o").Replace("ú", "u").Replace("ç", "c");
+
+static bool RelatedMetric(string? left, string? right)
+{
+    var leftKey = MetricKey(left);
+    var rightKey = MetricKey(right);
+    return leftKey.Length > 0 && rightKey.Length > 0 && (leftKey.Contains(rightKey) || rightKey.Contains(leftKey));
+}
+
+static bool IsCommercialDepartment(string? name)
+{
+    var normalized = MetricKey(name);
+    return normalized.Contains("comercial") || normalized.Contains("venda");
+}
+
+static bool IsPublicWon(string? status)
+{
+    var normalized = MetricKey(status);
+    return normalized.Contains("ganho") || normalized.Contains("vendid") || normalized.Contains("fechad") || normalized.Contains("contrat") || normalized.Contains("conclu");
+}
+
+static bool IsPublicRejected(string? status)
+{
+    var normalized = MetricKey(status);
+    return normalized.Contains("reprov") || normalized.Contains("cancel") || normalized.Contains("perdid") || normalized.Contains("descart");
+}
+
+static bool IsPublicResolved(string? status)
+{
+    var normalized = status?.Trim().ToLowerInvariant() ?? "";
+    return normalized.Contains("conclu") || normalized.Contains("resolvid") || normalized.Contains("finaliz") || normalized.Contains("encerrad");
+}
+
 static string WhatsAppMessageBody(JsonElement message, string type, string fallback)
 {
     if (type == "text" && message.TryGetProperty("text", out var text) &&
@@ -1242,6 +1591,11 @@ static async Task InitializeDatabaseAsync(WebApplication app)
         }
     }
 }
+
+sealed record PublicServiceEntry(string Sector, string Responsible, string Status, string Problem, DateTimeOffset CreatedAt);
+sealed record PublicReferralEntry(string SenderName, string SenderDepartment, string ModuleName, string Phase, bool Forwarded, bool Hired, bool Configured, DateTimeOffset CreatedAt);
+sealed record PublicCommercialEntry(string Team, string Seller, string Stage, string Origin, DateTime Date, long AmountCents, bool Direct, bool Won, bool Rejected);
+sealed record PublicGoalEntry(string Department, string Employee, string Metric, double Target, DateTime PeriodStart, DateTime PeriodEnd, bool Active);
 
 public sealed class OperationsRequest
 {

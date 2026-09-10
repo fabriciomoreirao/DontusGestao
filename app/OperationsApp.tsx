@@ -2,7 +2,7 @@
 
 import {
   Activity, ArrowLeft, ArrowRightLeft, BadgeCheck, Bell, BriefcaseBusiness, CalendarDays,
-  ChartNoAxesCombined, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Columns3,
+  ChartNoAxesCombined, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Columns3, Copy,
   ClipboardCheck, Clock3, Command, Database, Eye, EyeOff, FileCheck2, Headphones, ImageIcon, LayoutDashboard,
   ExternalLink, List, ListTodo, LockKeyhole, Mail, Menu, MessageCircleMore, MessageSquareText, MonitorUp, Pencil, Plus, Save, Search, ShieldCheck,
   PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Stethoscope, Sun, Moon, Target, Trash2, Upload, UserPlus, UserRound, Users, UsersRound,
@@ -34,6 +34,7 @@ import GoalsModule from "@/app/GoalsModule";
 import { PortalLinksAdmin } from "@/app/PortalLinksModule";
 import SatisfactionSurveysModule, { PublicSurveyResponsePage } from "@/app/SatisfactionSurveysModule";
 import OperationIndicatorsBoard from "@/app/OperationIndicatorsBoard";
+import PublicOperationsOverview from "@/app/PublicOperationsOverview";
 import { cleanDepartmentDescription, departmentQueueMode, serializeDepartmentDescription, type DepartmentQueueMode } from "@/lib/waitingQueue";
 
 type Customer = {
@@ -386,6 +387,7 @@ export default function OperationsApp() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
+      if (params.get("public") === "overview") { setLoading(false); return; }
       const requestedModule = params.get("mod") as ModuleKey | null;
       if (requestedModule && requestedModule in MODULES && requestedModule !== "customers") setActive(requestedModule);
       const requestedCommercialFlow = params.get("commercialFlow") as CommercialFlow | null;
@@ -393,6 +395,7 @@ export default function OperationsApp() {
       const requestedCsFlow = params.get("csFlow") as CsFlow | null;
       if (requestedCsFlow === "onboarding" || requestedCsFlow === "evolution" || requestedCsFlow === "enterprise") setCsFlow(requestedCsFlow);
       setIndicatorsOpen(params.get("view") === "indicators");
+      setHistoryClientId(params.get("clientId") ?? "");
       const requestedCatalog = params.get("cad") as CatalogSection | null;
       if (requestedCatalog && ["departments", "types", "priorities", "statuses", "kanban", "sla", "people"].includes(requestedCatalog))
         setCatalogSection(requestedCatalog);
@@ -402,9 +405,9 @@ export default function OperationsApp() {
   }, []);
 
   useEffect(() => {
-    const syncIndicatorsPage = () => setIndicatorsOpen(new URLSearchParams(window.location.search).get("view") === "indicators");
-    window.addEventListener("popstate", syncIndicatorsPage);
-    return () => window.removeEventListener("popstate", syncIndicatorsPage);
+    const syncUrlPages = () => { const params = new URLSearchParams(window.location.search); setIndicatorsOpen(params.get("view") === "indicators"); setHistoryClientId(params.get("clientId") ?? ""); };
+    window.addEventListener("popstate", syncUrlPages);
+    return () => window.removeEventListener("popstate", syncUrlPages);
   }, []);
 
   useEffect(() => {
@@ -461,8 +464,10 @@ export default function OperationsApp() {
     setSelectedItem(null);
     setSelectedCustomer(null);
     setIndicatorsOpen(false);
+    setHistoryClientId("");
     const url = new URL(window.location.href);
     url.searchParams.delete("view");
+    url.searchParams.delete("clientId");
     if (module === "dashboard") url.searchParams.delete("mod");
     else url.searchParams.set("mod", module);
     if (module === "commercial" && nextCommercialFlow) url.searchParams.set("commercialFlow", nextCommercialFlow);
@@ -487,6 +492,24 @@ export default function OperationsApp() {
     setIndicatorsOpen(false);
     const url = new URL(window.location.href);
     url.searchParams.delete("view");
+    window.history.replaceState({}, "", url);
+  };
+
+  const openClientHistoryPage = (value: string) => {
+    const query = value.trim();
+    if (!query) return;
+    setHistoryClientId(query);
+    setIndicatorsOpen(false);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("view");
+    url.searchParams.set("clientId", query);
+    window.history.pushState({}, "", url);
+  };
+
+  const closeClientHistoryPage = () => {
+    setHistoryClientId("");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("clientId");
     window.history.replaceState({}, "", url);
   };
 
@@ -760,6 +783,8 @@ export default function OperationsApp() {
     });
   }, [attentionNotice?.id]);
 
+  const publicOverview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("public") === "overview";
+  if (publicOverview) return <PublicOperationsOverview />;
   const publicSurveyToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("survey") : null;
   if (publicSurveyToken) return <PublicSurveyResponsePage token={publicSurveyToken} />;
   if (loading) return <LoadingScreen />;
@@ -924,11 +949,11 @@ export default function OperationsApp() {
           <button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menu"><Menu size={21} /></button>
           <div className="global-search">
             <Search size={18} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && search.trim().length >= 3) { setHistoryClientId(search.trim()); setSearch(""); } }} placeholder="Buscar ID, clientes, protocolos, tarefas..." aria-label="Busca global" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && search.trim().length >= 3) { openClientHistoryPage(search); setSearch(""); } }} placeholder="Buscar ID, clientes, protocolos, tarefas..." aria-label="Busca global" />
             <kbd>⌘ K</kbd>
             {(globalResults.length > 0 || search.trim().length >= 3) && (
               <div className="search-results">
-                {search.trim().length >= 3 && <button className="search-id-overview" onClick={() => { setHistoryClientId(search.trim()); setSearch(""); }}><span><b>Visão completa do ID {search.trim()}</b></span><small>Histórico, acompanhamentos, tarefas, protocolos, agenda e rede</small></button>}
+                {search.trim().length >= 3 && <button className="search-id-overview" onClick={() => { openClientHistoryPage(search); setSearch(""); }}><span><b>Abrir página do ID {search.trim()}</b></span><small>Tarefas, atendimentos, temas, sugestões, acompanhamentos, agenda e rede</small></button>}
                 {globalResults.map((result) => (
                   <button key={`${result.kind}-${result.id}`} onClick={() => {
                     if (result.kind === "customer") {
@@ -955,8 +980,8 @@ export default function OperationsApp() {
           </div>
         </header>
 
-        <div className={`content ${indicatorsOpen ? "indicators-page-active" : ""}`}>
-          {indicatorsOpen && operationContext ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} onClose={closeIndicatorsPage} /> : <>
+        <div className={`content ${indicatorsOpen || historyClientId ? "indicators-page-active" : ""}`}>
+          {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} onClose={closeIndicatorsPage} /> : <>
           {operationContext && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
           {active === "dashboard" && (
             dashboardPage === "portal"
@@ -1095,42 +1120,66 @@ export default function OperationsApp() {
       {changingPassword && <PasswordChangeModal busy={busy} onClose={() => setChangingPassword(false)} onComplete={() => { setChangingPassword(false); setToast({ kind: "success", message: "Senha alterada com sucesso." }); }} />}
       {profileEmployee && <EmployeeProfileDrawer employee={profileEmployee} employees={data.access?.employees ?? []} items={data.items} currentUser={data.user} editable={profileEditable} taskCount={data.taskModule?.tasks.filter(task=>task.assigneeName===profileEmployee.displayName&&!task.completedAt&&!task.cancelled).length??0} busy={busy} operate={operate} onClose={() => { setProfileEmployee(null); setProfileEditable(false); }} />}
       {backgroundModalOpen && <BackgroundImageModal image={backgroundImage} agendaVisual={agendaVisual} onAgendaVisual={(visual)=>{setAgendaVisual(visual);window.localStorage.setItem("dontus.agenda-visual",visual);}} onClose={() => setBackgroundModalOpen(false)} onUpload={(file) => uploadBackgroundImage(file, () => setBackgroundModalOpen(false))} onRemove={() => { changeBackgroundImage(""); setBackgroundModalOpen(false); }} />}
-      {historyClientId && <ClientHistoryModal query={historyClientId} data={data} onClose={() => setHistoryClientId("")} onNavigate={(module) => { setHistoryClientId(""); navigate(module); }} />}
       {confirmation && <ConfirmationModal action={confirmation.payload.action as string | undefined} successMessage={confirmation.success} busy={busy} onCancel={cancelOperation} onConfirm={() => void confirmOperation()} />}
       {toast && <div className={`toast ${toast.kind}`} role="status">{toast.kind === "success" ? <CheckCircle2 size={18} /> : <Activity size={18} />}{toast.message}</div>}
     </div>
   );
 }
 
-function ClientHistoryModal({ query, data, onClose, onNavigate }: { query: string; data: AppData; onClose: () => void; onNavigate: (module: ModuleKey) => void }) {
+function ClientHistoryPage({ query, data, onClose, onNavigate }: { query: string; data: AppData; onClose: () => void; onNavigate: (module: ModuleKey) => void }) {
+  const [tab, setTab] = useState<"overview" | "tasks" | "support" | "suggestions" | "timeline">("overview");
   const key = query.trim().toLocaleLowerCase("pt-BR");
   const contains = (...values: unknown[]) => values.some((value) => String(value ?? "").toLocaleLowerCase("pt-BR").includes(key));
   const customer = data.customers.find((entry) => contains(entry.id, entry.trade_name, entry.legal_name, entry.document_masked));
-  const workItems = data.items.filter((entry) => contains(entry.customer_id, entry.customer_name, entry.title, entry.description));
-  const tasks = data.taskModule?.tasks.filter((entry) => contains(entry.customerId, entry.customerCode, entry.customerName, entry.title, entry.protocol, entry.description)) ?? [];
-  const commitments = data.agendaModule?.commitments.filter((entry) => contains(entry.title, entry.description, entry.responsibleName)) ?? [];
+  const belongs = (...values: unknown[]) => contains(...values) || Boolean(customer && values.some((value) => {
+    const normalized = String(value ?? "").toLocaleLowerCase("pt-BR");
+    return normalized === customer.id.toLocaleLowerCase("pt-BR") || normalized === customer.trade_name.toLocaleLowerCase("pt-BR") || normalized === customer.legal_name.toLocaleLowerCase("pt-BR");
+  }));
+  const workItems = data.items.filter((entry) => belongs(entry.customer_id, entry.customer_name, entry.title, entry.description));
+  const tasks = data.taskModule?.tasks.filter((entry) => belongs(entry.customerId, entry.customerCode, entry.customerName, entry.title, entry.protocol, entry.description)) ?? [];
+  const commitments = data.agendaModule?.commitments.filter((entry) => belongs(entry.title, entry.description)) ?? [];
+  const suggestions = data.suggestionModule?.suggestions.filter((entry) => belongs(entry.customerId, entry.customerName, entry.name, entry.description, entry.protocol)) ?? [];
+  const attendances = workItems.filter((entry) => entry.module === "support").map((entry) => {
+    try { const detail = JSON.parse(entry.description) as { problem?: string; tool?: string; status?: string; solution?: string; responsible?: string; date?: string }; return { item: entry, theme: detail.problem || detail.tool || entry.record_type, status: detail.status || entry.status, solution: detail.solution || "", responsible: detail.responsible || entry.owner, at: detail.date || entry.updated_at }; }
+    catch { return { item: entry, theme: entry.record_type, status: entry.status, solution: "", responsible: entry.owner, at: entry.updated_at }; }
+  });
   const protocols = [...new Set([...tasks.map((entry) => entry.protocol), ...(customer?.open_task_protocols ?? [])].filter(Boolean))];
   const openTasks = tasks.filter((entry) => !entry.completedAt && !entry.cancelled);
+  const completedTasks = tasks.filter((entry) => Boolean(entry.completedAt) || entry.cancelled);
+  const solvedAttendances = attendances.filter((entry) => /conclu|resolvid|finaliz|encerrad/i.test(entry.status));
   const tracking = workItems.filter((entry) => ["cs", "lia"].includes(entry.module));
   const networks = data.items.filter((entry) => entry.module === "cs" && /enterpriseNetwork/.test(entry.description)).filter((entry) => {
-    try { const parsed = JSON.parse(entry.description) as { units?: Array<Record<string, unknown>> }; return contains(entry.title, ...((parsed.units ?? []).flatMap((unit) => [unit.id, unit.externalId, unit.name]))); } catch { return false; }
+    try { const parsed = JSON.parse(entry.description) as { units?: Array<Record<string, unknown>> }; return belongs(entry.title, ...((parsed.units ?? []).flatMap((unit) => [unit.id, unit.externalId, unit.name]))); } catch { return false; }
   });
-  const statusCounts = [...workItems.map((entry) => entry.status), ...tasks.map((entry) => entry.statusName)].reduce<Record<string, number>>((acc, status) => { const label = status || "Sem status"; acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
-  const moduleCounts = workItems.reduce<Record<string, number>>((acc, entry) => { const label = MODULES[entry.module as ModuleKey]?.short ?? entry.module; acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
+  const statusCounts = [...workItems.map((entry) => entry.status), ...tasks.map((entry) => entry.statusName), ...suggestions.map((entry) => entry.statusName)].reduce<Record<string, number>>((acc, status) => { const label = status || "Sem status"; acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
+  const moduleCounts = [...workItems.map((entry) => MODULES[entry.module as ModuleKey]?.short ?? entry.module), ...tasks.map(() => "Tarefas"), ...suggestions.map(() => "Sugestões")].reduce<Record<string, number>>((acc, label) => { acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
+  const themeCounts = attendances.reduce<Record<string, number>>((acc, entry) => { acc[entry.theme] = (acc[entry.theme] ?? 0) + 1; return acc; }, {});
   const maxStatus = Math.max(1, ...Object.values(statusCounts));
   const maxModule = Math.max(1, ...Object.values(moduleCounts));
+  const maxTheme = Math.max(1, ...Object.values(themeCounts));
   const timeline = [
     ...workItems.map((entry) => ({ id: entry.id, title: entry.title, meta: `${MODULES[entry.module as ModuleKey]?.label ?? entry.module} · ${entry.status}`, at: entry.updated_at, module: entry.module as ModuleKey })),
     ...tasks.map((entry) => ({ id: entry.id, title: `${entry.protocol} · ${entry.title}`, meta: `Tarefa · ${entry.statusName}`, at: entry.updatedAt, module: "tasks" as ModuleKey })),
     ...commitments.map((entry) => ({ id: entry.id, title: entry.title, meta: `Agenda · ${entry.statusName}`, at: entry.startsAt, module: "work" as ModuleKey })),
-  ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 12);
-  const total = workItems.length + tasks.length + commitments.length;
-  return <div className="operation-bi-backdrop client-history-backdrop" role="dialog" aria-modal="true" aria-labelledby="client-history-title"><section className="operation-bi-board client-history-board">
-    <header><div><span className="operation-bi-mark"><Search /></span><span><small>VISÃO 360 · ID</small><h1 id="client-history-title">{customer?.trade_name || `Histórico do ID ${query}`}</h1><p>{customer ? `${customer.legal_name} · ${customer.document_masked || customer.id}` : `Resultados consolidados encontrados para ${query}.`}</p></span></div><button onClick={onClose} aria-label="Fechar histórico"><X /></button></header>
-    <section className="operation-bi-kpis client-history-kpis"><article><Database /><span><small>Registros encontrados</small><strong>{total}</strong><em>em todos os módulos</em></span></article><article><ChartNoAxesCombined /><span><small>Em acompanhamento</small><strong>{tracking.length}</strong><em>Ativação, retenção e LIA</em></span></article><article><ListTodo /><span><small>Tarefas abertas</small><strong>{openTasks.length}</strong><em>{protocols.length} protocolo(s) vinculado(s)</em></span></article><article><CalendarDays /><span><small>Compromissos</small><strong>{commitments.length}</strong><em>agendamentos relacionados</em></span></article><article><UsersRound /><span><small>Redes vinculadas</small><strong>{networks.length}</strong><em>contas estratégicas</em></span></article><article><BadgeCheck /><span><small>Status do cadastro</small><strong>{customer?.status || "Não localizado"}</strong><em>{customer?.strategic ? "Cliente estratégico" : "Cadastro convencional"}</em></span></article></section>
-    <div className="operation-bi-grid client-history-grid"><section className="operation-bi-panel"><header><span><BarChart3Icon />Passagens por funcionalidade</span><b>{workItems.length} registros</b></header><div className="operation-status-bars">{Object.entries(moduleCounts).length ? Object.entries(moduleCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxModule * 100}%` }} /></i><strong>{count}</strong></div>) : <p>Não há passagens operacionais para este ID.</p>}</div></section><section className="operation-bi-panel"><header><span><Activity />Distribuição por status</span><b>{Object.keys(statusCounts).length} status</b></header><div className="operation-status-bars">{Object.entries(statusCounts).length ? Object.entries(statusCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxStatus * 100}%` }} /></i><strong>{count}</strong></div>) : <p>Não há status registrados.</p>}</div></section></div>
-    <section className="client-history-details"><article><h2>Cadastro e vínculos</h2><dl><div><dt>ID</dt><dd>{customer?.id || query}</dd></div><div><dt>Responsável</dt><dd>{customer?.owner || "Não informado"}</dd></div><div><dt>CS responsável</dt><dd>{customer?.cs_owner || "Não informado"}</dd></div><div><dt>Produto / versão</dt><dd>{[customer?.project, customer?.product_version].filter(Boolean).join(" · ") || "Não informado"}</dd></div><div><dt>Rede</dt><dd>{networks.map((entry) => entry.title).join(", ") || "Sem vínculo com rede"}</dd></div><div><dt>Protocolos</dt><dd>{protocols.join(", ") || "Nenhum protocolo"}</dd></div></dl></article><article><h2>Linha do tempo</h2><div className="client-history-timeline">{timeline.length ? timeline.map((entry) => <button key={`${entry.module}-${entry.id}`} onClick={() => onNavigate(entry.module)}><i /><span><strong>{entry.title}</strong><small>{entry.meta} · {dateTime(entry.at)}</small></span><ChevronRight size={15} /></button>) : <p>Nenhuma movimentação localizada para este ID.</p>}</div></article></section>
-  </section></div>;
+    ...suggestions.map((entry) => ({ id: entry.id, title: `${entry.protocol} · ${entry.name}`, meta: `Sugestão · ${entry.statusName}`, at: entry.updatedAt, module: "suggestions" as ModuleKey })),
+  ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  const displayName = customer?.trade_name || tasks[0]?.customerName || workItems[0]?.customer_name || `Cliente ID ${query}`;
+  const tabs = [{ id: "overview", label: "Visão geral", count: workItems.length + tasks.length + commitments.length + suggestions.length }, { id: "tasks", label: "Tarefas", count: tasks.length }, { id: "support", label: "Atendimentos", count: attendances.length }, { id: "suggestions", label: "Sugestões", count: suggestions.length }, { id: "timeline", label: "Linha do tempo", count: timeline.length }] as const;
+  return <section className="client-history-page">
+    <header className="client-history-page-head"><button type="button" onClick={onClose} aria-label="Voltar"><ArrowLeft /></button><span className="operation-bi-mark"><Search /></span><span><small>VISÃO 360 · ID {query}</small><h1>{displayName}</h1><p>{customer ? `${customer.legal_name} · ${customer.document_masked || customer.id}` : `Informações consolidadas encontradas em todo o sistema para o ID ${query}.`}</p></span><b className={customer ? "located" : "partial"}>{customer ? "Cadastro localizado" : "Vínculos localizados"}</b></header>
+    <nav className="client-history-tabs">{tabs.map((entry) => <button className={tab === entry.id ? "active" : ""} onClick={() => setTab(entry.id)} key={entry.id}>{entry.label}<b>{entry.count}</b></button>)}</nav>
+    <section className="operation-bi-kpis client-history-kpis"><article><ListTodo /><span><small>Tarefas ativas</small><strong>{openTasks.length}</strong><em>{protocols.length} protocolo(s)</em></span></article><article><CheckCircle2 /><span><small>Tarefas finalizadas</small><strong>{completedTasks.length}</strong><em>concluídas ou canceladas</em></span></article><article><Headphones /><span><small>Atendimentos</small><strong>{attendances.length}</strong><em>{solvedAttendances.length} solucionado(s)</em></span></article><article><Sparkles /><span><small>Sugestões</small><strong>{suggestions.length}</strong><em>vinculadas ao ID</em></span></article><article><ChartNoAxesCombined /><span><small>Acompanhamentos</small><strong>{tracking.length}</strong><em>Ativação, retenção e LIA</em></span></article><article><CalendarDays /><span><small>Compromissos</small><strong>{commitments.length}</strong><em>registros na agenda</em></span></article><article><UsersRound /><span><small>Redes vinculadas</small><strong>{networks.length}</strong><em>contas estratégicas</em></span></article><article><BadgeCheck /><span><small>Status do cadastro</small><strong>{customer?.status || "Não localizado"}</strong><em>{customer?.strategic ? "Cliente estratégico" : "Cadastro convencional"}</em></span></article></section>
+    {tab === "overview" && <><div className="operation-bi-grid client-history-grid"><section className="operation-bi-panel"><header><span><BarChart3Icon />Passagens por funcionalidade</span><b>{Object.values(moduleCounts).reduce((sum, value) => sum + value, 0)} registros</b></header><div className="operation-status-bars">{Object.entries(moduleCounts).length ? Object.entries(moduleCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxModule * 100}%` }} /></i><strong>{count}</strong></div>) : <p>Não há passagens operacionais para este ID.</p>}</div></section><section className="operation-bi-panel"><header><span><Activity />Distribuição por status</span><b>{Object.keys(statusCounts).length} status</b></header><div className="operation-status-bars">{Object.entries(statusCounts).length ? Object.entries(statusCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxStatus * 100}%` }} /></i><strong>{count}</strong></div>) : <p>Não há status registrados.</p>}</div></section></div><section className="client-history-registration"><h2>Cadastro e vínculos</h2><dl><div><dt>ID pesquisado</dt><dd>{query}</dd></div><div><dt>Responsável comercial</dt><dd>{customer?.owner || "Não informado"}</dd></div><div><dt>CS responsável</dt><dd>{customer?.cs_owner || "Não informado"}</dd></div><div><dt>Suporte responsável</dt><dd>{customer?.support_owner || "Não informado"}</dd></div><div><dt>Produto / versão</dt><dd>{[customer?.project, customer?.product_version].filter(Boolean).join(" · ") || "Não informado"}</dd></div><div><dt>Rede</dt><dd>{networks.map((entry) => entry.title).join(", ") || "Sem vínculo com rede"}</dd></div><div><dt>Protocolos</dt><dd>{protocols.join(", ") || "Nenhum protocolo"}</dd></div><div><dt>Contato</dt><dd>{customer?.phone || customer?.email || "Não informado"}</dd></div></dl></section></>}
+    {tab === "tasks" && <ClientRecordsPanel title="Tarefas vinculadas" empty="Nenhuma tarefa vinculada a este ID.">{tasks.map((entry) => <button key={entry.id} onClick={() => onNavigate("tasks")}><span><strong>{entry.title}</strong><small>{entry.protocol} · {entry.typeName} · {entry.departmentName}</small></span><b className={`status-pill ${statusTone(entry.statusName)}`}>{entry.statusName}</b><time>{dateTime(entry.updatedAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
+    {tab === "support" && <div className="client-history-record-grid"><ClientRecordsPanel title="Atendimentos realizados" empty="Nenhum atendimento vinculado a este ID.">{attendances.map((entry) => <button key={entry.item.id} onClick={() => onNavigate("support")}><span><strong>{entry.theme}</strong><small>{entry.responsible}{entry.solution ? ` · ${entry.solution}` : ""}</small></span><b className={`status-pill ${statusTone(entry.status)}`}>{entry.status}</b><time>{dateTime(entry.at)}</time><ChevronRight /></button>)}</ClientRecordsPanel><section className="operation-bi-panel client-theme-panel"><header><span><Headphones />Temas dos atendimentos</span><b>{Object.keys(themeCounts).length} tema(s)</b></header><div className="operation-status-bars">{Object.entries(themeCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxTheme * 100}%` }} /></i><strong>{count}</strong></div>)}</div></section></div>}
+    {tab === "suggestions" && <ClientRecordsPanel title="Sugestões vinculadas" empty="Nenhuma sugestão vinculada a este ID.">{suggestions.map((entry) => <button key={entry.id} onClick={() => onNavigate("suggestions")}><span><strong>{entry.name}</strong><small>{entry.protocol} · Responsável: {entry.responsibleName}</small></span><b className={`status-pill ${statusTone(entry.statusName)}`}>{entry.statusName}</b><time>{dateTime(entry.updatedAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
+    {tab === "timeline" && <ClientRecordsPanel title="Linha do tempo consolidada" empty="Nenhuma movimentação localizada para este ID.">{timeline.map((entry) => <button key={`${entry.module}-${entry.id}`} onClick={() => onNavigate(entry.module)}><span><strong>{entry.title}</strong><small>{entry.meta}</small></span><time>{dateTime(entry.at)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
+  </section>;
+}
+
+function ClientRecordsPanel({ title, empty, children }: { title: string; empty: string; children: React.ReactNode }) {
+  const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
+  return <section className="client-records-panel"><header><h2>{title}</h2></header><div>{hasChildren ? children : <p className="client-records-empty">{empty}</p>}</div></section>;
 }
 
 function BarChart3Icon() { return <ChartNoAxesCombined />; }
@@ -1257,6 +1306,7 @@ function OperationIndicatorsLauncher({ pageKey, onOpen }: { pageKey: string; onO
 
 function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: (module: ModuleKey) => void; onPortal: () => void }) {
   const [showNotices, setShowNotices] = useState(false);
+  const [publicLinkCopied, setPublicLinkCopied] = useState(false);
   const now = new Date();
   const userName = data.user.displayName;
   const firstName = userName.split(" ")[0];
@@ -1328,6 +1378,13 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
     url.searchParams.set("task", id);
     window.history.replaceState({}, "", url);
   };
+  const copyPublicLink = async () => {
+    const url = new URL(window.location.origin);
+    url.searchParams.set("public", "overview");
+    await navigator.clipboard.writeText(url.toString());
+    setPublicLinkCopied(true);
+    window.setTimeout(() => setPublicLinkCopied(false), 2600);
+  };
   const quickLinks = [
     { key: "agenda", title: "Agenda", icon: CalendarDays, value: `${agendaToday.length} compromisso${agendaToday.length === 1 ? "" : "s"} hoje`, hint: nextCommitment ? `Próximo às ${time(nextCommitment.startsAt)}` : "Agenda do dia organizada", action: () => onNavigate("work"), tone: "blue" },
     { key: "tasks", title: "Tarefas", icon: ListTodo, value: `${openTasks.length} pendente${openTasks.length === 1 ? "" : "s"}`, hint: tasksToday ? `${tasksToday} para hoje` : "Confira suas prioridades", action: () => onNavigate("tasks"), tone: "violet" },
@@ -1339,7 +1396,7 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
   return <section className="dashboard-home">
     <section className="dashboard-hero dashboard-welcome dashboard-command-hero">
       <div className="dashboard-welcome-content"><span>{today}</span><h1>Olá, {firstName} <b>👋</b></h1><p>Central de operação Dontus.</p></div>
-      <div className="dashboard-welcome-side"><div className="dashboard-welcome-department"><span>Setor vinculado</span><strong>{data.user.department || "Dontus"}</strong></div><button className="dashboard-portal-button" onClick={onPortal}><span>Portal Dontus</span><ExternalLink size={17} /></button></div>
+      <div className="dashboard-welcome-side"><div className="dashboard-welcome-department"><span>Setor vinculado</span><strong>{data.user.department || "Dontus"}</strong></div><div className="dashboard-welcome-actions"><button className="dashboard-public-link-button" onClick={() => void copyPublicLink()}>{publicLinkCopied ? <Check size={17} /> : <Copy size={17} />}<span>{publicLinkCopied ? "Link copiado" : "Copiar painel público"}</span></button><button className="dashboard-portal-button" onClick={onPortal}><span>Portal Dontus</span><ExternalLink size={17} /></button></div></div>
     </section>
 
     <div className="dashboard-section-title"><span><Sparkles size={18} /></span><div><h2>Acesso rápido</h2><p>Suas principais ferramentas em um só lugar.</p></div></div>
