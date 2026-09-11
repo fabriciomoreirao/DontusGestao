@@ -514,7 +514,17 @@ function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClos
   const contacts = scoped.reduce((sum, entry) => sum + entry.follows.length, 0); const demos = scoped.filter((entry) => /demonstr/.test(clean(`${entry.stage} ${entry.follows.map((follow) => `${follow.type ?? ""} ${follow.text ?? ""}`).join(" ")}`))).length;
   const proposals = scoped.filter((entry) => /proposta/.test(clean(`${entry.stage} ${entry.follows.map((follow) => `${follow.type ?? ""} ${follow.text ?? ""}`).join(" ")}`))).length;
   const monthStart = `${month}-01`; const monthEnd = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).toLocaleDateString("en-CA");
-  const goals = items.map((item) => ({ item, detail: parse(item.description) })).filter(({ item, detail }) => item.module === "goals" && detail.kind === "performanceGoal" && Boolean(detail.active ?? true) && stringOf(detail.periodStart) <= monthEnd && stringOf(detail.periodEnd) >= monthStart && (seller === "all" || !stringOf(detail.employeeName) || stringOf(detail.employeeName) === seller));
+  const crmTeams = [...new Set(all.map((entry) => clean(entry.item.team)).filter(Boolean))];
+  const crmSellers = new Set(all.map((entry) => clean(entry.seller)).filter(Boolean));
+  const goals = items.map((item) => ({ item, detail: parse(item.description) })).filter(({ item, detail }) => {
+    if (item.module !== "goals" || detail.kind !== "performanceGoal" || !Boolean(detail.active ?? true) || stringOf(detail.periodStart) > monthEnd || stringOf(detail.periodEnd) < monthStart) return false;
+    const goalDepartment = clean(detail.departmentName);
+    const goalEmployee = clean(detail.employeeName);
+    const belongsToCrm = goalDepartment
+      ? crmTeams.some((team) => team.includes(goalDepartment) || goalDepartment.includes(team))
+      : goalEmployee ? crmSellers.has(goalEmployee) : true;
+    return belongsToCrm && (seller === "all" || !goalEmployee || goalEmployee === clean(seller));
+  });
   const valueGoal = goals.filter(({ detail }) => detail.metric === "salesValue").reduce((sum, { detail }) => sum + numberOf(detail.target) * 100, 0);
   const salesGoal = goals.filter(({ detail }) => detail.metric === "salesCount").reduce((sum, { detail }) => sum + numberOf(detail.target), 0);
   const previousDate = new Date(`${month}-01T12:00:00`); previousDate.setMonth(previousDate.getMonth() - 1); const previousMonth = previousDate.toLocaleDateString("en-CA").slice(0, 7);

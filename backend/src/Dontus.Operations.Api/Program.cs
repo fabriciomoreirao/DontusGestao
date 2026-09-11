@@ -131,8 +131,9 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         .ToListAsync(cancellationToken);
     var workItems = await db.WorkItems.AsNoTracking()
         .Where(entry => entry.Module == "goals" ||
-            ((entry.Module == "support" || entry.Module == "referrals" || entry.Module == "commercial") && entry.CreatedAt >= monthStart && entry.CreatedAt < monthEnd))
-        .Select(entry => new { entry.Module, entry.RecordType, entry.Team, entry.Owner, entry.Status, entry.AmountCents, entry.Description, entry.CreatedAt })
+            ((entry.Module == "support" || entry.Module == "referrals" || entry.Module == "commercial" || entry.Module == "cs" || entry.Module == "lia") &&
+             ((entry.CreatedAt >= monthStart && entry.CreatedAt < monthEnd) || (entry.UpdatedAt >= monthStart && entry.UpdatedAt < monthEnd))))
+        .Select(entry => new { entry.Module, entry.RecordType, entry.Team, entry.Owner, entry.Status, entry.AmountCents, entry.Description, entry.CreatedAt, entry.UpdatedAt })
         .ToListAsync(cancellationToken);
 
     var services = workItems.Where(entry => entry.Module == "support")
@@ -151,25 +152,24 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         .Where(entry => entry is not null && entry.Active && entry.PeriodStart < localEnd.Date && entry.PeriodEnd >= localStart.Date)
         .Cast<PublicGoalEntry>()
         .ToList();
+    var journeys = workItems.Where(entry => entry.Module == "cs" || entry.Module == "lia")
+        .Select(entry => new PublicJourneyEntry(entry.Module, entry.Team, entry.Owner, entry.Status, entry.CreatedAt, entry.UpdatedAt))
+        .ToList();
     var departmentMetrics = departments.Select(department =>
     {
         var employeeIds = memberships.Where(entry => entry.DepartmentId == department.Id).Select(entry => entry.UserId).ToHashSet();
-        var employeeNames = users.Where(entry => employeeIds.Contains(entry.Id)).Select(entry => entry.DisplayName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var primaryEmployeeIds = memberships.Where(entry => entry.DepartmentId == department.Id && entry.IsPrimary).Select(entry => entry.UserId).ToHashSet();
-        var primaryEmployeeNames = users.Where(entry => primaryEmployeeIds.Contains(entry.Id)).Select(entry => entry.DisplayName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var departmentTasks = tasks.Where(entry => entry.CurrentDepartmentId == department.Id).ToList();
         var departmentCalendarIds = calendars.Where(entry => entry.DepartmentId == department.Id).Select(entry => entry.Id).ToHashSet();
         var departmentCommitments = commitments.Where(entry => departmentCalendarIds.Contains(entry.AgendaId)).ToList();
-        var departmentServices = services.Where(entry => SameMetric(entry.Sector, department.Name) ||
-            (!departments.Any(known => SameMetric(entry.Sector, known.Name)) && primaryEmployeeNames.Contains(entry.Responsible))).ToList();
-        var departmentGoals = goals.Where(entry => RelatedMetric(entry.Department, department.Name) ||
-            (!string.IsNullOrWhiteSpace(entry.Employee) && primaryEmployeeNames.Contains(entry.Employee)) ||
-            (string.IsNullOrWhiteSpace(entry.Department) && string.IsNullOrWhiteSpace(entry.Employee) && IsCommercialDepartment(department.Name))).ToList();
-        var hasCommercialLink = IsCommercialDepartment(department.Name) || commercial.Any(entry => RelatedMetric(entry.Team, department.Name)) ||
-            departmentGoals.Any(entry => SameMetric(entry.Metric, "salesValue") || SameMetric(entry.Metric, "salesCount"));
-        var departmentCommercial = hasCommercialLink
-            ? commercial.Where(entry => RelatedMetric(entry.Team, department.Name) || primaryEmployeeNames.Contains(entry.Seller)).ToList()
-            : [];
+        // Department dashboards are intentionally strict: a collaborator may belong to more than one
+        // department, so owner-based fallback would duplicate the same CRM/support record in unrelated tabs.
+        var departmentServices = services.Where(entry => RelatedMetric(entry.Sector, department.Name)).ToList();
+        var departmentGoals = goals.Where(entry => RelatedMetric(entry.Department, department.Name)).ToList();
+        var departmentCommercial = commercial.Where(entry => RelatedMetric(entry.Team, department.Name)).ToList();
+        var departmentJourneys = journeys.Where(entry => RelatedMetric(entry.Team, department.Name)).ToList();
+        var departmentCs = departmentJourneys.Where(entry => entry.Module == "cs").ToList();
+        var departmentLia = departmentJourneys.Where(entry => entry.Module == "lia").ToList();
+        var hasCommercialLink = departmentCommercial.Count > 0;
         var highlights = users.Where(entry => employeeIds.Contains(entry.Id)).Select(employee =>
         {
             var completedTasks = departmentTasks.Count(entry => entry.AssigneeUserId == employee.Id && (entry.IsFinal || entry.CompletedAt.HasValue) && !entry.Cancelled);
@@ -181,6 +181,8 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         var pipelineCents = departmentCommercial.Where(entry => !entry.Won && !entry.Rejected).Sum(entry => entry.AmountCents);
         var valueGoalCents = (long)Math.Round(departmentGoals.Where(entry => SameMetric(entry.Metric, "salesValue")).Sum(entry => entry.Target) * 100);
         var salesGoal = (int)Math.Round(departmentGoals.Where(entry => SameMetric(entry.Metric, "salesCount")).Sum(entry => entry.Target));
+        var trackingGoal = (int)Math.Round(departmentGoals.Where(entry => SameMetric(entry.Metric, "clientCount")).Sum(entry => entry.Target));
+        var trackingCount = departmentCs.Count + departmentLia.Count;
         var sellerRanking = departmentCommercial.GroupBy(entry => entry.Seller)
             .Where(group => !string.IsNullOrWhiteSpace(group.Key))
             .Select(group => new { name = group.Key, sales = group.Count(entry => entry.Won), revenueCents = group.Where(entry => entry.Won).Sum(entry => entry.AmountCents), opportunities = group.Count() })
@@ -196,7 +198,28 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
             completedTasks = departmentTasks.Count(entry => (entry.IsFinal || entry.CompletedAt.HasValue) && !entry.Cancelled),
             attendances = departmentServices.Count,
             solvedAttendances = departmentServices.Count(entry => IsPublicResolved(entry.Status)),
+            followUps = departmentCs.Count,
+            completedFollowUps = departmentCs.Count(entry => IsPublicResolved(entry.Status)),
+            liaFollowUps = departmentLia.Count,
+            completedLiaFollowUps = departmentLia.Count(entry => IsPublicResolved(entry.Status)),
             collaborators = employeeIds.Count,
+            sources = new
+            {
+                agenda = departmentCommitments.Count > 0,
+                tasks = departmentTasks.Count > 0,
+                support = departmentServices.Count > 0,
+                commercial = hasCommercialLink,
+                followUp = departmentCs.Count > 0 || departmentGoals.Any(entry => SameMetric(entry.Metric, "clientCount") || SameMetric(entry.Metric, "usageScore")),
+                lia = departmentLia.Count > 0
+            },
+            goals = new
+            {
+                salesValueCents = valueGoalCents,
+                salesCount = salesGoal,
+                trackingCount = trackingGoal,
+                trackingActual = trackingCount,
+                trackingProgress = Percentage(trackingCount, trackingGoal)
+            },
             topCollaborators = highlights.Select(entry => new { id = entry.Id, name = entry.DisplayName, role = entry.JobTitle, photo = entry.PhotoDataUrl, solutions = entry.Solutions }),
             activityByDay = days.Select(day => new
             {
@@ -204,6 +227,8 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
                 commitments = departmentCommitments.Count(entry => LocalDate(entry.StartsAt) == day),
                 tasks = departmentTasks.Count(entry => LocalDate(entry.CreatedAt) == day),
                 attendances = departmentServices.Count(entry => LocalDate(entry.CreatedAt) == day),
+                followUps = departmentCs.Count(entry => LocalDate(entry.UpdatedAt) == day),
+                lia = departmentLia.Count(entry => LocalDate(entry.UpdatedAt) == day),
                 sales = departmentCommercial.Count(entry => entry.Won && entry.Date == day)
             }),
             commercial = new
@@ -225,9 +250,32 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         };
     }).ToList();
 
+    var topAttendanceCollaborators = users.Select(user => new
+        {
+            name = user.DisplayName,
+            photo = user.PhotoDataUrl,
+            department = (from membership in memberships
+                join department in departments on membership.DepartmentId equals department.Id
+                where membership.UserId == user.Id && membership.IsPrimary
+                select department.Name).FirstOrDefault() ?? "Setor não informado",
+            count = services.Count(entry => SameMetric(entry.Responsible, user.DisplayName))
+        })
+        .Where(entry => entry.count > 0)
+        .OrderByDescending(entry => entry.count)
+        .ThenBy(entry => entry.name)
+        .Take(3)
+        .ToList();
+    var overallSales = commercial.Where(entry => entry.Won).ToList();
+    var overallSalesGoal = (int)Math.Round(goals.Where(entry => SameMetric(entry.Metric, "salesCount")).Sum(entry => entry.Target));
+    var overallValueGoalCents = (long)Math.Round(goals.Where(entry => SameMetric(entry.Metric, "salesValue")).Sum(entry => entry.Target) * 100);
+    var overallTrackingGoal = (int)Math.Round(goals.Where(entry => SameMetric(entry.Metric, "clientCount")).Sum(entry => entry.Target));
     var topSenders = referrals.GroupBy(entry => entry.SenderName)
         .Where(group => !string.IsNullOrWhiteSpace(group.Key))
-        .Select(group => new { name = group.Key, department = group.First().SenderDepartment, count = group.Count() })
+        .Select(group =>
+        {
+            var collaborator = users.FirstOrDefault(user => SameMetric(user.DisplayName, group.Key));
+            return new { name = group.Key, department = group.First().SenderDepartment, photo = collaborator?.PhotoDataUrl ?? "", count = group.Count() };
+        })
         .OrderByDescending(entry => entry.count).ThenBy(entry => entry.name).Take(3).ToList();
     var referralModules = referrals.GroupBy(entry => string.IsNullOrWhiteSpace(entry.ModuleName) ? "Não informado" : entry.ModuleName)
         .Select(group => new { name = group.Key, count = group.Count() })
@@ -251,13 +299,32 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
             completedTasks = tasks.Count(entry => (entry.IsFinal || entry.CompletedAt.HasValue) && !entry.Cancelled),
             attendances = services.Count,
             solvedAttendances = services.Count(entry => IsPublicResolved(entry.Status)),
+            followUps = journeys.Count(entry => entry.Module == "cs"),
+            completedFollowUps = journeys.Count(entry => entry.Module == "cs" && IsPublicResolved(entry.Status)),
+            liaFollowUps = journeys.Count(entry => entry.Module == "lia"),
+            completedLiaFollowUps = journeys.Count(entry => entry.Module == "lia" && IsPublicResolved(entry.Status)),
             collaborators = users.Count,
+            goals = new
+            {
+                salesValueCents = overallValueGoalCents,
+                salesValueActualCents = overallSales.Sum(entry => entry.AmountCents),
+                salesValueProgress = Percentage(overallSales.Sum(entry => entry.AmountCents), overallValueGoalCents),
+                salesCount = overallSalesGoal,
+                salesActual = overallSales.Count,
+                salesProgress = Percentage(overallSales.Count, overallSalesGoal),
+                trackingCount = overallTrackingGoal,
+                trackingActual = journeys.Count,
+                trackingProgress = Percentage(journeys.Count, overallTrackingGoal)
+            },
+            topAttendances = topAttendanceCollaborators,
             activityByDay = days.Select(day => new
             {
                 date = day.ToString("yyyy-MM-dd"),
                 commitments = commitments.Count(entry => LocalDate(entry.StartsAt) == day),
                 tasks = tasks.Count(entry => LocalDate(entry.CreatedAt) == day),
                 attendances = services.Count(entry => LocalDate(entry.CreatedAt) == day),
+                followUps = journeys.Count(entry => entry.Module == "cs" && LocalDate(entry.UpdatedAt) == day),
+                lia = journeys.Count(entry => entry.Module == "lia" && LocalDate(entry.UpdatedAt) == day),
                 referrals = referrals.Count(entry => LocalDate(entry.CreatedAt) == day),
                 sales = commercial.Count(entry => entry.Won && entry.Date == day)
             })
@@ -1521,12 +1588,6 @@ static bool RelatedMetric(string? left, string? right)
     return leftKey.Length > 0 && rightKey.Length > 0 && (leftKey.Contains(rightKey) || rightKey.Contains(leftKey));
 }
 
-static bool IsCommercialDepartment(string? name)
-{
-    var normalized = MetricKey(name);
-    return normalized.Contains("comercial") || normalized.Contains("venda");
-}
-
 static bool IsPublicWon(string? status)
 {
     var normalized = MetricKey(status);
@@ -1596,6 +1657,7 @@ sealed record PublicServiceEntry(string Sector, string Responsible, string Statu
 sealed record PublicReferralEntry(string SenderName, string SenderDepartment, string ModuleName, string Phase, bool Forwarded, bool Hired, bool Configured, DateTimeOffset CreatedAt);
 sealed record PublicCommercialEntry(string Team, string Seller, string Stage, string Origin, DateTime Date, long AmountCents, bool Direct, bool Won, bool Rejected);
 sealed record PublicGoalEntry(string Department, string Employee, string Metric, double Target, DateTime PeriodStart, DateTime PeriodEnd, bool Active);
+sealed record PublicJourneyEntry(string Module, string Team, string Owner, string Status, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
 public sealed class OperationsRequest
 {

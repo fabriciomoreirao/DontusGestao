@@ -8,8 +8,8 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type PublicCollaborator = { id: string; name: string; role: string; photo: string; solutions: number };
-type PublicRanking = { name: string; count: number; department?: string };
-type PublicDay = { date: string; commitments: number; tasks: number; attendances: number; referrals?: number; sales: number };
+type PublicRanking = { name: string; count: number; department?: string; photo?: string };
+type PublicDay = { date: string; commitments: number; tasks: number; attendances: number; referrals?: number; sales: number; followUps: number; lia: number };
 type PublicSeller = { name: string; sales: number; revenueCents: number; opportunities: number };
 type PublicCommercial = {
   enabled: boolean; leads: number; opportunities: number; sales: number; directSales: number; revenueCents: number;
@@ -18,14 +18,19 @@ type PublicCommercial = {
 };
 type PublicDepartment = {
   id: string; name: string; commitments: number; upcomingCommitments: number; tasks: number; activeTasks: number;
-  completedTasks: number; attendances: number; solvedAttendances: number; collaborators: number;
+  completedTasks: number; attendances: number; solvedAttendances: number; followUps: number; completedFollowUps: number;
+  liaFollowUps: number; completedLiaFollowUps: number; collaborators: number;
+  sources: { agenda: boolean; tasks: boolean; support: boolean; commercial: boolean; followUp: boolean; lia: boolean };
+  goals: { salesValueCents: number; salesCount: number; trackingCount: number; trackingActual: number; trackingProgress: number };
   topCollaborators: PublicCollaborator[]; activityByDay: PublicDay[]; commercial: PublicCommercial;
 };
 type PublicOverviewData = {
   generatedAt: string; month: string; monthLabel: string; refreshAfterSeconds: number;
   overview: {
     departments: number; commitments: number; tasks: number; activeTasks: number; completedTasks: number;
-    attendances: number; solvedAttendances: number; collaborators: number; activityByDay: PublicDay[];
+    attendances: number; solvedAttendances: number; followUps: number; completedFollowUps: number; liaFollowUps: number;
+    completedLiaFollowUps: number; collaborators: number; topAttendances: PublicRanking[]; activityByDay: PublicDay[];
+    goals: { salesValueCents: number; salesValueActualCents: number; salesValueProgress: number; salesCount: number; salesActual: number; salesProgress: number; trackingCount: number; trackingActual: number; trackingProgress: number };
   };
   departments: PublicDepartment[];
   referrals: {
@@ -95,7 +100,7 @@ export default function PublicOperationsOverview() {
 
   const chooseTab = (next: string) => { setTab(next); setRotationProgress(0); };
   const department = data?.departments.find((entry) => entry.id === tab);
-  const maxDepartmentVolume = useMemo(() => Math.max(1, ...(data?.departments.map((entry) => entry.tasks + entry.attendances + entry.commitments) ?? [1])), [data]);
+  const maxDepartmentVolume = useMemo(() => Math.max(1, ...(data?.departments.map((entry) => entry.tasks + entry.attendances + entry.commitments + entry.followUps + entry.liaFollowUps + entry.commercial.sales) ?? [1])), [data]);
   const secondsSinceUpdate = data ? Math.max(0, Math.floor((clock - new Date(data.generatedAt).getTime()) / 1_000)) : 0;
 
   if (error && !data) return <main className="public-ops-state"><Image src="/dontus-logo.png" alt="Dontus" width={190} height={54} unoptimized /><h1>Painel indisponível</h1><p>{error}</p><button onClick={() => void load()}><RefreshCw />Tentar novamente</button></main>;
@@ -133,14 +138,14 @@ export default function PublicOperationsOverview() {
 
 function OverviewView({ data, completionRate, solutionRate, maxDepartmentVolume, onDepartment }: { data: PublicOverviewData; completionRate: number; solutionRate: number; maxDepartmentVolume: number; onDepartment: (id: string) => void }) {
   return <>
-    <section className="public-ops-kpis public-bi-kpis"><Metric icon={<BriefcaseBusiness />} label="Setores ativos" value={data.overview.departments} note="estrutura vinculada" /><Metric icon={<CalendarDays />} label="Compromissos" value={data.overview.commitments} note="na competência" /><Metric icon={<ListTodo />} label="Tarefas" value={data.overview.tasks} note={`${data.overview.activeTasks} em andamento`} /><Metric icon={<CheckCircle2 />} label="Finalizadas" value={data.overview.completedTasks} note={`${completionRate}% de conclusão`} /><Metric icon={<Headphones />} label="Atendimentos" value={data.overview.attendances} note={`${solutionRate}% solucionados`} /><Metric icon={<UsersRound />} label="Colaboradores" value={data.overview.collaborators} note="ativos nos setores" /></section>
+    <section className="public-ops-kpis public-bi-kpis public-overview-kpis"><Metric icon={<BriefcaseBusiness />} label="Setores ativos" value={data.overview.departments} note="estrutura vinculada" /><Metric icon={<CalendarDays />} label="Compromissos" value={data.overview.commitments} note="na competência" /><Metric icon={<ListTodo />} label="Tarefas" value={data.overview.tasks} note={`${data.overview.activeTasks} em andamento`} /><Metric icon={<Headphones />} label="Atendimentos" value={data.overview.attendances} note={`${solutionRate}% solucionados`} /><Metric icon={<Target />} label="Meta de vendas" value={`${data.overview.goals.salesActual}/${data.overview.goals.salesCount || "—"}`} note={data.overview.goals.salesCount ? `${data.overview.goals.salesProgress}% atingido` : "sem meta cadastrada"} /><Metric icon={<Activity />} label="Acompanhamentos" value={data.overview.goals.trackingActual} note={data.overview.goals.trackingCount ? `${data.overview.goals.trackingProgress}% da meta` : `${data.overview.followUps} CS · ${data.overview.liaFollowUps} LIA`} /><Metric icon={<WalletCards />} label="Receita / meta" value={money(data.overview.goals.salesValueActualCents)} note={data.overview.goals.salesValueCents ? `${data.overview.goals.salesValueProgress}% de ${money(data.overview.goals.salesValueCents)}` : "sem meta de receita"} /><Metric icon={<UsersRound />} label="Colaboradores" value={data.overview.collaborators} note="ativos nos setores" /></section>
     <section className="public-bi-main-grid">
-      <ActivityChart title="Pulso operacional diário" subtitle="Volume de movimentações no mês" days={data.overview.activityByDay} series={[{ key: "commitments", label: "Agenda", color: "#2f7cf6" }, { key: "tasks", label: "Tarefas", color: "#8b5cf6" }, { key: "attendances", label: "Atendimentos", color: "#12b8a6" }]} />
+      <ActivityChart title="Pulso operacional diário" subtitle="Volume de movimentações no mês" days={data.overview.activityByDay} series={[{ key: "commitments", label: "Agenda", color: "#2f7cf6" }, { key: "tasks", label: "Tarefas", color: "#8b5cf6" }, { key: "attendances", label: "Atendimentos", color: "#12b8a6" }, { key: "followUps", label: "Acompanhamentos", color: "#f59e0b" }]} />
       <article className="public-ops-panel public-ops-progress-panel public-bi-efficiency"><header><span><BadgeCheck />Eficiência operacional</span></header><ProgressRow label="Conclusão de tarefas" value={completionRate} detail={`${data.overview.completedTasks} de ${data.overview.tasks}`} /><ProgressRow label="Solução de atendimentos" value={solutionRate} detail={`${data.overview.solvedAttendances} de ${data.overview.attendances}`} /><ProgressRow label="Indicações encaminhadas" value={percentage(data.referrals.forwarded, data.referrals.total)} detail={`${data.referrals.forwarded} de ${data.referrals.total}`} /></article>
     </section>
     <section className="public-bi-bottom-grid">
-      <article className="public-ops-panel public-department-volume"><header><span><BarChart3 />Movimentação por setor</span><small>Agenda, tarefas e atendimentos</small></header><div style={{ gridTemplateRows: `repeat(${Math.max(1, data.departments.length)}, minmax(0, 1fr))` }}>{data.departments.map((entry) => { const total = entry.tasks + entry.attendances + entry.commitments; return <button key={entry.id} onClick={() => onDepartment(entry.id)}><span><strong>{entry.name}</strong><small>{entry.collaborators} colaborador(es)</small></span><i><b style={{ width: `${total / maxDepartmentVolume * 100}%` }} /></i><em>{total}</em></button>; })}</div></article>
-      <article className="public-ops-panel public-bi-referral-highlight"><header><span><Sparkles />Radar de indicações</span></header><strong>{data.referrals.total}<small>enviadas no mês</small></strong><strong>{data.referrals.topSenders[0]?.name || "Sem registros"}<small>líder em indicações</small></strong><strong>{data.referrals.modules[0]?.name || "Sem registros"}<small>módulo mais indicado</small></strong></article>
+      <article className="public-ops-panel public-department-volume"><header><span><BarChart3 />Movimentação por setor</span><small>Somente fontes alimentadas na competência</small></header><div style={{ gridTemplateRows: `repeat(${Math.max(1, data.departments.length)}, minmax(0, 1fr))` }}>{data.departments.map((entry) => { const total = entry.tasks + entry.attendances + entry.commitments + entry.followUps + entry.liaFollowUps + entry.commercial.sales; return <button key={entry.id} onClick={() => onDepartment(entry.id)}><span><strong>{entry.name}</strong><small>{entry.collaborators} colaborador(es)</small></span><i><b style={{ width: `${total / maxDepartmentVolume * 100}%` }} /></i><em>{total}</em></button>; })}</div></article>
+      <TalentRadar attendances={data.overview.topAttendances} referrals={data.referrals.topSenders} />
     </section>
   </>;
 }
@@ -153,6 +158,11 @@ function ProgressRow({ label, value, detail }: { label: string; value: number; d
   return <div className="public-progress-row"><span><strong>{label}</strong><small>{detail}</small></span><i><b style={{ width: `${Math.min(100, value)}%` }} /></i><em>{value}%</em></div>;
 }
 
+function TalentRadar({ attendances, referrals }: { attendances: PublicRanking[]; referrals: PublicRanking[] }) {
+  const board = (title: string, icon: React.ReactNode, entries: PublicRanking[], unit: string) => <section><h3>{icon}{title}</h3>{entries.length ? entries.slice(0, 3).map((entry, index) => <div key={`${title}-${entry.name}`}><b>{index + 1}</b><i className={entry.photo ? "has-photo" : ""} style={entry.photo ? { backgroundImage: `url("${entry.photo}")` } : undefined}>{!entry.photo && entry.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</i><span><strong>{entry.name}</strong><small>{entry.department || "Setor não informado"}</small></span><em>{entry.count}<small>{unit}</small></em></div>) : <p className="public-ops-empty">Sem registros na competência.</p>}</section>;
+  return <article className="public-ops-panel public-talent-radar"><header><span><Trophy />Destaques do mês</span><small>Produtividade registrada na plataforma</small></header><div>{board("Top 3 atendimentos", <Headphones />, attendances, "atend.")}{board("Top 3 indicações", <Sparkles />, referrals, "indic.")}</div></article>;
+}
+
 function ActivityChart({ title, subtitle, days, series }: { title: string; subtitle: string; days: PublicDay[]; series: Series[] }) {
   const width = 1000; const height = 190; const top = 18; const bottom = 25;
   const max = Math.max(1, ...days.flatMap((day) => series.map((entry) => Number(day[entry.key] ?? 0))));
@@ -163,11 +173,20 @@ function ActivityChart({ title, subtitle, days, series }: { title: string; subti
 
 function DepartmentView({ department }: { department: PublicDepartment }) {
   const taskRate = percentage(department.completedTasks, department.tasks);
+  const sourceLabels = [department.sources.agenda && "Agenda", department.sources.tasks && "Tarefas", department.sources.support && "Atendimentos", department.sources.commercial && "CRM", department.sources.followUp && "Acompanhamento", department.sources.lia && "LIA"].filter(Boolean) as string[];
+  const series: Series[] = [
+    ...(department.sources.agenda ? [{ key: "commitments" as const, label: "Agenda", color: "#2f7cf6" }] : []),
+    ...(department.sources.tasks ? [{ key: "tasks" as const, label: "Tarefas", color: "#8b5cf6" }] : []),
+    ...(department.sources.support ? [{ key: "attendances" as const, label: "Atendimentos", color: "#12b8a6" }] : []),
+    ...(department.sources.followUp ? [{ key: "followUps" as const, label: "Acompanhamentos", color: "#f59e0b" }] : []),
+    ...(department.sources.lia ? [{ key: "lia" as const, label: "LIA", color: "#ec4899" }] : []),
+    ...(department.sources.commercial ? [{ key: "sales" as const, label: "Vendas", color: "#22c55e" }] : []),
+  ];
   return <>
-    <section className="public-ops-section-heading public-bi-section-heading"><span><BriefcaseBusiness /></span><div><small>SETOR EM FOCO</small><h2>{department.name}</h2><p>Dados alimentados pelos colaboradores vinculados, consolidados pela competência.</p></div>{department.commercial.enabled && <b><WalletCards />Visão comercial ativa</b>}</section>
-    <section className="public-ops-kpis public-bi-kpis department"><Metric icon={<CalendarDays />} label="Compromissos" value={department.commitments} note={`${department.upcomingCommitments} próximos`} /><Metric icon={<ListTodo />} label="Tarefas ativas" value={department.activeTasks} note={`${department.tasks} no mês`} /><Metric icon={<CheckCircle2 />} label="Finalizadas" value={department.completedTasks} note={`${taskRate}% concluídas`} /><Metric icon={<Headphones />} label="Atendimentos" value={department.attendances} note={`${department.solvedAttendances} solucionados`} /><Metric icon={<UsersRound />} label="Colaboradores" value={department.collaborators} note="vinculados ao setor" /></section>
+    <section className="public-ops-section-heading public-bi-section-heading"><span><BriefcaseBusiness /></span><div><small>SETOR EM FOCO</small><h2>{department.name}</h2><p>{sourceLabels.length ? `Fontes alimentadas: ${sourceLabels.join(" · ")}.` : "Ainda não houve alimentação operacional nesta competência."}</p></div>{department.commercial.enabled && <b><WalletCards />Visão comercial ativa</b>}</section>
+    <section className="public-ops-kpis public-bi-kpis department dynamic">{department.sources.agenda && <Metric icon={<CalendarDays />} label="Compromissos" value={department.commitments} note={`${department.upcomingCommitments} próximos`} />}{department.sources.tasks && <Metric icon={<ListTodo />} label="Tarefas ativas" value={department.activeTasks} note={`${department.tasks} no mês`} />}{department.sources.tasks && <Metric icon={<CheckCircle2 />} label="Finalizadas" value={department.completedTasks} note={`${taskRate}% concluídas`} />}{department.sources.support && <Metric icon={<Headphones />} label="Atendimentos" value={department.attendances} note={`${department.solvedAttendances} solucionados`} />}{department.sources.followUp && <Metric icon={<Activity />} label="Acompanhamentos" value={department.followUps} note={`${department.completedFollowUps} concluídos`} />}{department.sources.lia && <Metric icon={<Sparkles />} label="Acompanhamento LIA" value={department.liaFollowUps} note={`${department.completedLiaFollowUps} concluídos`} />}{department.goals.trackingCount > 0 && <Metric icon={<Target />} label="Meta de acompanhamento" value={`${department.goals.trackingActual}/${department.goals.trackingCount}`} note={`${department.goals.trackingProgress}% atingido`} />}<Metric icon={<UsersRound />} label="Colaboradores" value={department.collaborators} note="vinculados ao setor" /></section>
     {department.commercial.enabled && <CommercialDepartment department={department} />}
-    <section className="public-bi-main-grid department-grid"><ActivityChart title="Evolução diária do setor" subtitle="Agenda, tarefas, atendimentos e vendas" days={department.activityByDay} series={[{ key: "commitments", label: "Agenda", color: "#2f7cf6" }, { key: "tasks", label: "Tarefas", color: "#8b5cf6" }, { key: "attendances", label: "Atendimentos", color: "#12b8a6" }, { key: "sales", label: "Vendas", color: "#f59e0b" }]} /><article className="public-ops-panel public-collaborator-ranking"><header><span><Trophy />Destaques em soluções</span><small>Top 5 do setor</small></header>{department.topCollaborators.length ? department.topCollaborators.map((entry, index) => <div key={entry.id}><b>{index + 1}</b><span className={entry.photo ? "has-photo" : ""} style={entry.photo ? { backgroundImage: `url("${entry.photo}")` } : undefined}>{!entry.photo && entry.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</span><p><strong>{entry.name}</strong><small>{entry.role || department.name}</small></p><em>{entry.solutions} soluções</em></div>) : <p className="public-ops-empty">Ainda não há soluções concluídas neste recorte.</p>}</article></section>
+    <section className="public-bi-main-grid department-grid"><ActivityChart title="Evolução diária do setor" subtitle={sourceLabels.length ? `Somente fontes alimentadas: ${sourceLabels.join(", ")}` : "Sem movimentação na competência"} days={department.activityByDay} series={series.length ? series : [{ key: "tasks", label: "Sem dados", color: "#64748b" }]} /><article className="public-ops-panel public-collaborator-ranking"><header><span><Trophy />Destaques em soluções</span><small>Top 5 do setor</small></header>{department.topCollaborators.length ? department.topCollaborators.map((entry, index) => <div key={entry.id}><b>{index + 1}</b><span className={entry.photo ? "has-photo" : ""} style={entry.photo ? { backgroundImage: `url("${entry.photo}")` } : undefined}>{!entry.photo && entry.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</span><p><strong>{entry.name}</strong><small>{entry.role || department.name}</small></p><em>{entry.solutions} soluções</em></div>) : <p className="public-ops-empty">Ainda não há soluções concluídas neste recorte.</p>}</article></section>
   </>;
 }
 
@@ -200,7 +219,7 @@ function ReferralsView({ referrals, activity }: { referrals: PublicOverviewData[
 
 function ReferralPodium({ entries }: { entries: PublicRanking[] }) {
   const podium = entries.slice(0, 3);
-  return <article className="public-ops-panel public-referral-podium"><header><span><Trophy />Top 3 em indicações</span><small>Ranking da competência</small></header>{podium.length ? <div>{podium.map((entry, index) => <section className={`rank-${index + 1}`} key={`${entry.name}-${index}`}><b>{index + 1}</b><i>{entry.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</i><strong>{entry.name}</strong><small>{entry.department || "Setor não informado"}</small><em>{entry.count}<span> indicações</span></em></section>)}</div> : <p className="public-ops-empty">Nenhuma indicação registrada.</p>}</article>;
+  return <article className="public-ops-panel public-referral-podium"><header><span><Trophy />Top 3 em indicações</span><small>Ranking da competência</small></header>{podium.length ? <div>{podium.map((entry, index) => <section className={`rank-${index + 1}`} key={`${entry.name}-${index}`}><b>{index + 1}</b><i className={entry.photo ? "has-photo" : ""} style={entry.photo ? { backgroundImage: `url("${entry.photo}")` } : undefined}>{!entry.photo && entry.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</i><strong>{entry.name}</strong><small>{entry.department || "Setor não informado"}</small><em>{entry.count}<span> indicações</span></em></section>)}</div> : <p className="public-ops-empty">Nenhuma indicação registrada.</p>}</article>;
 }
 
 function RankingPanel({ title, icon, entries, max }: { title: string; icon: React.ReactNode; entries: PublicRanking[]; max: number }) {
