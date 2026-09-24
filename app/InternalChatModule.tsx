@@ -279,7 +279,7 @@ function CreateGroupModal({ module, busy, onClose, onCreate }: { module: Interna
 }
 
 function Avatar({ name, photo, group = false, coordinator = false }: { name: string; photo?: string; group?: boolean; coordinator?: boolean }) {
-  return <span className={`internal-chat-avatar ${group ? "group" : ""}`} style={photo ? { backgroundImage: `url("${photo}")` } : undefined}>{!photo && (group ? <UsersRound size={18} /> : initials(name))}{coordinator && !group && <i className="coordinator-mark" title="Coordenador"><BadgeCheck size={12} /></i>}</span>;
+  return <span className={`internal-chat-avatar ${group ? "group" : ""} ${photo ? "has-photo" : ""}`} aria-label={photo?`Foto de ${name}`:undefined} style={photo ? { backgroundImage: `url("${photo}")` } : undefined}>{!photo && (group ? <UsersRound size={18} /> : initials(name))}{coordinator && !group && <i className="coordinator-mark" title="Coordenador"><BadgeCheck size={12} /></i>}</span>;
 }
 
 async function readImage(file?: File) {

@@ -73,6 +73,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             || actor.HasPermission("lia", "view")
             || actor.HasPermission("tasks", "view")
             || actor.HasPermission("waitingQueue", "view")
+            || actor.HasPermission("cancellations", "view")
             || actor.HasPermission("referrals", "view");
         var customerEntities = canViewCustomers
             ? await db.Customers.AsNoTracking()
@@ -401,7 +402,6 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         string? imageDataUrl, bool active, ActorContext actor,
         CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("admin", "manage");
         if (string.IsNullOrWhiteSpace(title)) throw new DomainException("Informe o título do aviso.");
         if (string.IsNullOrWhiteSpace(body)) throw new DomainException("Informe o conteúdo do aviso.");
         var normalizedType = type.Trim();
@@ -413,6 +413,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var normalizedAudience = audience.Trim();
         if (normalizedAudience is not ("Todos" or "Colaborador"))
             throw new DomainException("Destinatário do aviso inválido.");
+        var canPublishCompletionNotice = !id.HasValue && actor.HasPermission("cs", "edit")
+            && normalizedAudience == "Colaborador" && normalizedKind == "Aviso";
+        if (!actor.HasPermission("admin", "manage") && !canPublishCompletionNotice)
+            throw new DomainException("Seu acesso não permite publicar este aviso.", 403);
         if (normalizedKind == "Evento" && !eventAt.HasValue)
             throw new DomainException("Informe a data e o horário do evento.");
         if (expiresAt.HasValue && expiresAt.Value <= DateTimeOffset.UtcNow)
@@ -571,9 +575,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     public async Task<CustomerModuleDto> GetCustomerModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
-        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view"))
+        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view"))
             throw new DomainException("Seu acesso não permite visualizar os cadastros de clientes.", 403);
-        var includeInactive = actor.HasPermission("catalogs", "manage");
+        var includeInactive = actor.HasPermission("catalogs", "manage") || actor.HasPermission("cancellations", "manage") || actor.HasPermission("hr", "manage");
         var entries = await db.CustomerCatalogOptions.AsNoTracking()
             .Where(entry => includeInactive || entry.Active)
             .OrderBy(entry => entry.Catalog).ThenBy(entry => entry.Name)
@@ -584,7 +588,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     public async Task<Guid> SaveCustomerCatalogAsync(Guid? id, string catalog, string name, string? description, bool active, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("catalogs", "manage");
+        var canManageAllCatalogs = actor.HasPermission("catalogs", "manage");
+        var canManageScopedCatalog = actor.HasPermission("cancellations", "manage") && catalog.StartsWith("cancellation", StringComparison.OrdinalIgnoreCase)
+            || actor.HasPermission("hr", "manage") && (catalog.StartsWith("hr", StringComparison.OrdinalIgnoreCase) || catalog.Equals("employeeRole", StringComparison.OrdinalIgnoreCase));
+        if (!canManageAllCatalogs && !canManageScopedCatalog)
+            throw new DomainException("Seu acesso não permite alterar os cadastros desta funcionalidade.", 403);
         var catalogKey = catalog.Trim();
         if (catalogKey.Length is < 2 or > 80 || !char.IsLetter(catalogKey[0]) || catalogKey.Any(character => !char.IsLetterOrDigit(character) && character != '_'))
             throw new DomainException("Identificador do cadastro inválido. Use somente letras, números e sublinhado.");
@@ -600,8 +608,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     public async Task DeleteCustomerCatalogAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("catalogs", "manage");
         var entry = await db.CustomerCatalogOptions.SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw new DomainException("Cadastro não encontrado.", 404);
+        var canManageScopedCatalog = actor.HasPermission("cancellations", "manage") && entry.Catalog.StartsWith("cancellation", StringComparison.OrdinalIgnoreCase)
+            || actor.HasPermission("hr", "manage") && (entry.Catalog.StartsWith("hr", StringComparison.OrdinalIgnoreCase) || entry.Catalog.Equals("employeeRole", StringComparison.OrdinalIgnoreCase));
+        if (!actor.HasPermission("catalogs", "manage") && !canManageScopedCatalog)
+            throw new DomainException("Seu acesso não permite excluir os cadastros desta funcionalidade.", 403);
         db.CustomerCatalogOptions.Remove(entry);
         AddAudit(actor, "Delete", "customerCatalog", entry.Id.ToString(), "catalogs", new { entry.Catalog, entry.Name });
         await db.SaveChangesAsync(cancellationToken);
@@ -612,11 +623,41 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission(command.Module, "create");
+        var cancellationRoute = string.Equals(command.OriginType, "cancellations", StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(command.Module, "cs", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(command.Module, "lia", StringComparison.OrdinalIgnoreCase))
+            && actor.HasPermission("cancellations", "edit");
+        if (!cancellationRoute)
+            actor.RequirePermission(command.Module, "create");
         if (string.IsNullOrWhiteSpace(command.Module) ||
             string.IsNullOrWhiteSpace(command.RecordType) ||
             string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Módulo, tipo e título são obrigatórios.");
+
+        if (TryReadJourneyIdentity(command.Description, out var journeyKind, out var clientId, out var journeyTrack) &&
+            !string.IsNullOrWhiteSpace(clientId) &&
+            (journeyKind.Equals("csJourney", StringComparison.OrdinalIgnoreCase) || journeyKind.Equals("liaJourney", StringComparison.OrdinalIgnoreCase)))
+        {
+            var module = command.Module.Trim();
+            var candidates = await db.WorkItems.AsNoTracking()
+                .Where(entry => entry.Module == module)
+                .Select(entry => new { entry.CustomerId, entry.Description })
+                .ToListAsync(cancellationToken);
+            var duplicate = candidates.Any(candidate =>
+            {
+                if (!TryReadJourneyIdentity(candidate.Description, out var existingKind, out var existingClientId, out var existingTrack))
+                    return false;
+                if (!existingKind.Equals(journeyKind, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (journeyKind.Equals("csJourney", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(existingTrack, journeyTrack, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                return string.Equals(existingClientId.Trim(), clientId.Trim(), StringComparison.OrdinalIgnoreCase)
+                    || command.CustomerId.HasValue && candidate.CustomerId == command.CustomerId;
+            });
+            if (duplicate)
+                throw new DomainException("ID já inserido na funcionalidade.", 409);
+        }
 
         if (command.RecordType.Equals("Candidato", StringComparison.OrdinalIgnoreCase) &&
             TryReadRecruitmentProcessId(command.Description, out var recruitmentProcessId))
@@ -677,6 +718,28 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             using var document = JsonDocument.Parse(description);
             return document.RootElement.TryGetProperty("processId", out var property) &&
                    Guid.TryParse(property.GetString(), out processId) && processId != Guid.Empty;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryReadJourneyIdentity(string? description, out string kind, out string clientId, out string track)
+    {
+        kind = "";
+        clientId = "";
+        track = "";
+        if (string.IsNullOrWhiteSpace(description)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(description);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("kind", out var kindProperty)) return false;
+            kind = kindProperty.GetString() ?? "";
+            clientId = root.TryGetProperty("clientId", out var clientProperty) ? clientProperty.GetString() ?? "" : "";
+            track = root.TryGetProperty("track", out var trackProperty) ? trackProperty.GetString() ?? "" : "";
+            return !string.IsNullOrWhiteSpace(kind);
         }
         catch (JsonException)
         {
@@ -801,6 +864,73 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             Actor = actor.DisplayName,
         });
         AddAudit(actor, "Transition", "work_item", item.Id.ToString(), item.Module, new { From = previous, To = item.Status });
+
+        var routesToCancellation = item.Module != "cancellations"
+            && command.NextStatus.Contains("cancel", StringComparison.OrdinalIgnoreCase)
+            && item.Module is "commercial" or "cs" or "lia" or "support";
+        if (routesToCancellation && !await db.WorkItems.AnyAsync(
+                entry => entry.Module == "cancellations" && entry.OriginId == item.Id,
+                cancellationToken))
+        {
+            var requestedAt = DateTimeOffset.UtcNow;
+            var clientId = item.CustomerId?.ToString() ?? item.Id.ToString("N")[..8];
+            try
+            {
+                using var source = JsonDocument.Parse(item.Description);
+                if (source.RootElement.TryGetProperty("clientId", out var sourceClientId) &&
+                    !string.IsNullOrWhiteSpace(sourceClientId.GetString()))
+                    clientId = sourceClientId.GetString()!;
+            }
+            catch (JsonException) { }
+
+            var cancellation = new WorkItem
+            {
+                Module = "cancellations",
+                RecordType = "Solicitação de cancelamento",
+                Title = string.IsNullOrWhiteSpace(item.CustomerName) ? item.Title : item.CustomerName,
+                CustomerId = item.CustomerId,
+                CustomerName = item.CustomerName,
+                Owner = string.IsNullOrWhiteSpace(item.Owner) ? actor.DisplayName : item.Owner,
+                Team = "Reversão de cancelamentos",
+                Status = "Fila de espera",
+                Priority = "P1",
+                AmountCents = item.AmountCents,
+                OriginType = item.Module,
+                OriginId = item.Id,
+                CreatedBy = actor.Email,
+                Description = JsonSerializer.Serialize(new
+                {
+                    kind = "cancellationJourney",
+                    requestDate = requestedAt.ToString("yyyy-MM-dd"),
+                    requestMonth = requestedAt.ToString("yyyy-MM"),
+                    clientId,
+                    customerName = string.IsNullOrWhiteSpace(item.CustomerName) ? item.Title : item.CustomerName,
+                    adhesionDate = "",
+                    stayRange = "",
+                    plan = "",
+                    monthlyValueCents = item.AmountCents,
+                    seller = item.Module == "commercial" ? item.Owner : "",
+                    csOwner = item.Owner,
+                    reason = $"Cancelamento sinalizado em {item.RecordType}",
+                    notes = $"Solicitação gerada automaticamente ao mover o registro para {command.NextStatus}.",
+                    sourceModule = item.Module,
+                    sourceItemId = item.Id.ToString(),
+                    linkedCsItemId = item.Module == "cs" ? item.Id.ToString() : null,
+                    history = new[] { new { id = Guid.NewGuid().ToString(), text = $"Cancelamento registrado a partir de {item.Module}.", at = requestedAt, author = actor.DisplayName } },
+                }),
+            };
+            db.WorkItems.Add(cancellation);
+            db.Activities.Add(new Activity
+            {
+                EntityType = "work_item",
+                EntityId = cancellation.Id,
+                Module = "cancellations",
+                Kind = "Criado automaticamente",
+                Summary = $"Solicitação de cancelamento criada para {cancellation.Title}",
+                Actor = actor.DisplayName,
+            });
+            AddAudit(actor, "Create", "work_item", cancellation.Id.ToString(), "cancellations", new { SourceModule = item.Module, SourceId = item.Id });
+        }
         await db.SaveChangesAsync(cancellationToken);
     }
 

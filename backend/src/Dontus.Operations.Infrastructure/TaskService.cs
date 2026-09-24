@@ -366,8 +366,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 AuthorUserId = user.Id,
                 Body = $"[APROVADOR:{approverId.Value}]",
             });
-        if (command.ParticipantUserIds is not null)
-            foreach (var participantId in command.ParticipantUserIds.Distinct())
+        var initialParticipantIds = (command.ParticipantUserIds ?? []).Distinct().ToArray();
+        foreach (var participantId in initialParticipantIds)
                 db.TaskParticipants.Add(new() { TaskId = task.Id, UserId = participantId });
         if (command.AttachmentLinks is not null)
         {
@@ -387,8 +387,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             }
         }
         AddHistory(task.Id, user.Id, "created", "Tarefa criada", null, new { task.Title, task.StatusId, task.PriorityId });
-        if (task.AssigneeUserId.HasValue)
+        if (task.AssigneeUserId.HasValue && task.AssigneeUserId.Value != user.Id)
             AddNotification(task.Id, task.AssigneeUserId.Value, user.Id, "assigned", "Uma nova tarefa foi atribuída a você.");
+        foreach (var participantId in initialParticipantIds.Where(id => id != user.Id && id != task.AssigneeUserId).Distinct())
+            AddNotification(task.Id, participantId, user.Id, "participant_added", "Você foi incluído como participante de uma nova tarefa.");
         var coordinators = await db.UserDepartments.AsNoTracking()
             .Where(x => x.DepartmentId == task.CurrentDepartmentId && x.IsCoordinator && x.UserId != user.Id)
             .Select(x => x.UserId).Distinct().ToListAsync(cancellationToken);
@@ -440,7 +442,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         AddHistory(task.Id, user.Id, task.Cancelled ? "cancelled" : status.IsFinal ? "completed" : "status_changed",
             $"Status alterado para {status.Name}", new { StatusId = previous }, new { StatusId = status.Id },
             command.Justification);
-        NotifyInterested(task, user.Id, "status_changed", $"A tarefa #{task.Number} mudou para {status.Name}.");
+        await NotifyInterestedAsync(task, user.Id, "status_changed", $"A tarefa #{task.Number} mudou para {status.Name}.", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -457,7 +459,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         task.Version++;
         AddHistory(task.Id, user.Id, "priority_changed", $"Prioridade alterada para {priority.Name}",
             new { PriorityId = previous }, new { PriorityId = priority.Id });
-        NotifyInterested(task, user.Id, "priority_changed", $"A prioridade da tarefa #{task.Number} foi alterada para {priority.Name}.");
+        await NotifyInterestedAsync(task, user.Id, "priority_changed", $"A prioridade da tarefa #{task.Number} foi alterada para {priority.Name}.", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -485,7 +487,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         task.Version++;
         AddHistory(task.Id, user.Id, "sla_changed", "Política de SLA alterada", previous,
             new { task.SlaPolicyId, task.FirstResponseDueAt, task.ServiceStartDueAt, task.SlaDueAt });
-        NotifyInterested(task, user.Id, "sla_changed", $"O SLA da tarefa #{task.Number} foi alterado.");
+        await NotifyInterestedAsync(task, user.Id, "sla_changed", $"O SLA da tarefa #{task.Number} foi alterado.", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -549,7 +551,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             command.Reason);
         var recipients = await db.UserDepartments.Where(x => x.DepartmentId == destination.Id)
             .Select(x => x.UserId).ToListAsync(cancellationToken);
-        foreach (var recipient in recipients.Distinct())
+        if (task.AssigneeUserId.HasValue && task.AssigneeUserId.Value != user.Id)
+            AddNotification(task.Id, task.AssigneeUserId.Value, user.Id, "assigned", $"A tarefa #{task.Number} foi atribuída a você no setor {destination.Name}.");
+        foreach (var recipient in recipients.Where(id => id != user.Id && id != task.AssigneeUserId).Distinct())
             AddNotification(task.Id, recipient, user.Id, "transferred", $"A tarefa #{task.Number} foi encaminhada para {destination.Name}.");
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -567,7 +571,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         task.Version++;
         AddHistory(task.Id, user.Id, "assignee_changed", "Responsável pela tarefa alterado",
             new { AssigneeUserId = previous }, new { AssigneeUserId = assigneeId });
-        AddNotification(task.Id, assigneeId, user.Id, "assigned", $"A tarefa #{task.Number} foi atribuída a você.");
+        if (assigneeId != user.Id)
+            AddNotification(task.Id, assigneeId, user.Id, "assigned", $"A tarefa #{task.Number} foi atribuída a você.");
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -621,12 +626,17 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         task.Version++;
 
         var participants = await db.TaskParticipants.Where(x => x.TaskId == task.Id).ToListAsync(cancellationToken);
+        var previousParticipantIds = participants.Select(entry => entry.UserId).ToHashSet();
+        var nextParticipantIds = (command.ParticipantUserIds ?? []).Distinct().ToArray();
         db.TaskParticipants.RemoveRange(participants);
-        foreach (var participantId in (command.ParticipantUserIds ?? []).Distinct())
+        foreach (var participantId in nextParticipantIds)
             db.TaskParticipants.Add(new TaskParticipant { TaskId = task.Id, UserId = participantId });
+        var addedParticipantIds = nextParticipantIds.Where(id => !previousParticipantIds.Contains(id)).ToHashSet();
+        foreach (var participantId in addedParticipantIds.Where(id => id != user.Id))
+            AddNotification(task.Id, participantId, user.Id, "participant_added", $"Você foi incluído como participante da tarefa #{task.Number}.");
         AddHistory(task.Id, user.Id, "updated", "Tarefa editada", previous,
             new { task.Title, task.Description, task.TypeId, task.CustomerId, task.CustomerCode, task.CustomerName, task.ClientWhatsApp, task.CancellationRequest });
-        NotifyInterested(task, user.Id, "updated", $"A tarefa #{task.Number} foi atualizada.");
+        await NotifyInterestedAsync(task, user.Id, "updated", $"A tarefa #{task.Number} foi atualizada.", cancellationToken, nextParticipantIds, addedParticipantIds);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -662,9 +672,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         };
         db.TaskComments.Add(comment);
         AddHistory(task.Id, user.Id, "comment_added", "Comentário incluído", null, new { comment.Id });
-        NotifyInterested(task, user.Id, "comment_added", $"Novo comentário na tarefa #{task.Number}.");
+        await NotifyInterestedAsync(task, user.Id, "comment_added", $"Novo comentário na tarefa #{task.Number}.", cancellationToken, excludedRecipientIds: mentions);
         foreach (var mentioned in mentions)
-            AddNotification(task.Id, mentioned, user.Id, "mentioned", $"Você foi mencionado na tarefa #{task.Number}.");
+            if (mentioned != user.Id)
+                AddNotification(task.Id, mentioned, user.Id, "mentioned", $"Você foi mencionado na tarefa #{task.Number}.");
         await db.SaveChangesAsync(cancellationToken);
         return comment.Id;
     }
@@ -1211,10 +1222,29 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         }
     }
 
-    private void NotifyInterested(CorporateTask task, Guid actorUserId, string eventType, string message)
+    private async Task NotifyInterestedAsync(
+        CorporateTask task,
+        Guid actorUserId,
+        string eventType,
+        string message,
+        CancellationToken cancellationToken,
+        IEnumerable<Guid>? participantOverride = null,
+        IEnumerable<Guid>? excludedRecipientIds = null)
     {
-        foreach (var recipient in new[] { task.CreatorUserId, task.AssigneeUserId }.Where(x => x.HasValue)
-                     .Select(x => x!.Value).Where(x => x != actorUserId).Distinct())
+        var participantIds = participantOverride?.Distinct().ToArray()
+            ?? await db.TaskParticipants.AsNoTracking()
+                .Where(entry => entry.TaskId == task.Id)
+                .Select(entry => entry.UserId)
+                .Distinct()
+                .ToArrayAsync(cancellationToken);
+        var excluded = (excludedRecipientIds ?? []).ToHashSet();
+        var recipients = new[] { task.CreatorUserId, task.AssigneeUserId }
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Concat(participantIds)
+            .Where(id => id != actorUserId && !excluded.Contains(id))
+            .Distinct();
+        foreach (var recipient in recipients)
             AddNotification(task.Id, recipient, actorUserId, eventType, message);
     }
 

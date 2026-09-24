@@ -36,6 +36,9 @@ public sealed record SaveSuggestionStatusCommand(
 public sealed record CreateSuggestionCommand(
     string Name, string? Description, Guid? CustomerId, Guid PriorityId,
     bool StrategicClient, bool CancellationRisk);
+public sealed record UpdateSuggestionCommand(
+    Guid Id, string Name, string? Description, Guid? CustomerId, Guid PriorityId,
+    bool StrategicClient, bool CancellationRisk, long Version);
 
 public sealed record ChangeSuggestionStatusCommand(Guid Id, Guid StatusId, long Version);
 public sealed record AddSuggestionCommentCommand(Guid SuggestionId, string Body);
@@ -50,6 +53,7 @@ public interface ISuggestionService
     Task DeletePriorityAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteStatusAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task<CreateSuggestionResult> CreateSuggestionAsync(CreateSuggestionCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task UpdateSuggestionAsync(UpdateSuggestionCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangeStatusAsync(ChangeSuggestionStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> AddCommentAsync(AddSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteSuggestionAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);

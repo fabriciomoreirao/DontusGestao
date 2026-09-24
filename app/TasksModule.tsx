@@ -76,6 +76,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   const [onlyMine, setOnlyMine] = useState(false);
   const [clientNotice, setClientNotice] = useState("Todos");
   const [selected, setSelected] = useState<CorporateTask | null>(null);
+  const [editRequested, setEditRequested] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createdProtocol, setCreatedProtocol] = useState("");
   const has = (capability: string) => canManage || capabilities.includes(capability);
@@ -112,13 +113,15 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
     if (direct) setSelected(direct);
   }, [module.tasks]);
 
-  const openTask = (task: CorporateTask) => {
+  const openTask = (task: CorporateTask, edit = false) => {
+    setEditRequested(edit);
     setSelected(task);
     const url = new URL(window.location.href); url.searchParams.set("mod", "tasks"); url.searchParams.set("task", task.id);
     window.history.replaceState({}, "", url);
   };
   const closeTask = () => {
     setSelected(null);
+    setEditRequested(false);
     const url = new URL(window.location.href); url.searchParams.delete("task"); window.history.replaceState({}, "", url);
   };
 
@@ -167,7 +170,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
         <div className="task-client-notice-tabs">{["Todos", "Avisar Cliente", "Sem Necessidade", "Cliente Informado", "Pendente"].map((state) => <button className={clientNotice === state ? "active" : ""} onClick={() => setClientNotice(state)} key={state}>{state}<b>{state === "Todos" ? module.tasks.length : module.tasks.filter((task) => task.clientNotificationState === state).length}</b></button>)}</div>
       </details>
       <div className="task-workspace-content">
-        {view === "kanban" && <Kanban tasks={filtered} statuses={module.statuses} collaborators={module.collaborators} departmentId={departmentFilter} onOpen={openTask} onMove={move} />}
+        {view === "kanban" && <Kanban tasks={filtered} statuses={module.statuses} collaborators={module.collaborators} departmentId={departmentFilter} canEdit={canEdit} onOpen={openTask} onEdit={task=>openTask(task,true)} onMove={move} onDelete={task=>{void operate({action:"deleteTask",taskId:task.id,version:task.version},"Tarefa excluída com sucesso.")}} />}
         {view === "list" && <TaskList tasks={filtered} collaborators={module.collaborators} onOpen={openTask} />}
       </div>
     </section>
@@ -179,12 +182,12 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
       if (result.id && files.length > 0) await uploadAttachments(result.id, files);
       setCreatedProtocol(result.createdProtocol ?? "");
     }} />}
-    {selected && <TaskDetail task={module.tasks.find((t) => t.id === selected.id) ?? selected} module={module} customers={customers} user={user} canManage={canManage} canEdit={canEdit} has={has} busy={busy} onClose={closeTask} operate={operate} onSendToDevelopment={onSendToDevelopment} uploadAttachments={uploadAttachments} deleteAttachment={deleteAttachment} />}
+    {selected && <TaskDetail task={module.tasks.find((t) => t.id === selected.id) ?? selected} module={module} customers={customers} user={user} canManage={canManage} canEdit={canEdit} startEditing={editRequested} has={has} busy={busy} onClose={closeTask} operate={operate} onSendToDevelopment={onSendToDevelopment} uploadAttachments={uploadAttachments} deleteAttachment={deleteAttachment} />}
     {createdProtocol && <TaskCreatedModal protocol={createdProtocol} onClose={() => setCreatedProtocol("")} />}
   </div>;
 }
 
-function Kanban({ tasks, statuses, collaborators, departmentId, onOpen, onMove }: { tasks: CorporateTask[]; statuses: Status[]; collaborators: Collaborator[]; departmentId: string; onOpen: (task: CorporateTask) => void; onMove: (task: CorporateTask, statusId: string) => void }) {
+function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, onOpen, onEdit, onMove, onDelete }: { tasks: CorporateTask[]; statuses: Status[]; collaborators: Collaborator[]; departmentId: string; canEdit: boolean; onOpen: (task: CorporateTask) => void; onEdit: (task: CorporateTask) => void; onMove: (task: CorporateTask, statusId: string) => void; onDelete: (task: CorporateTask) => void }) {
   const [limits, setLimits] = useState<Record<string, number>>({});
   const visibleStatuses = statuses
     .filter((status) => status.active && (!departmentId || !status.departmentId || status.departmentId === departmentId))
@@ -199,14 +202,14 @@ function Kanban({ tasks, statuses, collaborators, departmentId, onOpen, onMove }
     }}>
       <header><span><CircleDot size={14} />{status.kanbanColumn || status.name}</span><b>{column.length}</b></header>
       <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{visibleTasks.map((task) => <article draggable tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} key={task.id}
-        onDragStart={(e) => e.dataTransfer.setData("taskId", task.id)} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpen(task); }}>
-        <div className="task-card-code"><span>{task.protocol}</span><i style={{ background: task.priorityColor }} />{task.priorityName}</div>
-        <strong>{task.title}</strong>
-        {task.customerName && <p className="task-card-customer"><span>Cliente</span><b>{task.customerName}</b>{task.customerCode && <small>ID {task.customerCode}</small>}</p>}
-        <p className="task-card-description">{task.description || "Sem descrição informada."}</p>
-        <div className="task-card-labels"><span className="task-card-type">{task.typeName}</span><TaskClientStateBadge state={task.clientNotificationState}/></div>
-        <div className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}><Clock3 size={12} /> {task.completedAt ? "Concluída" : `${task.slaState} · ${dt(task.slaDueAt)}`}</div>
-        <footer><span><UsersRound size={13} /> {task.departmentName}</span><span className="task-card-owner"><CollaboratorAvatar collaborator={collaborators.find((item) => item.id === task.assigneeUserId)} /><span><small>Responsável</small><b>{task.assigneeName}</b></span></span></footer>
+        onDragStart={(e) => e.dataTransfer.setData("taskId", task.id)} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(task); } }}>
+        <div className="task-card-top"><span className="task-card-code"><Clipboard size={15} /><b>{task.protocol}</b></span>{canEdit && task.canModify && <span className="task-card-actions"><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></span>}</div>
+        <strong className="task-card-title">{task.title}</strong>
+        {(task.customerName || task.customerCode) && <div className="task-card-customer"><UserRound size={15}/><span>Cliente</span><b>{task.customerName || "Não informado"}</b>{task.customerCode && <small><FileText size={13}/> ID {task.customerCode}</small>}</div>}
+        <div className="task-card-description"><FileText size={15}/><span><small>Descrição</small><p>{task.description || "Sem descrição informada."}</p></span></div>
+        <div className="task-card-labels"><span className="task-card-type"><CircleDot size={13}/>{task.typeName}</span><TaskClientStateBadge state={task.clientNotificationState}/></div>
+        <div className="task-card-meta"><span className="task-card-priority"><i style={{ background: task.priorityColor }}/>{task.priorityName}</span><span className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}><Clock3 size={12} /> {task.completedAt ? "Concluída" : `${task.slaState} · ${dt(task.slaDueAt)}`}</span></div>
+        <footer><span className="task-card-department"><UsersRound size={14} /> {task.departmentName}</span><span className="task-card-owner"><CollaboratorAvatar collaborator={collaborators.find((item) => item.id === task.assigneeUserId)} /><span><small>Responsável</small><b>{task.assigneeName}</b></span><ChevronRight size={17} className="task-card-open-icon" /></span></footer>
       </article>)}{column.length > visibleTasks.length && <button type="button" className="task-column-more" onClick={() => setLimits((current) => ({ ...current, [status.id]: limit + 10 }))}>Ver mais ({column.length - visibleTasks.length})</button>}</div>
     </section>;
   })}</div>;
@@ -266,7 +269,7 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
       sourceDepartmentId: departmentId, currentDepartmentId: departmentId, assigneeUserId: null,
       customerId: customerId || null, customerCode,
       clientWhatsApp: f.get("clientWhatsApp"), internalNotes: "", dueAt: null, slaPolicyId: null,
-      cancellationRequest: f.has("cancellationRequest"),
+      cancellationRequest: false,
       participantUserIds: f.getAll("participantUserIds"),
     }, files);
   };
@@ -287,7 +290,6 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
     <section className="task-form-section wide">
       <header><span>02</span><div><h3>Acesso e evidências</h3><p>Inclua participantes e arquivos somente quando forem necessários.</p></div></header>
       <div className="task-form-section-grid">
-        <label className="wide task-choice-card danger"><input type="checkbox" name="cancellationRequest" /><span><b>Solicitação de cancelamento</b><small>Sinaliza a demanda para análise do coordenador.</small></span></label>
         <fieldset className="wide task-participants"><legend>Colaboradores participantes</legend><p>Somente participantes, criador, responsável e coordenação terão acesso.</p>{module.collaborators.filter((item) => item.active).map((item) => <label key={item.id}><input type="checkbox" name="participantUserIds" value={item.id} /> <CollaboratorAvatar collaborator={item} /> {item.name}</label>)}</fieldset>
         <label className="wide task-file-picker">Fotos e vídeos <input name="files" type="file" accept="image/*,video/*" multiple /><small>Até 10 arquivos por envio, com no máximo 25 MB cada.</small></label>
       </div>
@@ -314,7 +316,7 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
     onSubmit({
       title: form.get("title"), description: form.get("description"), typeId: form.get("typeId"),
       customerId: customerId || null, customerCode,
-      clientWhatsApp: form.get("clientWhatsApp"), cancellationRequest: form.has("cancellationRequest"),
+      clientWhatsApp: form.get("clientWhatsApp"), cancellationRequest: false,
       participantUserIds: form.getAll("participantUserIds"), version: task.version,
     });
   };
@@ -325,13 +327,12 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
     <label>WhatsApp do cliente *<input name="clientWhatsApp" required minLength={10} defaultValue={task.clientWhatsApp} /></label>
     <label>Tipo *<select name="typeId" required defaultValue={task.typeId}>{validTypes.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>
     <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={task.description} /></label>
-    <label className="wide task-choice-card danger"><input type="checkbox" name="cancellationRequest" defaultChecked={task.cancellationRequest} /><span><b>Solicitação de cancelamento</b><small>Mantenha marcado quando esta tarefa representar um cancelamento.</small></span></label>
     <fieldset className="wide task-participants"><legend>Colaboradores participantes</legend>{module.collaborators.filter((item) => item.active).map((item) => <label key={item.id}><input type="checkbox" name="participantUserIds" value={item.id} defaultChecked={task.participantUserIds.includes(item.id)} /> <CollaboratorAvatar collaborator={item} /> {item.name}</label>)}</fieldset>
     <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? "Salvando..." : "Salvar alterações"}</button></div>
   </form></Overlay>;
 }
 
-function TaskDetail({ task, module, customers, user, canManage, canEdit, has, busy, onClose, operate, onSendToDevelopment, uploadAttachments, deleteAttachment }: { task: CorporateTask; module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; canManage: boolean; canEdit: boolean; has: (cap: string) => boolean; busy: boolean; onClose: () => void; operate: Props["operate"]; onSendToDevelopment: Props["onSendToDevelopment"]; uploadAttachments: Props["uploadAttachments"]; deleteAttachment: Props["deleteAttachment"] }) {
+function TaskDetail({ task, module, customers, user, canManage, canEdit, startEditing, has, busy, onClose, operate, onSendToDevelopment, uploadAttachments, deleteAttachment }: { task: CorporateTask; module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; canManage: boolean; canEdit: boolean; startEditing: boolean; has: (cap: string) => boolean; busy: boolean; onClose: () => void; operate: Props["operate"]; onSendToDevelopment: Props["onSendToDevelopment"]; uploadAttachments: Props["uploadAttachments"]; deleteAttachment: Props["deleteAttachment"] }) {
   const [comment, setComment] = useState("");
   const [transferDepartment, setTransferDepartment] = useState(module.departments.find((department) => department.active && department.id !== task.currentDepartmentId)?.id ?? "");
   const [transferAssignee, setTransferAssignee] = useState("");
@@ -342,7 +343,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, has, bu
   const [showEmojis, setShowEmojis] = useState(false);
   const [clientNoticeOpen, setClientNoticeOpen] = useState(false);
   const [clientNoticeMessage, setClientNoticeMessage] = useState(`Avisar o cliente sobre a tarefa ${task.protocol}.`);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing && canEdit && task.canModify);
   const [sentToDevelopment, setSentToDevelopment] = useState(false);
   const [developmentSubtaskId, setDevelopmentSubtaskId] = useState(() => task.comments.map((entry) => entry.body.match(/\[TI:([^\]]+)\]/)?.[1]).find(Boolean) ?? "");
   const [responsibleUserId, setResponsibleUserId] = useState(task.assigneeUserId ?? "");
@@ -378,7 +379,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, has, bu
       setFileInputKey((value) => value + 1);
     }
   };
-  return <Overlay title={`#${task.number} — ${task.title}`} eyebrow="DETALHES DA TAREFA" onClose={onClose} wide side headerActions={<>
+  return <Overlay title={`#${task.number} — ${task.title}`} eyebrow="DETALHES DA TAREFA" onClose={onClose} wide side detail headerActions={<>
     <span className="task-header-status"><CircleDot size={14} /> {task.statusName}</span>
     <TaskClientStateBadge state={task.clientNotificationState}/>
     <span className="task-header-subtitle">{task.departmentName} · Atualizada em {dt(task.updatedAt)}</span>
@@ -391,17 +392,17 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, has, bu
       <header><Clipboard size={16} /> <strong>Resumo</strong></header>
       <div><span>Protocolo</span><strong>{task.protocol}</strong></div>
       <div><span>Setor atual</span><strong>{task.departmentName}</strong></div>
-      <div><span>Prioridade</span><strong>{task.priorityName}</strong></div>
-      <div><span>SLA</span><strong>{task.slaState}</strong></div>
       <div><span>Cliente</span><strong>{task.customerCode || task.customerName || "Não vinculado"}</strong></div>
-      <div><span>Tipo</span><strong>{task.typeName}</strong></div>
+      <div className={`task-summary-sla ${/venc/i.test(task.slaState) ? "overdue" : ""}`}><span>SLA</span><strong>{task.slaState}</strong></div>
+      <div className={`task-summary-priority ${/alta|urgente|crítica|critica/i.test(task.priorityName) ? "high" : ""}`}><span>Prioridade</span><strong>{task.priorityName}</strong></div>
       <div><span>Criado por</span><strong>{task.creatorName}</strong></div>
-      <div><span>Data de criação</span><strong>{dt(task.createdAt)}</strong></div>
+      <div><span>Tipo</span><strong>{task.typeName}</strong></div>
       <div><span>Última atualização</span><strong>{dt(task.updatedAt)}</strong></div>
-      <div className="task-summary-owner" data-collaborator-id={task.assigneeUserId}><CollaboratorAvatar collaborator={module.collaborators.find((item) => item.id === task.assigneeUserId)} /><span><small>Responsável</small><strong>{task.assigneeName}</strong></span></div>
-      <div className="task-summary-owner" data-collaborator-id={approver?.id}><CollaboratorAvatar collaborator={approver} /><span><small>Aprovador</small><strong>{approver?.name || "Coordenação do setor"}</strong></span></div>
+      <div><span>Data de criação</span><strong>{dt(task.createdAt)}</strong></div>
+      <div className="task-summary-owner" data-collaborator-id={task.assigneeUserId}><span><small>Responsável</small><strong>{task.assigneeName}</strong></span><CollaboratorAvatar collaborator={module.collaborators.find((item) => item.id === task.assigneeUserId)} /></div>
+      {approver && <div className="task-summary-approver" data-collaborator-id={approver.id}><span>Aprovador</span><strong>{approver.name}</strong></div>}
     </section>
-    {canEdit && task.canModify && <section className="task-owner-controls"><div><span>GESTÃO DA SOLICITAÇÃO</span><strong>Você pode editar ou excluir esta tarefa</strong><small>Disponível somente para o criador e o responsável atual.</small></div><button onClick={() => setEditing(true)}><Pencil size={15} /> Editar</button><button className="delete" onClick={async () => { const result = await operate({ action: "deleteTask", taskId: task.id, version: task.version }, "Tarefa excluída com sucesso."); if (result) onClose(); }}><Trash2 size={15} /> Excluir</button></section>}
+    {canEdit && task.canModify && <section className="task-owner-controls"><div><span>GESTÃO DA SOLICITAÇÃO</span><strong>Você pode editar ou excluir esta tarefa.</strong></div><button onClick={() => setEditing(true)}><Pencil size={15} /> Editar</button><button className="delete" onClick={async () => { const result = await operate({ action: "deleteTask", taskId: task.id, version: task.version }, "Tarefa excluída com sucesso."); if (result) onClose(); }}><Trash2 size={15} /> Excluir</button></section>}
     <div className="task-files-panel">
       <div><h3><Paperclip size={16} /> Anexos</h3><span>{task.attachments?.length ?? 0} arquivo(s)</span></div>
       {(task.attachments?.length ?? 0) > 0
@@ -415,13 +416,13 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, has, bu
     </div>
     <section className="task-actions-panel">
       <header><div><span>AÇÕES DA TAREFA</span><h3>Atualizar e comunicar</h3></div><p>Use os controles abaixo para alterar o fluxo ou solicitar uma ação.</p></header>
-      {((canEdit && has("transferAssignee")) || (canEdit && has("changeStatus") && finalStatus)) && <div className="task-quick-workflow">
-        {canEdit && has("transferAssignee") && <div className="task-responsible-transfer"><label><span>Transferir responsável</span><select value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.target.value)}><option value="">Fila compartilhada</option>{currentDepartmentAssignees.map((collaborator) => <option value={collaborator.id} key={collaborator.id}>{collaborator.name}</option>)}</select></label><button type="button" disabled={busy || responsibleUserId === (task.assigneeUserId ?? "")} onClick={() => void operate({ action: "assignTask", taskId: task.id, assigneeUserId: responsibleUserId || null, version: task.version }, "Responsável transferido com sucesso.")}><UsersRound size={15} /> Transferir</button></div>}
+      {canEdit && has("changeStatus") && finalStatus && <div className="task-quick-workflow">
         {canEdit && has("changeStatus") && approvalStatus && finalStatus && !task.completedAt && task.statusId !== approvalStatus.id && <button className="task-complete-button" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: approvalStatus.id, justification: "Encaminhada para aprovação.", version: task.version }, "Tarefa enviada para aprovação.")}><CheckCircle2 size={17} /> Enviar para aprovação</button>}
         {canEdit && has("changeStatus") && approvalStatus && finalStatus && task.statusId === approvalStatus.id && canApprove && <button className="task-complete-button" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: finalStatus.id, justification: "Aprovada pela coordenação.", version: task.version }, "Tarefa aprovada e concluída com sucesso.")}><CheckCircle2 size={17} /> Aprovar e concluir</button>}
         {canEdit && has("changeStatus") && task.completedAt && resumeStatus && <button className="task-resume-control" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: resumeStatus.id, justification: "Tarefa retomada.", version: task.version }, "Tarefa retomada com sucesso.")}><RotateCcw size={16} /> Retomar tarefa</button>}
       </div>}
       <div className="task-action-fields">
+        {canEdit && has("transferAssignee") && <div className="task-responsible-transfer"><label><span>Transferir responsável</span><select value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.target.value)}><option value="">Fila compartilhada</option>{currentDepartmentAssignees.map((collaborator) => <option value={collaborator.id} key={collaborator.id}>{collaborator.name}</option>)}</select></label><button type="button" disabled={busy || responsibleUserId === (task.assigneeUserId ?? "")} onClick={() => void operate({ action: "assignTask", taskId: task.id, assigneeUserId: responsibleUserId || null, version: task.version }, "Responsável transferido com sucesso.")}><UsersRound size={15} /> Transferir</button></div>}
         {canEdit && has("changeStatus") && <label className="status-control"><span>Status</span><select value={task.statusId} onChange={async (e) => {
           const target = module.statuses.find((s) => s.id === e.target.value);
           const justification = target?.requiresJustification ? window.prompt("Justificativa obrigatória:") : "";
@@ -440,13 +441,13 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, has, bu
     </section>
     {canEdit && has("forward") && (canManage || user.isCoordinator) && module.departments.some((department) => department.active && department.id !== task.currentDepartmentId) && <div className="task-transfer"><div><span>TRANSFERÊNCIA DE SETOR</span><h3>Encaminhar tarefa</h3><p>Ela sairá do quadro de <b>{task.departmentName}</b> e entrará na etapa inicial do setor de destino.</p></div><label>Setor de destino<select value={transferDepartment} onChange={(e) => { setTransferDepartment(e.target.value); setTransferAssignee(""); }}><option value="">Selecionar setor</option>{module.departments.filter((d) => d.active && d.id !== task.currentDepartmentId).map((d) => <option value={d.id} key={d.id}>{d.name}</option>)}</select></label><label>Novo responsável<select value={transferAssignee} onChange={(e) => setTransferAssignee(e.target.value)}><option value="">Fila compartilhada</option>{availableAssignees.map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label className="task-transfer-reason">Motivo<input value={transferReason} onChange={(event) => setTransferReason(event.target.value)} placeholder="Explique o encaminhamento" /></label><button disabled={busy || !transferDepartment || !transferReason.trim()} onClick={async () => { const result = await operate({ action: "transferTask", taskId: task.id, departmentId: transferDepartment, assigneeUserId: transferAssignee || null, reason: transferReason.trim(), recalculateSla: true, version: task.version }, "Tarefa encaminhada para o novo setor."); if (result) onClose(); }}>Encaminhar tarefa</button></div>}
     <div className="task-detail-grid">
-      <section className="task-conversation-card"><header><h3><MessageSquareText size={17} /> Comentários</h3><span>{task.comments.length}</span></header><div className="task-comments">{task.comments.length === 0 ? <p className="task-empty-message">Nenhum comentário registrado.</p> : task.comments.map((c) => <article key={c.id}><b>{c.authorName}</b><time>{dt(c.createdAt)}</time><p>{c.body}</p>{c.attachments?.length > 0 && <div className="comment-attachments">{c.attachments.map((file) => <a href={file.url} target="_blank" rel="noreferrer" key={file.id}><Paperclip size={13} /> {file.fileName}</a>)}</div>}</article>)}</div>
+      <section className="task-conversation-card"><header><h3><MessageSquareText size={17} /> Comentários</h3><span>{task.comments.length}</span></header><div className="task-comments">{task.comments.length === 0 ? <p className="task-empty-message">Nenhum comentário registrado.</p> : task.comments.map((c) => <article key={c.id} className="task-comment-entry"><CollaboratorAvatar collaborator={module.collaborators.find((item) => item.id === c.authorUserId)} /><div><b>{c.authorName}</b><time>{dt(c.createdAt)}</time><p>{c.body}</p>{c.attachments?.length > 0 && <div className="comment-attachments">{c.attachments.map((file) => <a href={file.url} target="_blank" rel="noreferrer" key={file.id}><Paperclip size={13} /> {file.fileName}</a>)}</div>}</div></article>)}</div>
         {canEdit && <form onSubmit={async (e) => { e.preventDefault(); if (!comment.trim()) return; const result = await operate({ action: "addTaskComment", taskId: task.id, body: comment }, "Comentário registrado."); if (result) { if (result.id && commentFiles.length > 0) await uploadAttachments(task.id, commentFiles, result.id); setComment(""); setCommentFiles([]); setShowEmojis(false); } }}><label htmlFor="task-comment">Adicionar comentário</label><textarea ref={commentInput} id="task-comment" rows={5} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={"Escreva a atualização aqui.\nUse novas linhas para organizar tópicos e detalhes."} /><div className="task-comment-tools"><button className={showEmojis ? "active" : ""} type="button" onClick={() => setShowEmojis((value) => !value)} aria-label="Adicionar emoji"><Smile size={15} /> Emoji</button><label className="comment-file-picker"><Paperclip size={14} /> Anexar fotos<input type="file" accept="image/*" multiple onChange={(event) => setCommentFiles(Array.from(event.target.files ?? []))} /></label>{showEmojis && <div className="task-emoji-picker" aria-label="Emojis rápidos">{["😀", "👍", "✅", "🎯", "🚨", "🙏", "📌", "💬", "📎", "🚀"].map((emoji) => <button type="button" onClick={() => insertEmoji(emoji)} key={emoji} aria-label={`Inserir ${emoji}`}>{emoji}</button>)}</div>}</div><footer><small>{comment.length} caracteres · {commentFiles.length} foto(s)</small><button disabled={busy || !comment.trim()}><MessageSquareText size={15} /> Publicar comentário</button></footer></form>}</section>
       <section className="task-history-card"><header><h3><History size={17} /> Histórico</h3><span>{task.history.length}</span></header><div className="task-history">{task.history.map((h) => <article key={h.id}><i /><div><b>{h.summary}</b><small>{h.actorName} · {dt(h.createdAt)}</small>{h.justification && <p>Justificativa: {h.justification}</p>}</div></article>)}</div></section>
     </div>
     </div>
     {clientNoticeOpen && <div className="modal-backdrop"><form className="modal task-client-notice-modal" onSubmit={async (event) => { event.preventDefault(); if (!clientNoticeMessage.trim()) return; const result = await operate({ action: "communicateWithClient", taskId: task.id, clientAction: "requestContact", channel: "Interno", message: clientNoticeMessage.trim() }, "O responsável foi avisado para contatar o cliente."); if (result) setClientNoticeOpen(false); }}><div className="modal-header"><div><span className="eyebrow">COMUNICAÇÃO COM CLIENTE</span><h2>Avisar o cliente</h2><p>Envie um aviso interno para que o responsável faça o contato.</p></div><button type="button" onClick={() => setClientNoticeOpen(false)} aria-label="Fechar"><X size={20} /></button></div><div className="modal-body"><label className="field"><span>Orientação para o responsável</span><textarea value={clientNoticeMessage} onChange={(event) => setClientNoticeMessage(event.target.value)} required rows={5} placeholder="Descreva o que precisa ser informado ao cliente." /></label></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setClientNoticeOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy || !clientNoticeMessage.trim()}><Bell size={16} /> Enviar aviso</button></div></form></div>}
-    {editing && <EditTaskModal task={task} module={module} customers={customers} busy={busy} onClose={() => setEditing(false)} onSubmit={async (payload) => { const result = await operate({ action: "updateTask", taskId: task.id, ...payload }, "Tarefa atualizada com sucesso."); if (result) setEditing(false); }} />}
+    {editing && <EditTaskModal task={task} module={module} customers={customers} busy={busy} onClose={() => setEditing(false)} onSubmit={async (payload) => { const result = await operate({ action: "updateTask", requireConfirmation: true, taskId: task.id, ...payload }, "Tarefa atualizada com sucesso."); if (result) setEditing(false); }} />}
   </Overlay>;
 }
 
@@ -665,6 +666,6 @@ function TaskCreatedModal({ protocol, onClose }: { protocol: string; onClose: ()
   return <div className="task-overlay"><div className="task-modal task-created-modal"><div className="task-modal-body"><span className="task-created-icon"><CheckCircle2 size={34} /></span><span className="eyebrow">TAREFA CADASTRADA</span><h2>Criada com sucesso</h2><p>Compartilhe o protocolo abaixo para acompanhar a solicitação.</p><button className="task-created-protocol" onClick={async () => { await navigator.clipboard.writeText(protocol); setCopied(true); }}><span>{protocol}</span><small>{copied ? "Copiado!" : "Clique para copiar"}</small><Clipboard size={18} /></button><button className="primary-button" onClick={onClose}>Continuar</button></div></div></div>;
 }
 
-function Overlay({ title, eyebrow = "TAREFAS", subtitle, onClose, wide, side = false, headerActions, children }: { title: string; eyebrow?: string; subtitle?: string; onClose: () => void; wide?: boolean; side?: boolean; headerActions?: React.ReactNode; children: React.ReactNode }) {
-  return <div className={`task-overlay ${side ? "task-side-overlay" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}><div className={`task-modal ${wide ? "wide" : ""} ${side ? "task-side-panel" : ""}`} role="dialog" aria-modal="true" aria-label={title}><header><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{headerActions && <div className="task-overlay-header-actions">{headerActions}</div>}<button onClick={onClose} aria-label="Fechar"><X size={19} /></button></header><div className="task-modal-body">{children}</div></div></div>;
+function Overlay({ title, eyebrow = "TAREFAS", subtitle, onClose, wide, side = false, detail = false, headerActions, children }: { title: string; eyebrow?: string; subtitle?: string; onClose: () => void; wide?: boolean; side?: boolean; detail?: boolean; headerActions?: React.ReactNode; children: React.ReactNode }) {
+  return <div className={`task-overlay ${side ? "task-side-overlay" : ""} ${detail ? "task-detail-overlay" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}><div className={`task-modal ${wide ? "wide" : ""} ${side ? "task-side-panel" : ""}`} role="dialog" aria-modal="true" aria-label={title}><header><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{headerActions && <div className="task-overlay-header-actions">{headerActions}</div>}<button onClick={onClose} aria-label="Fechar"><X size={19} /></button></header><div className="task-modal-body">{children}</div></div></div>;
 }

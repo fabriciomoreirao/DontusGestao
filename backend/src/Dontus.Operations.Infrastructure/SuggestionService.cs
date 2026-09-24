@@ -226,6 +226,32 @@ public sealed partial class SuggestionService(OperationsDbContext db) : ISuggest
         return new CreateSuggestionResult(suggestion.Id, suggestion.Protocol);
     }
 
+    public async Task UpdateSuggestionAsync(UpdateSuggestionCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("suggestions", "edit");
+        var suggestion = await db.Suggestions.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
+            ?? throw new DomainException("Sugestão não encontrada.", 404);
+        if (suggestion.Version != command.Version)
+            throw new DomainException("A sugestão foi atualizada por outra pessoa. Recarregue e tente novamente.", 409);
+        var name = RequiredName(command.Name, "nome da sugestão", 240);
+        if ((command.Description?.Trim().Length ?? 0) > 6000)
+            throw new DomainException("A descrição deve ter no máximo 6.000 caracteres.");
+        var priority = await db.SuggestionPriorities.SingleOrDefaultAsync(entry => entry.Id == command.PriorityId && entry.Active, cancellationToken)
+            ?? throw new DomainException("Selecione uma prioridade ativa.");
+        if (command.CustomerId.HasValue && !await db.Customers.AnyAsync(entry => entry.Id == command.CustomerId.Value, cancellationToken))
+            throw new DomainException("Cliente não encontrado.", 404);
+        suggestion.Name = name;
+        suggestion.Description = command.Description?.Trim() ?? "";
+        suggestion.CustomerId = command.CustomerId;
+        suggestion.PriorityId = priority.Id;
+        suggestion.StrategicClient = command.StrategicClient;
+        suggestion.CancellationRisk = command.CancellationRisk;
+        suggestion.Version++;
+        suggestion.UpdatedAt = DateTimeOffset.UtcNow;
+        AddAudit(actor, "Update", "suggestion", suggestion.Id, new { suggestion.Protocol, suggestion.Name, Priority = priority.Name });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task ChangeStatusAsync(ChangeSuggestionStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("suggestions", "edit");

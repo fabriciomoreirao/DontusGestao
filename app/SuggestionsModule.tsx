@@ -54,6 +54,7 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Suggestion | null>(null);
   const [createdProtocol, setCreatedProtocol] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = module.suggestions.find((entry) => entry.id === selectedId) ?? null;
@@ -123,14 +124,18 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
       <button className={view === "kanban" ? "active" : ""} onClick={() => setView("kanban")}><Columns3 size={16} /> Kanban</button>
     </div>
 
-    {view === "list" ? <SuggestionList suggestions={filtered} canDelete={canDelete} currentUserEmail={module.currentUser.email} onOpen={setSelectedId} onDelete={async (entry) => { const result = await operate({ action: "deleteSuggestion", id: entry.id }, "Sugestão excluída com sucesso."); if (result && selectedId === entry.id) setSelectedId(null); }} /> : <SuggestionKanban suggestions={filtered} statuses={activeStatuses} canEdit={canEdit} canDelete={canDelete} currentUserEmail={module.currentUser.email} onOpen={setSelectedId} onDelete={async (entry) => { const result = await operate({ action: "deleteSuggestion", id: entry.id }, "Sugestão excluída com sucesso."); if (result && selectedId === entry.id) setSelectedId(null); }} onChangeStatus={changeStatus} />}
+    {view === "list" ? <SuggestionList suggestions={filtered} canEdit={canEdit} canDelete={canDelete} canDeleteOthers={module.canManageCatalogs} currentUserEmail={module.currentUser.email} onOpen={setSelectedId} onEdit={setEditing} onDelete={async (entry) => { const result = await operate({ action: "deleteSuggestion", id: entry.id }, "Sugestão excluída com sucesso."); if (result && selectedId === entry.id) setSelectedId(null); }} /> : <SuggestionKanban suggestions={filtered} statuses={activeStatuses} canEdit={canEdit} canDelete={canDelete} canDeleteOthers={module.canManageCatalogs} currentUserEmail={module.currentUser.email} onOpen={setSelectedId} onEdit={setEditing} onDelete={async (entry) => { const result = await operate({ action: "deleteSuggestion", id: entry.id }, "Sugestão excluída com sucesso."); if (result && selectedId === entry.id) setSelectedId(null); }} onChangeStatus={changeStatus} />}
 
     {creating && <NewSuggestionModal module={module} customers={customers} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => {
       const result = await operate({ action: "createSuggestion", ...payload }, "Sugestão cadastrada com sucesso.");
       if (result) { setCreating(false); setCreatedProtocol(result.createdProtocol ?? ""); }
     }} />}
+    {editing && canEdit && <NewSuggestionModal module={module} customers={customers} busy={busy} initial={editing} onClose={() => setEditing(null)} onSave={async (payload) => {
+      const result = await operate({ action: "updateSuggestion", requireConfirmation: true, id: editing.id, version: editing.version, ...payload }, "Sugestão atualizada com sucesso.");
+      if (result) setEditing(null);
+    }} />}
     {createdProtocol && <SuggestionCreatedModal protocol={createdProtocol} onClose={() => setCreatedProtocol("")} />}
-    {selected && <SuggestionDetailsModal suggestion={selected} statuses={activeStatuses} canEdit={canEdit} canDelete={canDelete || selected.responsibleEmail === module.currentUser.email} busy={busy} onClose={() => setSelectedId(null)} onDelete={async () => { const result = await operate({ action: "deleteSuggestion", id: selected.id }, "Sugestão excluída com sucesso."); if (result) setSelectedId(null); }} onStatus={(statusId) => changeStatus(selected, statusId)} onSendToDevelopment={() => sendToDevelopment(selected)} onComment={async (body) => {
+    {selected && <SuggestionDetailsModal suggestion={selected} statuses={activeStatuses} canEdit={canEdit} canDelete={canDelete && (selected.responsibleEmail === module.currentUser.email || module.canManageCatalogs)} busy={busy} onClose={() => setSelectedId(null)} onDelete={async () => { const result = await operate({ action: "deleteSuggestion", id: selected.id }, "Sugestão excluída com sucesso."); if (result) setSelectedId(null); }} onStatus={(statusId) => changeStatus(selected, statusId)} onSendToDevelopment={() => sendToDevelopment(selected)} onComment={async (body) => {
       return Boolean(await operate({ action: "addSuggestionComment", id: selected.id, body }, "Comentário adicionado com sucesso."));
     }} />}
   </section>;
@@ -153,7 +158,7 @@ function SuggestionCreatedModal({ protocol, onClose }: { protocol: string; onClo
   </div></div>;
 }
 
-function SuggestionList({ suggestions, canDelete, currentUserEmail, onOpen, onDelete }: { suggestions: Suggestion[]; canDelete: boolean; currentUserEmail: string; onOpen: (id: string) => void; onDelete: (suggestion: Suggestion) => void }) {
+function SuggestionList({ suggestions, canEdit, canDelete, canDeleteOthers, currentUserEmail, onOpen, onEdit, onDelete }: { suggestions: Suggestion[]; canEdit: boolean; canDelete: boolean; canDeleteOthers: boolean; currentUserEmail: string; onOpen: (id: string) => void; onEdit: (suggestion: Suggestion) => void; onDelete: (suggestion: Suggestion) => void }) {
   if (!suggestions.length) return <div className="suggestion-empty panel"><Sparkles size={27} /><strong>Nenhuma sugestão encontrada</strong><p>Quando uma sugestão for cadastrada, ela aparecerá aqui e no Kanban.</p></div>;
   return <div className="suggestion-table-wrap panel"><table className="suggestion-table"><thead><tr><th>Protocolo</th><th>Sugestão</th><th>Sinalizadores</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Atualização</th><th>Ações</th></tr></thead><tbody>
     {suggestions.map((entry) => <tr key={entry.id} tabIndex={0} onClick={() => onOpen(entry.id)} onKeyDown={(event) => event.key === "Enter" && onOpen(entry.id)}>
@@ -164,13 +169,13 @@ function SuggestionList({ suggestions, canDelete, currentUserEmail, onOpen, onDe
       <td><span className="suggestion-color-badge" style={{ "--badge-color": entry.statusColor } as CSSProperties}>{entry.statusName}</span></td>
       <td><span className="suggestion-owner"><Avatar name={entry.responsibleName} photo={entry.responsiblePhotoDataUrl} small /><span>{entry.responsibleName}</span></span></td>
       <td><time>{dateTime(entry.updatedAt)}</time></td>
-      <td>{(canDelete || entry.responsibleEmail === currentUserEmail) && <button type="button" className="icon-button danger-action" aria-label={`Excluir ${entry.name}`} onClick={(event) => { event.stopPropagation(); onDelete(entry); }}><Trash2 size={15} /></button>}</td>
+      <td>{canEdit && <button type="button" className="icon-button" aria-label={`Editar ${entry.name}`} onClick={(event) => { event.stopPropagation(); onEdit(entry); }}><Pencil size={15} /></button>}{canDelete && (entry.responsibleEmail === currentUserEmail || canDeleteOthers) && <button type="button" className="icon-button danger-action" aria-label={`Excluir ${entry.name}`} onClick={(event) => { event.stopPropagation(); onDelete(entry); }}><Trash2 size={15} /></button>}</td>
     </tr>)}
   </tbody></table></div>;
 }
 
-function SuggestionKanban({ suggestions, statuses, canEdit, canDelete, currentUserEmail, onOpen, onDelete, onChangeStatus }: {
-  suggestions: Suggestion[]; statuses: SuggestionStatus[]; canEdit: boolean; canDelete: boolean; currentUserEmail: string; onOpen: (id: string) => void; onDelete: (suggestion: Suggestion) => void; onChangeStatus: (suggestion: Suggestion, statusId: string) => void;
+function SuggestionKanban({ suggestions, statuses, canEdit, canDelete, canDeleteOthers, currentUserEmail, onOpen, onEdit, onDelete, onChangeStatus }: {
+  suggestions: Suggestion[]; statuses: SuggestionStatus[]; canEdit: boolean; canDelete: boolean; canDeleteOthers: boolean; currentUserEmail: string; onOpen: (id: string) => void; onEdit: (suggestion: Suggestion) => void; onDelete: (suggestion: Suggestion) => void; onChangeStatus: (suggestion: Suggestion, statusId: string) => void;
 }) {
   if (!statuses.length) return <div className="suggestion-empty panel"><Columns3 size={27} /><strong>Kanban ainda não configurado</strong><p>Cadastre o primeiro status para criar uma coluna.</p></div>;
   return <div className="suggestion-kanban">
@@ -186,7 +191,7 @@ function SuggestionKanban({ suggestions, statuses, canEdit, canDelete, currentUs
           {cards.map((entry) => <article key={entry.id} className={entry.cancellationRisk ? "risk-card" : ""} draggable={canEdit} onDragStart={(event) => event.dataTransfer.setData("text/suggestion-id", entry.id)} onClick={() => onOpen(entry.id)}>
             <div className="suggestion-card-top"><span>{entry.protocol}</span><span className="suggestion-color-badge" style={{ "--badge-color": entry.priorityColor } as CSSProperties}>{entry.priorityName}</span></div>
             <h3>{entry.name}</h3><p>{entry.description || "Sem descrição informada."}</p><FlagBadges suggestion={entry} />
-            <footer><span className="suggestion-owner"><Avatar name={entry.responsibleName} photo={entry.responsiblePhotoDataUrl} small /><span>{entry.responsibleName}</span></span><span className="suggestion-card-actions">{entry.comments.length > 0 && <span><MessageSquareText size={13} />{entry.comments.length}</span>}{(canDelete || entry.responsibleEmail === currentUserEmail) && <button type="button" className="icon-button danger-action" aria-label={`Excluir ${entry.name}`} onClick={(event) => { event.stopPropagation(); onDelete(entry); }}><Trash2 size={14} /></button>}</span></footer>
+            <footer><span className="suggestion-owner"><Avatar name={entry.responsibleName} photo={entry.responsiblePhotoDataUrl} small /><span>{entry.responsibleName}</span></span><span className="suggestion-card-actions">{entry.comments.length > 0 && <span><MessageSquareText size={13} />{entry.comments.length}</span>}{canEdit && <button type="button" className="icon-button" aria-label={`Editar ${entry.name}`} onClick={(event) => { event.stopPropagation(); onEdit(entry); }}><Pencil size={14} /></button>}{canDelete && (entry.responsibleEmail === currentUserEmail || canDeleteOthers) && <button type="button" className="icon-button danger-action" aria-label={`Excluir ${entry.name}`} onClick={(event) => { event.stopPropagation(); onDelete(entry); }}><Trash2 size={14} /></button>}</span></footer>
           </article>)}
           {cards.length === 0 && <div className="suggestion-column-empty">Nenhuma sugestão nesta etapa</div>}
         </div>
@@ -195,32 +200,32 @@ function SuggestionKanban({ suggestions, statuses, canEdit, canDelete, currentUs
   </div>;
 }
 
-function NewSuggestionModal({ module, customers, busy, onClose, onSave }: { module: SuggestionModuleData; customers: Customer[]; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
+function NewSuggestionModal({ module, customers, busy, initial, onClose, onSave }: { module: SuggestionModuleData; customers: Customer[]; busy: boolean; initial?: Suggestion; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
   const priorities = module.priorities.filter((entry) => entry.active).sort((a, b) => a.displayOrder - b.displayOrder);
   const initialStatus = module.statuses.filter((entry) => entry.active).sort((a, b) => Number(b.isInitial) - Number(a.isInitial) || a.displayOrder - b.displayOrder)[0];
-  const [strategicClient, setStrategicClient] = useState(false);
-  const [cancellationRisk, setCancellationRisk] = useState(false);
+  const [strategicClient, setStrategicClient] = useState(initial?.strategicClient ?? false);
+  const [cancellationRisk, setCancellationRisk] = useState(initial?.cancellationRisk ?? false);
   return <div className="modal-backdrop"><form className="modal suggestion-create-modal" onSubmit={(event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     onSave({ name: form.get("name"), description: form.get("description"), customerId: form.get("customerId") || null, priorityId: form.get("priorityId"), strategicClient, cancellationRisk });
   }}>
-    <div className="modal-header"><div><span className="eyebrow">SUGESTÕES</span><h2>Nova sugestão</h2><p>O protocolo será gerado automaticamente ao concluir o cadastro.</p></div><button type="button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
+    <div className="modal-header"><div><span className="eyebrow">SUGESTÕES</span><h2>{initial ? "Editar sugestão" : "Nova sugestão"}</h2><p>{initial ? `Protocolo ${initial.protocol}` : "O protocolo será gerado automaticamente ao concluir o cadastro."}</p></div><button type="button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
     <div className="modal-body">
       <div className="suggestion-auto-fields"><div><Hash size={18} /><span><small>Protocolo</small><strong>Gerado automaticamente</strong></span></div><div><Avatar name={module.currentUser.name} photo={module.currentUser.photoDataUrl} coordinator={module.currentUser.isCoordinator} small /><span><small>Responsável</small><strong>{module.currentUser.name}</strong></span></div></div>
-      <label className="field span-2"><span>Nome da sugestão *</span><input name="name" required maxLength={240} autoFocus placeholder="Descreva a melhoria em uma frase" /></label>
+      <label className="field span-2"><span>Nome da sugestão *</span><input name="name" required maxLength={240} autoFocus defaultValue={initial?.name} placeholder="Descreva a melhoria em uma frase" /></label>
       <div className="form-grid suggestion-form-grid">
-        <label className="field"><span>Cliente</span><select name="customerId" defaultValue=""><option value="">Não vincular cliente</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.trade_name || customer.legal_name}</option>)}</select></label>
-        <label className="field"><span>Prioridade *</span><select name="priorityId" required defaultValue={priorities[0]?.id ?? ""}><option value="" disabled>Selecionar...</option>{priorities.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
+        <label className="field"><span>Cliente</span><select name="customerId" defaultValue={initial?.customerId ?? ""}><option value="">Não vincular cliente</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.trade_name || customer.legal_name}</option>)}</select></label>
+        <label className="field"><span>Prioridade *</span><select name="priorityId" required defaultValue={initial?.priorityId ?? priorities[0]?.id ?? ""}><option value="" disabled>Selecionar...</option>{priorities.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
       </div>
       <div className="suggestion-flag-options">
         <button type="button" className={strategicClient ? "selected strategic" : ""} onClick={() => setStrategicClient((current) => !current)}><span className="flag-check">{strategicClient && <Check size={14} />}</span><Sparkles size={19} /><span><strong>Cliente estratégico</strong><small>Destaca a relevância comercial desta sugestão.</small></span></button>
         <button type="button" className={cancellationRisk ? "selected risk" : ""} onClick={() => setCancellationRisk((current) => !current)}><span className="flag-check">{cancellationRisk && <Check size={14} />}</span><ShieldAlert size={19} /><span><strong>Risco de cancelamento</strong><small>Sinaliza urgência relacionada à retenção do cliente.</small></span></button>
       </div>
-      <label className="field"><span>Descrição</span><textarea name="description" maxLength={6000} rows={5} placeholder="Contexto, impacto esperado e detalhes da sugestão..." /></label>
+      <label className="field"><span>Descrição</span><textarea name="description" maxLength={6000} rows={5} defaultValue={initial?.description} placeholder="Contexto, impacto esperado e detalhes da sugestão..." /></label>
       {initialStatus && <div className="suggestion-initial-flow"><CircleDot size={17} style={{ color: initialStatus.color }} /><span>Ao criar, a sugestão entrará em <strong>{initialStatus.kanbanColumn || initialStatus.name}</strong>.</span></div>}
     </div>
-    <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !priorities.length || !initialStatus}><Plus size={17} /> Cadastrar sugestão</button></div>
+    <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !priorities.length || (!initial && !initialStatus)}><Plus size={17} /> {initial ? "Salvar alterações" : "Cadastrar sugestão"}</button></div>
   </form></div>;
 }
 

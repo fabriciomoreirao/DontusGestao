@@ -7,7 +7,9 @@ public static class WorkflowPolicy
         {
             ["commercial"] = ["NovoLead", "EmContato", "Qualificado", "Diagnostico", "Apresentacao", "Negociacao", "Ganho", "Perdido", "Cancelado"],
             ["cs"] = ["PendenteAgendamento", "Agendado", "TreinamentoRealizado", "EmAcompanhamento", "AguardandoCliente", "Pausado", "EmValidacaoFinal", "Finalizado", "TransferidoSuporte", "Cancelado"],
+            ["cancellations"] = ["Fila de espera", "Em processo", "Follow up", "Convertido", "Não convertido"],
             ["lia"] = ["AguardandoKickoff", "KickoffAgendado", "ConfiguracaoInicial", "EmTesteCliente", "EmAjustes", "AguardandoAprovacao", "GoLiveAgendado", "EmProducaoAssistida", "ImplantacaoPrincipalConcluida", "ConfigurandoCRC", "Concluida", "BloqueadaPeloCliente", "Pausada", "Cancelada"],
+            ["hr"] = ["Experiência", "Ativos", "Desligados"],
             ["marketing"] = ["Recebida", "Em planejamento", "Em produção", "Em revisão", "Concluída"],
             ["referrals"] = ["Em acompanhamento", "Em conferência", "Aprovado", "Reprovado"],
             ["support"] = ["Novo", "EmAtendimento", "AguardandoCliente", "AguardandoSetor", "AguardandoTI", "Resolvido", "Encerrado", "Reaberto"],

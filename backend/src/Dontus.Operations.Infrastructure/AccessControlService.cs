@@ -258,6 +258,25 @@ public sealed class AccessControlService(
             collaboratorGoalsPermission.CanView = true;
         }
 
+        var collaboratorCancellationPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "cancellations");
+        if (collaboratorCancellationPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "cancellations",
+                CanView = true,
+                CanCreate = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorCancellationPermission.CanView = true;
+            collaboratorCancellationPermission.CanCreate = true;
+            collaboratorCancellationPermission.CanEdit = true;
+        }
+
         var bootstrapEmail = NormalizeEmail(
             configuration["AccessControl:BootstrapAdminEmail"] ?? "gestor@dontus.local");
         var bootstrapName = configuration["AccessControl:BootstrapAdminName"] ?? "Gestor Dontus";
@@ -291,6 +310,60 @@ public sealed class AccessControlService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        // Mantém a matriz de permissões completa também para grupos criados antes
+        // da inclusão de novas funcionalidades. As novas telas entram bloqueadas
+        // por padrão e podem ser liberadas explicitamente pelo administrador.
+        var permissionGroups = await db.AccessGroups
+            .Include(group => group.Permissions)
+            .ToListAsync(cancellationToken);
+        foreach (var group in permissionGroups)
+        {
+            foreach (var screen in ScreenCatalog.All.Where(screen =>
+                         group.Permissions.All(permission => permission.Screen != screen.Code)))
+            {
+                group.Permissions.Add(new GroupPermission
+                {
+                    GroupId = group.Id,
+                    Screen = screen.Code,
+                    CanView = false,
+                    CanCreate = false,
+                    CanEdit = false,
+                    CanApprove = false,
+                    CanManage = false,
+                    CapabilitiesJson = "[]",
+                });
+            }
+        }
+
+        var employeeIdsWithHrCard = await db.WorkItems.AsNoTracking()
+            .Where(entry => entry.Module == "hr" && entry.OriginType == "employee" && entry.OriginId.HasValue)
+            .Select(entry => entry.OriginId!.Value)
+            .ToListAsync(cancellationToken);
+        var employeesWithoutHrCard = await db.Users.AsNoTracking()
+            .Where(entry => entry.Active && !employeeIdsWithHrCard.Contains(entry.Id))
+            .ToListAsync(cancellationToken);
+        foreach (var employee in employeesWithoutHrCard)
+            db.WorkItems.Add(CreateHrWorkItem(employee, employee.CreatedBy));
+        var defaultCatalogs = new Dictionary<string, string[]>
+        {
+            ["cancellationCommunicationType"] = ["Ligação", "WhatsApp", "E-mail", "Reunião", "Análise"],
+            ["hrCommunicationType"] = ["Feedback", "Acompanhamento", "Advertência", "Reconhecimento", "Reunião"],
+            ["hrDocumentType"] = ["Documento pessoal", "Contrato", "Atestado", "Certificado", "Termo"],
+            ["hrTerminationReason"] = ["Desempenho", "Conduta", "Reestruturação", "Término de contrato", "Pedido do colaborador"],
+        };
+        var existingCatalogs = await db.CustomerCatalogOptions.AsNoTracking()
+            .Where(entry => defaultCatalogs.Keys.Contains(entry.Catalog) || entry.Catalog == "employeeRole")
+            .Select(entry => new { entry.Catalog, entry.Name })
+            .ToListAsync(cancellationToken);
+        foreach (var (catalog, names) in defaultCatalogs)
+            foreach (var name in names.Where(name => !existingCatalogs.Any(entry => entry.Catalog == catalog && entry.Name == name)))
+                db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog = catalog, Name = name });
+        var employeeRoles = await db.Users.AsNoTracking().Where(entry => entry.Active && entry.JobTitle != "").Select(entry => entry.JobTitle).Distinct().ToListAsync(cancellationToken);
+        foreach (var role in employeeRoles.Where(role => !existingCatalogs.Any(entry => entry.Catalog == "employeeRole" && entry.Name == role)))
+            db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog = "employeeRole", Name = role });
+        if (employeesWithoutHrCard.Count > 0 || db.ChangeTracker.HasChanges())
+            await db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<ActorContext> ResolveActorAsync(
@@ -505,6 +578,49 @@ public sealed class AccessControlService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private sealed record HrStoredProfile(JsonElement Comments, JsonElement Vacations, JsonElement Documents, JsonElement Termination, JsonElement Readmissions);
+
+    private static HrStoredProfile ReadHrProfile(string description)
+    {
+        using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(description) ? "{}" : description);
+        var root = document.RootElement;
+        static JsonElement ReadArray(JsonElement root, string property) => root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Array ? value.Clone() : JsonDocument.Parse("[]").RootElement.Clone();
+        var termination = root.TryGetProperty("termination", out var terminationValue) ? terminationValue.Clone() : JsonDocument.Parse("null").RootElement.Clone();
+        return new HrStoredProfile(ReadArray(root, "comments"), ReadArray(root, "vacations"), ReadArray(root, "documents"), termination, ReadArray(root, "readmissions"));
+    }
+
+    private static WorkItem CreateHrWorkItem(AppUser user, string createdBy) => new()
+    {
+        Module = "hr",
+        RecordType = "Colaborador",
+        Title = user.DisplayName,
+        CustomerName = user.Email,
+        Owner = "Recursos Humanos",
+        Team = user.Department,
+        Status = "Experiência",
+        Priority = "P3",
+        OriginType = "employee",
+        OriginId = user.Id,
+        CreatedBy = createdBy,
+        Description = JsonSerializer.Serialize(new
+        {
+            kind = "hrEmployee",
+            employeeId = user.Id.ToString(),
+            fullName = user.DisplayName,
+            email = user.Email,
+            jobTitle = user.JobTitle,
+            department = user.Department,
+            startedAt = user.StartedAt?.ToString("yyyy-MM-dd") ?? DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"),
+            birthDate = user.BirthDate?.ToString("yyyy-MM-dd") ?? "",
+            photoDataUrl = user.PhotoDataUrl,
+            comments = Array.Empty<object>(),
+            vacations = Array.Empty<object>(),
+            documents = Array.Empty<object>(),
+            termination = (object?)null,
+            readmissions = Array.Empty<object>(),
+        }),
+    };
+
     public async Task<CreateEmployeeResult> CreateEmployeeAsync(
         CreateEmployeeCommand command,
         ActorContext actor,
@@ -551,6 +667,7 @@ public sealed class AccessControlService(
         foreach (var groupId in groupIds)
             user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = groupId });
         db.Users.Add(user);
+        db.WorkItems.Add(CreateHrWorkItem(user, actor.Email));
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
         db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
@@ -601,6 +718,26 @@ public sealed class AccessControlService(
         if (command.PhotoDataUrl is not null) user.PhotoDataUrl = ValidatePhoto(command.PhotoDataUrl);
         user.UpdatedAt = DateTimeOffset.UtcNow;
         user.Version++;
+        var hrCard = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Module == "hr" && entry.OriginType == "employee" && entry.OriginId == user.Id, cancellationToken);
+        if (hrCard is not null)
+        {
+            var hrProfile = ReadHrProfile(hrCard.Description);
+            hrCard.Title = user.DisplayName;
+            hrCard.CustomerName = user.Email;
+            hrCard.Team = user.Department;
+            hrCard.Description = JsonSerializer.Serialize(new
+            {
+                kind = "hrEmployee",
+                employeeId = user.Id.ToString(), fullName = user.DisplayName, email = user.Email,
+                jobTitle = user.JobTitle, department = user.Department,
+                startedAt = user.StartedAt?.ToString("yyyy-MM-dd") ?? "",
+                birthDate = user.BirthDate?.ToString("yyyy-MM-dd") ?? "", photoDataUrl = user.PhotoDataUrl,
+                comments = hrProfile.Comments, vacations = hrProfile.Vacations, documents = hrProfile.Documents,
+                termination = hrProfile.Termination, readmissions = hrProfile.Readmissions,
+            });
+            hrCard.UpdatedAt = DateTimeOffset.UtcNow;
+            hrCard.Version++;
+        }
         db.UserAccessGroups.RemoveRange(user.Groups);
         user.Groups = groupIds.Select(groupId => new UserAccessGroup { UserId = user.Id, GroupId = groupId }).ToList();
         db.UserDepartments.RemoveRange(await db.UserDepartments.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));

@@ -123,7 +123,7 @@ export default function ServiceRecordsModule({ items, customers, catalogs, emplo
     {(modal || editing) && <ServiceEntryModal mode={modal ?? "single"} editing={editing} currentUser={currentUser} customers={customers} catalogs={catalogs} employees={employees.filter((entry) => entry.active)} departments={departments.filter((entry) => entry.active)} busy={busy} onClose={() => { setModal(null); setEditing(null); }} onSave={async (rows) => {
       for (const row of rows) {
         const detail: ServiceRecord = { ...row }; delete (detail as Partial<EntryRow>).key; delete (detail as Partial<EntryRow>).customerId;
-        const payload = editing ? { action: "updateWorkItem", id: editing.id, title: `Atendimento · ${row.customerName}`, customerName: row.customerName, owner: row.responsible, amountCents: 0, version: editing.version, description: JSON.stringify(detail) } : { action: "createWorkItem", module: "support", recordType: SERVICE_RECORD_TYPE, title: `Atendimento · ${row.customerName}`, customerId: row.customerId || null, customerName: row.customerName, owner: row.responsible, team: row.sector, status: "Novo", priority: "P3", amountCents: 0, description: JSON.stringify(detail) };
+        const payload = editing ? { action: "updateWorkItem", requireConfirmation: true, id: editing.id, title: `Atendimento · ${row.customerName}`, customerName: row.customerName, owner: row.responsible, amountCents: 0, version: editing.version, description: JSON.stringify(detail) } : { action: "createWorkItem", module: "support", recordType: SERVICE_RECORD_TYPE, title: `Atendimento · ${row.customerName}`, customerId: row.customerId || null, customerName: row.customerName, owner: row.responsible, team: row.sector, status: "Novo", priority: "P3", amountCents: 0, description: JSON.stringify(detail) };
         const result = await operate(payload, editing ? "Atendimento atualizado com sucesso." : "Atendimento registrado com sucesso.");
         if (!result) return;
       }
@@ -143,7 +143,7 @@ function ServiceEntryModal({ mode, editing, currentUser, customers, catalogs, em
   const origins = options("serviceOrigin", ["WhatsApp", "Ligação", "Interno"]);
   const problems = options("serviceProblem", ["Alinhamento", "Acompanhamento", "Agendamento", "Dúvida", "Erro"]);
   const statuses = options("serviceStatus", ["Concluído", "Em andamento", "Pendente"]);
-  const contactTypes = options("serviceContactType", ["1º Contato", "2º Contato", "Ligação", "Cancelamento"]).filter((entry) => !/mal uso/i.test(entry));
+  const contactTypes = options("serviceContactType", ["1º Contato", "2º Contato", "Ligação"]).filter((entry) => !/mal uso|cancelamento/i.test(entry));
   const tools = options("serviceTool", ["Agenda", "Atendimento", "Financeiro", "CRM", "LIA"]);
   const update = (key: string, patch: Partial<EntryRow>) => setRows((current) => current.map((row) => row.key === key ? { ...row, ...patch } : row));
   const ready = rows.filter((row) => row.clientCode.trim() && row.customerName.trim() && row.date && row.responsible && row.problem && row.status);

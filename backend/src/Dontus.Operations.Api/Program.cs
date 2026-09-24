@@ -491,7 +491,7 @@ operations.MapGet("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view"))
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view"))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("admin", "manage"))
         snapshot = snapshot with { Access = await accessControl.GetManagementAsync(actor, cancellationToken) };
@@ -1015,6 +1015,15 @@ operations.MapPost("", async (
             createdProtocol = createdSuggestion.Protocol;
             break;
 
+        case "updateSuggestion":
+            await suggestionService.UpdateSuggestionAsync(new UpdateSuggestionCommand(
+                request.Id ?? throw new DomainException("Sugestão obrigatória."),
+                request.Name ?? "", request.Description, request.CustomerId,
+                request.PriorityId ?? throw new DomainException("Prioridade obrigatória."),
+                request.StrategicClient ?? false, request.CancellationRisk ?? false,
+                request.Version ?? 0), actor, cancellationToken);
+            break;
+
         case "changeSuggestionStatus":
             await suggestionService.ChangeStatusAsync(new ChangeSuggestionStatusCommand(
                 request.Id ?? throw new DomainException("Sugestão obrigatória."),
@@ -1443,7 +1452,7 @@ operations.MapPost("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view"))
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view"))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     var access = actor.HasPermission("admin", "manage")
         ? await accessControl.GetManagementAsync(actor, cancellationToken)
