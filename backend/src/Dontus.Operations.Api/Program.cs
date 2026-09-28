@@ -554,6 +554,46 @@ taskFiles.MapDelete("/attachments/{attachmentId:guid}", async (
     return Results.NoContent();
 });
 
+var suggestionFiles = app.MapGroup("/api/suggestions")
+    .RequireAuthorization()
+    .RequireRateLimiting("operations");
+
+suggestionFiles.MapPost("/{suggestionId:guid}/attachments", async (
+    Guid suggestionId,
+    HttpRequest request,
+    ClaimsPrincipal principal,
+    ISuggestionService suggestionService,
+    IAccessControlService accessControl,
+    CancellationToken cancellationToken) =>
+{
+    if (!request.HasFormContentType)
+        throw new DomainException("Envie os anexos no formato multipart/form-data.");
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    var form = await request.ReadFormAsync(cancellationToken);
+    if (form.Files.Count == 0) throw new DomainException("Selecione ao menos um arquivo.");
+    if (form.Files.Count > 10) throw new DomainException("É permitido enviar no máximo 10 arquivos por vez.");
+    var ids = new List<Guid>(form.Files.Count);
+    foreach (var file in form.Files)
+    {
+        await using var content = file.OpenReadStream();
+        ids.Add(await suggestionService.UploadAttachmentAsync(new UploadSuggestionAttachmentCommand(
+            suggestionId, file.FileName, file.ContentType, file.Length, content), actor, cancellationToken));
+    }
+    return Results.Created($"/api/suggestions/{suggestionId}/attachments", new { ok = true, ids });
+}).DisableAntiforgery();
+
+suggestionFiles.MapGet("/attachments/{attachmentId:guid}", async (
+    Guid attachmentId,
+    ClaimsPrincipal principal,
+    ISuggestionService suggestionService,
+    IAccessControlService accessControl,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    var download = await suggestionService.GetAttachmentDownloadAsync(attachmentId, actor, cancellationToken);
+    return Results.Redirect(download.Url);
+});
+
 var chatFiles = app.MapGroup("/api/chats")
     .RequireAuthorization()
     .RequireRateLimiting("operations");

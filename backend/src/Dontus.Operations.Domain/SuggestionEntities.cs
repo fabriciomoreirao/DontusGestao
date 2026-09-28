@@ -41,3 +41,13 @@ public sealed class SuggestionComment : Entity
     public Guid AuthorUserId { get; set; }
     public required string Body { get; set; }
 }
+
+public sealed class SuggestionAttachment : Entity
+{
+    public Guid SuggestionId { get; set; }
+    public Guid UploadedByUserId { get; set; }
+    public required string FileName { get; set; }
+    public string ContentType { get; set; } = "application/octet-stream";
+    public long SizeBytes { get; set; }
+    public required string StorageKey { get; set; }
+}

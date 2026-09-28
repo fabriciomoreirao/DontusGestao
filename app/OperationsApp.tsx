@@ -729,6 +729,30 @@ export default function OperationsApp() {
     }
   };
 
+  const uploadSuggestionAttachments = async (suggestionId: string, files: File[]) => {
+    if (files.length === 0) return true;
+    setBusy(true);
+    try {
+      const form = new FormData();
+      files.forEach((file) => form.append("files", file));
+      const response = await fetch(`/api/suggestion-files?suggestionId=${encodeURIComponent(suggestionId)}`, { method: "POST", body: form });
+      const rawResult = await response.text();
+      let result: { detail?: string } = {};
+      try { result = rawResult ? JSON.parse(rawResult) : {}; } catch { result = { detail: rawResult || "Falha no envio do arquivo." }; }
+      if (!response.ok) throw new Error(result.detail ?? "Os anexos não foram enviados.");
+      await load(true);
+      setToast({ kind: "success", message: files.length === 1 ? "Arquivo anexado à sugestão." : `${files.length} arquivos anexados à sugestão.` });
+      window.setTimeout(() => setToast(null), 3500);
+      return true;
+    } catch (caught) {
+      setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha no envio dos anexos." });
+      window.setTimeout(() => setToast(null), 5000);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const moduleItems = useMemo(
     () => data?.items.filter((item) => item.module === active) ?? [],
     [data, active],
@@ -1177,7 +1201,7 @@ export default function OperationsApp() {
           {active === "notes" && data.notesModule && <NotesModule module={data.notesModule} busy={busy} operate={operate} />}
           {active === "reminders" && <RemindersModule items={reminderItems} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} operate={operate} onCreate={setReminderContext} />}
           {active === "notices" && data.noticesModule && <NoticesModule module={data.noticesModule} busy={busy} operate={operate} />}
-          {active === "suggestions" && data.suggestionModule && <SuggestionsModule module={data.suggestionModule} customers={data.customers} canCreate={userCan(data.user, "suggestions", "create")} canEdit={userCan(data.user, "suggestions", "edit")} canDelete={userCan(data.user, "suggestions", "edit")} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "suggestions", "manage") ? () => navigate("admin", "suggestions") : undefined} />}
+          {active === "suggestions" && data.suggestionModule && <SuggestionsModule module={data.suggestionModule} customers={data.customers} canCreate={userCan(data.user, "suggestions", "create")} canEdit={userCan(data.user, "suggestions", "edit")} canDelete={userCan(data.user, "suggestions", "edit")} busy={busy} operate={operate} uploadAttachments={uploadSuggestionAttachments} onOpenSettings={userCan(data.user, "suggestions", "manage") ? () => navigate("admin", "suggestions") : undefined} />}
           {active === "internalChat" && data.internalChatModule && (
             <InternalChatModule
               module={data.internalChatModule}

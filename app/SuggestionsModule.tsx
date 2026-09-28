@@ -2,7 +2,7 @@
 
 import {
   AlertTriangle, ArrowRight, BadgeCheck, Check, CheckCircle2, CircleDot, Columns3, Copy, Flag, Hash, List,
-  MessageSquareText, Pencil, Plus, Search, Settings2, ShieldAlert, Sparkles,
+  FileText, MessageSquareText, Paperclip, Pencil, Plus, Search, Settings2, ShieldAlert, Sparkles,
   Trash2, UserRound, X,
 } from "lucide-react";
 import { FormEvent, useMemo, useState, type CSSProperties, type ReactNode } from "react";
@@ -10,13 +10,14 @@ import { FormEvent, useMemo, useState, type CSSProperties, type ReactNode } from
 export type SuggestionPriority = { id: string; name: string; description: string; color: string; displayOrder: number; active: boolean };
 export type SuggestionStatus = { id: string; name: string; description: string; kanbanColumn: string; color: string; displayOrder: number; isInitial: boolean; active: boolean };
 export type SuggestionComment = { id: string; suggestionId: string; authorUserId: string; authorName: string; authorPhotoDataUrl: string; authorIsCoordinator: boolean; body: string; createdAt: string };
+export type SuggestionAttachment = { id: string; fileName: string; url: string; contentType: string; sizeBytes: number; createdAt: string };
 export type Suggestion = {
   id: string; number: number; protocol: string; name: string; description: string;
   customerId: string | null; customerName: string; responsibleUserId: string; responsibleName: string;
   responsibleEmail: string; responsiblePhotoDataUrl: string; responsibleIsCoordinator: boolean; priorityId: string; priorityName: string;
   priorityColor: string; statusId: string; statusName: string; statusColor: string; kanbanColumn: string;
   strategicClient: boolean; cancellationRisk: boolean; createdBy: string; createdAt: string;
-  updatedAt: string; version: number; comments: SuggestionComment[];
+  updatedAt: string; version: number; comments: SuggestionComment[]; attachments: SuggestionAttachment[];
 };
 export type SuggestionModuleData = {
   priorities: SuggestionPriority[];
@@ -46,8 +47,8 @@ function FlagBadges({ suggestion, compact = false }: { suggestion: Suggestion; c
   </span>;
 }
 
-export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate, onOpenSettings }: {
-  module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; onOpenSettings?: () => void;
+export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate, uploadAttachments, onOpenSettings }: {
+  module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; uploadAttachments: (suggestionId: string, files: File[]) => Promise<boolean>; onOpenSettings?: () => void;
 }) {
   const [view, setView] = useState<"list" | "kanban">("list");
   const [search, setSearch] = useState("");
@@ -126,13 +127,13 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
 
     {view === "list" ? <SuggestionList suggestions={filtered} canEdit={canEdit} canDelete={canDelete} canDeleteOthers={module.canManageCatalogs} currentUserEmail={module.currentUser.email} onOpen={setSelectedId} onEdit={setEditing} onDelete={async (entry) => { const result = await operate({ action: "deleteSuggestion", id: entry.id }, "Sugestão excluída com sucesso."); if (result && selectedId === entry.id) setSelectedId(null); }} /> : <SuggestionKanban suggestions={filtered} statuses={activeStatuses} canEdit={canEdit} canDelete={canDelete} canDeleteOthers={module.canManageCatalogs} currentUserEmail={module.currentUser.email} onOpen={setSelectedId} onEdit={setEditing} onDelete={async (entry) => { const result = await operate({ action: "deleteSuggestion", id: entry.id }, "Sugestão excluída com sucesso."); if (result && selectedId === entry.id) setSelectedId(null); }} onChangeStatus={changeStatus} />}
 
-    {creating && <NewSuggestionModal module={module} customers={customers} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => {
+    {creating && <NewSuggestionModal module={module} customers={customers} busy={busy} onClose={() => setCreating(false)} onSave={async (payload, files) => {
       const result = await operate({ action: "createSuggestion", ...payload }, "Sugestão cadastrada com sucesso.");
-      if (result) { setCreating(false); setCreatedProtocol(result.createdProtocol ?? ""); }
+      if (result) { if (result.id && files.length && !await uploadAttachments(result.id, files)) return; setCreating(false); setCreatedProtocol(result.createdProtocol ?? ""); }
     }} />}
-    {editing && canEdit && <NewSuggestionModal module={module} customers={customers} busy={busy} initial={editing} onClose={() => setEditing(null)} onSave={async (payload) => {
+    {editing && canEdit && <NewSuggestionModal module={module} customers={customers} busy={busy} initial={editing} onClose={() => setEditing(null)} onSave={async (payload, files) => {
       const result = await operate({ action: "updateSuggestion", requireConfirmation: true, id: editing.id, version: editing.version, ...payload }, "Sugestão atualizada com sucesso.");
-      if (result) setEditing(null);
+      if (result) { if (files.length && !await uploadAttachments(editing.id, files)) return; setEditing(null); }
     }} />}
     {createdProtocol && <SuggestionCreatedModal protocol={createdProtocol} onClose={() => setCreatedProtocol("")} />}
     {selected && <SuggestionDetailsModal suggestion={selected} statuses={activeStatuses} currentUserId={module.currentUser.id} canEdit={canEdit} canDelete={canDelete && (selected.responsibleEmail === module.currentUser.email || module.canManageCatalogs)} busy={busy} onClose={() => setSelectedId(null)} onDelete={async () => { const result = await operate({ action: "deleteSuggestion", id: selected.id }, "Sugestão excluída com sucesso."); if (result) setSelectedId(null); }} onStatus={(statusId) => changeStatus(selected, statusId)} onSendToDevelopment={() => sendToDevelopment(selected)} onComment={async (body) => {
@@ -200,15 +201,16 @@ function SuggestionKanban({ suggestions, statuses, canEdit, canDelete, canDelete
   </div>;
 }
 
-function NewSuggestionModal({ module, customers, busy, initial, onClose, onSave }: { module: SuggestionModuleData; customers: Customer[]; busy: boolean; initial?: Suggestion; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
+function NewSuggestionModal({ module, customers, busy, initial, onClose, onSave }: { module: SuggestionModuleData; customers: Customer[]; busy: boolean; initial?: Suggestion; onClose: () => void; onSave: (payload: Record<string, unknown>, files: File[]) => void }) {
   const priorities = module.priorities.filter((entry) => entry.active).sort((a, b) => a.displayOrder - b.displayOrder);
   const initialStatus = module.statuses.filter((entry) => entry.active).sort((a, b) => Number(b.isInitial) - Number(a.isInitial) || a.displayOrder - b.displayOrder)[0];
   const [strategicClient, setStrategicClient] = useState(initial?.strategicClient ?? false);
   const [cancellationRisk, setCancellationRisk] = useState(initial?.cancellationRisk ?? false);
+  const [files, setFiles] = useState<File[]>([]);
   return <div className="modal-backdrop"><form className="modal suggestion-create-modal" onSubmit={(event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    onSave({ name: form.get("name"), description: form.get("description"), customerId: form.get("customerId") || null, priorityId: form.get("priorityId"), strategicClient, cancellationRisk });
+    onSave({ name: form.get("name"), description: form.get("description"), customerId: form.get("customerId") || null, priorityId: form.get("priorityId"), strategicClient, cancellationRisk }, files);
   }}>
     <div className="modal-header"><div><span className="eyebrow">SUGESTÕES</span><h2>{initial ? "Editar sugestão" : "Nova sugestão"}</h2><p>{initial ? `Protocolo ${initial.protocol}` : "O protocolo será gerado automaticamente ao concluir o cadastro."}</p></div><button type="button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
     <div className="modal-body">
@@ -223,6 +225,7 @@ function NewSuggestionModal({ module, customers, busy, initial, onClose, onSave 
         <button type="button" className={cancellationRisk ? "selected risk" : ""} onClick={() => setCancellationRisk((current) => !current)}><span className="flag-check">{cancellationRisk && <Check size={14} />}</span><ShieldAlert size={19} /><span><strong>Risco de cancelamento</strong><small>Sinaliza urgência relacionada à retenção do cliente.</small></span></button>
       </div>
       <label className="field"><span>Descrição</span><textarea name="description" maxLength={6000} rows={5} defaultValue={initial?.description} placeholder="Contexto, impacto esperado e detalhes da sugestão..." /></label>
+      <label className="field suggestion-upload-field"><span>Anexar imagens, vídeos ou arquivos</span><span className="suggestion-upload-control"><Paperclip size={17} /> Selecionar arquivos<input type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /></span>{files.length > 0 && <small>{files.length} arquivo(s) selecionado(s): {files.map((file) => file.name).join(", ")}</small>}</label>
       {initialStatus && <div className="suggestion-initial-flow"><CircleDot size={17} style={{ color: initialStatus.color }} /><span>Ao criar, a sugestão entrará em <strong>{initialStatus.kanbanColumn || initialStatus.name}</strong>.</span></div>}
     </div>
     <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !priorities.length || (!initial && !initialStatus)}><Plus size={17} /> {initial ? "Salvar alterações" : "Cadastrar sugestão"}</button></div>
@@ -235,12 +238,14 @@ function SuggestionDetailsModal({ suggestion, statuses, currentUserId, canEdit, 
   const [comment, setComment] = useState("");
   const [editingCommentId, setEditingCommentId] = useState("");
   const [editingCommentBody, setEditingCommentBody] = useState("");
+  const [attachmentPreview, setAttachmentPreview] = useState<SuggestionAttachment | null>(null);
   const approved = /aprovad/i.test(`${suggestion.statusName} ${suggestion.kanbanColumn}`);
   return <div className="modal-backdrop suggestion-side-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal suggestion-detail-modal suggestion-side-panel">
     <div className="modal-header"><div><span className="eyebrow">{suggestion.protocol}</span><h2>{suggestion.name}</h2><p>Criada em {dateTime(suggestion.createdAt)}</p></div><div className="suggestion-detail-actions">{approved && canEdit && <button type="button" className="primary-button" disabled={busy} onClick={() => void onSendToDevelopment()}><ArrowRight size={16} /> Enviar para desenvolvimento</button>}<button type="button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div></div>
     <div className="modal-body suggestion-detail-body">
       <main className="suggestion-detail-main">
       <section className="suggestion-description"><h3>Descrição da sugestão</h3><p>{suggestion.description || "Nenhuma descrição informada."}</p></section>
+      <section className="suggestion-attachments"><h3><Paperclip size={17} /> Anexos</h3>{suggestion.attachments?.length ? <div>{suggestion.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => /^(image|video)\//i.test(attachment.contentType) ? setAttachmentPreview(attachment) : window.open(attachment.url, "_blank", "noopener,noreferrer")}><FileText size={17} /><span><strong>{attachment.fileName}</strong><small>{attachment.contentType || "Arquivo"} · {(attachment.sizeBytes / 1024 / 1024).toFixed(2)} MB</small></span></button>)}</div> : <p className="suggestion-muted">Nenhum arquivo anexado.</p>}</section>
       <section className="suggestion-comments"><div className="suggestion-comments-title"><span><MessageSquareText size={18} /><strong>Comentários</strong></span><b>{suggestion.comments.length}</b></div>
         <div className="suggestion-comment-list">{suggestion.comments.length === 0 ? <p className="suggestion-muted">Ainda não há comentários nesta sugestão.</p> : suggestion.comments.map((entry) => <article key={entry.id}><Avatar name={entry.authorName} photo={entry.authorPhotoDataUrl} coordinator={entry.authorIsCoordinator} small /><div><header><strong>{entry.authorName}</strong><span><time>{dateTime(entry.createdAt)}</time>{entry.authorUserId === currentUserId && editingCommentId !== entry.id && <button type="button" className="icon-button" title="Editar comentário" onClick={() => { setEditingCommentId(entry.id); setEditingCommentBody(entry.body); }}><Pencil size={13} /></button>}</span></header>{editingCommentId === entry.id ? <form className="suggestion-comment-edit" onSubmit={async (event) => { event.preventDefault(); if (await onUpdateComment(entry.id, editingCommentBody)) setEditingCommentId(""); }}><textarea value={editingCommentBody} maxLength={3000} rows={3} onChange={(event) => setEditingCommentBody(event.target.value)} /><div><button type="button" className="secondary-button" onClick={() => setEditingCommentId("")}>Cancelar</button><button className="primary-button" disabled={busy || !editingCommentBody.trim()}>Salvar</button></div></form> : <p>{entry.body}</p>}</div></article>)}</div>
         <form className="suggestion-comment-form" onSubmit={async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (await onComment(comment)) setComment(""); }}><textarea value={comment} onChange={(event) => setComment(event.target.value)} required maxLength={3000} rows={3} placeholder="Escreva um comentário para a equipe..." /><button className="primary-button" disabled={busy || !comment.trim()}><MessageSquareText size={16} /> Comentar</button></form>
@@ -257,6 +262,7 @@ function SuggestionDetailsModal({ suggestion, statuses, currentUserId, canEdit, 
       <div className="suggestion-side-actions">{canDelete && <button type="button" className="secondary-button danger-action" disabled={busy} onClick={onDelete}><Trash2 size={16} /> Excluir sugestão</button>}</div>
       </aside>
     </div>
+    {attachmentPreview && <div className="suggestion-media-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAttachmentPreview(null)}><section className="suggestion-media-preview"><header><strong>{attachmentPreview.fileName}</strong><button type="button" onClick={() => setAttachmentPreview(null)}><X size={20} /></button></header>{attachmentPreview.contentType.startsWith("video/") ? <video src={attachmentPreview.url} controls autoPlay /> : <img src={attachmentPreview.url} alt={attachmentPreview.fileName} />}<a href={attachmentPreview.url} target="_blank" rel="noreferrer">Abrir arquivo original</a></section></div>}
   </div></div>;
 }
 

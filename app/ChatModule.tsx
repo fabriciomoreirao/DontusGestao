@@ -125,6 +125,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
   const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
   const [conversationKind, setConversationKind] = useState<"contacts" | "groups">("contacts");
   const [prefill, setPrefill] = useState<{ phone: string; subject: string } | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<{ url: string; name: string; type: string } | null>(null);
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const effectiveDepartmentId = module.departments.some((department) => department.id === departmentId && department.active) ? departmentId : "";
 
@@ -246,8 +247,8 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
             {selected.messages.map((message) => <article key={message.id} className={`${message.internal ? "internal" : message.direction === "Saida" ? "outbound" : "inbound"}`}>
               <div className="message-meta"><strong>{message.senderName || (message.direction === "Entrada" ? selected.contact.name : "Equipe Dontus")}</strong><span>{message.internal ? "Nota interna" : message.direction}</span><time>{formatTime(message.createdAt)}</time></div>
               <p>{message.body}</p>
-              {message.mediaName && <a className="message-file" href={`/api/chat-files/${message.id}`} target="_blank" rel="noreferrer"><Paperclip size={14} /><span><b>{message.mediaName}</b><small>{message.mediaContentType || "Arquivo"}</small></span></a>}
-              {!message.internal && message.direction === "Saida" && <small><Check size={12} /> {message.status}</small>}
+              {message.mediaName && (/^image\//i.test(message.mediaContentType) || /^video\//i.test(message.mediaContentType) ? <button type="button" className="chat-media-message" onClick={() => setMediaPreview({ url: `/api/chat-files/${message.id}`, name: message.mediaName, type: message.mediaContentType })}>{/^image\//i.test(message.mediaContentType) ? <img src={`/api/chat-files/${message.id}`} alt={message.mediaName} /> : <video src={`/api/chat-files/${message.id}`} preload="metadata" />}<span>{message.mediaName}</span></button> : <a className="message-file" href={`/api/chat-files/${message.id}`} target="_blank" rel="noreferrer"><Paperclip size={14} /><span><b>{message.mediaName}</b><small>{message.mediaContentType || "Arquivo"}</small></span></a>)}
+              {!message.internal && message.direction === "Saida" && <small className={`chat-message-receipt ${message.readAt ? "seen" : message.deliveredAt ? "delivered" : "sent"}`}>{message.readAt || message.deliveredAt ? <CheckCheck size={14} /> : <Check size={14} />} {message.readAt ? `Visto ${formatTime(message.readAt)}` : message.deliveredAt ? `Recebido ${formatTime(message.deliveredAt)}` : `Enviado ${formatTime(message.createdAt)}`}</small>}
             </article>)}
             {selected.transfers.map((transfer) => <div className="transfer-event" key={transfer.id}><ArrowRightLeft size={15} /><span><b>Transferência de setor</b>{transfer.reason} · por {transfer.actorName}</span><time>{formatDate(transfer.createdAt)}</time></div>)}
           </div>
@@ -277,6 +278,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
 
     {view === "dashboard" && <ChatDashboard module={module} busy={busy} has={has} operate={operate} />}
     {view === "settings" && canManage && <ChatSettings module={module} section={settingsSection} onSection={setSettingsSection} busy={busy} has={has} operate={operate} />}
+    {mediaPreview && <div className="chat-media-preview-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMediaPreview(null)}><section className="chat-media-preview" role="dialog" aria-modal="true" aria-label={`Visualizar ${mediaPreview.name}`}><header><strong>{mediaPreview.name}</strong><button type="button" onClick={() => setMediaPreview(null)} aria-label="Fechar"><X size={20} /></button></header>{mediaPreview.type.startsWith("video/") ? <video src={mediaPreview.url} controls autoPlay /> : <img src={mediaPreview.url} alt={mediaPreview.name} />}<a href={mediaPreview.url} target="_blank" rel="noreferrer">Abrir arquivo original</a></section></div>}
     {newConversation && <NewConversationModal module={module} busy={busy} initialPhone={prefill?.phone} initialSubject={prefill?.subject} onClose={() => { setNewConversation(false); setPrefill(null); }} onSubmit={async (payload) => {
       const result = await operate({ action: "createChatConversation", ...payload }, "Atendimento criado.");
       if (result) { setNewConversation(false); setPrefill(null); if (result.id) setSelectedId(result.id); }

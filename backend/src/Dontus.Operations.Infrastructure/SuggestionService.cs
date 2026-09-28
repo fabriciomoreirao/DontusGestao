@@ -6,8 +6,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed partial class SuggestionService(OperationsDbContext db) : ISuggestionService
+public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileStorage? fileStorage = null) : ISuggestionService
 {
+    private const long MaximumAttachmentSizeBytes = 25 * 1024 * 1024;
+    private static readonly HashSet<string> BlockedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".exe", ".dll", ".bat", ".cmd", ".com", ".msi", ".ps1", ".sh", ".js", ".vbs" };
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (!await db.SuggestionPriorities.AnyAsync(cancellationToken))
@@ -55,6 +58,10 @@ public sealed partial class SuggestionService(OperationsDbContext db) : ISuggest
             .Where(entry => suggestionIds.Contains(entry.SuggestionId))
             .OrderBy(entry => entry.CreatedAt)
             .ToListAsync(cancellationToken);
+        var attachments = await db.SuggestionAttachments.AsNoTracking()
+            .Where(entry => suggestionIds.Contains(entry.SuggestionId))
+            .OrderBy(entry => entry.CreatedAt)
+            .ToListAsync(cancellationToken);
         var users = await db.Users.AsNoTracking().ToDictionaryAsync(entry => entry.Id, cancellationToken);
         var customers = await db.Customers.AsNoTracking().ToDictionaryAsync(entry => entry.Id, cancellationToken);
         var priorityLookup = allPriorities.ToDictionary(entry => entry.Id);
@@ -84,7 +91,11 @@ public sealed partial class SuggestionService(OperationsDbContext db) : ISuggest
                         return new SuggestionCommentDto(comment.Id, comment.SuggestionId, comment.AuthorUserId,
                             author?.DisplayName ?? "Colaborador removido", author?.PhotoDataUrl ?? "", author?.IsCoordinator ?? false,
                             comment.Body, comment.CreatedAt);
-                    }).ToArray());
+                    }).ToArray(),
+                    attachments.Where(entry => entry.SuggestionId == suggestion.Id)
+                        .Select(entry => new SuggestionAttachmentDto(entry.Id, entry.FileName,
+                            $"/api/suggestion-files/{entry.Id}", entry.ContentType, entry.SizeBytes, entry.CreatedAt))
+                        .ToArray());
             }).ToArray(),
             new SuggestionCurrentUserDto(actorUser.Id, actorUser.DisplayName, actorUser.Email, actorUser.PhotoDataUrl, actorUser.IsCoordinator),
             canManage);
@@ -285,6 +296,51 @@ public sealed partial class SuggestionService(OperationsDbContext db) : ISuggest
         comment.UpdatedAt = DateTimeOffset.UtcNow;
         AddAudit(actor, "UpdateComment", "suggestion", comment.SuggestionId, new { CommentId = comment.Id });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<Guid> UploadAttachmentAsync(UploadSuggestionAttachmentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("suggestions", "edit");
+        if (!await db.Suggestions.AnyAsync(entry => entry.Id == command.SuggestionId, cancellationToken))
+            throw new DomainException("Sugestão não encontrada.", 404);
+        if (command.SizeBytes <= 0 || command.SizeBytes > MaximumAttachmentSizeBytes)
+            throw new DomainException("Cada anexo deve ter no máximo 25 MB.");
+        var fileName = Path.GetFileName(command.FileName).Trim();
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.Length > 260)
+            throw new DomainException("Nome do arquivo inválido.");
+        var extension = Path.GetExtension(fileName);
+        if (BlockedAttachmentExtensions.Contains(extension))
+            throw new DomainException("Este tipo de arquivo não é permitido.");
+        if (fileStorage is null)
+            throw new DomainException("Armazenamento de arquivos indisponível.", 503);
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        var storageKey = $"suggestions/{command.SuggestionId:N}/{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+        await fileStorage.StoreAsync(storageKey, command.Content, command.ContentType, command.SizeBytes, cancellationToken);
+        var attachment = new SuggestionAttachment
+        {
+            SuggestionId = command.SuggestionId,
+            UploadedByUserId = actorUser.Id,
+            FileName = fileName,
+            ContentType = string.IsNullOrWhiteSpace(command.ContentType) ? "application/octet-stream" : command.ContentType,
+            SizeBytes = command.SizeBytes,
+            StorageKey = storageKey,
+        };
+        db.SuggestionAttachments.Add(attachment);
+        AddAudit(actor, "Attach", "suggestion", command.SuggestionId, new { attachment.Id, attachment.FileName });
+        await db.SaveChangesAsync(cancellationToken);
+        return attachment.Id;
+    }
+
+    public async Task<TaskAttachmentDownloadDto> GetAttachmentDownloadAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("suggestions", "view");
+        var attachment = await db.SuggestionAttachments.AsNoTracking()
+            .SingleOrDefaultAsync(entry => entry.Id == attachmentId, cancellationToken)
+            ?? throw new DomainException("Anexo não encontrado.", 404);
+        if (fileStorage is null)
+            throw new DomainException("Armazenamento de arquivos indisponível.", 503);
+        return new TaskAttachmentDownloadDto(fileStorage.CreateDownloadUrl(
+            attachment.StorageKey, attachment.FileName, attachment.ContentType));
     }
 
     public async Task<Guid> AddCommentAsync(AddSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)

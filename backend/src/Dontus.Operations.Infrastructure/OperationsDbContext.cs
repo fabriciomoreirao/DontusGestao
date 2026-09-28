@@ -61,6 +61,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<SuggestionStatus> SuggestionStatuses => Set<SuggestionStatus>();
     public DbSet<Suggestion> Suggestions => Set<Suggestion>();
     public DbSet<SuggestionComment> SuggestionComments => Set<SuggestionComment>();
+    public DbSet<SuggestionAttachment> SuggestionAttachments => Set<SuggestionAttachment>();
     public DbSet<CompanyNotice> CompanyNotices => Set<CompanyNotice>();
     public DbSet<CompanyNoticeRead> CompanyNoticeReads => Set<CompanyNoticeRead>();
 
@@ -362,6 +363,17 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.HasIndex(x => new { x.SuggestionId, x.CreatedAt });
             entity.HasOne<Suggestion>().WithMany().HasForeignKey(x => x.SuggestionId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.AuthorUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        ConfigureEntity(modelBuilder.Entity<SuggestionAttachment>(), "suggestion_attachments");
+        modelBuilder.Entity<SuggestionAttachment>(entity =>
+        {
+            entity.Property(x => x.FileName).HasMaxLength(260);
+            entity.Property(x => x.ContentType).HasMaxLength(160);
+            entity.Property(x => x.StorageKey).HasMaxLength(800);
+            entity.HasIndex(x => new { x.SuggestionId, x.CreatedAt });
+            entity.HasOne<Suggestion>().WithMany().HasForeignKey(x => x.SuggestionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 

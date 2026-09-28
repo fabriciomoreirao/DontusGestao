@@ -9,6 +9,8 @@ public sealed record SuggestionStatusDto(
 public sealed record SuggestionCommentDto(
     Guid Id, Guid SuggestionId, Guid AuthorUserId, string AuthorName, string AuthorPhotoDataUrl,
     bool AuthorIsCoordinator, string Body, DateTimeOffset CreatedAt);
+public sealed record SuggestionAttachmentDto(
+    Guid Id, string FileName, string Url, string ContentType, long SizeBytes, DateTimeOffset CreatedAt);
 
 public sealed record SuggestionDto(
     Guid Id, long Number, string Protocol, string Name, string Description,
@@ -16,7 +18,8 @@ public sealed record SuggestionDto(
     string ResponsibleEmail, string ResponsiblePhotoDataUrl, bool ResponsibleIsCoordinator, Guid PriorityId, string PriorityName,
     string PriorityColor, Guid StatusId, string StatusName, string StatusColor, string KanbanColumn,
     bool StrategicClient, bool CancellationRisk, string CreatedBy, DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt, long Version, IReadOnlyCollection<SuggestionCommentDto> Comments);
+    DateTimeOffset UpdatedAt, long Version, IReadOnlyCollection<SuggestionCommentDto> Comments,
+    IReadOnlyCollection<SuggestionAttachmentDto> Attachments);
 
 public sealed record SuggestionCurrentUserDto(Guid Id, string Name, string Email, string PhotoDataUrl, bool IsCoordinator);
 
@@ -43,6 +46,8 @@ public sealed record UpdateSuggestionCommand(
 public sealed record ChangeSuggestionStatusCommand(Guid Id, Guid StatusId, long Version);
 public sealed record AddSuggestionCommentCommand(Guid SuggestionId, string Body);
 public sealed record UpdateSuggestionCommentCommand(Guid CommentId, string Body);
+public sealed record UploadSuggestionAttachmentCommand(
+    Guid SuggestionId, string FileName, string ContentType, long SizeBytes, Stream Content);
 public sealed record CreateSuggestionResult(Guid Id, string Protocol);
 
 public interface ISuggestionService
@@ -58,5 +63,7 @@ public interface ISuggestionService
     Task ChangeStatusAsync(ChangeSuggestionStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> AddCommentAsync(AddSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateCommentAsync(UpdateSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<Guid> UploadAttachmentAsync(UploadSuggestionAttachmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<TaskAttachmentDownloadDto> GetAttachmentDownloadAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteSuggestionAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
 }
