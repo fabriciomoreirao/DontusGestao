@@ -7,6 +7,7 @@ public static class ScreenCatalog
     public static readonly IReadOnlyCollection<ScreenDefinition> All =
     [
         new("dashboard", "Dashboard", "Principal", 10),
+        new("customers", "Clientes | Customer 360", "Principal", 15),
         new("diary", "Diário de Bordo", "Módulos", 20),
         new("notes", "Anotações", "Módulos", 30),
         new("reminders", "Lembretes", "Módulos", 35),
@@ -26,10 +27,14 @@ public static class ScreenCatalog
         new("ti", "Desenvolvimento", "Operação", 160),
         new("lia", "Acompanhamento LIA", "Operação", 170),
         new("hr", "Gestão RH", "Operação", 175),
+        new("finance", "Financeiro", "Operação", 176),
+        new("procurement", "Compras e patrimônio", "Operação", 177),
+        new("approvals", "Aprovações", "Operação", 178),
         new("commissions", "Comissões", "Operação", 180),
         new("goals", "Metas", "Operação", 190),
         new("referrals", "Indicações", "Operação", 200),
         new("surveys", "Pesquisa de satisfação", "Administração", 210),
+        new("reporting", "Indicadores e relatórios", "Administração", 215),
         new("catalogs", "Configurações das funcionalidades", "Administração", 220),
         new("admin", "Administração, permissões e auditoria", "Administração", 230),
     ];

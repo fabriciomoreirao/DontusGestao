@@ -42,6 +42,7 @@ public sealed record UpdateSuggestionCommand(
 
 public sealed record ChangeSuggestionStatusCommand(Guid Id, Guid StatusId, long Version);
 public sealed record AddSuggestionCommentCommand(Guid SuggestionId, string Body);
+public sealed record UpdateSuggestionCommentCommand(Guid CommentId, string Body);
 public sealed record CreateSuggestionResult(Guid Id, string Protocol);
 
 public interface ISuggestionService
@@ -56,5 +57,6 @@ public interface ISuggestionService
     Task UpdateSuggestionAsync(UpdateSuggestionCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangeStatusAsync(ChangeSuggestionStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> AddCommentAsync(AddSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task UpdateCommentAsync(UpdateSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteSuggestionAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
 }

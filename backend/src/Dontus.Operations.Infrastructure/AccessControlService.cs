@@ -837,6 +837,8 @@ public sealed class AccessControlService(
             existingWithName.Description = CleanCatalogDescription(command.Description);
             existingWithName.Active = true;
             existingWithName.UpdatedAt = DateTimeOffset.UtcNow;
+            if (!await db.AgendaCalendars.AnyAsync(entry => entry.DepartmentId == existingWithName.Id, cancellationToken))
+                db.AgendaCalendars.Add(new AgendaCalendar { Name = existingWithName.Name, Description = $"Agenda automática do setor {existingWithName.Name}.", DepartmentId = existingWithName.Id, Active = true });
             AddAudit(actor, "Reactivate", "employee_department", existingWithName.Id.ToString(), new { existingWithName.Name });
             await db.SaveChangesAsync(cancellationToken);
             return existingWithName.Id;
@@ -846,6 +848,8 @@ public sealed class AccessControlService(
         department.Active = command.Active;
         department.UpdatedAt = DateTimeOffset.UtcNow;
         if (!command.Id.HasValue) db.TaskDepartments.Add(department);
+        if (!command.Id.HasValue && department.Active)
+            db.AgendaCalendars.Add(new AgendaCalendar { Name = department.Name, Description = $"Agenda automática do setor {department.Name}.", DepartmentId = department.Id, Active = true });
         AddAudit(actor, command.Id.HasValue ? "Update" : "Create", "employee_department", department.Id.ToString(), new { department.Name, department.Active });
         await db.SaveChangesAsync(cancellationToken);
         return department.Id;

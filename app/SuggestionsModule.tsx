@@ -135,9 +135,9 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
       if (result) setEditing(null);
     }} />}
     {createdProtocol && <SuggestionCreatedModal protocol={createdProtocol} onClose={() => setCreatedProtocol("")} />}
-    {selected && <SuggestionDetailsModal suggestion={selected} statuses={activeStatuses} canEdit={canEdit} canDelete={canDelete && (selected.responsibleEmail === module.currentUser.email || module.canManageCatalogs)} busy={busy} onClose={() => setSelectedId(null)} onDelete={async () => { const result = await operate({ action: "deleteSuggestion", id: selected.id }, "Sugestão excluída com sucesso."); if (result) setSelectedId(null); }} onStatus={(statusId) => changeStatus(selected, statusId)} onSendToDevelopment={() => sendToDevelopment(selected)} onComment={async (body) => {
+    {selected && <SuggestionDetailsModal suggestion={selected} statuses={activeStatuses} currentUserId={module.currentUser.id} canEdit={canEdit} canDelete={canDelete && (selected.responsibleEmail === module.currentUser.email || module.canManageCatalogs)} busy={busy} onClose={() => setSelectedId(null)} onDelete={async () => { const result = await operate({ action: "deleteSuggestion", id: selected.id }, "Sugestão excluída com sucesso."); if (result) setSelectedId(null); }} onStatus={(statusId) => changeStatus(selected, statusId)} onSendToDevelopment={() => sendToDevelopment(selected)} onComment={async (body) => {
       return Boolean(await operate({ action: "addSuggestionComment", id: selected.id, body }, "Comentário adicionado com sucesso."));
-    }} />}
+    }} onUpdateComment={async (id, body) => Boolean(await operate({ action: "updateSuggestionComment", id, body }, "Comentário atualizado com sucesso."))} />}
   </section>;
 }
 
@@ -229,10 +229,12 @@ function NewSuggestionModal({ module, customers, busy, initial, onClose, onSave 
   </form></div>;
 }
 
-function SuggestionDetailsModal({ suggestion, statuses, canEdit, canDelete, busy, onClose, onDelete, onStatus, onSendToDevelopment, onComment }: {
-  suggestion: Suggestion; statuses: SuggestionStatus[]; canEdit: boolean; canDelete: boolean; busy: boolean; onClose: () => void; onDelete: () => void; onStatus: (statusId: string) => Promise<void>; onSendToDevelopment: () => Promise<OperationResult>; onComment: (body: string) => Promise<boolean>;
+function SuggestionDetailsModal({ suggestion, statuses, currentUserId, canEdit, canDelete, busy, onClose, onDelete, onStatus, onSendToDevelopment, onComment, onUpdateComment }: {
+  suggestion: Suggestion; statuses: SuggestionStatus[]; currentUserId: string; canEdit: boolean; canDelete: boolean; busy: boolean; onClose: () => void; onDelete: () => void; onStatus: (statusId: string) => Promise<void>; onSendToDevelopment: () => Promise<OperationResult>; onComment: (body: string) => Promise<boolean>; onUpdateComment: (id: string, body: string) => Promise<boolean>;
 }) {
   const [comment, setComment] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState("");
+  const [editingCommentBody, setEditingCommentBody] = useState("");
   const approved = /aprovad/i.test(`${suggestion.statusName} ${suggestion.kanbanColumn}`);
   return <div className="modal-backdrop suggestion-side-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal suggestion-detail-modal suggestion-side-panel">
     <div className="modal-header"><div><span className="eyebrow">{suggestion.protocol}</span><h2>{suggestion.name}</h2><p>Criada em {dateTime(suggestion.createdAt)}</p></div><div className="suggestion-detail-actions">{approved && canEdit && <button type="button" className="primary-button" disabled={busy} onClick={() => void onSendToDevelopment()}><ArrowRight size={16} /> Enviar para desenvolvimento</button>}<button type="button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div></div>
@@ -240,7 +242,7 @@ function SuggestionDetailsModal({ suggestion, statuses, canEdit, canDelete, busy
       <main className="suggestion-detail-main">
       <section className="suggestion-description"><h3>Descrição da sugestão</h3><p>{suggestion.description || "Nenhuma descrição informada."}</p></section>
       <section className="suggestion-comments"><div className="suggestion-comments-title"><span><MessageSquareText size={18} /><strong>Comentários</strong></span><b>{suggestion.comments.length}</b></div>
-        <div className="suggestion-comment-list">{suggestion.comments.length === 0 ? <p className="suggestion-muted">Ainda não há comentários nesta sugestão.</p> : suggestion.comments.map((entry) => <article key={entry.id}><Avatar name={entry.authorName} photo={entry.authorPhotoDataUrl} coordinator={entry.authorIsCoordinator} small /><div><header><strong>{entry.authorName}</strong><time>{dateTime(entry.createdAt)}</time></header><p>{entry.body}</p></div></article>)}</div>
+        <div className="suggestion-comment-list">{suggestion.comments.length === 0 ? <p className="suggestion-muted">Ainda não há comentários nesta sugestão.</p> : suggestion.comments.map((entry) => <article key={entry.id}><Avatar name={entry.authorName} photo={entry.authorPhotoDataUrl} coordinator={entry.authorIsCoordinator} small /><div><header><strong>{entry.authorName}</strong><span><time>{dateTime(entry.createdAt)}</time>{entry.authorUserId === currentUserId && editingCommentId !== entry.id && <button type="button" className="icon-button" title="Editar comentário" onClick={() => { setEditingCommentId(entry.id); setEditingCommentBody(entry.body); }}><Pencil size={13} /></button>}</span></header>{editingCommentId === entry.id ? <form className="suggestion-comment-edit" onSubmit={async (event) => { event.preventDefault(); if (await onUpdateComment(entry.id, editingCommentBody)) setEditingCommentId(""); }}><textarea value={editingCommentBody} maxLength={3000} rows={3} onChange={(event) => setEditingCommentBody(event.target.value)} /><div><button type="button" className="secondary-button" onClick={() => setEditingCommentId("")}>Cancelar</button><button className="primary-button" disabled={busy || !editingCommentBody.trim()}>Salvar</button></div></form> : <p>{entry.body}</p>}</div></article>)}</div>
         <form className="suggestion-comment-form" onSubmit={async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (await onComment(comment)) setComment(""); }}><textarea value={comment} onChange={(event) => setComment(event.target.value)} required maxLength={3000} rows={3} placeholder="Escreva um comentário para a equipe..." /><button className="primary-button" disabled={busy || !comment.trim()}><MessageSquareText size={16} /> Comentar</button></form>
       </section>
       </main>

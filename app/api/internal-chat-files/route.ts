@@ -13,13 +13,14 @@ export async function POST(request: Request) {
   });
   const localSession = request.headers.get("cookie")?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
   if (localSession) headers.set("x-local-session", decodeURIComponent(localSession));
-  const contentType = request.headers.get("content-type");
-  if (contentType) headers.set("content-type", contentType);
   try {
+    const incoming = await request.formData();
+    const outgoing = new FormData();
+    for (const [key, value] of incoming.entries()) outgoing.append(key, value);
     const response = await fetch(`${apiBase()}/api/internal-chats/${encodeURIComponent(roomId)}/attachments`, {
       method: "POST",
       headers,
-      body: request.body,
+      body: outgoing,
       cache: "no-store",
       signal: AbortSignal.timeout(120_000),
     });

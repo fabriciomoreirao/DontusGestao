@@ -387,7 +387,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             }
         }
         AddHistory(task.Id, user.Id, "created", "Tarefa criada", null, new { task.Title, task.StatusId, task.PriorityId });
-        if (task.AssigneeUserId.HasValue && task.AssigneeUserId.Value != user.Id)
+        // A atribuição precisa permanecer visível na central de notificações mesmo
+        // quando o criador assume a própria tarefa; isso confirma o vínculo e evita
+        // que tarefas recém-criadas desapareçam do fluxo de acompanhamento.
+        if (task.AssigneeUserId.HasValue)
             AddNotification(task.Id, task.AssigneeUserId.Value, user.Id, "assigned", "Uma nova tarefa foi atribuída a você.");
         foreach (var participantId in initialParticipantIds.Where(id => id != user.Id && id != task.AssigneeUserId).Distinct())
             AddNotification(task.Id, participantId, user.Id, "participant_added", "Você foi incluído como participante de uma nova tarefa.");
@@ -678,6 +681,24 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 AddNotification(task.Id, mentioned, user.Id, "mentioned", $"Você foi mencionado na tarefa #{task.Number}.");
         await db.SaveChangesAsync(cancellationToken);
         return comment.Id;
+    }
+
+    public async Task UpdateCommentAsync(UpdateTaskCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("tasks", "edit");
+        var body = command.Body.Trim();
+        if (body.Length == 0 || body.Length > 4000)
+            throw new DomainException("Informe um comentário de até 4.000 caracteres.");
+        var user = await GetActorUserAsync(actor, cancellationToken);
+        var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        var comment = await db.TaskComments.SingleOrDefaultAsync(entry => entry.Id == command.CommentId && entry.TaskId == task.Id, cancellationToken)
+            ?? throw new DomainException("Comentário não encontrado.", 404);
+        if (comment.AuthorUserId != user.Id)
+            throw new DomainException("Somente o autor pode editar este comentário.", 403);
+        comment.Body = body;
+        comment.UpdatedAt = DateTimeOffset.UtcNow;
+        AddHistory(task.Id, user.Id, "comment_updated", "Comentário editado pelo autor", null, new { comment.Id });
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task CommunicateWithClientAsync(ClientCommunicationCommand command, ActorContext actor, CancellationToken cancellationToken = default)

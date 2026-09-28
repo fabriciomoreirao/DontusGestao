@@ -809,6 +809,18 @@ operations.MapPost("", async (
                 request.Notes, request.Address, request.City, request.State), actor, cancellationToken);
             break;
 
+        case "updateCustomer":
+            await service.UpdateCustomerAsync(new UpdateCustomerCommand(
+                request.Id ?? throw new DomainException("Cliente obrigatório."),
+                request.LegalName, request.TradeName, request.DocumentMasked, request.Segment,
+                request.Owner, request.CsOwner, request.ClinicsCount, request.MonthlyRevenueCents,
+                request.Strategic, request.Status, request.Project, request.ProductVersion,
+                request.DueDay, request.Server, request.PaymentMethod, request.InvoiceCompany,
+                request.GraceDays, request.DueDays, request.Subscription, request.Email,
+                request.Phone, request.Website, request.Notes, request.Address, request.City,
+                request.State), actor, cancellationToken);
+            break;
+
         case "saveCustomerCatalog":
             id = await service.SaveCustomerCatalogAsync(request.Id, request.Catalog ?? "", request.Name ?? "", request.CatalogDescription, request.Active ?? true, actor, cancellationToken);
             break;
@@ -1036,6 +1048,11 @@ operations.MapPost("", async (
                 request.Id ?? throw new DomainException("Sugestão obrigatória."), request.Body ?? ""), actor, cancellationToken);
             break;
 
+        case "updateSuggestionComment":
+            await suggestionService.UpdateCommentAsync(new UpdateSuggestionCommentCommand(
+                request.Id ?? throw new DomainException("Comentário obrigatório."), request.Body ?? ""), actor, cancellationToken);
+            break;
+
         case "deleteSuggestion":
             await suggestionService.DeleteSuggestionAsync(
                 request.Id ?? throw new DomainException("Sugestão obrigatória."), actor, cancellationToken);
@@ -1207,6 +1224,13 @@ operations.MapPost("", async (
             id = await taskService.AddCommentAsync(new AddTaskCommentCommand(
                 request.TaskId ?? request.Id ?? throw new DomainException("Tarefa obrigatória."),
                 request.Body ?? "", request.MentionedUserIds), actor, cancellationToken);
+            break;
+
+        case "updateTaskComment":
+            await taskService.UpdateCommentAsync(new UpdateTaskCommentCommand(
+                request.TaskId ?? throw new DomainException("Tarefa obrigatória."),
+                request.Id ?? throw new DomainException("Comentário obrigatório."),
+                request.Body ?? ""), actor, cancellationToken);
             break;
 
         case "communicateWithClient":

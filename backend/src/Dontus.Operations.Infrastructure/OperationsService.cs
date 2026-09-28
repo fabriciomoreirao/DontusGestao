@@ -62,9 +62,12 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var visibleModules = actor.Permissions
             .Where(permission => permission.CanView)
             .Select(permission => permission.Screen)
-            .ToArray();
+            .ToList();
         var canManageCommissions = actor.HasPermission("commissions", "manage") || actor.HasPermission("commissions", "approve");
         var canManageGoals = actor.HasPermission("goals", "manage") || actor.HasPermission("goals", "edit");
+        if (actor.HasPermission("commissions", "view"))
+            visibleModules.AddRange(["commercial", "cs", "lia"]);
+        visibleModules = visibleModules.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         var canViewCustomers = actor.HasPermission("customers", "view")
             || actor.HasPermission("catalogs", "view")
@@ -74,11 +77,12 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             || actor.HasPermission("tasks", "view")
             || actor.HasPermission("waitingQueue", "view")
             || actor.HasPermission("cancellations", "view")
+            || actor.HasPermission("commissions", "view")
             || actor.HasPermission("referrals", "view");
         var customerEntities = canViewCustomers
             ? await db.Customers.AsNoTracking()
             .OrderByDescending(x => x.UpdatedAt)
-            .Take(100)
+            .Take(1000)
             .ToListAsync(cancellationToken)
             : [];
         var customerIds = customerEntities.Select(x => x.Id).ToList();
@@ -575,6 +579,59 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         AddAudit(actor, "Create", "customer", customer.Id.ToString(), "customers", new { customer.TradeName });
         await db.SaveChangesAsync(cancellationToken);
         return customer.Id;
+    }
+
+    public async Task UpdateCustomerAsync(
+        UpdateCustomerCommand command,
+        ActorContext actor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!actor.HasPermission("customers", "edit")
+            && !actor.HasPermission("commercial", "edit")
+            && !actor.HasPermission("cs", "edit")
+            && !actor.HasPermission("cancellations", "edit")
+            && !actor.HasPermission("admin", "manage"))
+            throw new DomainException("Seu acesso não permite editar clientes.", 403);
+
+        var customer = await db.Customers.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
+            ?? throw new DomainException("Cliente não encontrado.", 404);
+
+        static string Clean(string value) => value.Trim();
+        if (command.LegalName is not null)
+        {
+            if (string.IsNullOrWhiteSpace(command.LegalName)) throw new DomainException("Informe a razão social.");
+            customer.LegalName = Clean(command.LegalName);
+        }
+        if (command.TradeName is not null) customer.TradeName = string.IsNullOrWhiteSpace(command.TradeName) ? customer.LegalName : Clean(command.TradeName);
+        if (command.DocumentMasked is not null) customer.DocumentMasked = Clean(command.DocumentMasked);
+        if (command.Segment is not null) customer.Segment = Clean(command.Segment);
+        if (command.Owner is not null) customer.Owner = Clean(command.Owner);
+        if (command.CsOwner is not null) customer.CsOwner = Clean(command.CsOwner);
+        if (command.ClinicsCount.HasValue) customer.ClinicsCount = Math.Max(1, command.ClinicsCount.Value);
+        if (command.MonthlyRevenueCents.HasValue) customer.MonthlyRevenueCents = Math.Max(0, command.MonthlyRevenueCents.Value);
+        if (command.Strategic.HasValue) customer.Strategic = command.Strategic.Value;
+        if (command.Status is not null) customer.Status = Clean(command.Status);
+        if (command.Project is not null) customer.Project = Clean(command.Project);
+        if (command.ProductVersion is not null) customer.ProductVersion = Clean(command.ProductVersion);
+        if (command.DueDay is not null) customer.DueDay = Clean(command.DueDay);
+        if (command.Server is not null) customer.Server = Clean(command.Server);
+        if (command.PaymentMethod is not null) customer.PaymentMethod = Clean(command.PaymentMethod);
+        if (command.InvoiceCompany is not null) customer.InvoiceCompany = Clean(command.InvoiceCompany);
+        if (command.GraceDays is not null) customer.GraceDays = Clean(command.GraceDays);
+        if (command.DueDays is not null) customer.DueDays = Clean(command.DueDays);
+        if (command.Subscription is not null) customer.Subscription = Clean(command.Subscription);
+        if (command.Email is not null) customer.Email = Clean(command.Email);
+        if (command.Phone is not null) customer.Phone = Clean(command.Phone);
+        if (command.Website is not null) customer.Website = Clean(command.Website);
+        if (command.Notes is not null) customer.Notes = Clean(command.Notes);
+        if (command.Address is not null) customer.Address = Clean(command.Address);
+        if (command.City is not null) customer.City = Clean(command.City);
+        if (command.State is not null) customer.State = Clean(command.State);
+        customer.UpdatedAt = DateTimeOffset.UtcNow;
+        customer.Version++;
+
+        AddAudit(actor, "Update", "customer", customer.Id.ToString(), "customers", new { customer.TradeName, customer.Status });
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<CustomerModuleDto> GetCustomerModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)

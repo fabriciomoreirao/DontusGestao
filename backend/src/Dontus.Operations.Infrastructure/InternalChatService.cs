@@ -68,17 +68,21 @@ public sealed class InternalChatService(
                 }
                 catch (JsonException) { }
             }
-            var roomMessages = allRoomMessages.Where(message => message.Type != "pin")
+            var roomMessages = allRoomMessages.Where(message => message.Type != "pin" && message.CreatedAt >= actorMembership.JoinedAt)
                 .OrderBy(message => message.CreatedAt)
                 .Select(message =>
                 {
                     var sender = users.GetValueOrDefault(message.SenderUserId);
+                    var recipients = roomMembers.Where(member => member.UserId != message.SenderUserId).ToArray();
+                    var receiptState = recipients.Length > 0 && recipients.All(member => member.LastReadAt >= message.CreatedAt)
+                        ? "seen"
+                        : "delivered";
                     return new InternalChatMessageDto(
                         message.Id, message.RoomId, message.SenderUserId,
                         sender?.DisplayName ?? "Colaborador removido", sender?.PhotoDataUrl ?? "",
                         sender?.IsCoordinator ?? false,
                         message.Type, message.Body, message.FileName, message.ContentType,
-                        !string.IsNullOrWhiteSpace(message.StorageKey), pinned.GetValueOrDefault(message.Id), message.CreatedAt);
+                        !string.IsNullOrWhiteSpace(message.StorageKey), pinned.GetValueOrDefault(message.Id), receiptState, message.CreatedAt);
                 }).ToArray();
             return new InternalChatRoomDto(
                 room.Id, displayName, displayPhoto, room.IsGroup, room.CreatedByUserId,
@@ -422,9 +426,10 @@ public sealed class InternalChatService(
     private static bool IsAllowedContentType(string contentType) =>
         contentType.StartsWith("image/", StringComparison.Ordinal) ||
         contentType.StartsWith("video/", StringComparison.Ordinal) ||
-        contentType is "application/pdf" or "text/plain" or "application/zip" or
+        contentType is "application/pdf" or "text/plain" or "text/csv" or "text/markdown" or "application/csv" or "application/zip" or "application/x-zip-compressed" or
             "application/msword" or "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or
-            "application/vnd.ms-excel" or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            "application/vnd.ms-excel" or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" or
+            "application/vnd.ms-powerpoint" or "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
     private static string NormalizePhoto(string? value)
     {

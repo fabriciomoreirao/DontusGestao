@@ -8,7 +8,7 @@ public sealed record InternalChatMessageDto(
     Guid Id, Guid RoomId, Guid SenderUserId, string SenderName, string SenderPhotoDataUrl,
     bool SenderIsCoordinator,
     string Type, string Body, string FileName, string ContentType, bool HasAttachment, bool IsPinned,
-    DateTimeOffset CreatedAt);
+    string ReceiptState, DateTimeOffset CreatedAt);
 
 public sealed record InternalChatRoomDto(
     Guid Id, string Name, string PhotoDataUrl, bool IsGroup, Guid CreatedByUserId, bool CanManage,

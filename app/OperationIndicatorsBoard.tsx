@@ -141,9 +141,12 @@ function chartConfigFor(module: string, contextKey: string, rows: Item[]): Chart
     categoryTitle: module === "lia" ? "Origem e tipo da solicitação" : "Clientes por versão", categoryUnit: module === "lia" ? "origens" : "versões",
     statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.finalStatus ?? detail.phase ?? detail.stage, item.status || "Sem status"))),
     owners: counted(rows.map((item) => item.owner || "Não atribuído")),
-    categories: counted(details.map(({ item, detail }) => module === "lia"
-      ? stringOf(detail.requestType, detail.origin, detail.source, item.team, item.record_type) || "Não informado"
-      : stringOf(detail.versionName, detail.version, detail.planName, item.record_type) || "Não informada")),
+    categories: counted(details.flatMap(({ item, detail }) => module === "lia"
+      ? [stringOf(detail.requestType, detail.origin, detail.source, item.team, item.record_type) || "Não informado"]
+      : (arrayOf(detail.follows).map((entry) => typeof entry === "object" && entry ? stringOf((entry as Detail).kind, (entry as Detail).type) : "").filter(Boolean).length
+        ? arrayOf(detail.follows).map((entry) => typeof entry === "object" && entry ? stringOf((entry as Detail).kind, (entry as Detail).type) : "").filter(Boolean)
+        : [stringOf(detail.versionName, detail.version, detail.planName, item.record_type) || "Não informada"])
+    )),
   };
   if (module === "recruitment") return {
     ...defaults, trendTitle: "Candidatos recebidos por mês", statusTitle: "Candidatos por etapa", statusUnit: "etapas",
@@ -287,11 +290,16 @@ function metricsFor(module: string, contextKey: string, rows: Item[]): Metric[] 
     const scores = details.map(({ detail }) => scoreOf(detail));
     const avg = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
     const complete = rows.filter((item) => finished(item.status)).length;
+    const interactions = details.flatMap(({ detail }) => arrayOf(detail.follows ?? detail.history));
+    const interactionKinds = interactions.map((entry) => typeof entry === "object" && entry ? clean((entry as Detail).kind ?? (entry as Detail).type ?? (entry as Detail).text) : clean(entry));
     return [
       { label: "Total de clientes", value: rows.length, note: `${rows.length - complete} em acompanhamento` }, { label: "Em acompanhamento", value: rows.length - complete, note: percent(rows.length - complete, rows.length) },
       { label: "Finalizados", value: complete, note: percent(complete, rows.length) }, { label: "Concluídos c/ sucesso", value: rows.filter((item) => /sucesso/.test(clean(item.status))).length, note: "resultado positivo" },
       { label: "Health score médio", value: `${avg}%`, note: `${scores.filter((score) => score > 0).length} com score` }, { label: "Health alto (≥75%)", value: scores.filter((score) => score >= 75).length, note: "utilização saudável" },
       { label: "Health baixo (<50%)", value: scores.filter((score) => score < 50).length, note: "clientes em risco" }, { label: module === "lia" ? "Etapas ativas" : "Dias médios", value: module === "lia" ? new Set(rows.map((item) => item.status)).size : `${rows.length ? Math.round(rows.reduce((sum, item) => sum + durationDays(item), 0) / rows.length) : 0}d`, note: module === "lia" ? "no fluxo LIA" : "em acompanhamento" },
+      { label: "Interações", value: interactions.length, note: "opções registradas no acompanhamento" },
+      { label: "Ligações", value: interactionKinds.filter((kind) => /ligacao|telefone|chamada/.test(kind)).length, note: "registradas nas tratativas" },
+      { label: "Follow-ups", value: interactionKinds.filter((kind) => /follow|retorno|acompanhamento/.test(kind)).length, note: "registrados nas tratativas" },
     ];
   }
   if (module === "recruitment") {

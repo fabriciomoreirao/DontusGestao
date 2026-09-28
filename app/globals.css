@@ -6634,3 +6634,218 @@ html[data-theme="dark"] .journey-module{--surface:#07111d;--panel:#0d1826;--inpu
 :is(.modal-shell,.standard-modal,.agenda-modal,.diary-modal,.chat-new-modal,.internal-chat-modal,.access-modal) :is(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:44px;padding:10px 12px;font-size:.86rem!important}
 :is(.modal-shell,.standard-modal,.agenda-modal,.diary-modal,.chat-new-modal,.internal-chat-modal,.access-modal) :is(button,.primary-button,.secondary-button){font-size:.78rem}
 @media(max-width:720px){.notes-toolbar{align-items:stretch;flex-direction:column}.notes-scope-tabs{width:100%}.notes-scope-tabs button{flex:1}.marketing-primary-actions,.development-evidence-entry,.cancellation-indicator-filters{grid-template-columns:1fr}}
+
+/* Escala de leitura do conteúdo: mantém o menu compacto e amplia a área operacional. */
+.app-shell .main{font-size:16px}
+.app-shell .main :is(p,li,dd,td){font-size:.78rem;line-height:1.5}
+.app-shell .main small{font-size:.69rem!important;line-height:1.4}
+.app-shell .main :is(label,button){font-size:.76rem}.app-shell .main :is(input,select,textarea){font-size:.82rem}
+.app-shell .main :is(h1,h2,h3,h4),.modal-backdrop :is(h1,h2,h3,h4),.drawer-backdrop :is(h1,h2,h3,h4){font-weight:850;letter-spacing:-.025em}
+.app-shell .main h1{font-size:clamp(1.55rem,2vw,2rem)}
+.app-shell .main h2{font-size:clamp(1.15rem,1.5vw,1.45rem)}
+.app-shell .main h3{font-size:.92rem}
+:is(.status-pill,.commission-status,.priority-badge,.task-status-chip,.commercial-active-stages span,.cancellation-tabs button,.hr-tabs button){font-size:.7rem!important;font-weight:900!important;letter-spacing:.01em}
+.eyebrow{font-size:.66rem!important;font-weight:950!important}
+.customer-drawer-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.commission-source-meta{margin-top:4px;color:var(--muted);font-weight:750}
+@media(max-width:700px){.customer-drawer-actions .secondary-button{width:36px;padding:0;font-size:0}.customer-drawer-actions .secondary-button svg{margin:0}}
+
+/* Revisão de legibilidade geral: amplia o conteúdo operacional sem alterar o menu lateral. */
+.app-shell .main{font-size:17px}
+.app-shell .main :is(p,li,dd,td){font-size:.84rem;line-height:1.55}
+.app-shell .main small{font-size:.74rem!important;line-height:1.45}
+.app-shell .main :is(label,button){font-size:.82rem}
+.app-shell .main :is(input,select,textarea){font-size:.88rem}
+.app-shell .main h1{font-size:clamp(1.7rem,2.2vw,2.15rem)}
+.app-shell .main h2{font-size:clamp(1.25rem,1.65vw,1.58rem)}
+.app-shell .main h3{font-size:1rem}
+.modal-backdrop,.drawer-backdrop,.employee-profile-backdrop{font-size:16px}
+.modal-backdrop :is(label,button,input,select,textarea),.drawer-backdrop :is(label,button,input,select,textarea){font-size:.84rem}
+:is(.status-pill,.commission-status,.priority-badge,.task-status-chip,.commercial-active-stages span,.cancellation-tabs button,.hr-tabs button){font-size:.75rem!important;font-weight:900!important}
+
+/* Agenda: textos e compromissos passam a ser legíveis também em telas amplas. */
+.agenda-calendar-title h2{font-size:1.08rem!important}
+.agenda-weekdays span{font-size:.68rem!important}
+.agenda-day time{width:29px;height:29px;font-size:.72rem!important}
+.agenda-event{min-height:31px;padding:6px 8px;gap:6px}
+.agenda-event span{font-size:.68rem!important;line-height:1.25}
+.agenda-event small{font-size:.62rem!important}
+.agenda-more{font-size:.65rem!important;padding:5px 7px}
+.portal-calendar-panel>header strong{font-size:.82rem}
+.portal-calendar-panel>header small{font-size:.68rem}
+.portal-calendar-event{padding:8px 9px;font-size:.73rem}
+.portal-calendar-event small{font-size:.64rem}
+.portal-schedule-grid>article>header strong{font-size:.74rem}
+.portal-schedule-grid>article>header small{font-size:.66rem}
+.portal-schedule-grid time{font-size:.74rem}
+.portal-schedule-grid button strong{font-size:.76rem}
+.portal-schedule-grid button small,.portal-schedule-grid p{font-size:.65rem}
+
+/* Pesquisa consistente no topo e nos módulos. */
+:is(.global-search,.field-search,.task-search,.commercial-search,.suggestion-search,.chat-search,.internal-chat-search,.cs-pipeline-search,.notes-search,.lia-adjustment-search){transition:border-color .16s ease,box-shadow .16s ease,background .16s ease}
+:is(.global-search,.field-search,.task-search,.commercial-search,.suggestion-search,.chat-search,.internal-chat-search,.cs-pipeline-search,.notes-search,.lia-adjustment-search):focus-within{border-color:color-mix(in srgb,var(--primary) 68%,var(--border))!important;box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 12%,transparent)!important;background:var(--surface)!important}
+.global-search input{height:46px!important;padding-left:43px!important;border-radius:13px!important;font-size:.88rem!important;box-shadow:0 7px 22px rgba(31,74,109,.07)}
+.global-search>svg{left:15px}
+.global-search kbd{right:12px;padding:4px 7px;border-radius:6px;font-size:.64rem}
+.search-results{top:52px;border:1px solid var(--line);border-radius:12px;padding:7px;box-shadow:0 18px 45px rgba(22,49,75,.18)}
+.search-results button{padding:11px 12px;border-radius:9px}
+.search-results span{font-size:.78rem}
+.search-results small{font-size:.67rem!important}
+:is(.task-search,.commercial-search,.chat-search,.cs-pipeline-search,.notes-search,.lia-adjustment-search){min-height:44px;border-radius:11px!important;background:var(--surface)!important}
+:is(.task-search,.commercial-search,.chat-search,.cs-pipeline-search,.notes-search,.lia-adjustment-search) input{min-height:42px!important;font-size:.82rem!important;color:var(--ink)!important}
+.suggestion-search input,.field-search input{height:44px!important;border-color:var(--line)!important;border-radius:11px!important;padding-left:40px!important;background:var(--surface)!important;font-size:.82rem!important}
+
+/* Gestão RH: decisões claras, alinhadas e com hierarquia visual consistente. */
+.hr-experience-decision{gap:10px!important;padding:15px!important}
+.hr-experience-decision>div{padding-bottom:4px;border-bottom:1px solid var(--line)}
+.hr-experience-decision h3{font-size:.86rem!important;font-weight:900}
+.hr-experience-decision p{font-size:.67rem!important;line-height:1.45}
+.hr-experience-decision button{display:flex!important;min-height:42px!important;align-items:center;justify-content:center;gap:8px;padding:0 14px!important;border-radius:10px!important;font-size:.72rem!important;font-weight:900!important}
+.hr-experience-decision .danger-action{border-color:color-mix(in srgb,#ef4444 28%,var(--line));color:#dc2626;background:color-mix(in srgb,#ef4444 8%,var(--surface))}
+.hr-experience-decision .danger-button{border:1px solid color-mix(in srgb,#f97316 28%,var(--line));color:#c2410c;background:color-mix(in srgb,#f97316 8%,var(--surface))}
+
+/* Tarefas: confirmação objetiva e transferência com respiro entre os campos. */
+.task-created-backdrop{z-index:12000}
+.task-created-modal{width:min(520px,calc(100vw - 30px))}
+.task-created-modal .task-modal-body{padding:38px;gap:15px}
+.task-created-modal h2{font-size:1.48rem!important;font-weight:900}
+.task-created-modal p{font-size:.84rem!important;line-height:1.55}
+.task-created-modal p strong{color:var(--primary);font-weight:950;letter-spacing:.04em}
+.task-created-actions{display:grid;width:100%;grid-template-columns:1fr 1fr;gap:10px;margin-top:5px}
+.task-created-actions button{display:flex;min-height:44px;align-items:center;justify-content:center;gap:7px;border-radius:10px;font-weight:900}
+.task-detail-layout>.task-transfer{grid-template-columns:minmax(170px,.9fr) minmax(170px,.9fr) minmax(230px,1.15fr) auto;grid-template-rows:28px 44px;gap:9px 13px;padding:12px 15px;overflow:visible}
+.task-detail-layout>.task-transfer>div{gap:11px}
+.task-detail-layout>.task-transfer>div h3{font-size:.76rem}
+.task-detail-layout>.task-transfer>div p{font-size:.64rem}
+.task-detail-layout>.task-transfer label{gap:6px;font-size:.65rem;font-weight:850}
+.task-detail-layout>.task-transfer :is(select,input),.task-detail-layout>.task-transfer>button{height:42px;min-height:42px;font-size:.7rem}
+@media(max-width:1200px){.task-detail-layout>.task-transfer{grid-template-columns:1fr 1fr;grid-template-rows:auto}.task-detail-layout>.task-transfer>div{grid-column:1/-1}.task-detail-layout>.task-transfer>button{align-self:end}}
+@media(max-width:680px){.task-created-actions{grid-template-columns:1fr}.task-detail-layout>.task-transfer{grid-template-columns:1fr}}
+
+/* CRM Retenção: modais aninhados e edição de comentários sempre acessíveis. */
+.standard-modal-backdrop:has(.retention-lead-edit-modal),.standard-modal-backdrop:has(.retention-comment-edit-modal){z-index:12000!important}
+.retention-history-list article>header>span{display:flex;align-items:center;gap:7px}
+.retention-comment-edit{display:grid;width:29px;height:29px;place-items:center;border:1px solid color-mix(in srgb,var(--primary) 26%,var(--line));border-radius:7px;color:var(--primary);background:var(--primary-soft)}
+.retention-comment-edit:hover{border-color:var(--primary);transform:translateY(-1px)}
+
+/* Lembretes e confirmações precisam permanecer acima de qualquer painel ou visualização. */
+.reminder-modal-backdrop,.reminder-alert-backdrop{z-index:30000!important}
+.reminder-compose-modal,.reminder-alert-modal{z-index:30001!important}
+.confirmation-backdrop{z-index:31000!important}
+
+/* Padronização tipográfica: rótulos opcionais regulares e somente campos obrigatórios destacados. */
+.app-shell .content{font-size:16px}
+.app-shell .content :is(p,small,span,label,button,input,select,textarea,td,th){line-height:1.42}
+.app-shell .content :is(.modal,.task-modal,.drawer,.journey-drawer,.lead-drawer,.standard-modal) label{font-weight:500!important}
+.app-shell .content :is(.modal,.task-modal,.drawer,.journey-drawer,.lead-drawer,.standard-modal) label:has(:is(input,select,textarea):required){font-weight:850!important}
+.app-shell .content :is(.modal,.task-modal,.drawer,.journey-drawer,.lead-drawer,.standard-modal) :is(input,select,textarea){font-weight:500!important}
+.app-shell .main h1{font-size:clamp(1.82rem,2.25vw,2.3rem)}
+.app-shell .main h2{font-size:clamp(1.32rem,1.7vw,1.68rem)}
+.app-shell .main h3{font-size:1.06rem}
+.app-shell .content :is(.eyebrow,.status-pill,.task-status-chip,.priority-badge){font-weight:900!important}
+
+/* O botão de fechar ocupa sempre o canto superior direito dos modais. */
+:is(.modal,.standard-modal,.task-modal)>:is(.modal-head,.modal-header,header){position:relative;padding-right:4.5rem}
+:is(.modal,.standard-modal)>:is(.modal-head,.modal-header)>button.icon-button:last-child,
+.task-modal>header>button[aria-label="Fechar"]{position:absolute!important;top:1rem!important;right:1rem!important;margin:0!important;z-index:5}
+
+/* Pesquisa e filtros mantêm o mesmo desenho visual do módulo de clientes. */
+:is(.customer-filter-panel,.toolbar,.task-toolbar,.commercial-lead-filters,.retention-toolbar,.suggestion-toolbar,.cs-pipeline-toolbar,.cancellation-filter-bar,.marketing-filter-bar,.development-toolbar,.hr-toolbar,.lia-toolbar){border:1px solid var(--line);border-radius:14px;padding:12px;background:color-mix(in srgb,var(--surface) 94%,var(--canvas));box-shadow:0 8px 22px rgba(27,64,96,.05);gap:12px}
+:is(.field-search,.task-search,.commercial-search,.suggestion-search,.chat-search,.internal-chat-search,.cs-pipeline-search,.notes-search,.lia-adjustment-search){position:relative;display:flex;align-items:center}
+:is(.field-search,.task-search,.commercial-search,.suggestion-search,.chat-search,.internal-chat-search,.cs-pipeline-search,.notes-search,.lia-adjustment-search)>svg{position:absolute!important;left:13px!important;top:50%!important;transform:translateY(-50%);z-index:2;pointer-events:none}
+:is(.field-search,.task-search,.commercial-search,.suggestion-search,.chat-search,.internal-chat-search,.cs-pipeline-search,.notes-search,.lia-adjustment-search)>input{padding-left:40px!important}
+.theme-dark .search-results{border-color:#314a62!important;color:#e9f2fa!important;background:#101e2e!important;box-shadow:0 20px 48px rgba(0,0,0,.5)}
+.theme-dark .search-results button{color:#dfeaf5!important;background:transparent!important}
+.theme-dark .search-results button:hover,.theme-dark .search-results button:focus{background:#1b3146!important}
+.theme-dark .search-results :is(b,strong,span){color:#ecf6ff!important}
+.theme-dark .search-results small{color:#9fb2c5!important}
+.theme-dark .search-id-overview{border-color:#315876!important;background:#11283b!important}
+.theme-dark .search-id-overview b{color:#6fcaff!important}
+
+/* Página 360 de clientes: ID explícito e ação de edição no próprio cadastro. */
+.client-history-id{display:inline-flex;width:max-content;margin-top:.25rem;padding:.3rem .55rem;border:1px solid color-mix(in srgb,var(--primary) 30%,var(--line));border-radius:7px;color:var(--primary);background:var(--primary-soft);font-size:.76rem;font-weight:950;letter-spacing:.025em}
+.client-history-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:.55rem;flex-wrap:wrap}
+.client-history-head-actions>b{padding:.4rem .65rem;border-radius:999px;font-size:.7rem;white-space:nowrap}
+.client-history-head-actions>b.located{color:#0c8b58;background:rgba(16,185,129,.12)}
+.client-history-head-actions>b.partial{color:#b56b00;background:rgba(245,158,11,.13)}
+.client-history-head-actions button{display:flex;align-items:center;gap:.35rem;min-height:37px}
+@media(max-width:700px){.client-history-head-actions{grid-column:2/4;justify-content:flex-start}}
+
+/* Lembretes vinculados ficam acessíveis ao lado da ação principal. */
+.reminder-linked-open{display:inline-flex!important;width:34px!important;min-width:34px!important;height:34px!important;align-items:center!important;justify-content:center!important;gap:3px!important;padding:0!important;border:1px solid color-mix(in srgb,#8b5cf6 38%,var(--line))!important;border-radius:9px!important;color:#7c3aed!important;background:color-mix(in srgb,#8b5cf6 9%,var(--surface))!important}
+.reminder-linked-open b{font-size:.68rem!important}
+.reminder-linked-history{transition:box-shadow .2s ease,transform .2s ease}
+.reminder-linked-history.highlight{box-shadow:0 0 0 4px rgba(139,92,246,.22),0 18px 42px rgba(76,29,149,.16);transform:translateY(-2px)}
+
+/* Tarefas: visualização central dos anexos e ação de aprovação no mesmo grupo. */
+.task-media-thumb,.task-file-preview>button{display:block;width:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
+.task-media-thumb :is(img,video),.task-file-preview>button :is(img,video){display:block;width:100%;height:100%;object-fit:cover}
+.task-attachment-preview footer>button:not(:last-child){padding:3px 7px;border:0;color:var(--primary);background:transparent;font-size:.68rem;font-weight:850;cursor:pointer}
+.task-media-preview-backdrop,.internal-chat-media-backdrop{position:fixed;inset:0;z-index:32000;display:grid;place-items:center;padding:24px;background:rgba(3,10,20,.84);backdrop-filter:blur(7px)}
+.task-media-preview,.internal-chat-media-preview{display:grid;width:min(980px,94vw);max-height:92vh;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:14px;border:1px solid #36516a;border-radius:16px;background:#0e1c2b;box-shadow:0 34px 90px rgba(0,0,0,.58)}
+.task-media-preview header,.internal-chat-media-preview header{display:flex;align-items:center;justify-content:space-between;gap:15px;color:#eef7ff}
+.task-media-preview header button,.internal-chat-media-preview header button{display:grid;width:36px;height:36px;place-items:center;border:1px solid #38536b;border-radius:9px;color:#d9e7f3;background:#172a3c}
+.task-media-preview :is(img,video),.internal-chat-media-preview :is(img,video){max-width:100%;max-height:74vh;justify-self:center;object-fit:contain;border-radius:10px;background:#050b12}
+.task-media-preview>a,.internal-chat-media-preview>a{justify-self:end;color:#77cdf7;font-size:.78rem;font-weight:800}
+.comment-attachments button,.comment-selected-files button{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;color:var(--primary);background:var(--surface-alt);font-size:.72rem;cursor:pointer}
+.comment-selected-files{display:grid;gap:6px;margin-top:8px}
+.comment-selected-files button{grid-template-columns:auto minmax(0,1fr);text-align:left}.comment-selected-files button small{grid-column:2;color:var(--muted)}
+
+/* Chat interno com participantes, mídia ampliável e recibos no estilo mensageiro. */
+.internal-chat-group-profile-link{cursor:pointer}.internal-chat-group-profile-link:hover h2{color:var(--primary)}
+.internal-chat-participants-panel{position:absolute;z-index:70;top:72px;right:18px;width:min(360px,calc(100% - 36px));max-height:430px;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--surface);box-shadow:0 22px 55px rgba(10,35,58,.24)}
+.internal-chat-participants-panel>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;font-weight:900}.internal-chat-participants-panel>header span{display:flex;align-items:center;gap:7px}.internal-chat-participants-panel>header button{display:grid;width:30px;height:30px;place-items:center;border:0;border-radius:8px;background:var(--surface-alt)}
+.internal-chat-participants-panel>div{display:grid;gap:5px}.internal-chat-participants-panel>div>button{display:flex;align-items:center;gap:9px;padding:8px;border:0;border-radius:10px;text-align:left;color:var(--ink);background:transparent}.internal-chat-participants-panel>div>button:hover{background:var(--surface-alt)}.internal-chat-participants-panel>div>button>span{display:grid}.internal-chat-participants-panel>div small,.internal-chat-participants-panel>small{color:var(--muted);font-size:.68rem}
+.internal-chat-media-message{display:block;max-width:360px;padding:0;border:0;border-radius:10px;overflow:hidden;background:transparent;cursor:zoom-in}.internal-chat-media-message :is(img,video){display:block;max-width:100%;max-height:330px;object-fit:cover}
+.internal-chat-message-meta{display:flex;align-items:center;justify-content:flex-end;gap:4px}.internal-chat-message-meta time{position:static!important}.internal-chat-receipt{display:inline-flex;color:#9ba9b8}.internal-chat-receipt.seen{color:#20a8f2}
+.internal-chat-avatar .coordinator-mark{color:#16a34a!important;background:#dcfce7!important;border-color:#86efac!important}
+
+/* Seleções de colaborador como listas clicáveis, legíveis e com estado marcado. */
+.employee-departments,.employee-access-groups,.employee-subordinates{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px!important;padding:14px!important}
+.employee-departments>legend,.employee-access-groups>legend,.employee-subordinates>legend,.employee-departments>p,.employee-access-groups>p{grid-column:1/-1}
+.employee-departments>label,.employee-access-groups>label,.employee-subordinates>label{min-height:62px;border:1px solid var(--line);border-radius:10px!important;background:var(--surface-alt);cursor:pointer}
+.employee-departments>label:has(input:checked),.employee-access-groups>label:has(input:checked),.employee-subordinates>label:has(input:checked){border-color:color-mix(in srgb,var(--primary) 58%,var(--line));background:var(--primary-soft);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 9%,transparent)}
+.employee-departments input,.employee-access-groups input,.employee-subordinates input{order:-1;width:18px!important;height:18px!important;accent-color:var(--primary)}
+.check-row{border:1px solid var(--line)!important}.check-row:has(input:checked){border-color:color-mix(in srgb,var(--primary) 45%,var(--line))!important;background:var(--primary-soft)!important}
+@media(max-width:720px){.employee-departments,.employee-access-groups,.employee-subordinates{grid-template-columns:1fr}}
+
+.cs-validation-panel>.cs-validation-actions{grid-template-columns:auto minmax(260px,1fr) auto!important;align-items:end}.cs-validation-panel .success-action{border-color:#22c55e!important;color:#08783f!important;background:#dcfce7!important}.cs-validation-panel .success-action svg{stroke-width:3}
+@media(max-width:760px){.cs-validation-panel>.cs-validation-actions{grid-template-columns:1fr!important}}
+
+/* Sala de reunião: semana ocupa toda a largura e estados ficam reconhecíveis por cor. */
+.portal-calendar-panel{display:block!important;overflow:hidden}
+.portal-calendar-week,.portal-calendar-grid,.portal-schedule-grid{width:100%!important;margin:0!important}
+.portal-calendar-week,.portal-calendar-grid{clear:both}
+.portal-calendar-event.reserved,.portal-schedule-grid button.reserved{border-color:#3b82f6!important;border-left-color:#2563eb!important;background:color-mix(in srgb,#2563eb 12%,var(--portal-surface))!important}
+.portal-calendar-event.cancelled,.portal-schedule-grid button.cancelled{border-color:#ef4444!important;border-left-color:#dc2626!important;background:color-mix(in srgb,#ef4444 12%,var(--portal-surface))!important}
+.portal-calendar-event.completed,.portal-schedule-grid button.completed{border-color:#22c55e!important;border-left-color:#16a34a!important;background:color-mix(in srgb,#22c55e 12%,var(--portal-surface))!important}
+.portal-calendar-event.cancelled i{background:#ef4444!important}.portal-calendar-event.completed i{background:#22c55e!important}
+.portal-calendar-more{width:100%;margin-top:6px;padding:6px;border:1px dashed var(--portal-line);border-radius:7px;color:var(--primary);background:transparent;font-size:.66rem;font-weight:850;cursor:pointer}
+.portal-calendar-week+ .portal-calendar-grid{min-width:0}
+.portal-schedule-grid{grid-template-columns:repeat(7,minmax(0,1fr))!important;min-width:0!important;min-height:540px!important}
+.portal-calendar-day .portal-schedule-grid{grid-template-columns:1fr!important}
+.portal-schedule-grid>article{min-width:0}
+.portal-day-reservations{width:min(680px,calc(100vw - 32px));max-height:82vh;overflow:auto;border:1px solid var(--portal-line);border-radius:16px;padding:16px;color:var(--portal-ink);background:var(--portal-surface);box-shadow:0 30px 90px rgba(0,0,0,.45)}
+.portal-day-reservations>header{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid var(--portal-line)}.portal-day-reservations h2{margin:2px 0 0;text-transform:capitalize}.portal-day-reservations>header button{display:grid;width:36px;height:36px;place-items:center;border:1px solid var(--portal-line);border-radius:9px;color:var(--portal-ink);background:transparent}.portal-day-reservations>div{display:grid;gap:8px;padding-top:12px}.portal-day-reservations>div>button{display:grid;grid-template-columns:64px minmax(0,1fr) auto;align-items:center;gap:10px;padding:12px;border:1px solid var(--portal-line);border-left:4px solid #2563eb;border-radius:10px;color:var(--portal-ink);background:var(--portal-surface);text-align:left}.portal-day-reservations>div>button.cancelled{border-left-color:#ef4444}.portal-day-reservations>div>button.completed{border-left-color:#22c55e}.portal-day-reservations span{display:grid}.portal-day-reservations small{color:var(--portal-muted)}.portal-day-reservations em{font-style:normal;font-weight:850}
+@media(max-width:900px){.portal-schedule-grid{grid-template-columns:repeat(7,minmax(130px,1fr))!important;min-width:910px!important}.portal-calendar-day .portal-schedule-grid{grid-template-columns:1fr!important;min-width:0!important}}
+
+.dashboard-welcome-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.dashboard-survey-indicator{display:flex;align-items:center;justify-content:center;gap:7px;min-height:38px;border:1px solid rgba(125,211,252,.32);border-radius:9px;color:#dff5ff;background:rgba(14,165,233,.14);font-size:.68rem;font-weight:850}
+@media(max-width:760px){.dashboard-welcome-actions{grid-template-columns:1fr!important}}
+
+/* Link público de pesquisa com a identidade visual da tela principal. */
+.public-survey-page{position:relative;align-content:center;gap:20px;padding:42px;background:radial-gradient(circle at 15% 10%,rgba(14,165,233,.22),transparent 32%),radial-gradient(circle at 90% 90%,rgba(37,99,235,.2),transparent 35%),linear-gradient(145deg,#f5f9fd,#e7f1fa)!important}
+.public-survey-page::before{content:"";position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(30,105,155,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(30,105,155,.035) 1px,transparent 1px);background-size:36px 36px}
+.public-survey-brand{z-index:1;display:grid;grid-template-columns:44px auto;grid-template-rows:auto auto;align-items:center;justify-content:center;column-gap:10px;color:#12304d}.public-survey-brand>span{grid-row:1/3;display:grid;width:44px;height:44px;place-items:center;border-radius:13px;color:#fff;background:linear-gradient(135deg,#087fea,#00aeea);font-size:1.2rem;font-weight:950;box-shadow:0 9px 22px rgba(8,127,234,.24)}.public-survey-brand strong{align-self:end;font-size:1.05rem}.public-survey-brand small{align-self:start;color:#668096;font-size:.62rem;letter-spacing:.04em;text-transform:uppercase}
+.public-survey-page>form,.public-survey-page>section{z-index:1;width:min(720px,100%);padding:30px;border:1px solid #d4e3ef;border-radius:20px;color:#122b43;background:rgba(255,255,255,.96);box-shadow:0 28px 80px rgba(39,80,114,.18)}
+.public-survey-page form>header{padding-bottom:18px;border-bottom:1px solid #e2ebf2}.public-survey-page form>header>svg{color:#087fea;background:#e8f5ff}.public-survey-page h1{color:#122b43;font-size:1.6rem}.public-survey-page p{color:#647b90}.public-survey-page form>header small{color:#087fea;font-weight:900;letter-spacing:.06em}
+.public-survey-intro{display:grid;gap:3px;padding:12px 14px;border-radius:11px;color:#28465f;background:#edf7ff}.public-survey-intro strong{font-size:.8rem}.public-survey-intro span{color:#668096;font-size:.7rem}
+.public-survey-page form>label{color:#1b344c;font-size:.78rem}.public-survey-page input,.public-survey-page select,.public-survey-page textarea{min-height:44px;border-color:#cadbe8;color:#18334b;background:#f9fcfe;box-shadow:inset 0 1px 2px rgba(31,70,101,.03)}.public-survey-page :is(input,select,textarea):focus{outline:0;border-color:#159fe8;box-shadow:0 0 0 4px rgba(14,165,233,.12)}
+.public-survey-required{color:#087bbd;background:#e5f5ff}.public-survey-page form>button{font-size:.82rem;box-shadow:0 9px 22px rgba(8,127,234,.2)}.public-survey-page form>footer{text-align:center;color:#8094a6;font-size:.62rem}
+@media(max-width:620px){.public-survey-page{padding:24px 14px}.public-survey-page>form{padding:21px}}
+
+.task-comment-head{display:flex!important;align-items:center!important;gap:8px!important;padding:0!important;border:0!important;background:transparent!important}.task-comment-head time{margin-left:auto}.task-comment-head button{display:grid;width:28px;height:28px;place-items:center;border:1px solid var(--line);border-radius:7px;color:var(--primary);background:var(--surface-alt)}
+.task-comment-editor{display:grid;gap:7px;margin:7px 0}.task-comment-editor textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:var(--input);resize:vertical}.task-comment-editor>span{display:flex;justify-content:flex-end;gap:6px}.task-comment-editor button{min-height:31px;padding:5px 10px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--surface)}
+.lia-test-checklist>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.lia-test-checklist>header>b{padding:7px 10px;border-radius:9px;color:#7c3aed;background:#f2eaff}.lia-test-checklist .check-list label{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center}.lia-test-checklist .check-list label>button{display:grid;width:29px;height:29px;place-items:center;border:1px solid #fecdd3;border-radius:7px;color:#e11d48;background:#fff}.lia-test-checklist .check-list label.done span{text-decoration:line-through;color:var(--muted)}
+.cs-card-inactivity{display:flex;align-items:center;gap:5px;margin-top:8px;padding:7px 8px;border-radius:8px;color:#557086;background:var(--surface-alt);font-size:.68rem}.cs-card-inactivity.alert{color:#b45309;background:#fff7df}.theme-dark .cs-card-inactivity.alert{color:#fbbf24;background:#362b12}
+.suggestion-comment-list article>div{min-width:0;flex:1}.suggestion-comment-list article header>span{display:inline-flex;align-items:center;gap:6px}.suggestion-comment-edit{display:grid;gap:8px;margin-top:8px}.suggestion-comment-edit textarea{width:100%;resize:vertical}.suggestion-comment-edit>div{display:flex;justify-content:flex-end;gap:8px}

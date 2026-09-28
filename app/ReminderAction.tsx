@@ -75,12 +75,17 @@ function updateLinkedHistory(surface:HTMLElement, records:ReminderSourceRecord[]
     || (sourceTitle&&normalized(detail.sourceTitle)===normalized(sourceTitle)&&detail.sourceModule===module)
   ).sort((a,b)=>new Date(b.detail.remindAt??b.record.created_at).getTime()-new Date(a.detail.remindAt??a.record.created_at).getTime());
   surface.querySelector(".reminder-linked-history")?.remove();
+  surface.querySelector(".reminder-linked-open")?.remove();
   if(!linked.length)return;
   const panel=document.createElement("section");panel.className="reminder-linked-history";
   const heading=document.createElement("header");const label=document.createElement("strong");label.textContent=`Lembretes vinculados (${linked.length})`;heading.appendChild(label);panel.appendChild(heading);
   linked.forEach(({detail})=>{const article=document.createElement("article");const copy=document.createElement("span");const title=document.createElement("b");const meta=document.createElement("small");const state=document.createElement("em");title.textContent=detail.title||"Lembrete";meta.textContent=`${detail.urgency||"Aviso"} · ${detail.recipientName||"Sem responsável"} · ${detail.remindAt?new Date(detail.remindAt).toLocaleString("pt-BR"):"Sem data"}`;state.textContent=detail.seenAt?"Visto":"Aberto";copy.append(title,meta);article.append(copy,state);panel.appendChild(article)});
   const host=surface.querySelector<HTMLElement>(".task-history,.retention-history-list,.lead-comments-history,.lead-follow-history,.enterprise-timeline,.cs-history,.journey-comments,.hr-timeline,.referral-comments>section,.marketing-comments,.development-history,.detail-section:last-of-type") || surface.querySelector<HTMLElement>(".task-modal-body,.drawer-body,main,aside") || surface;
   host.appendChild(panel);
+  const openButton=document.createElement("button");openButton.type="button";openButton.className="reminder-linked-open";openButton.title="Ver lembretes vinculados";openButton.setAttribute("aria-label",`Ver ${linked.length} lembrete(s) vinculado(s)`);openButton.innerHTML=`<span aria-hidden="true">☷</span><b>${linked.length}</b>`;openButton.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();panel.scrollIntoView({behavior:"smooth",block:"center"});panel.classList.add("highlight");window.setTimeout(()=>panel.classList.remove("highlight"),1400)});
+  const header=surface.querySelector<HTMLElement>(".drawer-head,.modal-head,.modal-header,header");
+  const reminderButton=header?.querySelector<HTMLElement>(".reminder-detail-action,.reminder-action-button");
+  if(reminderButton)reminderButton.insertAdjacentElement("afterend",openButton);else header?.appendChild(openButton);
 }
 
 export function ReminderCardEnhancer({ module, reminders = [] }: { module: string; reminders?: ReminderSourceRecord[] }) {
@@ -127,6 +132,11 @@ export function ReminderCardEnhancer({ module, reminders = [] }: { module: strin
       if(context.clientId)surface.dataset.reminderSourceClientId=context.clientId;
       if(context.customerName)surface.dataset.reminderSourceCustomerName=context.customerName;
       if(context.title)surface.dataset.reminderSourceTitle=context.title;
+      const existingButton = header.querySelector<HTMLElement>(".reminder-action-button,.reminder-detail-action");
+      if (existingButton) {
+        updateLinkedHistory(surface,remindersRef.current);
+        return;
+      }
       const button = document.createElement("button");
       button.type = "button";
       button.className = "reminder-detail-action";
@@ -134,7 +144,7 @@ export function ReminderCardEnhancer({ module, reminders = [] }: { module: strin
       button.setAttribute("aria-label", `Adicionar lembrete para ${context.title || "este registro"}`);
       button.innerHTML = `<span aria-hidden="true">◷</span><b>Adicionar lembrete</b>`;
       button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openReminderComposer(context); });
-      if (surface.matches(".cancellation-drawer,.marketing-drawer")) button.classList.add("centered");
+      if (surface.matches(".cancellation-drawer")) button.classList.add("centered");
       const actionHost = header.querySelector<HTMLElement>(".lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions")
         || (surface.matches(".retention-detail-page") ? header.lastElementChild as HTMLElement : header);
       const copyLink = actionHost?.querySelector<HTMLElement>(".copy-task-link");
@@ -148,7 +158,7 @@ export function ReminderCardEnhancer({ module, reminders = [] }: { module: strin
     enhance();
     const observer = new MutationObserver(enhance);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
+    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.reminder-linked-open").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
   }, [module]);
   useEffect(()=>{document.querySelectorAll<HTMLElement>(DETAIL_SURFACES).forEach(surface=>{if(surface.dataset.reminderSourceModule)updateLinkedHistory(surface,reminders)})},[reminders]);
   return null;

@@ -95,6 +95,35 @@ public sealed record CreateCustomerCommand(
     string? City,
     string? State);
 
+public sealed record UpdateCustomerCommand(
+    Guid Id,
+    string? LegalName,
+    string? TradeName,
+    string? DocumentMasked,
+    string? Segment,
+    string? Owner,
+    string? CsOwner,
+    int? ClinicsCount,
+    long? MonthlyRevenueCents,
+    bool? Strategic,
+    string? Status,
+    string? Project,
+    string? ProductVersion,
+    string? DueDay,
+    string? Server,
+    string? PaymentMethod,
+    string? InvoiceCompany,
+    string? GraceDays,
+    string? DueDays,
+    string? Subscription,
+    string? Email,
+    string? Phone,
+    string? Website,
+    string? Notes,
+    string? Address,
+    string? City,
+    string? State);
+
 public sealed record CreateWorkItemCommand(
     string Module,
     string RecordType,
@@ -336,6 +365,7 @@ public interface IOperationsService
     Task<Guid> SaveCustomerCatalogAsync(Guid? id, string catalog, string name, string? description, bool active, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteCustomerCatalogAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateCustomerAsync(CreateCustomerCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task UpdateCustomerAsync(UpdateCustomerCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateWorkItemAsync(CreateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateWorkItemAsync(UpdateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteWorkItemAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);

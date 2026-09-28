@@ -269,6 +269,24 @@ public sealed partial class SuggestionService(OperationsDbContext db) : ISuggest
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateCommentAsync(UpdateSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("suggestions", "edit");
+        var body = command.Body?.Trim() ?? "";
+        if (body.Length is < 1 or > 3000)
+            throw new DomainException("O comentário deve ter entre 1 e 3.000 caracteres.");
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        var comment = await db.SuggestionComments.SingleOrDefaultAsync(entry => entry.Id == command.CommentId, cancellationToken)
+            ?? throw new DomainException("Comentário não encontrado.", 404);
+        if (comment.AuthorUserId != actorUser.Id)
+            throw new DomainException("Somente quem criou o comentário pode editá-lo.", 403);
+        comment.Body = body;
+        comment.Version++;
+        comment.UpdatedAt = DateTimeOffset.UtcNow;
+        AddAudit(actor, "UpdateComment", "suggestion", comment.SuggestionId, new { CommentId = comment.Id });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<Guid> AddCommentAsync(AddSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("suggestions", "view");

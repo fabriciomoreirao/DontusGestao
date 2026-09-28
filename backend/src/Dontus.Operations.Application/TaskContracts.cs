@@ -99,6 +99,7 @@ public sealed record UpdateCorporateTaskCommand(
     bool CancellationRequest, IReadOnlyCollection<Guid>? ParticipantUserIds, long Version);
 public sealed record DeleteCorporateTaskCommand(Guid TaskId, long Version);
 public sealed record AddTaskCommentCommand(Guid TaskId, string Body, IReadOnlyCollection<Guid>? MentionedUserIds);
+public sealed record UpdateTaskCommentCommand(Guid TaskId, Guid CommentId, string Body);
 public sealed record ClientCommunicationCommand(Guid TaskId, string Action, string Channel, string Message);
 
 public sealed record CreatedCorporateTaskDto(Guid Id, string Protocol);
@@ -162,6 +163,7 @@ public interface ITaskService
     Task UpdateAsync(UpdateCorporateTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteAsync(DeleteCorporateTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> AddCommentAsync(AddTaskCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task UpdateCommentAsync(UpdateTaskCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task CommunicateWithClientAsync(ClientCommunicationCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SaveDepartmentAsync(SaveTaskDepartmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SavePriorityAsync(SaveTaskPriorityCommand command, ActorContext actor, CancellationToken cancellationToken = default);
