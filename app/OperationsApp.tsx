@@ -17,6 +17,8 @@ import ChatModule, { type ChatModuleData } from "@/app/ChatModule";
 import AgendaModule, { AgendaCatalogsModule, type AgendaModuleData } from "@/app/AgendaModule";
 import DiaryModule, { type DiaryModuleData } from "@/app/DiaryModule";
 import NotesModule, { type NotesModuleData } from "@/app/NotesModule";
+import RemindersModule, { ReminderComposerModal, ReminderDueModal, parseReminder } from "@/app/RemindersModule";
+import { REMINDER_COMPOSER_EVENT, ReminderCardEnhancer, type ReminderContext } from "@/app/ReminderAction";
 import InternalChatModule, { type InternalChatModuleData } from "@/app/InternalChatModule";
 import SuggestionsModule, { SuggestionCatalogsModule, type SuggestionModuleData } from "@/app/SuggestionsModule";
 import NoticesModule, { NoticeAttentionModal, NoticesAdmin, type NoticesModuleData } from "@/app/NoticesModule";
@@ -116,7 +118,7 @@ type Employee = {
 
 type EmployeeDepartment = { id: string; name: string; description: string; active: boolean };
 type EmployeeLevel = { id: string; name: string; description: string; active: boolean };
-type AdminSection = "collaborators" | "departments" | "levels" | "agenda" | "customers" | "suggestions" | "commercialCatalogs" | "csCatalogs" | "liaCatalogs" | "serviceCatalogs" | "waitingQueueCatalogs" | "enterpriseCatalogs" | "cancellationCatalogs" | "hrCatalogs" | "referralCatalogs" | "recruitmentCatalogs" | "recruitment" | "audit" | "notices" | "background" | "permissions" | "links";
+type AdminSection = "collaborators" | "departments" | "levels" | "roles" | "agenda" | "customers" | "suggestions" | "commercialCatalogs" | "csCatalogs" | "liaCatalogs" | "serviceCatalogs" | "waitingQueueCatalogs" | "enterpriseCatalogs" | "cancellationCatalogs" | "hrCatalogs" | "referralCatalogs" | "recruitmentCatalogs" | "recruitment" | "audit" | "notices" | "background" | "permissions" | "links";
 type ReportingSection = "performance" | "indicators" | "bi" | "biExecutive";
 
 type AppData = {
@@ -174,8 +176,10 @@ const NAV_GROUPS: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Módulos",
     items: [
+      { label: "Clientes", icon: UsersRound, module: "customers" },
       { label: "Diário de Bordo", icon: MessageSquareText, module: "diary" },
       { label: "Anotações", icon: Pencil, module: "notes" },
+      { label: "Lembretes", icon: Clock3, module: "reminders" },
       { label: "Chat interno", icon: MessageCircleMore, module: "internalChat" },
       { label: "Tarefas", icon: ListTodo, module: "tasks" },
       { label: "Agenda", icon: CalendarDays, module: "work" },
@@ -231,6 +235,7 @@ const moduleDescriptions: Record<string, string> = {
   procurement: "Solicitações, cotações, suprimentos, ativos e movimentações.",
   diary: "Compromissos sob sua responsabilidade e atividades registradas manualmente.",
   notes: "Anotações pessoais para registrar, copiar e organizar do seu jeito.",
+  reminders: "Lembretes pessoais ou direcionados aos colaboradores do seu setor.",
   suggestions: "Ideias, prioridades, sinalizadores, comentários e evolução no Kanban.",
   notices: "Comunicados e informações importantes para toda a empresa.",
   work: "Compromissos, reuniões e eventos com horário definido.",
@@ -318,6 +323,8 @@ export default function OperationsApp() {
   const [historyClientId, setHistoryClientId] = useState("");
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
   const [profileEditable, setProfileEditable] = useState(false);
+  const [reminderContext, setReminderContext] = useState<ReminderContext | null>(null);
+  const [reminderClock, setReminderClock] = useState(() => Date.now());
   const internalUnreadRef = useRef<number | null>(null);
   const viewedNoticeIdsRef = useRef<Set<string>>(new Set());
   const workspaceBackgroundStyle = backgroundImage ? {
@@ -325,6 +332,17 @@ export default function OperationsApp() {
       ? "linear-gradient(rgba(8,18,31,.66), rgba(8,18,31,.76))"
       : "linear-gradient(rgba(244,247,251,.63), rgba(244,247,251,.72))") + ", url(\"" + backgroundImage + "\")",
   } as CSSProperties : undefined;
+
+  useEffect(() => {
+    const openReminder = (event: Event) => setReminderContext((event as CustomEvent<ReminderContext>).detail ?? { module: active });
+    window.addEventListener(REMINDER_COMPOSER_EVENT, openReminder);
+    return () => window.removeEventListener(REMINDER_COMPOSER_EVENT, openReminder);
+  }, [active]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setReminderClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const openProfile = (event: MouseEvent) => {
@@ -395,7 +413,7 @@ export default function OperationsApp() {
       const params = new URLSearchParams(window.location.search);
       if (params.get("public") === "overview") { setLoading(false); return; }
       const requestedModule = params.get("mod") as ModuleKey | null;
-      if (requestedModule && requestedModule in MODULES && requestedModule !== "customers") setActive(requestedModule);
+      if (requestedModule && requestedModule in MODULES) setActive(requestedModule);
       const requestedCommercialFlow = params.get("commercialFlow") as CommercialFlow | null;
       if (requestedCommercialFlow === "qualification" || requestedCommercialFlow === "crm" || requestedCommercialFlow === "retention") setCommercialFlow(requestedCommercialFlow);
       const requestedCsFlow = params.get("csFlow") as CsFlow | null;
@@ -814,7 +832,11 @@ export default function OperationsApp() {
   const taskUnread = data.taskModule?.notifications.filter((notification) => !notification.read && !data.taskModule?.tasks.some((task) => task.id === notification.taskId && Boolean(task.completedAt))).length ?? 0;
   const noticeUnread = data.noticesModule?.notices.filter((notice) => notice.active && notice.visibleToCurrentUser && !notice.isRead).length ?? 0;
   const waitingQueueCount = data.items.filter((item) => item.module === "waitingQueue" && parseWaitingQueue(item.description)?.state === "waiting").length;
-  const totalUnread = internalChatUnread + taskUnread + noticeUnread;
+  const reminderItems = data.items.filter((item) => item.module === "reminders");
+  const pendingReminders = reminderItems.map(item => ({ item, detail: parseReminder(item.description) })).filter((entry): entry is { item: WorkItem; detail: NonNullable<ReturnType<typeof parseReminder>> } => Boolean(entry.detail) && entry.detail.recipientEmail === data.user.email && !entry.detail.seenAt);
+  const dueReminder = pendingReminders.filter(({detail}) => new Date(detail.nextAlertAt || detail.remindAt).getTime() <= reminderClock).sort((a,b) => new Date(a.detail.nextAlertAt).getTime() - new Date(b.detail.nextAlertAt).getTime())[0];
+  const reminderUnread = pendingReminders.length;
+  const totalUnread = internalChatUnread + taskUnread + noticeUnread + reminderUnread;
   const upcomingCommitments = (data.agendaModule?.commitments ?? []).filter((entry) => {
     const minutes = (new Date(entry.startsAt).getTime() - Date.now()) / 60_000;
     return minutes >= 0 && minutes <= 30 && (entry.responsibleName === data.user.displayName || entry.participantUserIds.includes(data.user.email));
@@ -831,6 +853,7 @@ export default function OperationsApp() {
     ...(data.taskModule?.notifications.filter((entry) => !entry.read).map((entry) => ({ id: `task-${entry.id}`, title: entry.message, meta: "Tarefa", module: "tasks" as ModuleKey, at: entry.createdAt })) ?? []),
     ...(data.internalChatModule?.rooms.filter((entry) => entry.unreadCount > 0).map((entry) => ({ id: `chat-${entry.id}`, title: `${entry.unreadCount} nova(s) mensagem(ns) em ${entry.name}`, meta: "Chat interno", module: "internalChat" as ModuleKey, at: entry.lastMessageAt })) ?? []),
     ...(data.noticesModule?.notices.filter((entry) => entry.active && entry.visibleToCurrentUser && !entry.isRead).map((entry) => ({ id: `notice-${entry.id}`, title: entry.title, meta: entry.kind, module: "notices" as ModuleKey, at: entry.publishedAt })) ?? []),
+    ...pendingReminders.map(({item,detail}) => ({ id: `reminder-${item.id}`, title: detail.title, meta: `Lembrete · ${detail.urgency}`, module: "reminders" as ModuleKey, at: detail.nextAlertAt || detail.remindAt })),
     ...upcomingCommitments.map((entry) => ({ id: `agenda-${entry.id}`, title: `${entry.title} começa em até 30 minutos`, meta: "Agenda", module: "work" as ModuleKey, at: entry.startsAt })),
     ...cancellationAlerts,
     ...data.items.filter((item) => item.module === "waitingQueue" && parseWaitingQueue(item.description)?.state === "waiting" && (!item.owner || item.owner === data.user.displayName || item.team === data.user.department)).map((item) => ({ id: `queue-${item.id}`, title: `${item.title} aguarda contato`, meta: `Fila de espera · ${item.team}`, module: "waitingQueue" as ModuleKey, at: item.created_at })),
@@ -872,6 +895,7 @@ export default function OperationsApp() {
       ...(data.taskModule?.notifications.filter((entry) => !entry.read).map((entry) => ({ action: "markTaskNotificationRead", notificationId: entry.id })) ?? []),
       ...(data.noticesModule?.notices.filter((entry) => entry.active && entry.visibleToCurrentUser && !entry.isRead).map((entry) => ({ action: "markNoticeRead", id: entry.id })) ?? []),
       ...(data.internalChatModule?.rooms.filter((entry) => entry.unreadCount > 0).map((entry) => ({ action: "markInternalChatRoomRead", roomId: entry.id })) ?? []),
+      ...pendingReminders.map(({ item, detail }) => ({ action: "updateWorkItem", id: item.id, title: item.title, owner: item.owner, customerName: item.customer_name, amountCents: item.amount_cents, version: item.version, description: JSON.stringify({ ...detail, seenAt: new Date().toISOString(), seenBy: data.user.displayName }) })),
     ];
     if (!requests.length) return;
     setBusy(true);
@@ -915,7 +939,7 @@ export default function OperationsApp() {
       </button>
     ) : module ? (
       <button className={itemClassName} onClick={() => navigate(module, itemAdminSection, itemCommercialFlow, itemCsFlow, itemReportingSection)}>
-        <Icon size={iconSize} /><span>{label}</span>{module === "internalChat" && internalChatUnread > 0 && <b className="nav-unread-badge">{internalChatUnread > 99 ? "99+" : internalChatUnread}</b>}{module === "tasks" && taskUnread > 0 && <b className="nav-unread-badge">{taskUnread > 99 ? "99+" : taskUnread}</b>}{module === "notices" && noticeUnread > 0 && <b className="nav-unread-badge">{noticeUnread > 99 ? "99+" : noticeUnread}</b>}{module === "waitingQueue" && waitingQueueCount > 0 && <b className="nav-unread-badge waiting">{waitingQueueCount > 99 ? "99+" : waitingQueueCount}</b>}
+        <Icon size={iconSize} /><span>{label}</span>{module === "internalChat" && internalChatUnread > 0 && <b className="nav-unread-badge">{internalChatUnread > 99 ? "99+" : internalChatUnread}</b>}{module === "tasks" && taskUnread > 0 && <b className="nav-unread-badge">{taskUnread > 99 ? "99+" : taskUnread}</b>}{module === "notices" && noticeUnread > 0 && <b className="nav-unread-badge">{noticeUnread > 99 ? "99+" : noticeUnread}</b>}{module === "reminders" && reminderUnread > 0 && <b className="nav-unread-badge reminder">{reminderUnread > 99 ? "99+" : reminderUnread}</b>}{module === "waitingQueue" && waitingQueueCount > 0 && <b className="nav-unread-badge waiting">{waitingQueueCount > 99 ? "99+" : waitingQueueCount}</b>}
       </button>
     ) : (
       <div className={`${itemClassName} ${nested ? "nav-subitem-static" : "nav-item-static"}`} aria-disabled="true"><Icon size={iconSize} /><span>{label}</span></div>
@@ -1022,6 +1046,7 @@ export default function OperationsApp() {
               ? <PortalDontus data={data} busy={busy} operate={operate} onBack={() => setDashboardPage("home")} />
               : <Dashboard data={data} onNavigate={navigate} onPortal={() => setDashboardPage("portal")} />
           )}
+          {active === "customers" && data.customerModule && <CustomersView customers={data.customers} catalogs={data.customerModule.catalogs} items={data.items} selected={selectedCustomer} onSelect={setSelectedCustomer} onCreate={()=>openCreate("customers")} canCreate={userCan(data.user,"customers","create")}/>}
           {active === "commercial" && data.customerModule && <CommercialLeadsModule
             flow={commercialFlow}
             catalogs={data.customerModule.catalogs}
@@ -1038,11 +1063,11 @@ export default function OperationsApp() {
           />}
           {active === "cs" && data.customerModule && (csFlow === "enterprise" ? <CustomerSuccessModule flow={csFlow} catalogs={data.customerModule.catalogs} items={data.items} agendaModule={data.agendaModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "cs", "edit")} canDelete={userCan(data.user, "cs", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => navigate("admin", "enterpriseCatalogs") : undefined} /> : <CustomerSuccessJourneyModule flow={csFlow} catalogs={data.customerModule.catalogs} items={data.items} customers={data.customers} agendaModule={data.agendaModule} taskModule={data.taskModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cs", "create")} canEdit={userCan(data.user, "cs", "edit")} canDelete={userCan(data.user, "cs", "edit")} canCreateTask={userCan(data.user, "cancellations", "create")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => navigate("admin", "csCatalogs") : undefined} />)}
           {active === "cancellations" && data.customerModule && <CancellationsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cancellations", "create")} canEdit={userCan(data.user, "cancellations", "edit")} canDelete={userCan(data.user, "cancellations", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cancellations", "manage") ? () => navigate("admin", "cancellationCatalogs") : undefined} />}
-          {active === "hr" && data.customerModule && <HrManagementModule items={data.items} catalogs={data.customerModule.catalogs} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "hr", "edit")} operate={operate} onOpenSettings={userCan(data.user, "hr", "manage") ? () => navigate("admin", "hrCatalogs") : undefined} />}
+          {active === "hr" && data.customerModule && <HrManagementModule items={data.items} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "hr", "edit")} operate={operate} onOpenSettings={userCan(data.user, "hr", "manage") ? () => navigate("admin", "hrCatalogs") : undefined} />}
           {active === "support" && data.customerModule && <ServiceRecordsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "support", "create")} canEdit={userCan(data.user, "support", "edit")} canDelete={userCan(data.user, "support", "edit")} operate={operate} onOpenSettings={userCan(data.user, "support", "manage") ? () => navigate("admin", "serviceCatalogs") : undefined} />}
           {active === "waitingQueue" && <WaitingQueueModule items={data.items} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "waitingQueue", "manage") ? () => navigate("admin", "waitingQueueCatalogs") : undefined} />}
           {active === "referrals" && data.customerModule && <ReferralsModule items={data.items} catalogs={data.customerModule.catalogs} employees={(data.access?.employees ?? []).filter(employee => employee.active)} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "referrals", "edit")} operate={operate} onOpenSettings={userCan(data.user, "referrals", "manage") ? ()=>navigate("admin","referralCatalogs") : undefined} />}
-          {active === "commissions" && data.customerModule && <CommissionsModule items={data.items} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canApprove={userCan(data.user,"commissions","approve")} canManage={userCan(data.user,"commissions","manage")} operate={operate} />}
+          {active === "commissions" && data.customerModule && <CommissionsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canApprove={userCan(data.user,"commissions","approve")} canManage={userCan(data.user,"commissions","manage")} operate={operate} />}
           {active === "goals" && <GoalsModule items={data.items} taskItems={data.taskModule?.tasks ?? []} catalogs={data.customerModule?.catalogs ?? []} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user,"goals","create")} canEdit={userCan(data.user,"goals","edit")} canManage={userCan(data.user,"goals","manage")} operate={operate} />}
           {active === "surveys" && <SatisfactionSurveysModule items={data.items} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user,"surveys","edit")} operate={operate} />}
           {["finance", "procurement"].includes(active) && (
@@ -1061,10 +1086,11 @@ export default function OperationsApp() {
             />
           )}
           {active === "lia" && <LiaJourneyModule items={data.items} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} catalogs={data.customerModule?.catalogs ?? []} currentUser={data.user.displayName} canEdit={userCan(data.user, "lia", "edit")} busy={busy} operate={operate} agendaModule={data.agendaModule} onOpenSettings={userCan(data.user, "lia", "manage") ? () => navigate("admin", "liaCatalogs") : undefined} />}
-          {active === "marketing" && <MarketingWorkspaceModule items={data.items} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} currentUser={data.user.displayName} canEdit={userCan(data.user, "marketing", "edit")} busy={busy} operate={operate} onOpenSettings={undefined} />}
+          {active === "marketing" && <MarketingWorkspaceModule items={data.items} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} currentUser={data.user} agendaModule={data.agendaModule} canEdit={userCan(data.user, "marketing", "edit")} busy={busy} operate={operate} onOpenSettings={undefined} />}
           {active === "work" && data.agendaModule && <AgendaModule module={data.agendaModule} busy={busy} operate={operate} currentEmail={data.user.email} onOpenSettings={userCan(data.user, "work", "manage") ? () => navigate("admin", "agenda") : undefined} />}
           {active === "diary" && data.diaryModule && <DiaryModule module={data.diaryModule} busy={busy} canCreate={userCan(data.user,"diary","create")} canEdit={userCan(data.user,"diary","edit")} operate={operate} />}
           {active === "notes" && data.notesModule && <NotesModule module={data.notesModule} busy={busy} operate={operate} />}
+          {active === "reminders" && <RemindersModule items={reminderItems} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} operate={operate} onCreate={setReminderContext} />}
           {active === "notices" && data.noticesModule && <NoticesModule module={data.noticesModule} busy={busy} operate={operate} />}
           {active === "suggestions" && data.suggestionModule && <SuggestionsModule module={data.suggestionModule} customers={data.customers} canCreate={userCan(data.user, "suggestions", "create")} canEdit={userCan(data.user, "suggestions", "edit")} canDelete={userCan(data.user, "suggestions", "edit")} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "suggestions", "manage") ? () => navigate("admin", "suggestions") : undefined} />}
           {active === "internalChat" && data.internalChatModule && (
@@ -1138,6 +1164,8 @@ export default function OperationsApp() {
         </div>
       </main>
 
+      <ReminderCardEnhancer module={active} reminders={data.items.filter((entry) => entry.module === "reminders")} />
+
       {selectedItem && (
         <ItemDrawer item={selectedItem} busy={busy} canEdit={userCan(data.user, selectedItem.module, "edit")} onClose={() => setSelectedItem(null)} onTransition={(nextStatus, confirmed) => operate({
           action: "transitionWorkItem", id: selectedItem.id, nextStatus, version: selectedItem.version, confirmed,
@@ -1153,6 +1181,9 @@ export default function OperationsApp() {
       {modal === "workItem" && <WorkItemModal module={modalModule} customers={data.customers} busy={busy} onClose={() => setModal(null)} onSubmit={(payload) => operate({ action: "createWorkItem", module: modalModule, ...payload }, "Registro criado e auditado.")} />}
       {modal === "appointment" && <AppointmentModal customers={data.customers} busy={busy} onClose={() => setModal(null)} onSubmit={(payload) => operate({ action: "createAppointment", ...payload }, "Compromisso reservado sem conflito.")} />}
 
+      {reminderContext && <ReminderComposerModal context={reminderContext} user={data.user} employees={data.access?.employees ?? []} busy={busy} onClose={() => setReminderContext(null)} operate={operate} />}
+      {dueReminder && !reminderContext && <ReminderDueModal item={dueReminder.item} detail={dueReminder.detail} busy={busy} onLater={() => { const next={...dueReminder.detail,nextAlertAt:new Date(Date.now()+60*60_000).toISOString(),snoozeCount:dueReminder.detail.snoozeCount+1}; void operate({action:"updateWorkItem",id:dueReminder.item.id,title:dueReminder.item.title,owner:dueReminder.item.owner,amountCents:0,version:dueReminder.item.version,description:JSON.stringify(next)},"Lembrete adiado por 1 hora."); }} onSeen={() => { const next={...dueReminder.detail,seenAt:new Date().toISOString(),seenBy:data.user.displayName}; void operate({action:"updateWorkItem",id:dueReminder.item.id,title:dueReminder.item.title,owner:dueReminder.item.owner,amountCents:0,version:dueReminder.item.version,description:JSON.stringify(next)},"Lembrete marcado como visto."); }} />}
+
       {changingPassword && <PasswordChangeModal busy={busy} onClose={() => setChangingPassword(false)} onComplete={() => { setChangingPassword(false); setToast({ kind: "success", message: "Senha alterada com sucesso." }); }} />}
       {profileEmployee && <EmployeeProfileDrawer employee={profileEmployee} employees={data.access?.employees ?? []} items={data.items} currentUser={data.user} editable={profileEditable} taskCount={data.taskModule?.tasks.filter(task=>task.assigneeName===profileEmployee.displayName&&!task.completedAt&&!task.cancelled).length??0} busy={busy} operate={operate} onClose={() => { setProfileEmployee(null); setProfileEditable(false); }} />}
       {backgroundModalOpen && <BackgroundImageModal image={backgroundImage} agendaVisual={agendaVisual} onAgendaVisual={(visual)=>{setAgendaVisual(visual);window.localStorage.setItem("dontus.agenda-visual",visual);}} onClose={() => setBackgroundModalOpen(false)} onUpload={(file) => uploadBackgroundImage(file, () => setBackgroundModalOpen(false))} onRemove={() => { changeBackgroundImage(""); setBackgroundModalOpen(false); }} />}
@@ -1164,7 +1195,7 @@ export default function OperationsApp() {
 }
 
 function ClientHistoryPage({ query, data, onClose, onNavigate }: { query: string; data: AppData; onClose: () => void; onNavigate: (module: ModuleKey) => void }) {
-  const [tab, setTab] = useState<"overview" | "records" | "tasks" | "support" | "suggestions" | "timeline">("overview");
+  const [tab, setTab] = useState<"overview" | "records" | "tasks" | "support" | "suggestions" | "reminders" | "timeline">("overview");
   const key = query.trim().toLocaleLowerCase("pt-BR");
   const contains = (...values: unknown[]) => values.some((value) => String(value ?? "").toLocaleLowerCase("pt-BR").includes(key));
   const customer = data.customers.find((entry) => contains(entry.id, entry.trade_name, entry.legal_name, entry.document_masked));
@@ -1172,7 +1203,8 @@ function ClientHistoryPage({ query, data, onClose, onNavigate }: { query: string
     const normalized = String(value ?? "").toLocaleLowerCase("pt-BR");
     return normalized === customer.id.toLocaleLowerCase("pt-BR") || normalized === customer.trade_name.toLocaleLowerCase("pt-BR") || normalized === customer.legal_name.toLocaleLowerCase("pt-BR");
   }));
-  const workItems = data.items.filter((entry) => belongs(entry.customer_id, entry.customer_name, entry.title, entry.description));
+  const workItems = data.items.filter((entry) => entry.module !== "reminders" && belongs(entry.customer_id, entry.customer_name, entry.title, entry.description));
+  const reminders = data.items.map((item) => ({ item, detail: item.module === "reminders" ? parseReminder(item.description) : null })).filter((entry): entry is { item: WorkItem; detail: NonNullable<ReturnType<typeof parseReminder>> } => Boolean(entry.detail)).filter(({ detail }) => belongs(detail.sourceClientId, detail.sourceCustomerName, detail.sourceTitle, detail.summary));
   const tasks = data.taskModule?.tasks.filter((entry) => belongs(entry.customerId, entry.customerCode, entry.customerName, entry.title, entry.protocol, entry.description)) ?? [];
   const commitments = data.agendaModule?.commitments.filter((entry) => belongs(entry.title, entry.description)) ?? [];
   const legacyAppointments = data.appointments.filter((entry) => belongs(entry.customer_name, entry.title));
@@ -1190,7 +1222,7 @@ function ClientHistoryPage({ query, data, onClose, onNavigate }: { query: string
     try { const parsed = JSON.parse(entry.description) as { units?: Array<Record<string, unknown>> }; return belongs(entry.title, ...((parsed.units ?? []).flatMap((unit) => [unit.id, unit.externalId, unit.name]))); } catch { return false; }
   });
   const statusCounts = [...workItems.map((entry) => entry.status), ...tasks.map((entry) => entry.statusName), ...suggestions.map((entry) => entry.statusName)].reduce<Record<string, number>>((acc, status) => { const label = status || "Sem status"; acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
-  const moduleCounts = [...workItems.map((entry) => MODULES[entry.module as ModuleKey]?.short ?? entry.module), ...tasks.map(() => "Tarefas"), ...suggestions.map(() => "Sugestões")].reduce<Record<string, number>>((acc, label) => { acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
+  const moduleCounts = [...workItems.map((entry) => MODULES[entry.module as ModuleKey]?.short ?? entry.module), ...tasks.map(() => "Tarefas"), ...suggestions.map(() => "Sugestões"), ...reminders.map(() => "Lembretes")].reduce<Record<string, number>>((acc, label) => { acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
   const themeCounts = attendances.reduce<Record<string, number>>((acc, entry) => { acc[entry.theme] = (acc[entry.theme] ?? 0) + 1; return acc; }, {});
   const maxStatus = Math.max(1, ...Object.values(statusCounts));
   const maxModule = Math.max(1, ...Object.values(moduleCounts));
@@ -1201,18 +1233,20 @@ function ClientHistoryPage({ query, data, onClose, onNavigate }: { query: string
     ...commitments.map((entry) => ({ id: entry.id, title: entry.title, meta: `Agenda · ${entry.statusName}`, at: entry.startsAt, module: "work" as ModuleKey })),
     ...legacyAppointments.map((entry) => ({ id: entry.id, title: entry.title, meta: `Agenda · ${entry.kind} · ${entry.status}`, at: entry.starts_at, module: "work" as ModuleKey })),
     ...suggestions.map((entry) => ({ id: entry.id, title: `${entry.protocol} · ${entry.name}`, meta: `Sugestão · ${entry.statusName}`, at: entry.updatedAt, module: "suggestions" as ModuleKey })),
+    ...reminders.map(({ item, detail }) => ({ id: item.id, title: detail.title, meta: `Lembrete · ${detail.urgency} · ${detail.seenAt ? "Visto" : "Aberto"}`, at: detail.createdAt || item.created_at, module: "reminders" as ModuleKey })),
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   const displayName = customer?.trade_name || tasks[0]?.customerName || workItems[0]?.customer_name || `Cliente ID ${query}`;
-  const tabs = [{ id: "overview", label: "Visão geral", count: timeline.length }, { id: "records", label: "Todos os registros", count: workItems.length }, { id: "tasks", label: "Tarefas", count: tasks.length }, { id: "support", label: "Atendimentos", count: attendances.length }, { id: "suggestions", label: "Sugestões", count: suggestions.length }, { id: "timeline", label: "Linha do tempo", count: timeline.length }] as const;
+  const tabs = [{ id: "overview", label: "Visão geral", count: timeline.length }, { id: "records", label: "Todos os registros", count: workItems.length }, { id: "tasks", label: "Tarefas", count: tasks.length }, { id: "support", label: "Atendimentos", count: attendances.length }, { id: "suggestions", label: "Sugestões", count: suggestions.length }, { id: "reminders", label: "Lembretes", count: reminders.length }, { id: "timeline", label: "Linha do tempo", count: timeline.length }] as const;
   return <section className="client-history-page">
     <header className="client-history-page-head"><button type="button" onClick={onClose} aria-label="Voltar"><ArrowLeft /></button><span className="operation-bi-mark"><Search /></span><span><small>VISÃO 360 · ID {query}</small><h1>{displayName}</h1><p>{customer ? `${customer.legal_name} · ${customer.document_masked || customer.id}` : `Informações consolidadas encontradas em todo o sistema para o ID ${query}.`}</p></span><b className={customer ? "located" : "partial"}>{customer ? "Cadastro localizado" : "Vínculos localizados"}</b></header>
     <nav className="client-history-tabs">{tabs.map((entry) => <button className={tab === entry.id ? "active" : ""} onClick={() => setTab(entry.id)} key={entry.id}>{entry.label}<b>{entry.count}</b></button>)}</nav>
-    <section className="operation-bi-kpis client-history-kpis"><article><ListTodo /><span><small>Tarefas ativas</small><strong>{openTasks.length}</strong><em>{protocols.length} protocolo(s)</em></span></article><article><CheckCircle2 /><span><small>Tarefas finalizadas</small><strong>{completedTasks.length}</strong><em>concluídas ou canceladas</em></span></article><article><Headphones /><span><small>Atendimentos</small><strong>{attendances.length}</strong><em>{solvedAttendances.length} solucionado(s)</em></span></article><article><Sparkles /><span><small>Sugestões</small><strong>{suggestions.length}</strong><em>vinculadas ao ID</em></span></article><article><ChartNoAxesCombined /><span><small>Acompanhamentos</small><strong>{tracking.length}</strong><em>Ativação, retenção e LIA</em></span></article><article><CalendarDays /><span><small>Compromissos</small><strong>{commitments.length + legacyAppointments.length}</strong><em>registros na agenda</em></span></article><article><UsersRound /><span><small>Redes vinculadas</small><strong>{networks.length}</strong><em>contas estratégicas</em></span></article><article><BadgeCheck /><span><small>Status do cadastro</small><strong>{customer?.status || "Não localizado"}</strong><em>{customer?.strategic ? "Cliente estratégico" : "Cadastro convencional"}</em></span></article></section>
+    <section className="operation-bi-kpis client-history-kpis"><article><ListTodo /><span><small>Tarefas ativas</small><strong>{openTasks.length}</strong><em>{protocols.length} protocolo(s)</em></span></article><article><CheckCircle2 /><span><small>Tarefas finalizadas</small><strong>{completedTasks.length}</strong><em>concluídas ou canceladas</em></span></article><article><Headphones /><span><small>Atendimentos</small><strong>{attendances.length}</strong><em>{solvedAttendances.length} solucionado(s)</em></span></article><article><Sparkles /><span><small>Sugestões</small><strong>{suggestions.length}</strong><em>vinculadas ao ID</em></span></article><article><Bell /><span><small>Lembretes</small><strong>{reminders.length}</strong><em>{reminders.filter(({detail}) => !detail.seenAt).length} aberto(s)</em></span></article><article><ChartNoAxesCombined /><span><small>Acompanhamentos</small><strong>{tracking.length}</strong><em>Ativação, retenção e LIA</em></span></article><article><CalendarDays /><span><small>Compromissos</small><strong>{commitments.length + legacyAppointments.length}</strong><em>registros na agenda</em></span></article><article><UsersRound /><span><small>Redes vinculadas</small><strong>{networks.length}</strong><em>contas estratégicas</em></span></article><article><BadgeCheck /><span><small>Status do cadastro</small><strong>{customer?.status || "Não localizado"}</strong><em>{customer?.strategic ? "Cliente estratégico" : "Cadastro convencional"}</em></span></article></section>
     {tab === "overview" && <><div className="operation-bi-grid client-history-grid"><section className="operation-bi-panel"><header><span><BarChart3Icon />Passagens por funcionalidade</span><b>{Object.values(moduleCounts).reduce((sum, value) => sum + value, 0)} registros</b></header><div className="operation-status-bars">{Object.entries(moduleCounts).length ? Object.entries(moduleCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxModule * 100}%` }} /></i><strong>{count}</strong></div>) : <p>Não há passagens operacionais para este ID.</p>}</div></section><section className="operation-bi-panel"><header><span><Activity />Distribuição por status</span><b>{Object.keys(statusCounts).length} status</b></header><div className="operation-status-bars">{Object.entries(statusCounts).length ? Object.entries(statusCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxStatus * 100}%` }} /></i><strong>{count}</strong></div>) : <p>Não há status registrados.</p>}</div></section></div><section className="client-history-registration"><h2>Cadastro e vínculos</h2><dl><div><dt>ID pesquisado</dt><dd>{query}</dd></div><div><dt>Responsável comercial</dt><dd>{customer?.owner || "Não informado"}</dd></div><div><dt>CS responsável</dt><dd>{customer?.cs_owner || "Não informado"}</dd></div><div><dt>Suporte responsável</dt><dd>{customer?.support_owner || "Não informado"}</dd></div><div><dt>Produto / versão</dt><dd>{[customer?.project, customer?.product_version].filter(Boolean).join(" · ") || "Não informado"}</dd></div><div><dt>Rede</dt><dd>{networks.map((entry) => entry.title).join(", ") || "Sem vínculo com rede"}</dd></div><div><dt>Protocolos</dt><dd>{protocols.join(", ") || "Nenhum protocolo"}</dd></div><div><dt>Contato</dt><dd>{customer?.phone || customer?.email || "Não informado"}</dd></div></dl></section></>}
     {tab === "records" && <ClientRecordsPanel title="Registros encontrados em todas as funcionalidades" empty="Nenhum registro operacional vinculado a este ID.">{workItems.map((entry) => <button key={entry.id} onClick={() => onNavigate(entry.module as ModuleKey)}><span><strong>{entry.title}</strong><small>{MODULES[entry.module as ModuleKey]?.label ?? entry.module} · {entry.record_type} · Responsável: {entry.owner || "Não informado"}</small></span><b className={`status-pill ${statusTone(entry.status)}`}>{statusLabel(entry.status)}</b><time>{dateTime(entry.updated_at)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "tasks" && <ClientRecordsPanel title="Tarefas vinculadas" empty="Nenhuma tarefa vinculada a este ID.">{tasks.map((entry) => <button key={entry.id} onClick={() => onNavigate("tasks")}><span><strong>{entry.title}</strong><small>{entry.protocol} · {entry.typeName} · {entry.departmentName}</small></span><b className={`status-pill ${statusTone(entry.statusName)}`}>{entry.statusName}</b><time>{dateTime(entry.updatedAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "support" && <div className="client-history-record-grid"><ClientRecordsPanel title="Atendimentos realizados" empty="Nenhum atendimento vinculado a este ID.">{attendances.map((entry) => <button key={entry.item.id} onClick={() => onNavigate("support")}><span><strong>{entry.theme}</strong><small>{entry.responsible}{entry.solution ? ` · ${entry.solution}` : ""}</small></span><b className={`status-pill ${statusTone(entry.status)}`}>{entry.status}</b><time>{dateTime(entry.at)}</time><ChevronRight /></button>)}</ClientRecordsPanel><section className="operation-bi-panel client-theme-panel"><header><span><Headphones />Temas dos atendimentos</span><b>{Object.keys(themeCounts).length} tema(s)</b></header><div className="operation-status-bars">{Object.entries(themeCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxTheme * 100}%` }} /></i><strong>{count}</strong></div>)}</div></section></div>}
     {tab === "suggestions" && <ClientRecordsPanel title="Sugestões vinculadas" empty="Nenhuma sugestão vinculada a este ID.">{suggestions.map((entry) => <button key={entry.id} onClick={() => onNavigate("suggestions")}><span><strong>{entry.name}</strong><small>{entry.protocol} · Responsável: {entry.responsibleName}</small></span><b className={`status-pill ${statusTone(entry.statusName)}`}>{entry.statusName}</b><time>{dateTime(entry.updatedAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
+    {tab === "reminders" && <ClientRecordsPanel title="Lembretes vinculados ao cliente" empty="Nenhum lembrete vinculado a este cliente.">{reminders.map(({item,detail}) => <button key={item.id} onClick={() => onNavigate("reminders")}><span><strong>{detail.title}</strong><small>{detail.sourceModule} · Responsável: {detail.recipientName} · Criado por: {detail.createdBy}</small></span><b className={`status-pill ${detail.seenAt ? "success" : "warning"}`}>{detail.seenAt ? "Visto" : "Aberto"}</b><time>{dateTime(detail.remindAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "timeline" && <ClientRecordsPanel title="Linha do tempo consolidada" empty="Nenhuma movimentação localizada para este ID.">{timeline.map((entry) => <button key={`${entry.module}-${entry.id}`} onClick={() => onNavigate(entry.module)}><span><strong>{entry.title}</strong><small>{entry.meta}</small></span><time>{dateTime(entry.at)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
   </section>;
 }
@@ -2145,7 +2179,7 @@ function CommercialLeadCard({ item, canEdit, canDelete, onOpen, onEdit, onDelete
   const lead = parseCommercialLead(item.description);
   const customer = lead?.customer || item.customer_name || "Lead sem cliente vinculado";
   const score = Math.max(0, Math.min(5, lead?.score ?? 0));
-  return <article className="commercial-lead-card commercial-card-with-actions" draggable={canEdit} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+  return <article className="commercial-lead-card commercial-card-with-actions" data-reminder-entity-id={item.id} data-reminder-client-id={lead?.clientId} data-reminder-customer-name={customer} draggable={canEdit} onDragStart={onDragStart} onDragEnd={onDragEnd}>
     <div className="commercial-card-open" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpen(); }}>
       <span className="commercial-card-top">
         <b>{item.title.split(" ").slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</b>
@@ -2170,7 +2204,7 @@ function RetentionLeadCard({ item, statuses, canEdit, canDelete, onOpen, onEdit,
   const temperature = lead?.temperature || "Frio";
   const status = lead?.retentionStatus || "";
   const statusColor = commercialDetails(statuses.find((entry) => entry.name === status)?.description ?? "").color || "var(--muted)";
-  return <article className="retention-lead-card" draggable={canEdit} onDragStart={onDragStart} onDragEnd={onDragEnd} style={{ "--retention-status-color": statusColor } as CSSProperties}>
+  return <article className="retention-lead-card" data-reminder-entity-id={item.id} data-reminder-client-id={lead?.clientId} data-reminder-customer-name={lead?.customer||item.title} draggable={canEdit} onDragStart={onDragStart} onDragEnd={onDragEnd} style={{ "--retention-status-color": statusColor } as CSSProperties}>
     <div className="retention-card-main" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }}>
       <div className="retention-card-head"><strong>#{lead?.clientId || item.title}</strong><span className="retention-card-status" onClick={(event) => event.stopPropagation()}><i /><select aria-label={`Status de ${lead?.customer || item.title}`} value={status} disabled={!canEdit} onChange={(event) => onStatusChange(event.target.value)}><option value="">Status</option>{status && !statuses.some((entry) => entry.name === status) && <option value={status}>{status}</option>}{statuses.map((entry) => <option key={entry.id} value={entry.name}>{entry.name}</option>)}</select></span></div>
       <span className="retention-card-company" title={lead?.customer || item.title}>{lead?.customer || item.title}</span>
@@ -2965,6 +2999,7 @@ function AdminView({ data, section, onSection, busy, onOperate, backgroundImage,
   if (section === "collaborators") return <EmployeesAdmin access={data.access} roles={data.customerModule?.catalogs.filter(entry => entry.active && entry.catalog === "employeeRole").map(entry => entry.name) ?? []} busy={busy} onOperate={onOperate} onSection={onSection} />;
   if (section === "departments") return <EmployeeCatalog title="Setores" description="Cadastre os setores que serão exibidos no cadastro de colaboradores." items={data.access.departments} action="saveEmployeeDepartment" buttonLabel="Novo setor" busy={busy} onOperate={onOperate} section={section} onSection={onSection} />;
   if (section === "levels") return <EmployeeCatalog title="Níveis" description="Cadastre os níveis que serão exibidos no cadastro de colaboradores." items={data.access.levels} action="saveEmployeeLevel" buttonLabel="Novo nível" busy={busy} onOperate={onOperate} section={section} onSection={onSection} />;
+  if (section === "roles") return <JobRolesAdmin items={data.customerModule?.catalogs.filter(entry=>entry.catalog==="employeeRole")??[]} busy={busy} onOperate={onOperate} onSection={onSection}/>;
   if (section === "agenda") return data.agendaModule ? <AgendaCatalogsModule module={data.agendaModule} busy={busy} operate={onOperate} /> : <EmptyState text="Não foi possível carregar os cadastros da agenda." />;
   if (section === "commercialCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} /> : <EmptyState text="Não foi possível carregar os cadastros comerciais." />;
   if (section === "csCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="cs" /> : <EmptyState text="Não foi possível carregar os cadastros de CS." />;
@@ -3013,8 +3048,13 @@ function BackgroundImageSettings({ image, onChange }: { image: string; onChange:
   </>;
 }
 
-function PeopleAdminTabs({ section, onSection }: { section: "collaborators" | "departments" | "levels"; onSection: (section: AdminSection) => void }) {
-  return <nav className="people-admin-tabs" aria-label="Cadastros de colaboradores"><button className={section === "collaborators" ? "active" : ""} onClick={() => onSection("collaborators")}>Colaboradores</button><button className={section === "departments" ? "active" : ""} onClick={() => onSection("departments")}>Setores</button><button className={section === "levels" ? "active" : ""} onClick={() => onSection("levels")}>Níveis</button></nav>;
+function PeopleAdminTabs({ section, onSection }: { section: "collaborators" | "departments" | "levels" | "roles"; onSection: (section: AdminSection) => void }) {
+  return <nav className="people-admin-tabs" aria-label="Cadastros de colaboradores"><button className={section === "collaborators" ? "active" : ""} onClick={() => onSection("collaborators")}>Colaboradores</button><button className={section === "roles" ? "active" : ""} onClick={() => onSection("roles")}>Funções</button><button className={section === "departments" ? "active" : ""} onClick={() => onSection("departments")}>Setores</button><button className={section === "levels" ? "active" : ""} onClick={() => onSection("levels")}>Níveis</button></nav>;
+}
+
+function JobRolesAdmin({items,busy,onOperate,onSection}:{items:CustomerCatalogOption[];busy:boolean;onOperate:(payload:Record<string,unknown>,success:string)=>Promise<{id?:string}|false>;onSection:(section:AdminSection)=>void}){
+  const [editing,setEditing]=useState<CustomerCatalogOption|null|undefined>(undefined);
+  return <><PageHeader eyebrow="COLABORADORES · CADASTROS" title="Funções" description="Cadastre as funções disponíveis e vincule-as diretamente no cadastro do colaborador." action={<button className="primary-button" onClick={()=>setEditing(null)}><Plus size={17}/> Nova função</button>}/><PeopleAdminTabs section="roles" onSection={onSection}/><section className="catalog-list">{items.length?items.map(item=><article key={item.id}><span className="group-icon"><BriefcaseBusiness size={18}/></span><span className="catalog-record-data"><strong>{item.name}</strong><small>{item.description||"Função disponível para os colaboradores"}</small></span><b className={`status-pill ${item.active?"positive":"negative"}`}>{item.active?"Ativa":"Inativa"}</b><button className="catalog-icon-button" onClick={()=>setEditing(item)}><Pencil size={15}/></button><button className="catalog-icon-button delete" onClick={()=>void onOperate({action:"deleteCustomerCatalog",id:item.id},"Função excluída.")}><Trash2 size={15}/></button></article>):<EmptyState text="Nenhuma função cadastrada."/>}</section>{editing!==undefined&&<ModalShell title={editing?"Editar função":"Nova função"} subtitle="Esta opção aparecerá no cadastro de colaboradores." onClose={()=>setEditing(undefined)}><form className="form-grid" onSubmit={async event=>{event.preventDefault();const form=new FormData(event.currentTarget);const result=await onOperate({action:"saveCustomerCatalog",id:editing?.id,catalog:"employeeRole",name:form.get("name"),catalogDescription:form.get("description"),active:true},editing?"Função atualizada.":"Função cadastrada.");if(result)setEditing(undefined)}}><label className="wide">Nome da função *<input name="name" required autoFocus defaultValue={editing?.name}/></label><label className="wide">Descrição<textarea name="description" rows={4} defaultValue={editing?.description}/></label><div className="form-actions wide"><button type="button" onClick={()=>setEditing(undefined)}>Cancelar</button><button className="primary-button" disabled={busy}><Save size={16}/> Salvar função</button></div></form></ModalShell>}</>;
 }
 
 function EnterpriseNetworkList({items,featureOptions,canEdit,canDelete,onOpen,onEdit,onDelete}:{items:WorkItem[];featureOptions:string[];canEdit:boolean;canDelete:boolean;onOpen:(item:WorkItem)=>void;onEdit:(item:WorkItem)=>void;onDelete:(item:WorkItem)=>void}){

@@ -56,11 +56,12 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   const [stickersOpen, setStickersOpen] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [pinnedConversationKeys, setPinnedConversationKeys] = useState<string[]>(() => { if (typeof window === "undefined") return []; try { return JSON.parse(localStorage.getItem(`dontus:pinned-conversations:${module.currentUserId}`) || "[]") as string[]; } catch { return []; } });
   const fileInput = useRef<HTMLInputElement>(null);
   const groupPhotoInput = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const conversations = useMemo(() => buildConversations(module, archivedView), [module, archivedView]);
+  const conversations = useMemo(() => buildConversations(module, archivedView).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, pinnedConversationKeys]);
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
     return query ? conversations.filter((entry) => `${entry.name} ${entry.user?.departmentName ?? ""}`.toLocaleLowerCase("pt-BR").includes(query)) : conversations;
@@ -78,6 +79,15 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   useEffect(() => {
     if (selectedRoom?.unreadCount) void markRead(selectedRoom.id);
   }, [markRead, selectedRoom?.id, selectedRoom?.unreadCount]);
+
+  const toggleConversationPin = () => {
+    if (!selectedConversation) return;
+    setPinnedConversationKeys((current) => {
+      const next = current.includes(selectedConversation.key) ? current.filter((entry) => entry !== selectedConversation.key) : [selectedConversation.key, ...current];
+      localStorage.setItem(`dontus:pinned-conversations:${module.currentUserId}`, JSON.stringify(next));
+      return next;
+    });
+  };
 
   const ensureRoom = async () => {
     if (selectedConversation?.room) return selectedConversation.room.id;
@@ -168,7 +178,7 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
             const last = entry.room?.messages.at(-1);
             return <button className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`} onClick={() => setSelectedKey(entry.key)} key={entry.key}>
               <Avatar name={entry.name} photo={entry.photoDataUrl} group={entry.isGroup} coordinator={entry.user?.isCoordinator} />
-              <span className="internal-chat-room-copy"><strong>{entry.name}</strong><small>{last ? messagePreview(last) : entry.isGroup ? "Grupo privado" : entry.user?.jobTitle || entry.user?.departmentName || "Inicie uma conversa"}</small></span>
+              <span className="internal-chat-room-copy"><strong>{pinnedConversationKeys.includes(entry.key)&&<Pin size={12}/>} {entry.name}</strong><small>{last ? messagePreview(last) : entry.isGroup ? "Grupo privado" : entry.user?.jobTitle || entry.user?.departmentName || "Inicie uma conversa"}</small></span>
               <span className="internal-chat-room-meta">{entry.room && <time>{roomTime.format(new Date(entry.room.lastMessageAt))}</time>}{!!entry.room?.unreadCount && <b>{entry.room.unreadCount}</b>}</span>
             </button>;
           })}
@@ -184,6 +194,7 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
             </span>
             <div className={selectedConversation.user?"internal-chat-profile-link":""} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)}><h2>{selectedConversation.name}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · Grupo privado` : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}</p></div>
             <span className="internal-chat-secure"><LockKeyhole size={13} /> Privado</span>
+            <button type="button" className={`internal-chat-head-tool ${pinnedConversationKeys.includes(selectedConversation.key)?"active":""}`} onClick={toggleConversationPin} title={pinnedConversationKeys.includes(selectedConversation.key)?"Desafixar conversa":"Fixar conversa"}>{pinnedConversationKeys.includes(selectedConversation.key)?<PinOff size={16}/>:<Pin size={16}/>}</button>
             {selectedRoom?.isGroup && <button type="button" className={`internal-chat-head-tool ${pinnedOpen ? "active" : ""}`} onClick={() => setPinnedOpen((value) => !value)} title="Mensagens fixadas"><Pin size={16} />{pinnedMessages.length > 0 && <b>{pinnedMessages.length}</b>}</button>}
             {selectedRoom && <button type="button" className="internal-chat-archive" onClick={() => void archive()} title={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"} aria-label={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"}>{selectedRoom.isArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>}
           </header>

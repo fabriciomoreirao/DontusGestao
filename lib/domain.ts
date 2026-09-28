@@ -14,6 +14,7 @@ export const MODULES = {
   approvals: { label: "Aprovações", short: "Aprovações" },
   diary: { label: "Diário de Bordo", short: "Diário" },
   notes: { label: "Anotações", short: "Anotações" },
+  reminders: { label: "Lembretes", short: "Lembretes" },
   internalChat: { label: "Chat interno", short: "Chat" },
   suggestions: { label: "Sugestões", short: "Sugestões" },
   notices: { label: "Avisos", short: "Avisos" },
@@ -120,6 +121,7 @@ export const RECORD_TYPES: Record<string, string[]> = {
   finance: ["Estorno", "Conta a pagar", "Boleto", "Cobrança", "DRE", "Nota de parceiro"],
   procurement: ["Compra", "Suprimento", "Ativo", "Manutenção"],
   work: ["Tarefa", "Compromisso", "Lembrete"],
+  reminders: ["Lembrete"],
   commissions: ["Comissão comercial", "Comissão de Sucesso do Cliente"],
   goals: ["Meta"],
 };

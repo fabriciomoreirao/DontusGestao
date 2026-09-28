@@ -270,7 +270,7 @@ function ClipboardCheckIcon() { return <span className="cs-empty-icon"><CheckCir
 function JourneyCard({ item, journey, featureUniverse, commercial, employee, canEdit, canDelete, onOpen, onDelete }: { item: WorkItem; journey: CsJourney; featureUniverse: string[]; commercial?: WorkItem; employee?: Employee; canEdit: boolean; canDelete: boolean; onOpen: () => void; onDelete: () => void }) {
   const lead = commercial ? parseCommercial(commercial.description) : null;
   const score = healthScore(journey, featureUniverse);
-  return <article className="cs-client-card">
+  return <article className="cs-client-card" data-reminder-entity-id={item.id} data-reminder-client-id={journey.clientId} data-reminder-customer-name={item.title}>
     <button className="cs-client-card-main" onClick={onOpen}>
       <header><span><strong>{item.title}</strong>{journey.checkedAt && <CheckCircle2 size={15} aria-label="Dados conferidos" />}</span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{PHASES.find((entry) => entry.id === journey.phase)?.label}</b></header>
       <small>ID {journey.clientId || item.id.slice(0, 8)}</small>

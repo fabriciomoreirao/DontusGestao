@@ -262,7 +262,10 @@ public sealed record NoteDto(
     string Content,
     string Color,
     int SortOrder,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string Visibility,
+    string Author,
+    bool CanEdit);
 
 public sealed record NotesModuleDto(IReadOnlyCollection<NoteDto> Notes);
 
@@ -316,7 +319,7 @@ public interface IOperationsService
     Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<DiaryModuleDto> GetDiaryModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<NotesModuleDto> GetNotesModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
-    Task<Guid> SaveNoteAsync(Guid? id, string title, string? content, string? color, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<Guid> SaveNoteAsync(Guid? id, string title, string? content, string? color, string? visibility, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteNoteAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> DuplicateNoteAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task ReorderNotesAsync(IReadOnlyCollection<Guid> noteIds, ActorContext actor, CancellationToken cancellationToken = default);

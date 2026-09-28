@@ -818,7 +818,7 @@ operations.MapPost("", async (
             break;
 
         case "saveNote":
-            id = await service.SaveNoteAsync(request.Id, request.Title ?? "", request.Description, request.Color, actor, cancellationToken);
+            id = await service.SaveNoteAsync(request.Id, request.Title ?? "", request.Description, request.Color, request.Status, actor, cancellationToken);
             break;
 
         case "deleteNote":

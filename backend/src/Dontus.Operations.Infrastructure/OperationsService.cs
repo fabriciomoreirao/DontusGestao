@@ -98,6 +98,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
         var items = await db.WorkItems.AsNoTracking()
             .Where(x => visibleModules.Contains(x.Module)
+                && (x.Module != "reminders" || x.CustomerName == actor.Email || x.Owner == actor.DisplayName || actor.HasPermission("reminders", "manage"))
                 && (x.Module != "commissions" || canManageCommissions || x.Owner == actor.DisplayName)
                 && (x.Module != "goals" || canManageGoals || x.Owner == actor.DisplayName || x.Team == actor.Department))
             .OrderByDescending(x => x.UpdatedAt)
@@ -209,7 +210,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     {
         actor.RequirePermission("notes", "view");
         var notes = await db.WorkItems.AsNoTracking()
-            .Where(entry => entry.Module == "notes" && entry.CreatedBy == actor.Email)
+            .Where(entry => entry.Module == "notes" && (entry.CreatedBy == actor.Email || entry.Team == "Pública"))
             .OrderBy(entry => entry.AmountCents)
             .ThenBy(entry => entry.CreatedAt)
             .Take(500)
@@ -217,7 +218,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
         return new NotesModuleDto(notes.Select(entry => new NoteDto(
             entry.Id, entry.Title, entry.Description, ReadNoteColor(entry.TagsJson),
-            (int)Math.Min(entry.AmountCents, int.MaxValue), entry.UpdatedAt)).ToArray());
+            (int)Math.Min(entry.AmountCents, int.MaxValue), entry.UpdatedAt,
+            entry.Team == "Pública" ? "public" : "private", entry.Owner, entry.CreatedBy == actor.Email)).ToArray());
     }
 
     public async Task<Guid> SaveNoteAsync(
@@ -225,6 +227,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         string title,
         string? content,
         string? color,
+        string? visibility,
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
@@ -253,7 +256,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 Status = "Ativa",
                 Priority = "P3",
                 Owner = actor.DisplayName,
-                Team = "Pessoal",
+                Team = string.Equals(visibility, "public", StringComparison.OrdinalIgnoreCase) ? "Pública" : "Pessoal",
                 AmountCents = lastOrder + 1,
                 CreatedBy = actor.Email,
             };
@@ -270,6 +273,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         existing.Title = title.Trim();
         existing.Description = content?.Trim() ?? "";
         existing.TagsJson = SerializeNoteColor(normalizedColor);
+        existing.Team = string.Equals(visibility, "public", StringComparison.OrdinalIgnoreCase) ? "Pública" : "Pessoal";
         existing.UpdatedAt = now;
         existing.Version++;
         AddAudit(actor, "Update", "note", existing.Id.ToString(), "notes", new { existing.Title });
@@ -306,10 +310,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             Title = string.Concat(source.Title, " (cópia)"),
             Description = source.Description,
             TagsJson = SerializeNoteColor(ReadNoteColor(source.TagsJson)),
+            Team = source.Team,
             Status = "Ativa",
             Priority = "P3",
             Owner = actor.DisplayName,
-            Team = "Pessoal",
             AmountCents = lastOrder + 1,
             CreatedBy = actor.Email,
         };

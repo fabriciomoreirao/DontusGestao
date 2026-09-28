@@ -9,6 +9,7 @@ public static class ScreenCatalog
         new("dashboard", "Dashboard", "Principal", 10),
         new("diary", "Diário de Bordo", "Módulos", 20),
         new("notes", "Anotações", "Módulos", 30),
+        new("reminders", "Lembretes", "Módulos", 35),
         new("internalChat", "Chat interno", "Módulos", 40),
         new("tasks", "Tarefas", "Módulos", 50),
         new("work", "Agenda", "Módulos", 60),

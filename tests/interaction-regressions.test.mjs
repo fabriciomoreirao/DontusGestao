@@ -40,3 +40,21 @@ test("mantém gráficos próprios para cada domínio operacional", async () => {
   ]) assert.match(indicators, new RegExp(title));
   assert.match(indicators, /chartConfigFor\(module, contextKey, scoped\)/);
 });
+
+test("mantém lembretes acima dos detalhes e vinculados aos históricos", async () => {
+  const [css, action, reminders, operations, tasks] = await Promise.all([
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/ReminderAction.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/RemindersModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(css, /\.reminder-modal-backdrop\{z-index:9100!important\}/);
+  assert.match(action, /updateLinkedHistory/);
+  assert.match(action, /\.task-table-row:not\(\.head\)/);
+  assert.match(reminders, /sourceClientId:context\.clientId/);
+  assert.match(reminders, /sourceCustomerName:context\.customerName/);
+  assert.match(operations, /label: "Lembretes", count: reminders\.length/);
+  assert.match(operations, /Lembretes vinculados ao cliente/);
+  assert.match(tasks, /data-reminder-client-id=\{task\.customerCode\}/);
+});

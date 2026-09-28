@@ -136,6 +136,25 @@ public sealed class AccessControlService(
         }
 
         var collaboratorChatPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "internalChat");
+        var collaboratorReminderPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "reminders");
+        if (collaboratorReminderPermission is null)
+        {
+            collaboratorsGroup.Permissions.Add(new GroupPermission
+            {
+                GroupId = collaboratorsGroup.Id,
+                Screen = "reminders",
+                CanView = true,
+                CanCreate = true,
+                CanEdit = true,
+            });
+        }
+        else
+        {
+            collaboratorReminderPermission.CanView = true;
+            collaboratorReminderPermission.CanCreate = true;
+            collaboratorReminderPermission.CanEdit = true;
+        }
+
         if (collaboratorChatPermission is null)
         {
             collaboratorsGroup.Permissions.Add(new GroupPermission

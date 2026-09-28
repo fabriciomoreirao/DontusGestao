@@ -79,6 +79,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   const [editRequested, setEditRequested] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createdProtocol, setCreatedProtocol] = useState("");
+  const [createdTaskId, setCreatedTaskId] = useState("");
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const currentCollaborator = module.collaborators.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
   const responsibleDepartmentIds = currentCollaborator?.coordinatorDepartmentIds.length
@@ -112,6 +113,8 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
     const direct = module.tasks.find((task) => task.id === taskId || task.protocol === taskId);
     if (direct) setSelected(direct);
   }, [module.tasks]);
+
+  useEffect(()=>{if(!createdTaskId)return;const task=module.tasks.find(entry=>entry.id===createdTaskId);if(task){setSelected(task);setCreatedTaskId("");const url=new URL(window.location.href);url.searchParams.set("mod","tasks");url.searchParams.set("task",task.id);window.history.replaceState({},"",url)}},[createdTaskId,module.tasks]);
 
   const openTask = (task: CorporateTask, edit = false) => {
     setEditRequested(edit);
@@ -180,7 +183,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
       if (!result) return;
       setCreating(false);
       if (result.id && files.length > 0) await uploadAttachments(result.id, files);
-      setCreatedProtocol(result.createdProtocol ?? "");
+      if(result.id)setCreatedTaskId(result.id);else setCreatedProtocol(result.createdProtocol ?? "");
     }} />}
     {selected && <TaskDetail task={module.tasks.find((t) => t.id === selected.id) ?? selected} module={module} customers={customers} user={user} canManage={canManage} canEdit={canEdit} startEditing={editRequested} has={has} busy={busy} onClose={closeTask} operate={operate} onSendToDevelopment={onSendToDevelopment} uploadAttachments={uploadAttachments} deleteAttachment={deleteAttachment} />}
     {createdProtocol && <TaskCreatedModal protocol={createdProtocol} onClose={() => setCreatedProtocol("")} />}
@@ -201,7 +204,7 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, onOpen,
       if (task) void onMove(task, status.id);
     }}>
       <header><span><CircleDot size={14} />{status.kanbanColumn || status.name}</span><b>{column.length}</b></header>
-      <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{visibleTasks.map((task) => <article draggable tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} key={task.id}
+      <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{visibleTasks.map((task) => <article draggable tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} key={task.id}
         onDragStart={(e) => e.dataTransfer.setData("taskId", task.id)} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(task); } }}>
         <div className="task-card-top"><span className="task-card-code"><Clipboard size={15} /><b>{task.protocol}</b></span>{canEdit && task.canModify && <span className="task-card-actions"><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></span>}</div>
         <strong className="task-card-title">{task.title}</strong>
@@ -217,7 +220,7 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, onOpen,
 
 function TaskList({ tasks, collaborators, onOpen }: { tasks: CorporateTask[]; collaborators: Collaborator[]; onOpen: (task: CorporateTask) => void }) {
   return <div className="task-table"><div className="task-table-row head"><span>Código / tarefa</span><span>Tipo</span><span>Setor</span><span>Prioridade</span><span>Status</span><span>Responsável</span><span>Prazo / SLA</span><span>Atualização</span></div>
-    {tasks.length === 0 ? <div className="task-empty">Nenhuma tarefa encontrada com estes filtros.</div> : tasks.map((task) => <button className="task-table-row" onClick={() => onOpen(task)} key={task.id}>
+    {tasks.length === 0 ? <div className="task-empty">Nenhuma tarefa encontrada com estes filtros.</div> : tasks.map((task) => <button className="task-table-row" data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} onClick={() => onOpen(task)} key={task.id}>
       <span><b>#{task.number} · {task.title}</b><small>{task.protocol || task.customerName || "Sem protocolo"}</small></span>
       <span>{task.typeName}</span><span>{task.departmentName}</span>
       <span><i className="priority-dot" style={{ background: task.priorityColor }} />{task.priorityName}</span>
