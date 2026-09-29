@@ -93,3 +93,19 @@ test("mantém cartões compactos e status completos no desenvolvimento", async (
   assert.match(development, /\{ name: "Em validação", tone: "cyan" \}/);
   assert.match(development, /<option>Em validação<\/option><option>Em produção<\/option>/);
 });
+
+test("controla indicadores por grupo e exibe somente ferramentas do menu", async () => {
+  const [operations, screens, access, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Domain/ScreenCatalog.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AccessControlService.cs", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(operations, /VIEW_INDICATORS_CAPABILITY = "viewIndicators"/);
+  assert.match(operations, /canViewOperationIndicators/);
+  assert.match(operations, /label: "Indicadores"/);
+  assert.match(operations, /screen\.supportsIndicators/);
+  assert.match(access, /obsoletePermissions/);
+  assert.doesNotMatch(screens, /new\("finance"|new\("procurement"|new\("approvals"|new\("reporting"|new\("catalogs"/);
+  assert.match(css, /repeat\(4,112px\)/);
+});

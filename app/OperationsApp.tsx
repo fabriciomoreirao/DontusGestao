@@ -99,7 +99,7 @@ type AccessGroup = {
 };
 
 type AccessManagement = {
-  screens: Array<{ code: string; label: string; area: string; order: number }>;
+  screens: Array<{ code: string; label: string; area: string; order: number; supportsIndicators: boolean }>;
   users: AccessUser[];
   groups: AccessGroup[];
   employees: Employee[];
@@ -303,6 +303,12 @@ function userCan(user: AppData["user"], screen: string, action: PermissionAction
   const permission = user.permissions.find((entry) => entry.screen === screen);
   const key = `can${action[0].toUpperCase()}${action.slice(1)}` as keyof EffectivePermission;
   return permission?.[key] === true;
+}
+
+const VIEW_INDICATORS_CAPABILITY = "viewIndicators";
+
+function userHasCapability(user: AppData["user"], screen: string, capability: string) {
+  return user.permissions.find((entry) => entry.screen === screen)?.capabilities?.includes(capability) === true;
 }
 
 export default function OperationsApp() {
@@ -563,6 +569,12 @@ export default function OperationsApp() {
   };
 
   const openIndicatorsPage = () => {
+    const permissionScreen = active === "admin" && adminSection === "recruitment" ? "admin" : active;
+    if (!data || !userCan(data.user, permissionScreen, "view") || !userHasCapability(data.user, permissionScreen, VIEW_INDICATORS_CAPABILITY)) {
+      setToast({ kind: "error", message: "Seu grupo não possui acesso aos indicadores desta ferramenta." });
+      window.setTimeout(() => setToast(null), 3500);
+      return;
+    }
     setIndicatorsOpen(true);
     const url = new URL(window.location.href);
     url.searchParams.set("view", "indicators");
@@ -967,6 +979,10 @@ export default function OperationsApp() {
         : ({ waitingQueue: "Fila de espera", support: "Atendimentos", marketing: "Gestão de Marketing", ti: "Desenvolvimento", lia: "Acompanhamento LIA", commissions: "Comissões", goals: "Metas", referrals: "Indicações", diary: "Diário de Bordo", tasks: "Tarefas", work: "Agenda", suggestions: "Sugestões", access: "Acesso" } as Record<string, string>)[active]
           ? { module: active, title: ({ waitingQueue: "Fila de espera", support: "Atendimentos", marketing: "Gestão de Marketing", ti: "Desenvolvimento", lia: "Acompanhamento LIA", commissions: "Comissões", goals: "Metas", referrals: "Indicações", diary: "Diário de Bordo", tasks: "Tarefas", work: "Agenda", suggestions: "Sugestões", access: "Acesso" } as Record<string, string>)[active] }
           : null;
+  const indicatorPermissionScreen = active === "admin" && adminSection === "recruitment" ? "admin" : active;
+  const canViewOperationIndicators = Boolean(operationContext
+    && userCan(data.user, indicatorPermissionScreen, "view")
+    && userHasCapability(data.user, indicatorPermissionScreen, VIEW_INDICATORS_CAPABILITY));
   const indicatorItems: WorkItem[] = (() => {
     const normalized: WorkItem[] = [...data.items];
     data.diaryModule?.entries.forEach((entry) => normalized.push({ id: `diary-${entry.id}`, module: "diary", record_type: entry.type || "Atividade", title: entry.title, customer_id: null, customer_name: "", owner: data.user.displayName, team: "Diário de Bordo", status: entry.status, priority: "P3", due_at: entry.occursAt, sla_due_at: null, amount_cents: 0, description: JSON.stringify({ source: entry.source, agendaStatusId: entry.agendaStatusId }), version: entry.version ?? 0, created_at: entry.occursAt, updated_at: entry.occursAt }));
@@ -1146,9 +1162,9 @@ export default function OperationsApp() {
           </div>
         </header>
 
-        <div className={`content ${indicatorsOpen || historyClientId ? "indicators-page-active" : ""}`}>
-          {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} onClose={closeIndicatorsPage} /> : <>
-          {operationContext && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
+        <div className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}>
+          {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext && canViewOperationIndicators ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} onClose={closeIndicatorsPage} /> : <>
+          {operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
           {active === "dashboard" && (
             dashboardPage === "portal"
               ? <PortalDontus data={data} busy={busy} operate={operate} onBack={() => setDashboardPage("home")} />
@@ -3419,11 +3435,17 @@ function AccessGroupModal({ group, access, busy, onClose, onSave, onDelete }: { 
     ?? { screen: screen.code, canView: false, canCreate: false, canEdit: false, canApprove: false, canManage: false, capabilities: [] });
   const [permissions, setPermissions] = useState<GroupPermission[]>(initial);
   const modalRef=useRef<HTMLDivElement>(null);
-  const changePermission = (screen: string, action: "view" | "edit" | "manage", checked: boolean) => {const scrollTop=modalRef.current?.scrollTop??0;setPermissions((current) => current.map((permission) => {
+  const changePermission = (screen: string, action: "view" | "edit" | "manage" | "indicators", checked: boolean) => {const scrollTop=modalRef.current?.scrollTop??0;setPermissions((current) => current.map((permission) => {
     if (permission.screen !== screen) return permission;
     if (action === "view") return checked
       ? { ...permission, canView: true }
       : { ...permission, canView: false, canCreate: false, canEdit: false, canApprove: false, canManage: false, capabilities: [] };
+    if (action === "indicators") {
+      const capabilities = new Set(permission.capabilities ?? []);
+      if (checked) capabilities.add(VIEW_INDICATORS_CAPABILITY);
+      else capabilities.delete(VIEW_INDICATORS_CAPABILITY);
+      return { ...permission, canView: checked || permission.canView, capabilities: [...capabilities] };
+    }
     if (action === "manage") return { ...permission, canView: checked || permission.canView, canManage: checked };
     return { ...permission, canView: checked || permission.canView, canCreate: checked, canEdit: checked, canApprove: checked };
   }));requestAnimationFrame(()=>{if(modalRef.current)modalRef.current.scrollTop=scrollTop;});};
@@ -3432,7 +3454,7 @@ function AccessGroupModal({ group, access, busy, onClose, onSave, onDelete }: { 
     const form = new FormData(event.currentTarget);
     onSave({ action: group ? "updateAccessGroup" : "createAccessGroup", id: group?.id, name: form.get("name"), groupDescription: form.get("description"), active: form.get("active") === "on", permissions });
   };
-  const actions = [{ key: "view" as const, label: "Ver" }, { key: "edit" as const, label: "Editar" }, { key: "manage" as const, label: "Configuração" }];
+  const actions = [{ key: "view" as const, label: "Ver" }, { key: "edit" as const, label: "Editar" }, { key: "manage" as const, label: "Configuração" }, { key: "indicators" as const, label: "Indicadores" }];
   return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}>
     <div ref={modalRef} className="modal access-modal" role="dialog" aria-modal="true" aria-label={group ? "Editar grupo" : "Novo grupo"}>
       <div className="modal-head"><div><span className="eyebrow">GRUPO DE ACESSO</span><h2>{group ? "Permissões do grupo" : "Novo grupo"}</h2><p>As permissões são aplicadas no menu e validadas novamente pela API.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
@@ -3443,6 +3465,9 @@ function AccessGroupModal({ group, access, busy, onClose, onSave, onDelete }: { 
           {access.screens.map((screen) => {
             const permission = permissions.find((entry) => entry.screen === screen.code)!;
             return <div className="permission-row" key={screen.code}><span><strong>{screen.label}</strong><small>{screen.area}</small></span>{actions.map((action) => {
+              if (action.key === "indicators") return screen.supportsIndicators
+                ? <label key={action.key} title={`Indicadores: ${screen.label}`}><input type="checkbox" checked={permission.capabilities?.includes(VIEW_INDICATORS_CAPABILITY) === true} onChange={(event) => changePermission(screen.code, action.key, event.target.checked)} /><i /></label>
+                : <span className="permission-unavailable" key={action.key} title="Esta ferramenta não possui painel de indicadores">—</span>;
               const key = `can${action.key[0].toUpperCase()}${action.key.slice(1)}` as keyof GroupPermission;
               return <label key={action.key} title={`${action.label}: ${screen.label}`}><input type="checkbox" checked={permission[key] === true} onChange={(event) => changePermission(screen.code, action.key, event.target.checked)} /><i /></label>;
             })}</div>;

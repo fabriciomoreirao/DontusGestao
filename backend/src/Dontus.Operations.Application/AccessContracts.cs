@@ -2,7 +2,7 @@ namespace Dontus.Operations.Application;
 
 public sealed record AuthenticatedIdentity(string Email, string DisplayName);
 
-public sealed record ScreenDto(string Code, string Label, string Area, int Order);
+public sealed record ScreenDto(string Code, string Label, string Area, int Order, bool SupportsIndicators);
 
 public sealed record AccessUserDto(
     Guid Id,

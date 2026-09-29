@@ -19,6 +19,7 @@ public sealed class AccessControlServiceTests
             new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
 
         Assert.True(actor.HasPermission("admin", "manage"));
+        Assert.True(actor.HasCapability("support", ScreenCatalog.ViewIndicatorsCapability));
         Assert.Equal(ScreenCatalog.All.Count, actor.Permissions!.Count);
         Assert.Single(await db.Users.ToListAsync());
         var groups = await db.AccessGroups.OrderBy(group => group.Name).ToListAsync();
@@ -45,7 +46,10 @@ public sealed class AccessControlServiceTests
                 "Suporte leitura",
                 "Consulta de tickets",
                 true,
-                [new GroupPermissionDto("support", true, false, false, false, false)]),
+                [
+                    new GroupPermissionDto("support", true, false, false, false, false, [ScreenCatalog.ViewIndicatorsCapability]),
+                    new GroupPermissionDto("notes", true, false, false, false, false, [ScreenCatalog.ViewIndicatorsCapability]),
+                ]),
             admin);
         await service.CreateUserAsync(
             new CreateAccessUserCommand(
@@ -60,6 +64,8 @@ public sealed class AccessControlServiceTests
             new AuthenticatedIdentity("analista@dontus.local", "Analista"));
 
         Assert.True(analyst.HasPermission("support", "view"));
+        Assert.True(analyst.HasCapability("support", ScreenCatalog.ViewIndicatorsCapability));
+        Assert.False(analyst.HasCapability("notes", ScreenCatalog.ViewIndicatorsCapability));
         Assert.False(analyst.HasPermission("support", "create"));
         Assert.False(analyst.HasPermission("finance", "view"));
 
@@ -79,6 +85,32 @@ public sealed class AccessControlServiceTests
                 WorkItemCommand("support", "Criação não autorizada"),
                 analyst));
         Assert.Equal(403, denied.StatusCode);
+    }
+
+    [Fact]
+    public async Task Keeps_only_visible_menu_tools_and_removes_obsolete_permissions()
+    {
+        await using var db = CreateContext();
+        var service = CreateService(db);
+        await service.InitializeAsync();
+        var adminGroup = await db.AccessGroups.Include(group => group.Permissions)
+            .SingleAsync(group => group.Name == "Administradores");
+        adminGroup.Permissions.Add(new GroupPermission
+        {
+            GroupId = adminGroup.Id,
+            Screen = "finance",
+            CanView = true,
+        });
+        await db.SaveChangesAsync();
+
+        await service.InitializeAsync();
+
+        Assert.DoesNotContain(ScreenCatalog.All, screen => screen.Code is "finance" or "procurement" or "approvals" or "reporting" or "catalogs");
+        Assert.False(await db.GroupPermissions.AnyAsync(permission => permission.Screen == "finance"));
+        var admin = await service.ResolveActorAsync(new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
+        var management = await service.GetManagementAsync(admin);
+        Assert.All(management.Screens.Where(screen => screen.SupportsIndicators), screen =>
+            Assert.True(admin.HasCapability(screen.Code, ScreenCatalog.ViewIndicatorsCapability)));
     }
 
     [Fact]

@@ -36,10 +36,7 @@ public sealed class AccessControlService(
             var existing = adminGroup.Permissions.FirstOrDefault(permission => permission.Screen == screen.Code);
             if (existing is not null)
             {
-                if (screen.Code == "tasks")
-                    existing.CapabilitiesJson = JsonSerializer.Serialize(TaskCapabilities.All);
-                if (screen.Code == "chat")
-                    existing.CapabilitiesJson = JsonSerializer.Serialize(ChatCapabilities.All);
+                existing.CapabilitiesJson = JsonSerializer.Serialize(AdministratorCapabilities(screen));
                 continue;
             }
 
@@ -52,12 +49,7 @@ public sealed class AccessControlService(
                 CanEdit = true,
                 CanApprove = true,
                 CanManage = true,
-                CapabilitiesJson = screen.Code switch
-                {
-                    "tasks" => JsonSerializer.Serialize(TaskCapabilities.All),
-                    "chat" => JsonSerializer.Serialize(ChatCapabilities.All),
-                    _ => "[]",
-                },
+                CapabilitiesJson = JsonSerializer.Serialize(AdministratorCapabilities(screen)),
             });
         }
 
@@ -338,6 +330,12 @@ public sealed class AccessControlService(
             .ToListAsync(cancellationToken);
         foreach (var group in permissionGroups)
         {
+            var obsoletePermissions = group.Permissions
+                .Where(permission => !ScreenCatalog.Exists(permission.Screen))
+                .ToArray();
+            if (obsoletePermissions.Length > 0)
+                db.GroupPermissions.RemoveRange(obsoletePermissions);
+
             foreach (var screen in ScreenCatalog.All.Where(screen =>
                          group.Permissions.All(permission => permission.Screen != screen.Code)))
             {
@@ -470,7 +468,7 @@ public sealed class AccessControlService(
         return new AccessManagementDto(
             ScreenCatalog.All
                 .OrderBy(screen => screen.Order)
-                .Select(screen => new ScreenDto(screen.Code, screen.Label, screen.Area, screen.Order))
+                .Select(screen => new ScreenDto(screen.Code, screen.Label, screen.Area, screen.Order, screen.SupportsIndicators))
                 .ToArray(),
             users.Select(user => new AccessUserDto(
                 user.Id,
@@ -1068,6 +1066,7 @@ public sealed class AccessControlService(
                 CanView = view,
                 Capabilities = permission.Capabilities?
                     .Where(capability => !string.IsNullOrWhiteSpace(capability))
+                    .Where(capability => IsCapabilityAllowed(screen, capability))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Order()
                     .ToArray() ?? [],
@@ -1084,6 +1083,27 @@ public sealed class AccessControlService(
             permission.CanApprove,
             permission.CanManage,
             DeserializeCapabilities(permission.CapabilitiesJson));
+
+    private static string[] AdministratorCapabilities(ScreenDefinition screen)
+    {
+        var capabilities = screen.Code switch
+        {
+            "tasks" => TaskCapabilities.All.AsEnumerable(),
+            "chat" => ChatCapabilities.All.AsEnumerable(),
+            _ => [],
+        };
+        if (screen.SupportsIndicators)
+            capabilities = capabilities.Append(ScreenCatalog.ViewIndicatorsCapability);
+        return capabilities
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool IsCapabilityAllowed(ScreenDefinition screen, string capability) =>
+        (screen.SupportsIndicators && string.Equals(capability, ScreenCatalog.ViewIndicatorsCapability, StringComparison.OrdinalIgnoreCase)) ||
+        (screen.Code == "tasks" && TaskCapabilities.All.Contains(capability, StringComparer.OrdinalIgnoreCase)) ||
+        (screen.Code == "chat" && ChatCapabilities.All.Contains(capability, StringComparer.OrdinalIgnoreCase));
 
     private static string[] DeserializeCapabilities(string json)
     {
