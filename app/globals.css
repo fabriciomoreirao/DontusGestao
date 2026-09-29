@@ -6867,6 +6867,9 @@ html[data-theme="dark"] .journey-module{--surface:#07111d;--panel:#0d1826;--inpu
 @media(max-width:850px){.journey-drawer-body>.journey-summary-grid{grid-template-columns:1fr 1fr}.reminder-history-list>article{grid-template-columns:1fr}.reminder-history-list dl{grid-template-columns:1fr 1fr 1fr}}
 @media(max-width:620px){.enterprise-interactions-drawer{width:100vw}.enterprise-interaction-fields{grid-template-columns:1fr}.enterprise-interaction-fields .wide{grid-column:auto}.enterprise-interaction-actions{display:grid}.reminder-history-list dl{grid-template-columns:1fr}.journey-drawer-body>.journey-summary-grid{grid-template-columns:1fr}}
 
+/* Chat interno: mantém o nome do colaborador compacto no cabeçalho da conversa. */
+.app-shell .main .internal-chat-conversation-head h2{font-size:1rem!important;line-height:1.2!important;letter-spacing:-.015em}
+
 /* Link público de pesquisa com a identidade visual da tela principal. */
 .public-survey-page{position:relative;align-content:center;gap:20px;padding:42px;background:radial-gradient(circle at 15% 10%,rgba(14,165,233,.22),transparent 32%),radial-gradient(circle at 90% 90%,rgba(37,99,235,.2),transparent 35%),linear-gradient(145deg,#f5f9fd,#e7f1fa)!important}
 .public-survey-page::before{content:"";position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(30,105,155,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(30,105,155,.035) 1px,transparent 1px);background-size:36px 36px}

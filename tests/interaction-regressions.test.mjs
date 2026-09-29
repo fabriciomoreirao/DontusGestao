@@ -67,7 +67,7 @@ test("mantém funções nas vagas, interações estratégicas e histórico pende
   ]);
   assert.match(operations, /entry\.catalog === "employeeRole"/);
   assert.match(operations, /function EnterpriseInteractionsModal/);
-  assert.match(operations, /createPortal\(drawer, document\.body\)/);
+  assert.doesNotMatch(operations, /createPortal\(drawer, document\.body\)/);
   assert.match(operations, /className="enterprise-interactions-drawer"/);
   assert.match(operations, /createAgendaCommitment/);
   assert.match(operations, /> Interações<\/button>/);
@@ -75,5 +75,5 @@ test("mantém funções nas vagas, interações estratégicas e histórico pende
   assert.match(reminders, /Pendentes em todas as funcionalidades/);
   assert.match(css, /Fechamento dos modais e painéis sempre no canto superior direito/);
   assert.match(css, /\.journey-drawer-body>\.journey-summary-grid/);
-  assert.match(css, /\.internal-chat-conversation-head h2 \{[^}]*font: 800 12px\/1\.2/);
+  assert.match(css, /\.app-shell \.main \.internal-chat-conversation-head h2\{font-size:1rem!important/);
 });
