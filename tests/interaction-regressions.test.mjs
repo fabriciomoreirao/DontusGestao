@@ -58,3 +58,19 @@ test("mantém lembretes acima dos detalhes e vinculados aos históricos", async 
   assert.match(operations, /Lembretes vinculados ao cliente/);
   assert.match(tasks, /data-reminder-client-id=\{task\.customerCode\}/);
 });
+
+test("mantém funções nas vagas, interações estratégicas e histórico pendente", async () => {
+  const [operations, reminders, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/RemindersModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(operations, /entry\.catalog === "employeeRole"/);
+  assert.match(operations, /function EnterpriseInteractionsModal/);
+  assert.match(operations, /createAgendaCommitment/);
+  assert.match(operations, /> Interações<\/button>/);
+  assert.match(reminders, /Histórico pendente/);
+  assert.match(reminders, /Pendentes em todas as funcionalidades/);
+  assert.match(css, /Fechamento dos modais e painéis sempre no canto superior direito/);
+  assert.match(css, /\.journey-drawer-body>\.journey-summary-grid/);
+});
