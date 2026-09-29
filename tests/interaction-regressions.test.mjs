@@ -67,6 +67,8 @@ test("mantém funções nas vagas, interações estratégicas e histórico pende
   ]);
   assert.match(operations, /entry\.catalog === "employeeRole"/);
   assert.match(operations, /function EnterpriseInteractionsModal/);
+  const lucideImport = operations.match(/import\s*\{([\s\S]*?)\}\s*from "lucide-react"/)?.[1] ?? "";
+  assert.match(lucideImport, /\bSend\b/);
   assert.doesNotMatch(operations, /createPortal\(drawer, document\.body\)/);
   assert.match(operations, /className="enterprise-interactions-drawer"/);
   assert.match(operations, /createAgendaCommitment/);

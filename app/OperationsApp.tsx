@@ -4,7 +4,7 @@ import {
   Activity, ArrowLeft, ArrowRightLeft, BadgeCheck, Bell, BriefcaseBusiness, CalendarDays,
   ChartNoAxesCombined, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Columns3, Copy,
   ClipboardCheck, Clock3, Command, Database, Eye, EyeOff, FileCheck2, Headphones, ImageIcon, LayoutDashboard,
-  ExternalLink, List, ListTodo, LockKeyhole, Mail, Menu, MessageCircleMore, MessageSquareText, MonitorUp, Pencil, Plus, Save, Search, ShieldCheck,
+  ExternalLink, List, ListTodo, LockKeyhole, Mail, Menu, MessageCircleMore, MessageSquareText, MonitorUp, Pencil, Plus, Save, Search, Send, ShieldCheck,
   PanelLeftClose, PanelLeftOpen, RotateCcw, Settings, Sparkles, Stethoscope, Sun, Moon, Target, Trash2, Upload, UserPlus, UserRound, Users, UsersRound,
   X, XCircle,
 } from "lucide-react";
