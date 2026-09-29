@@ -178,12 +178,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .OrderBy(entry => entry.Name)
             .ToListAsync(cancellationToken);
         var statusesById = agendaStatuses.ToDictionary(entry => entry.Id);
-        // O Diário de Bordo é a visão operacional da Agenda: todo compromisso
-        // do colaborador, seja como responsável ou participante, é exibido aqui.
-        // Gestores mantêm a visão completa para acompanhar o time.
-        var canViewAllCommitments = actor.HasPermission("work", "manage") || actor.HasPermission("agenda", "manage");
+        // O Diário de Bordo é pessoal: compromissos aparecem somente para o
+        // colaborador definido como responsável, inclusive para gestores.
         var commitments = await db.AgendaCommitments.AsNoTracking()
-            .Where(entry => (canViewAllCommitments || entry.ResponsibleUserId == user.Id || db.AgendaCommitmentParticipants.Any(participant => participant.CommitmentId == entry.Id && participant.UserId == user.Id))
+            .Where(entry => entry.ResponsibleUserId == user.Id
                 && entry.StartsAt >= periodStart && entry.StartsAt <= periodEnd)
             .OrderBy(entry => entry.StartsAt)
             .Take(500)

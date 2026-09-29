@@ -204,6 +204,61 @@ public sealed class OperationsServiceTests
         Assert.NotNull(notice.Recipients.Single().ConfirmedAt);
     }
 
+    [Fact]
+    public async Task Diary_lists_only_commitments_assigned_to_the_authenticated_user()
+    {
+        await using var db = CreateContext();
+        var currentUser = new AppUser
+        {
+            Email = Actor.Email,
+            DisplayName = Actor.DisplayName,
+            CreatedBy = "tests@dontus.local"
+        };
+        var otherUser = new AppUser
+        {
+            Email = "outro@dontus.local",
+            DisplayName = "Outro Colaborador",
+            CreatedBy = Actor.Email
+        };
+        var status = new AgendaStatus { Name = "Reservada", Color = "#2563eb" };
+        db.Users.AddRange(currentUser, otherUser);
+        db.AgendaStatuses.Add(status);
+        await db.SaveChangesAsync();
+
+        var startsAt = DateTimeOffset.UtcNow.AddDays(1);
+        var ownCommitment = new AgendaCommitment
+        {
+            AgendaStatusId = status.Id,
+            ResponsibleUserId = currentUser.Id,
+            Title = "Compromisso do gestor",
+            StartsAt = startsAt,
+            EndsAt = startsAt.AddHours(1),
+            CreatedBy = otherUser.Email
+        };
+        var otherCommitment = new AgendaCommitment
+        {
+            AgendaStatusId = status.Id,
+            ResponsibleUserId = otherUser.Id,
+            Title = "Compromisso de outro colaborador",
+            StartsAt = startsAt.AddHours(2),
+            EndsAt = startsAt.AddHours(3),
+            CreatedBy = Actor.Email
+        };
+        db.AgendaCommitments.AddRange(ownCommitment, otherCommitment);
+        db.AgendaCommitmentParticipants.Add(new AgendaCommitmentParticipant
+        {
+            CommitmentId = otherCommitment.Id,
+            UserId = currentUser.Id
+        });
+        await db.SaveChangesAsync();
+
+        var diary = await new OperationsService(db).GetDiaryModuleAsync(Actor);
+
+        var entry = Assert.Single(diary.Entries);
+        Assert.Equal(ownCommitment.Id, entry.Id);
+        Assert.DoesNotContain(diary.Entries, item => item.Id == otherCommitment.Id);
+    }
+
     private static OperationsDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<OperationsDbContext>()
