@@ -109,3 +109,17 @@ test("controla indicadores por grupo e exibe somente ferramentas do menu", async
   assert.doesNotMatch(screens, /new\("finance"|new\("procurement"|new\("approvals"|new\("reporting"|new\("catalogs"/);
   assert.match(css, /repeat\(4,112px\)/);
 });
+
+test("mantém o clique de indicadores estável e copia o padrão do processo seletivo", async () => {
+  const [operations, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(css, /\.permission-row > label \{[^}]*position: relative/);
+  assert.match(css, /\.permission-row input \{[^}]*inset: 0/);
+  assert.match(operations, /"recruitmentStageTemplate", "Padrões de colunas"/);
+  assert.match(operations, /DEFAULT_RECRUITMENT_STAGES/);
+  assert.match(operations, /stageTemplateName: template\?\.name/);
+  assert.match(operations, /stageTemplateName:[^\n]+stages \}\)/);
+  assert.match(operations, /const processStages = process/);
+});
