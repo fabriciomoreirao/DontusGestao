@@ -1631,8 +1631,10 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
   return <section className="dashboard-home">
     <section className="dashboard-hero dashboard-welcome dashboard-command-hero">
       <div className="dashboard-welcome-content"><span>{today}</span><h1>Olá, {firstName} <b>👋</b></h1><p>Central de operação Dontus.</p></div>
-      <div className="dashboard-welcome-side"><div className="dashboard-welcome-department"><span>Setor vinculado</span><strong>{data.user.department || "Dontus"}</strong></div><div className="dashboard-welcome-actions"><button className="dashboard-public-link-button" onClick={() => void copyPublicLink()}>{publicLinkCopied ? <Check size={17} /> : <Copy size={17} />}<span>{publicLinkCopied ? "Link copiado" : "Copiar painel público"}</span></button><button className="dashboard-survey-indicator" onClick={() => onNavigate("surveys")}><ChartNoAxesCombined size={17}/><span>Indicadores de satisfação</span></button><button className="dashboard-portal-button" onClick={onPortal}><span>Portal Dontus</span><ExternalLink size={17} /></button></div></div>
+      <div className="dashboard-welcome-side"><div className="dashboard-welcome-department"><span>Setor vinculado</span><strong>{data.user.department || "Dontus"}</strong></div></div>
     </section>
+
+    <div className="dashboard-lower-actions" aria-label="Atalhos do painel"><button className="dashboard-public-link-button" onClick={() => void copyPublicLink()}>{publicLinkCopied ? <Check size={17} /> : <Copy size={17} />}<span>{publicLinkCopied ? "Link copiado" : "Copiar painel público"}</span></button><button className="dashboard-survey-indicator" onClick={() => onNavigate("surveys")}><ChartNoAxesCombined size={17}/><span>Indicadores de satisfação</span></button><button className="dashboard-portal-button" onClick={onPortal}><span>Portal Dontus</span><ExternalLink size={17} /></button></div>
 
     <div className="dashboard-section-title"><span><Sparkles size={18} /></span><div><h2>Acesso rápido</h2><p>Suas principais ferramentas em um só lugar.</p></div></div>
     <section className="dashboard-quick-grid" aria-label="Acesso rápido">
