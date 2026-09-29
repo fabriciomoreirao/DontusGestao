@@ -79,3 +79,17 @@ test("mantém funções nas vagas, interações estratégicas e histórico pende
   assert.match(css, /\.journey-drawer-body>\.journey-summary-grid/);
   assert.match(css, /\.app-shell \.main \.internal-chat-conversation-head h2\{font-size:1rem!important/);
 });
+
+test("mantém cartões compactos e status completos no desenvolvimento", async () => {
+  const [css, development] = await Promise.all([
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/DevelopmentModule.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(css, /Cartões compactos e hierarquia visual dos módulos operacionais/);
+  assert.match(css, /\.app-shell \.main \.reminder-card h2\{font-size:\.98rem!important/);
+  assert.match(css, /\.app-shell \.main \.diary-column>h2/);
+  assert.match(css, /\.app-shell \.main \.recruitment-process-list h2/);
+  assert.match(css, /\.app-shell \.main \.survey-grid h2/);
+  assert.match(development, /\{ name: "Em validação", tone: "cyan" \}/);
+  assert.match(development, /<option>Em validação<\/option><option>Em produção<\/option>/);
+});

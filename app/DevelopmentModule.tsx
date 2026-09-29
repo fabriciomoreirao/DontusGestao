@@ -16,7 +16,7 @@ type DevelopmentData = {
   sourceProtocol?: string;
   sourceDepartment?: string;
   triageStage: "Recebida" | "Em análise";
-  processStage: "Aguardando triagem" | "Ajuste" | "Desenvolvimento" | "Correção" | "Em produção" | "Finalizada";
+  processStage: "Aguardando triagem" | "Ajuste" | "Desenvolvimento" | "Correção" | "Em validação" | "Em produção" | "Finalizada";
   versionName?: string;
   developmentType?: "Bug" | "Novo desenvolvimento";
   executor?: string;
@@ -27,10 +27,10 @@ type DevelopmentData = {
   testEvidence?: Array<{ id: string; title: string; done: boolean; author: string; at: string }>;
   sourceSnapshot?: { description?: string; status?: string; type?: string; priority?: string; responsible?: string; attachments?: Array<{ fileName?: string; url?: string }>; comments?: Array<{ authorName?: string; body?: string; createdAt?: string }> };
   comments?: Array<{ text: string; author: string; at: string }>;
-  versionState?: "Aguardando validação" | "Em validação" | "Liberada";
+  versionState?: "Aguardando validação" | "Em validação" | "Liberada" | "Suspensa";
   history: DevelopmentHistory[];
 };
-type DevelopmentRelease = { kind: "developmentRelease"; plannedAt: string; notes: string; status?: "Planejada"|"Em testes"|"Liberada"|"Suspensa"; testedBy?: string; testedAt?: string; bugReports: Array<{ text: string; author: string; at: string }> };
+type DevelopmentRelease = { kind: "developmentRelease"; plannedAt: string; notes: string; status?: "Planejada"|"Em testes"|"Em validação"|"Liberada"|"Em produção"|"Suspensa"; testedBy?: string; testedAt?: string; bugReports: Array<{ text: string; author: string; at: string }> };
 
 type Props = {
   items: WorkItem[];
@@ -65,7 +65,7 @@ function stamp(data: DevelopmentData, text: string, by: string): DevelopmentData
 }
 
 const processColumns: Array<{ name: DevelopmentData["processStage"]; tone: string }> = [
-  { name: "Ajuste", tone: "violet" }, { name: "Desenvolvimento", tone: "blue" }, { name: "Correção", tone: "amber" }, { name: "Em produção", tone: "green" },
+  { name: "Ajuste", tone: "violet" }, { name: "Desenvolvimento", tone: "blue" }, { name: "Correção", tone: "amber" }, { name: "Em validação", tone: "cyan" }, { name: "Em produção", tone: "green" },
 ];
 
 const displayDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
@@ -219,7 +219,7 @@ function DevelopmentCreateModal({ busy, onClose, onCreate }: { busy: boolean; on
 function DevelopmentReleaseModal({ release, busy, onClose, onCreate }: { release?: WorkItem; busy: boolean; onClose: () => void; onCreate: (title: string, plannedAt: string, notes: string, status:DevelopmentRelease["status"]) => Promise<void> }) {
   const initial = release ? readRelease(release.description) : null;
   const [title, setTitle] = useState(release?.title ?? ""); const [plannedAt, setPlannedAt] = useState(initial?.plannedAt?.slice(0, 10) ?? ""); const [notes, setNotes] = useState(initial?.notes ?? ""); const [status,setStatus]=useState<DevelopmentRelease["status"]>(initial?.status??"Planejada");
-  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal development-release-modal" role="dialog" aria-modal="true" aria-label="Planejar liberação"><div className="modal-head"><div><span className="eyebrow">{release ? "EDITAR VERSÃO" : "NOVA VERSÃO"}</span><h2>{release ? "Atualizar liberação" : "Planejar liberação"}</h2><p>Cadastre a data, o contexto e atualize o status da versão durante todo o ciclo.</p></div><button type="button" className="icon-button" onClick={onClose}><X size={19} /></button></div><form className="form-grid" onSubmit={(event) => { event.preventDefault(); void onCreate(title, plannedAt, notes,status); }}><label className="wide">Título da versão *<input value={title} onChange={(event) => setTitle(event.target.value)} required placeholder="Ex.: 2026.08.1" /></label><label>Data prevista *<input type="date" value={plannedAt} onChange={(event) => setPlannedAt(event.target.value)} required /></label><label>Status da versão<select value={status} onChange={event=>setStatus(event.target.value as DevelopmentRelease["status"])}><option>Planejada</option><option>Em testes</option><option>Liberada</option><option>Suspensa</option></select></label><label className="wide">Observação<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} placeholder="Resumo da versão e pontos previstos." /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button compact-save" disabled={busy || !title.trim() || !plannedAt}><Rocket size={16} /> {release ? "Salvar alterações" : "Cadastrar versão"}</button></div></form></section></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal development-release-modal" role="dialog" aria-modal="true" aria-label="Planejar liberação"><div className="modal-head"><div><span className="eyebrow">{release ? "EDITAR VERSÃO" : "NOVA VERSÃO"}</span><h2>{release ? "Atualizar liberação" : "Planejar liberação"}</h2><p>Cadastre a data, o contexto e atualize o status da versão durante todo o ciclo.</p></div><button type="button" className="icon-button" onClick={onClose}><X size={19} /></button></div><form className="form-grid" onSubmit={(event) => { event.preventDefault(); void onCreate(title, plannedAt, notes,status); }}><label className="wide">Título da versão *<input value={title} onChange={(event) => setTitle(event.target.value)} required placeholder="Ex.: 2026.08.1" /></label><label>Data prevista *<input type="date" value={plannedAt} onChange={(event) => setPlannedAt(event.target.value)} required /></label><label>Status da versão<select value={status} onChange={event=>setStatus(event.target.value as DevelopmentRelease["status"])}><option>Planejada</option><option>Em validação</option><option>Em produção</option><option>Suspensa</option></select></label><label className="wide">Observação<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} placeholder="Resumo da versão e pontos previstos." /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button compact-save" disabled={busy || !title.trim() || !plannedAt}><Rocket size={16} /> {release ? "Salvar alterações" : "Cadastrar versão"}</button></div></form></section></div>;
 }
 
 function DevelopmentDrawerV2({ item, detail, releases, employees, canEdit, canDelete, busy, user, onClose, onDelete, onSave }: { item: WorkItem; detail: DevelopmentData; releases: WorkItem[]; employees: Props["employees"]; canEdit: boolean; canDelete: boolean; busy: boolean; user: Props["user"]; onClose: () => void; onDelete: () => void; onSave: (item: WorkItem, detail: DevelopmentData, success: string) => Promise<{ id?: string } | false> }) {
