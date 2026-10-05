@@ -54,6 +54,11 @@ type TaskHistory = { id: string; eventType: string; summary: string; actorName: 
 
 type CustomerOption = { id: string; trade_name: string; legal_name?: string; document_masked?: string };
 
+const publicCustomerCode = (customer?: CustomerOption) => {
+  const digits = customer?.document_masked?.replace(/\D/g, "") ?? "";
+  return digits.length === 6 ? digits : "";
+};
+
 type Props = {
   module: TaskModuleData;
   customers: CustomerOption[];
@@ -270,16 +275,14 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
   const [files, setFiles] = useState<File[]>([]);
   const resolveCustomerCode = (value: string) => {
     setCustomerCode(value);
-    const normalized = value.trim().toLocaleLowerCase("pt-BR");
     const digits = value.replace(/\D/g, "");
-    const customer = customers.find((item) => item.id.toLocaleLowerCase("pt-BR") === normalized
-      || (digits.length > 0 && item.document_masked?.replace(/\D/g, "") === digits));
+    const customer = customers.find((item) => digits.length === 6 && publicCustomerCode(item) === digits);
     if (customer) setCustomerId(customer.id);
   };
   const selectCustomer = (id: string) => {
     setCustomerId(id);
     const customer = customers.find((item) => item.id === id);
-    if (customer) setCustomerCode(customer.id);
+    if (customer) setCustomerCode(publicCustomerCode(customer));
   };
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault(); const f = new FormData(e.currentTarget);
@@ -299,7 +302,7 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
       <div className="task-form-section-grid">
         <label className="wide">Título *<input name="title" required placeholder="Resuma a demanda em uma frase" /></label>
         <label>Cliente<select name="customerId" value={customerId} onChange={(event) => selectCustomer(event.target.value)}><option value="">Sem cliente vinculado</option>{customers.map((c) => <option value={c.id} key={c.id}>{c.trade_name}</option>)}</select></label>
-        <label>ID do cliente<input name="customerCode" value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value)} placeholder="Informe o ID cadastrado" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
+        <label>ID do cliente<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
         <label>WhatsApp do cliente *<input name="clientWhatsApp" type="tel" required minLength={10} placeholder="(11) 99999-9999" /></label>
         <div className="task-readonly-field"><span>Setor responsável</span><strong>{selectedDepartment?.name ?? "Setor não configurado"}</strong></div>
         <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators.map((item) => item.name).join(", ") || "Coordenador do setor não cadastrado"}</strong><small>A conclusão ficará pendente até a aprovação do coordenador.</small></div>
@@ -324,10 +327,8 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
   const [customerCode, setCustomerCode] = useState(task.customerCode);
   const resolveCustomerCode = (value: string) => {
     setCustomerCode(value);
-    const normalized = value.trim().toLocaleLowerCase("pt-BR");
     const digits = value.replace(/\D/g, "");
-    const customer = customers.find((item) => item.id.toLocaleLowerCase("pt-BR") === normalized
-      || (digits.length > 0 && item.document_masked?.replace(/\D/g, "") === digits));
+    const customer = customers.find((item) => digits.length === 6 && publicCustomerCode(item) === digits);
     if (customer) setCustomerId(customer.id);
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -342,8 +343,8 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
   };
   return <Overlay title="Editar tarefa" eyebrow={task.protocol} subtitle="Atualize somente as informações da solicitação." onClose={onClose}><form className="task-form task-edit-form" onSubmit={submit}>
     <label className="wide">Título *<input name="title" required defaultValue={task.title} /></label>
-    <label>Cliente<select name="customerId" value={customerId} onChange={(event) => { setCustomerId(event.target.value); const customer = customers.find((item) => item.id === event.target.value); if (customer) setCustomerCode(customer.id); }}><option value="">Sem cliente vinculado</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.trade_name}</option>)}</select></label>
-    <label>ID do cliente<input name="customerCode" value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value)} placeholder="Informe o ID cadastrado" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
+    <label>Cliente<select name="customerId" value={customerId} onChange={(event) => { setCustomerId(event.target.value); const customer = customers.find((item) => item.id === event.target.value); if (customer) setCustomerCode(publicCustomerCode(customer)); }}><option value="">Sem cliente vinculado</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.trade_name}</option>)}</select></label>
+    <label>ID do cliente<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
     <label>WhatsApp do cliente *<input name="clientWhatsApp" required minLength={10} defaultValue={task.clientWhatsApp} /></label>
     <label>Tipo *<select name="typeId" required defaultValue={task.typeId}>{validTypes.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>
     <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={task.description} /></label>
@@ -430,7 +431,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
     <div className="task-files-panel">
       <div><h3><Paperclip size={16} /> Anexos</h3><span>{task.attachments?.length ?? 0} arquivo(s)</span></div>
       {(task.attachments?.length ?? 0) > 0
-        ? <div className="task-attachment-grid">{task.attachments.map((attachment) => <TaskAttachmentPreview key={attachment.id} attachment={attachment} canDelete={canEdit} busy={busy} onDelete={deleteAttachment} onPreview={(preview) => setAttachmentPreview(preview)} />)}</div>
+        ? <div className={`task-attachment-grid ${task.attachments.length > 1 ? "multiple" : "single"}`}>{task.attachments.map((attachment) => <TaskAttachmentPreview key={attachment.id} attachment={attachment} canDelete={canEdit} busy={busy} onDelete={deleteAttachment} onPreview={(preview) => setAttachmentPreview(preview)} />)}</div>
         : <p>Nenhum arquivo anexado.</p>}
       {canEdit && <div className="task-file-upload">
         <MediaUploadField key={fileInputKey} className="compact" label="Imagens, vídeos e arquivos" inputRef={attachmentInput} accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple disabled={busy} selectedFiles={attachmentFiles} selectedText={attachmentFiles.length ? `${attachmentFiles.length} arquivo(s) selecionado(s)` : busy ? "Enviando arquivos..." : undefined} hint="Selecione os arquivos para anexar à tarefa. O envio começa automaticamente." onChange={(event) => void selectAndUploadAttachments(Array.from(event.currentTarget.files ?? []))} />

@@ -254,3 +254,21 @@ test("permite selecionar e acumular vários arquivos", async () => {
   assert.match(hr, /Promise\.all\(files\.map/);
   assert.match(hr, /multiple selectedFiles=\{files\}/);
 });
+
+test("organiza múltiplos anexos, documentos de cancelamento e ID público", async () => {
+  const [tasks, cancellations, journey, css] = await Promise.all([
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CancellationsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CustomerSuccessJourneyModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(tasks, /task\.attachments\.length > 1 \? "multiple" : "single"/);
+  assert.match(css, /\.task-detail-overlay \.task-attachment-grid\.multiple/);
+  assert.match(cancellations, /attachments:Array/);
+  assert.match(cancellations, /Documentos anexados/);
+  assert.match(cancellations, /publicCustomerId/);
+  assert.match(cancellations, /pattern="\\d\{6\}"/);
+  assert.doesNotMatch(cancellations, /setClientId\(id\)/);
+  assert.match(journey, /publicCustomerId\(customer\)/);
+  assert.match(tasks, /publicCustomerCode\(customer\)/);
+});
