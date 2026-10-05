@@ -172,7 +172,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
         <div className="task-client-notice-tabs">{["Todos", "Avisar Cliente", "Sem Necessidade", "Cliente Informado", "Pendente"].map((state) => <button className={clientNotice === state ? "active" : ""} onClick={() => setClientNotice(state)} key={state}>{state}<b>{state === "Todos" ? module.tasks.length : module.tasks.filter((task) => task.clientNotificationState === state).length}</b></button>)}</div>
       </details>
       <div className="task-workspace-content">
-        {view === "kanban" && <Kanban tasks={filtered} statuses={module.statuses} collaborators={module.collaborators} departmentId={departmentFilter} canEdit={canEdit} onOpen={openTask} onEdit={task=>openTask(task,true)} onMove={move} onDelete={task=>{void operate({action:"deleteTask",taskId:task.id,version:task.version},"Tarefa excluída com sucesso.")}} />}
+        {view === "kanban" && <Kanban tasks={filtered} statuses={module.statuses} collaborators={module.collaborators} departmentId={departmentFilter} canEdit={canEdit} busy={busy} onOpen={openTask} onEdit={task=>openTask(task,true)} onMove={move} onDelete={task=>{void operate({action:"deleteTask",taskId:task.id,version:task.version},"Tarefa excluída com sucesso.")}} onUpload={uploadAttachments} />}
         {view === "list" && <TaskList tasks={filtered} collaborators={module.collaborators} onOpen={openTask} />}
       </div>
     </section>
@@ -189,7 +189,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   </div>;
 }
 
-function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, onOpen, onEdit, onMove, onDelete }: { tasks: CorporateTask[]; statuses: Status[]; collaborators: Collaborator[]; departmentId: string; canEdit: boolean; onOpen: (task: CorporateTask) => void; onEdit: (task: CorporateTask) => void; onMove: (task: CorporateTask, statusId: string) => void; onDelete: (task: CorporateTask) => void }) {
+function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, busy, onOpen, onEdit, onMove, onDelete, onUpload }: { tasks: CorporateTask[]; statuses: Status[]; collaborators: Collaborator[]; departmentId: string; canEdit: boolean; busy: boolean; onOpen: (task: CorporateTask) => void; onEdit: (task: CorporateTask) => void; onMove: (task: CorporateTask, statusId: string) => void; onDelete: (task: CorporateTask) => void; onUpload: Props["uploadAttachments"] }) {
   const [limits, setLimits] = useState<Record<string, number>>({});
   const visibleStatuses = statuses
     .filter((status) => status.active && (!departmentId || !status.departmentId || status.departmentId === departmentId))
@@ -205,7 +205,7 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, onOpen,
       <header><span><CircleDot size={14} />{status.kanbanColumn || status.name}</span><b>{column.length}</b></header>
       <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{visibleTasks.map((task) => <article draggable tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} key={task.id}
         onDragStart={(e) => e.dataTransfer.setData("taskId", task.id)} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(task); } }}>
-        <div className="task-card-top"><span className="task-card-code"><Clipboard size={15} /><b>{task.protocol}</b></span>{canEdit && task.canModify && <span className="task-card-actions"><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></span>}</div>
+        <div className="task-card-top"><span className="task-card-code"><Clipboard size={15} /><b>{task.protocol}</b></span>{canEdit && <span className="task-card-actions"><TaskCardFileUpload taskId={task.id} busy={busy} onUpload={onUpload} />{task.canModify && <><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></>}</span>}</div>
         <strong className="task-card-title">{task.title}</strong>
         {(task.customerName || task.customerCode) && <div className="task-card-customer"><UserRound size={15}/><span>Cliente</span><b>{task.customerName || "Não informado"}</b>{task.customerCode && <small><FileText size={13}/> ID {task.customerCode}</small>}</div>}
         <div className="task-card-description"><FileText size={15}/><span><small>Descrição</small><p>{task.description || "Sem descrição informada."}</p></span></div>
@@ -215,6 +215,18 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, onOpen,
       </article>)}{column.length > visibleTasks.length && <button type="button" className="task-column-more" onClick={() => setLimits((current) => ({ ...current, [status.id]: limit + 10 }))}>Ver mais ({column.length - visibleTasks.length})</button>}</div>
     </section>;
   })}</div>;
+}
+
+function TaskCardFileUpload({ taskId, busy, onUpload }: { taskId: string; busy: boolean; onUpload: Props["uploadAttachments"] }) {
+  return <label className={`task-card-upload${busy ? " disabled" : ""}`} title="Subir arquivos" aria-label="Subir arquivos" onClick={(event) => event.stopPropagation()}>
+    <Upload size={15} />
+    <input type="file" hidden disabled={busy} multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" onClick={(event) => event.stopPropagation()} onChange={(event) => {
+      event.stopPropagation();
+      const files = Array.from(event.currentTarget.files ?? []);
+      event.currentTarget.value = "";
+      if (files.length) void onUpload(taskId, files);
+    }} />
+  </label>;
 }
 
 function TaskList({ tasks, collaborators, onOpen }: { tasks: CorporateTask[]; collaborators: Collaborator[]; onOpen: (task: CorporateTask) => void }) {

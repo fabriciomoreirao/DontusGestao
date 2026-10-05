@@ -213,3 +213,15 @@ test("padroniza campos de upload de mídia nos principais cadastros", async () =
   assert.match(css, /linear-gradient\(135deg,#2688ed,#1765d4\)/);
   assert.ok((modules.join("\n").match(/<MediaUploadField/g) ?? []).length >= 8);
 });
+
+test("mantém upload de tarefa sem rolagem e disponível nos cards", async () => {
+  const [tasks, css] = await Promise.all([
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(tasks, /function TaskCardFileUpload/);
+  assert.match(tasks, /onUpload=\{uploadAttachments\}/);
+  assert.match(tasks, /title="Subir arquivos"/);
+  assert.match(css, /\.task-detail-overlay \.task-files-panel\{overflow:hidden\}/);
+  assert.match(css, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\);grid-auto-rows:29px/);
+});
