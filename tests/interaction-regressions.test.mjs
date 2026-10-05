@@ -240,3 +240,17 @@ test("exibe uploads como links e só abre a mídia quando solicitado", async () 
   assert.doesNotMatch(tasks, /className="task-media-thumb"/);
   assert.match(css, /\.task-attachment-link/);
 });
+
+test("permite selecionar e acumular vários arquivos", async () => {
+  const [tasks, suggestions, hr] = await Promise.all([
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/SuggestionsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/HrManagementModule.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(tasks, /mergeSelectedFiles/);
+  assert.match(tasks, /multiple selectedFiles=\{files\}/);
+  assert.match(suggestions, /multiple accept=/);
+  assert.match(hr, /onSave:\(documents:HrDocument\[\]\)/);
+  assert.match(hr, /Promise\.all\(files\.map/);
+  assert.match(hr, /multiple selectedFiles=\{files\}/);
+});
