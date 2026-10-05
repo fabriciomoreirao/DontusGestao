@@ -150,3 +150,66 @@ test("mantém os novos fluxos de CRM, evolução, metas e animações", async ()
   assert.match(css, /\.cs-usage-line-chart/);
   assert.match(css, /\.drawer-backdrop\.modal-leaving/);
 });
+
+test("limita os horários comerciais e permite bloquear períodos na agenda", async () => {
+  const [operations, agenda, agendaService, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/AgendaModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AgendaService.cs", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(operations, /slotCommitments\.length < 3/);
+  assert.match(operations, /commercialSlotIsBlocked/);
+  assert.match(operations, /isBrazilianHoliday/);
+  assert.doesNotMatch(operations, /dayCommitments\.length\s*>=\s*3/);
+  assert.match(agenda, /COMMERCIAL_AVAILABILITY_BLOCK_PREFIX/);
+  assert.match(agenda, /> Bloquear período<\/button>/);
+  assert.match(agenda, /> Bloqueios<\/button>/);
+  assert.match(agendaService, /scheduledAtSlot >= 3/);
+  assert.match(agendaService, /IsBrazilianHoliday/);
+  assert.match(css, /\.commercial-schedule-rule/);
+  assert.doesNotMatch(css, /\.commercial-schedule-controls::before/);
+});
+
+test("sincroniza responsáveis e suporta alinhamento único no acompanhamento", async () => {
+  const [operations, journey, indicators, contracts, agendaService, api] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CustomerSuccessJourneyModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationIndicatorsBoard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Application/AgendaContracts.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AgendaService.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Api/Program.cs", import.meta.url), "utf8"),
+  ]);
+  assert.match(operations, /entry\.isCoordinator && destinationTerms/);
+  assert.match(journey, /assignAgendaCommitment/);
+  assert.match(journey, /Atualizar responsável e agenda/);
+  assert.match(journey, /singleAlignmentCompletedAt/);
+  assert.match(journey, /onboardingReady = Boolean\(journey\.singleAlignmentCompletedAt/);
+  assert.match(journey, />Alinhamento único</);
+  assert.match(indicators, /label: "Kick offs"/);
+  assert.match(indicators, /label: "Treinamentos"/);
+  assert.match(indicators, /label: "Alinhamentos únicos"/);
+  assert.match(contracts, /AssignAgendaCommitmentCommand/);
+  assert.match(agendaService, /AssignCommitmentAsync/);
+  assert.match(api, /case "assignAgendaCommitment"/);
+});
+
+test("padroniza campos de upload de mídia nos principais cadastros", async () => {
+  const [component, css, ...modules] = await Promise.all([
+    readFile(new URL("../app/MediaUploadField.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    ...[
+      "TasksModule.tsx",
+      "SuggestionsModule.tsx",
+      "HrManagementModule.tsx",
+      "NoticesModule.tsx",
+      "PortalDontus.tsx",
+      "OperationsApp.tsx",
+    ].map((file) => readFile(new URL(`../app/${file}`, import.meta.url), "utf8")),
+  ]);
+  assert.match(component, /media-upload-field/);
+  assert.match(component, /media-upload-action/);
+  assert.match(css, /\.media-upload-control/);
+  assert.match(css, /linear-gradient\(135deg,#2688ed,#1765d4\)/);
+  assert.ok((modules.join("\n").match(/<MediaUploadField/g) ?? []).length >= 8);
+});

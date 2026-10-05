@@ -6,6 +6,7 @@ import {
   Power, RotateCcw, Settings, Smile, Trash2, UserRound, UsersRound, X,
 } from "lucide-react";
 import { createContext, FormEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
+import MediaUploadField from "@/app/MediaUploadField";
 
 export type TaskModuleData = {
   tasks: CorporateTask[];
@@ -292,7 +293,7 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
       <header><span>02</span><div><h3>Acesso e evidências</h3><p>Inclua participantes e arquivos somente quando forem necessários.</p></div></header>
       <div className="task-form-section-grid">
         <fieldset className="wide task-participants"><legend>Colaboradores participantes</legend><p>Somente participantes, criador, responsável e coordenação terão acesso.</p>{module.collaborators.filter((item) => item.active).map((item) => <label key={item.id}><input type="checkbox" name="participantUserIds" value={item.id} /> <CollaboratorAvatar collaborator={item} /> {item.name}</label>)}</fieldset>
-        <label className="wide task-file-picker">Fotos e vídeos <input name="files" type="file" accept="image/*,video/*" multiple /><small>Até 10 arquivos por envio, com no máximo 25 MB cada.</small></label>
+        <MediaUploadField className="wide" label="Imagens e vídeos" name="files" accept="image/*,video/*" multiple hint="Até 10 arquivos por envio, com no máximo 25 MB cada." />
       </div>
     </section>
     <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? "Salvando..." : "Criar tarefa"}</button></div>
@@ -414,8 +415,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
         ? <div className="task-attachment-grid">{task.attachments.map((attachment) => <TaskAttachmentPreview key={attachment.id} attachment={attachment} canDelete={canEdit} busy={busy} onDelete={deleteAttachment} onPreview={(preview) => setAttachmentPreview(preview)} />)}</div>
         : <p>Nenhum arquivo anexado.</p>}
       {canEdit && <div className="task-file-upload">
-        <label className="task-upload-picker"><Paperclip size={15} /> {attachmentFiles.length ? `${attachmentFiles.length} arquivo(s) selecionado(s)` : "Selecionar imagens, vídeos ou arquivos"}<input ref={attachmentInput} key={fileInputKey} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple onChange={(event) => void selectAndUploadAttachments(Array.from(event.currentTarget.files ?? []))} aria-label="Selecionar arquivos para anexar" /></label>
-        <button type="button" disabled={busy} onClick={() => attachmentInput.current?.click()}><Upload size={15} /> {busy ? "Enviando..." : "Adicionar arquivos"}</button>
+        <MediaUploadField key={fileInputKey} className="compact" label="Imagens, vídeos e arquivos" inputRef={attachmentInput} accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple disabled={busy} selectedText={attachmentFiles.length ? `${attachmentFiles.length} arquivo(s) selecionado(s)` : busy ? "Enviando arquivos..." : undefined} hint="Selecione os arquivos para anexar à tarefa. O envio começa automaticamente." onChange={(event) => void selectAndUploadAttachments(Array.from(event.currentTarget.files ?? []))} />
       </div>}
       {attachmentFiles.length > 0 && <div className="task-upload-preview">{attachmentFiles.map((file) => <TaskFilePreview key={`${file.name}-${file.lastModified}`} file={file} onPreview={(url) => setAttachmentPreview({ url, name: file.name, video: file.type.startsWith("video/"), temporary: true })} />)}</div>}
     </div>

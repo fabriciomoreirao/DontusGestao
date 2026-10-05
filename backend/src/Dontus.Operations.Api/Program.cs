@@ -1033,6 +1033,12 @@ operations.MapPost("", async (
                 request.AgendaStatusId ?? throw new DomainException("Status obrigatório.")), actor, cancellationToken);
             break;
 
+        case "assignAgendaCommitment":
+            await agendaService.AssignCommitmentAsync(new AssignAgendaCommitmentCommand(
+                request.Id ?? throw new DomainException("Compromisso obrigatório."),
+                request.ResponsibleUserId ?? throw new DomainException("Responsável obrigatório.")), actor, cancellationToken);
+            break;
+
         case "deleteAgendaCommitment":
             await agendaService.DeleteCommitmentAsync(request.Id ?? throw new DomainException("Compromisso obrigatório."), actor, cancellationToken);
             break;

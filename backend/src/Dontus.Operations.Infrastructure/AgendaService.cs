@@ -7,6 +7,8 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class AgendaService(OperationsDbContext db) : IAgendaService
 {
+    private const string CommercialBlockPrefix = "[BLOQUEIO COMERCIAL]";
+
     public async Task<AgendaModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("work", "view");
@@ -217,8 +219,7 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         foreach (var startsAt in RecurringStarts(command.StartsAt, command.Recurrence))
         {
             var endsAt = startsAt.Add(command.EndsAt - command.StartsAt);
-            var conflict = await db.AgendaCommitments.AnyAsync(entry => entry.ResponsibleUserId == command.ResponsibleUserId && entry.StartsAt < endsAt && entry.EndsAt > startsAt, cancellationToken);
-            if (conflict) throw new DomainException("O responsável já possui um compromisso neste horário.", 409);
+            await EnsureAvailabilityAsync(calendar.Id, null, command.ResponsibleUserId, command.Title.Trim(), startsAt, endsAt, cancellationToken);
             var commitment = new AgendaCommitment
             {
                 AgendaId = calendar.Id,
@@ -264,8 +265,7 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
             .Select(link => link.UserId).Distinct().ToArrayAsync(cancellationToken);
         if (participantIds.Length != validParticipantIds.Length)
             throw new DomainException("Responsável e colaboradores devem pertencer ao setor da agenda.");
-        var conflict = await db.AgendaCommitments.AnyAsync(entry => entry.Id != commitment.Id && entry.ResponsibleUserId == command.ResponsibleUserId && entry.StartsAt < command.EndsAt && entry.EndsAt > command.StartsAt, cancellationToken);
-        if (conflict) throw new DomainException("O responsável já possui um compromisso neste horário.", 409);
+        await EnsureAvailabilityAsync(calendar.Id, commitment.Id, command.ResponsibleUserId, command.Title.Trim(), command.StartsAt, command.EndsAt, cancellationToken);
 
         commitment.AgendaId = calendar.Id;
         commitment.AgendaTypeId = type.Id;
@@ -298,6 +298,37 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task AssignCommitmentAsync(AssignAgendaCommitmentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var commitment = await db.AgendaCommitments.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
+            ?? throw new DomainException("Compromisso não encontrado.", 404);
+        var calendar = await db.AgendaCalendars.SingleOrDefaultAsync(entry => entry.Id == commitment.AgendaId, cancellationToken)
+            ?? throw new DomainException("Agenda do compromisso não encontrada.", 404);
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        var canAssign = CanManage(actor) || actor.HasPermission("cs", "edit") ||
+            commitment.ResponsibleUserId == actorUser.Id || string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase);
+        if (!canAssign) throw new DomainException("Seu acesso não permite alterar o responsável deste compromisso.", 403);
+
+        var targetBelongsToCalendar = await db.UserDepartments.AsNoTracking().AnyAsync(link =>
+            link.UserId == command.ResponsibleUserId && link.DepartmentId == calendar.DepartmentId, cancellationToken);
+        if (!targetBelongsToCalendar) throw new DomainException("O novo responsável deve pertencer ao setor da agenda.");
+
+        await EnsureAvailabilityAsync(commitment.AgendaId, commitment.Id, command.ResponsibleUserId, commitment.Title, commitment.StartsAt, commitment.EndsAt, cancellationToken);
+        var previousResponsibleId = commitment.ResponsibleUserId;
+        commitment.ResponsibleUserId = command.ResponsibleUserId;
+        commitment.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var previousParticipant = await db.AgendaCommitmentParticipants.SingleOrDefaultAsync(entry =>
+            entry.CommitmentId == commitment.Id && entry.UserId == previousResponsibleId, cancellationToken);
+        if (previousParticipant is not null) db.AgendaCommitmentParticipants.Remove(previousParticipant);
+        var newParticipantExists = await db.AgendaCommitmentParticipants.AnyAsync(entry =>
+            entry.CommitmentId == commitment.Id && entry.UserId == command.ResponsibleUserId, cancellationToken);
+        if (!newParticipantExists) db.AgendaCommitmentParticipants.Add(new AgendaCommitmentParticipant { CommitmentId = commitment.Id, UserId = command.ResponsibleUserId });
+
+        AddAudit(actor, "Assign", "agenda_commitment", commitment.Id.ToString(), new { PreviousResponsibleUserId = previousResponsibleId, command.ResponsibleUserId });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task DeleteCommitmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var commitment = await db.AgendaCommitments.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
@@ -316,6 +347,68 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         ?? throw new DomainException("Usuário autenticado não encontrado.", 403);
 
     private static bool CanManage(ActorContext actor) => actor.HasPermission("work", "manage") || actor.HasPermission("admin", "manage");
+    private async Task EnsureAvailabilityAsync(Guid agendaId, Guid? ignoredId, Guid responsibleUserId, string title, DateTimeOffset startsAt, DateTimeOffset endsAt, CancellationToken cancellationToken)
+    {
+        var isCommercialBlock = title.StartsWith(CommercialBlockPrefix, StringComparison.OrdinalIgnoreCase);
+        if (isCommercialBlock) return;
+
+        var isCommercialKickoff = title.StartsWith("Kick off", StringComparison.OrdinalIgnoreCase);
+        if (isCommercialKickoff)
+        {
+            var localDate = DateOnly.FromDateTime(startsAt.ToOffset(TimeSpan.FromHours(-3)).DateTime);
+            if (localDate.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || IsBrazilianHoliday(localDate))
+                throw new DomainException("Agendamentos comerciais não estão disponíveis aos sábados, domingos ou feriados.", 409);
+
+            var blocked = await db.AgendaCommitments.AnyAsync(entry =>
+                entry.Id != ignoredId &&
+                entry.AgendaId == agendaId &&
+                entry.Title.StartsWith(CommercialBlockPrefix) &&
+                entry.StartsAt < endsAt && entry.EndsAt > startsAt, cancellationToken);
+            if (blocked) throw new DomainException("Este horário está dentro de um período bloqueado para agendamentos do Comercial.", 409);
+
+            var scheduledAtSlot = await db.AgendaCommitments.CountAsync(entry =>
+                entry.Id != ignoredId &&
+                entry.AgendaId == agendaId &&
+                !entry.Title.StartsWith(CommercialBlockPrefix) &&
+                entry.StartsAt == startsAt, cancellationToken);
+            if (scheduledAtSlot >= 3) throw new DomainException("Este horário já atingiu o limite de 3 compromissos.", 409);
+            return;
+        }
+
+        var conflict = await db.AgendaCommitments.AnyAsync(entry =>
+            entry.Id != ignoredId &&
+            entry.ResponsibleUserId == responsibleUserId &&
+            entry.StartsAt < endsAt && entry.EndsAt > startsAt, cancellationToken);
+        if (conflict) throw new DomainException("O responsável já possui um compromisso neste horário.", 409);
+    }
+    private static bool IsBrazilianHoliday(DateOnly date)
+    {
+        var fixedDates = new HashSet<(int Month, int Day)>
+        {
+            (1, 1), (4, 21), (5, 1), (9, 7), (10, 12), (11, 2), (11, 15), (11, 20), (12, 25),
+        };
+        if (fixedDates.Contains((date.Month, date.Day))) return true;
+        var easter = EasterSunday(date.Year);
+        return date == easter.AddDays(-48) || date == easter.AddDays(-47) || date == easter.AddDays(-2) || date == easter.AddDays(60);
+    }
+    private static DateOnly EasterSunday(int year)
+    {
+        var a = year % 19;
+        var b = year / 100;
+        var c = year % 100;
+        var d = b / 4;
+        var e = b % 4;
+        var f = (b + 8) / 25;
+        var g = (b - f + 1) / 3;
+        var h = (19 * a + b - d - g + 15) % 30;
+        var i = c / 4;
+        var k = c % 4;
+        var l = (32 + 2 * e + 2 * i - h - k) % 7;
+        var m = (a + 11 * h + 22 * l) / 451;
+        var month = (h + l - 7 * m + 114) / 31;
+        var day = (h + l - 7 * m + 114) % 31 + 1;
+        return new DateOnly(year, month, day);
+    }
     private static void RequireManagement(ActorContext actor)
     {
         if (!CanManage(actor)) throw new DomainException("Seu acesso não permite administrar agendas.", 403);

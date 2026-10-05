@@ -18,6 +18,9 @@ export type AgendaModuleData = { calendars: AgendaCalendar[]; departments: Agend
 export type QuickAgendaPreset = { title?: string; description?: string; responsibleName?: string };
 type Operate = (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>;
 
+export const COMMERCIAL_AVAILABILITY_BLOCK_PREFIX = "[BLOQUEIO COMERCIAL]";
+export const isCommercialAvailabilityBlock = (entry: Pick<AgendaCommitment, "title">) => entry.title.trim().toLocaleUpperCase("pt-BR").startsWith(COMMERCIAL_AVAILABILITY_BLOCK_PREFIX);
+
 const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
 const dayFormatter = new Intl.DateTimeFormat("pt-BR", { weekday: "short" });
 const dayKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -47,6 +50,59 @@ const NATIONAL_HOLIDAYS = [
   [11, 25, "Natal"],
 ] as const;
 
+function easterSunday(year: number) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month, day, 12);
+}
+
+function addDays(source: Date, days: number) {
+  const value = new Date(source);
+  value.setDate(value.getDate() + days);
+  return value;
+}
+
+function movableHolidays(year: number) {
+  const easter = easterSunday(year);
+  return [
+    { date: addDays(easter, -48), name: "Carnaval" },
+    { date: addDays(easter, -47), name: "Carnaval" },
+    { date: addDays(easter, -2), name: "Paixão de Cristo" },
+    { date: addDays(easter, 60), name: "Corpus Christi" },
+  ];
+}
+
+export function brazilianHolidayName(date: string) {
+  const [yearText, monthText, dayText] = date.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText) - 1;
+  const day = Number(dayText);
+  if (!year || month < 0 || !day) return undefined;
+  const fixed = NATIONAL_HOLIDAYS.find(([holidayMonth, holidayDay]) => holidayMonth === month && holidayDay === day);
+  if (fixed) return fixed[2];
+  return movableHolidays(year).find((holiday) => dayKey(holiday.date) === date)?.name;
+}
+
+export const isBrazilianHoliday = (date: string) => Boolean(brazilianHolidayName(date));
+
+export function commercialSlotIsBlocked(commitments: AgendaCommitment[], agendaId: string, date: string, slot: string, durationMinutes = 60) {
+  const slotStart = new Date(`${date}T${slot}:00`);
+  const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
+  return commitments.some((entry) => entry.agendaId === agendaId && isCommercialAvailabilityBlock(entry) && new Date(entry.startsAt) < slotEnd && new Date(entry.endsAt) > slotStart);
+}
+
 function recurringDate(year: number, source: string) {
   const [, monthText, dayText] = source.slice(0, 10).split("-");
   const month = Number(monthText) - 1;
@@ -58,10 +114,18 @@ function specialEventsForCalendar(month: Date, collaborators: AgendaCelebrant[])
   const years = [month.getFullYear() - 1, month.getFullYear(), month.getFullYear() + 1];
   const uniqueCollaborators = [...new Map(collaborators.map((item) => [item.id, item])).values()];
   return years.flatMap((year) => {
-    const holidays = NATIONAL_HOLIDAYS.map(([holidayMonth, date, name]) => ({
+    const fixedHolidays = NATIONAL_HOLIDAYS.map(([holidayMonth, date, name]) => ({
       id: `holiday-${year}-${holidayMonth}-${date}`,
       date: dayKey(new Date(year, holidayMonth, date)),
       title: `🇧🇷 ${name}`,
+      detail: "Feriado nacional",
+      color: "#dc2626",
+      kind: "holiday" as const,
+    }));
+    const movingHolidays = movableHolidays(year).map((holiday) => ({
+      id: `holiday-${dayKey(holiday.date)}`,
+      date: dayKey(holiday.date),
+      title: `🇧🇷 ${holiday.name}`,
       detail: "Feriado nacional",
       color: "#dc2626",
       kind: "holiday" as const,
@@ -94,7 +158,7 @@ function specialEventsForCalendar(month: Date, collaborators: AgendaCelebrant[])
       }
       return events;
     });
-    return [...holidays, ...people];
+    return [...fixedHolidays, ...movingHolidays, ...people];
   });
 }
 
@@ -105,6 +169,7 @@ export default function AgendaModule({ module, busy, operate, currentEmail, onOp
   const [collaboratorFilter, setCollaboratorFilter] = useState("all");
   const [calendarFilter, setCalendarFilter] = useState("all");
   const [creating, setCreating] = useState(false);
+  const [blocking, setBlocking] = useState(false);
   const [selected, setSelected] = useState<AgendaCommitment | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   useEffect(() => {
@@ -132,34 +197,60 @@ export default function AgendaModule({ module, busy, operate, currentEmail, onOp
   const setupRequired = !module.calendars.some((item) => item.active) || !module.types.some((item) => item.active) || !module.statuses.some((item) => item.active);
 
   return <>
-    <header className="page-header agenda-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · AGENDA</span><h1>Agenda</h1><p>Visualize os compromissos do seu setor e use os filtros para encontrar rapidamente o que precisa.</p></span></div><div className="module-page-actions commercial-header-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Agenda" title="Configurar Agenda"><Settings size={18} /></button>}<button className="primary-button" disabled={setupRequired} onClick={() => setCreating(true)}><Plus size={17} /> Novo compromisso</button></div></header>
+    <header className="page-header agenda-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · AGENDA</span><h1>Agenda</h1><p>Visualize os compromissos do seu setor e use os filtros para encontrar rapidamente o que precisa.</p></span></div><div className="module-page-actions commercial-header-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Agenda" title="Configurar Agenda"><Settings size={18} /></button>}{module.canManage && <button className="secondary-button" disabled={setupRequired} onClick={() => setBlocking(true)}><CalendarDays size={16} /> Bloquear período</button>}<button className="primary-button" disabled={setupRequired} onClick={() => setCreating(true)}><Plus size={17} /> Novo compromisso</button></div></header>
     {setupRequired && <div className="agenda-setup-note"><CalendarDays size={19} /><span><strong>Os cadastros da Agenda precisam ser concluídos.</strong><small>Crie ao menos uma agenda, um tipo e um status em Cadastros › Agenda.</small></span></div>}
     <section className="agenda-filters"><Filter size={16} /><select value={effectiveCalendarFilter} onChange={(event) => setCalendarFilter(event.target.value)}><option value="all">Todas as agendas</option>{module.calendars.filter((calendar) => calendar.active).map((calendar) => <option key={calendar.id} value={calendar.id}>{calendar.name} · {calendar.departmentName}</option>)}</select><select value={effectiveTypeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Todos os tipos</option>{module.types.filter((type) => type.active).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select><select value={collaboratorFilter} onChange={(event) => setCollaboratorFilter(event.target.value)}><option value="all">Todos os colaboradores</option>{module.collaborators.map((collaborator) => <option key={`${collaborator.id}-${collaborator.departmentId}`} value={collaborator.id}>{collaborator.name}</option>)}</select><div className="agenda-view-switch" aria-label="Modo de visualização">{([['month','Mês'],['week','Semana'],['day','Dia']] as const).map(([value,label])=><button type="button" className={calendarView===value?"active":""} onClick={()=>setCalendarView(value)} key={value}>{label}</button>)}</div></section>
     {calendarView === "month" ? <MonthCalendar month={month} commitments={filtered} specialEvents={specialEventsForCalendar(month, module.celebrants ?? module.collaborators)} onPrevious={() => setMonth((value) => { const targetMonth=value.getMonth()-1; const day=Math.min(value.getDate(),new Date(value.getFullYear(),targetMonth+1,0).getDate()); return new Date(value.getFullYear(),targetMonth,day); })} onNext={() => setMonth((value) => { const targetMonth=value.getMonth()+1; const day=Math.min(value.getDate(),new Date(value.getFullYear(),targetMonth+1,0).getDate()); return new Date(value.getFullYear(),targetMonth,day); })} onOpenDay={setSelectedDay} /> : <ScheduleCalendar view={calendarView} anchor={month} commitments={filtered} specialEvents={specialEventsForCalendar(month, module.celebrants ?? module.collaborators)} onPrevious={() => setMonth((value) => { const next=new Date(value); next.setDate(next.getDate()-(calendarView==="week"?7:1)); return next; })} onNext={() => setMonth((value) => { const next=new Date(value); next.setDate(next.getDate()+(calendarView==="week"?7:1)); return next; })} onOpenDay={setSelectedDay} onOpenCommitment={setSelected} />}
     {creating && <CommitmentModal module={module} busy={busy} currentEmail={currentEmail} onClose={() => setCreating(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Compromisso agendado com sucesso."); if (result) setCreating(false); }} />}
+    {blocking && <AvailabilityBlockForm module={module} busy={busy} onClose={() => setBlocking(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Período bloqueado para novos agendamentos do Comercial."); if (result) setBlocking(false); }} />}
     {selectedDay && <DayCommitmentsModal date={selectedDay} commitments={filtered.filter((entry) => dateKey(entry.startsAt) === selectedDay)} statuses={module.statuses} calendars={module.calendars} busy={busy} onClose={() => setSelectedDay(null)} onOpenCommitment={(entry) => { setSelectedDay(null); setSelected(entry); }} onChangeStatus={async (commitmentId, agendaStatusId) => Boolean(await operate({ action: "changeAgendaCommitmentStatus", id: commitmentId, agendaStatusId }, "Status do compromisso atualizado com sucesso."))} />}
     {selected && <AgendaCommitmentModal module={module} commitment={selected} busy={busy} currentEmail={currentEmail} onClose={closeSelected} onSave={async (payload) => { const result = await operate({ action: "updateAgendaCommitment", requireConfirmation: true, id: selected.id, ...payload }, "Compromisso atualizado com sucesso."); if (result) closeSelected(); }} onDelete={async () => { const result = await operate({ action: "deleteAgendaCommitment", id: selected.id }, "Compromisso excluído com sucesso."); if (result) closeSelected(); }} onChangeStatus={async (agendaStatusId) => { const result = await operate({ action: "changeAgendaCommitmentStatus", id: selected.id, agendaStatusId }, "Status do compromisso atualizado com sucesso."); if (!result) return false; const status = module.statuses.find((item) => item.id === agendaStatusId); if (status) setSelected((current) => current ? { ...current, agendaStatusId: status.id, statusName: status.name, statusColor: status.color } : current); return true; }} />}
   </>;
 }
 
 export function AgendaCatalogsModule({ module, busy, operate }: { module: AgendaModuleData; busy: boolean; operate: Operate }) {
-  const [tab, setTab] = useState<"calendars" | "types" | "statuses">("calendars");
+  const [tab, setTab] = useState<"calendars" | "types" | "statuses" | "blocks">("calendars");
   const [calendar, setCalendar] = useState<AgendaCalendar | null | undefined>(undefined);
   const [type, setType] = useState<AgendaType | null | undefined>(undefined);
   const [status, setStatus] = useState<AgendaStatus | null | undefined>(undefined);
+  const [creatingBlock, setCreatingBlock] = useState(false);
+  const blocks = module.commitments.filter(isCommercialAvailabilityBlock).sort((a, b) => b.startsAt.localeCompare(a.startsAt));
   const remove = async (action: string, id: string, label: string) => { await operate({ action, id }, `${label} excluído com sucesso.`); };
   return <>
-    <header className="page-header agenda-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21} /></span><span className="module-page-copy"><span className="eyebrow">CADASTROS · AGENDA</span><h1>Cadastros da Agenda</h1><p>Gerencie agendas por setor, tipos de agendamento e os status que determinam a cor dos compromissos.</p></span></div></header>
-    <div className="agenda-tabs"><button className={tab === "calendars" ? "active" : ""} onClick={() => setTab("calendars")}><CalendarDays size={15} /> Agendas</button><button className={tab === "types" ? "active" : ""} onClick={() => setTab("types")}><Tag size={15} /> Tipos</button><button className={tab === "statuses" ? "active" : ""} onClick={() => setTab("statuses")}><Tag size={15} /> Status</button></div>
-    <section className="agenda-catalog-card"><div className="agenda-catalog-head"><div><span className="eyebrow">{tab === "calendars" ? "AGENDAS" : tab === "types" ? "TIPOS" : "STATUS"}</span><h2>{tab === "calendars" ? "Agendas por setor" : tab === "types" ? "Tipos de agendamento" : "Status do compromisso"}</h2><p>{tab === "calendars" ? "Cada agenda é exibida apenas para colaboradores vinculados ao seu setor." : tab === "types" ? "Nenhuma opção padrão é criada automaticamente." : "A cor do status é aplicada diretamente no compromisso do calendário."}</p></div><button className="primary-button" onClick={() => tab === "calendars" ? setCalendar(null) : tab === "types" ? setType(null) : setStatus(null)}><Plus size={16} /> Novo</button></div>
+    <header className="page-header agenda-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21} /></span><span className="module-page-copy"><span className="eyebrow">CADASTROS · AGENDA</span><h1>Cadastros da Agenda</h1><p>Gerencie agendas, tipos, status e os períodos indisponíveis para novos agendamentos do Comercial.</p></span></div></header>
+    <div className="agenda-tabs"><button className={tab === "calendars" ? "active" : ""} onClick={() => setTab("calendars")}><CalendarDays size={15} /> Agendas</button><button className={tab === "types" ? "active" : ""} onClick={() => setTab("types")}><Tag size={15} /> Tipos</button><button className={tab === "statuses" ? "active" : ""} onClick={() => setTab("statuses")}><Tag size={15} /> Status</button><button className={tab === "blocks" ? "active" : ""} onClick={() => setTab("blocks")}><CalendarDays size={15} /> Bloqueios</button></div>
+    <section className="agenda-catalog-card"><div className="agenda-catalog-head"><div><span className="eyebrow">{tab === "calendars" ? "AGENDAS" : tab === "types" ? "TIPOS" : tab === "statuses" ? "STATUS" : "BLOQUEIOS"}</span><h2>{tab === "calendars" ? "Agendas por setor" : tab === "types" ? "Tipos de agendamento" : tab === "statuses" ? "Status do compromisso" : "Períodos indisponíveis"}</h2><p>{tab === "calendars" ? "Cada agenda é exibida apenas para colaboradores vinculados ao seu setor." : tab === "types" ? "Nenhuma opção padrão é criada automaticamente." : tab === "statuses" ? "A cor do status é aplicada diretamente no compromisso do calendário." : "Cadastre intervalos em que o time Comercial não poderá reservar horários."}</p></div><button className="primary-button" onClick={() => tab === "calendars" ? setCalendar(null) : tab === "types" ? setType(null) : tab === "statuses" ? setStatus(null) : setCreatingBlock(true)}><Plus size={16} /> {tab === "blocks" ? "Novo bloqueio" : "Novo"}</button></div>
       {tab === "calendars" && <CatalogList items={module.calendars} icon={<CalendarDays size={18} />} onEdit={(item) => setCalendar(item)} onDelete={(item) => void remove("deleteAgendaCalendar", item.id, "agenda")} render={(item) => <><strong>{item.name}</strong><small>{item.description || item.departmentName}</small></>} />}
       {tab === "types" && <CatalogList items={module.types} icon={<i className="agenda-type-dot" />} onEdit={(item) => setType(item)} onDelete={(item) => void remove("deleteAgendaType", item.id, "tipo de agendamento")} render={(item) => <><strong>{item.name}</strong><small>{item.description || `Cor de identificação: ${item.color}`}</small></>} />}
       {tab === "statuses" && <CatalogList items={module.statuses} icon={<i className="agenda-type-dot" />} onEdit={(item) => setStatus(item)} onDelete={(item) => void remove("deleteAgendaStatus", item.id, "status")} render={(item) => <><strong>{item.name}</strong><small>{item.description || `Cor aplicada ao agendamento: ${item.color}`}</small></>} />}
+      {tab === "blocks" && <div className="agenda-catalog-list agenda-block-list">{blocks.length === 0 ? <EmptyAgenda text="Nenhum período de bloqueio cadastrado." /> : blocks.map((item) => { const calendarItem = module.calendars.find((entry) => entry.id === item.agendaId); return <article key={item.id}><span className="agenda-list-icon"><CalendarDays size={18} /></span><span className="agenda-list-data"><strong>{item.title.replace(COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, "").trim() || "Bloqueio comercial"}</strong><small>{calendarItem?.name ?? "Agenda"} · {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.startsAt))} até {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.endsAt))}</small>{item.description && <small>{item.description}</small>}</span><button type="button" className="catalog-icon-button delete" disabled={busy} onClick={() => void remove("deleteAgendaCommitment", item.id, "bloqueio")} aria-label="Excluir bloqueio"><Trash2 size={15} /></button></article>; })}</div>}
     </section>
     {calendar !== undefined && <CalendarForm item={calendar} departments={module.departments} busy={busy} onClose={() => setCalendar(undefined)} onSave={async (payload) => { const result = await operate({ action: "saveAgendaCalendar", id: calendar?.id, ...payload }, calendar ? "Agenda atualizada com sucesso." : "Agenda cadastrada com sucesso."); if (result) setCalendar(undefined); }} />}
     {type !== undefined && <NamedColorForm title="Tipo de agendamento" item={type} busy={busy} onClose={() => setType(undefined)} onSave={async (payload) => { const result = await operate({ action: "saveAgendaType", id: type?.id, ...payload }, type ? "Tipo atualizado com sucesso." : "Tipo cadastrado com sucesso."); if (result) setType(undefined); }} />}
     {status !== undefined && <NamedColorForm title="Status do compromisso" item={status} busy={busy} onClose={() => setStatus(undefined)} onSave={async (payload) => { const result = await operate({ action: "saveAgendaStatus", id: status?.id, ...payload }, status ? "Status atualizado com sucesso." : "Status cadastrado com sucesso."); if (result) setStatus(undefined); }} />}
+    {creatingBlock && <AvailabilityBlockForm module={module} busy={busy} onClose={() => setCreatingBlock(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Período bloqueado para novos agendamentos do Comercial."); if (result) setCreatingBlock(false); }} />}
   </>;
+}
+
+function AvailabilityBlockForm({ module, busy, onClose, onSave }: { module: AgendaModuleData; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
+  const calendars = module.calendars.filter((item) => item.active);
+  const [agendaId, setAgendaId] = useState(calendars[0]?.id ?? "");
+  const calendar = calendars.find((item) => item.id === agendaId);
+  const responsible = module.collaborators.find((item) => item.departmentId === calendar?.departmentId);
+  const type = module.types.find((item) => item.active);
+  const status = module.statuses.find((item) => item.active);
+  const ready = Boolean(calendar && responsible && type && status);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!calendar || !responsible || !type || !status) return;
+    const form = new FormData(event.currentTarget);
+    const reason = String(form.get("reason") || "Período indisponível").trim();
+    const startsAt = new Date(`${form.get("startDate")}T${form.get("startTime")}:00`);
+    const endsAt = new Date(`${form.get("endDate")}T${form.get("endTime")}:00`);
+    onSave({ agendaId: calendar.id, agendaTypeId: type.id, agendaStatusId: status.id, responsibleUserId: responsible.id, title: `${COMMERCIAL_AVAILABILITY_BLOCK_PREFIX} ${reason}`, description: String(form.get("description") || "").trim(), startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), participantUserIds: [], recurrence: "none" });
+  };
+  return <AgendaModal title="Bloquear período" onClose={onClose}><form className="form-grid agenda-form" onSubmit={submit}><label className="wide">Agenda *<select value={agendaId} onChange={(event) => setAgendaId(event.target.value)} required><option value="">Selecionar agenda...</option>{calendars.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.departmentName}</option>)}</select></label><label className="wide">Motivo *<input name="reason" required maxLength={180} placeholder="Ex.: Treinamento interno, recesso ou reunião do time" /></label><label>Data inicial *<input name="startDate" type="date" required defaultValue={dayKey(tomorrow)} /></label><label>Hora inicial *<input name="startTime" type="time" required defaultValue="09:00" /></label><label>Data final *<input name="endDate" type="date" required defaultValue={dayKey(tomorrow)} /></label><label>Hora final *<input name="endTime" type="time" required defaultValue="18:00" /></label><label className="wide">Observação<textarea name="description" rows={3} placeholder="Detalhes opcionais sobre o período bloqueado." /></label>{!ready && <div className="wide agenda-setup-note"><CalendarDays size={18} /><span><strong>Configuração incompleta.</strong><small>A agenda precisa ter tipo, status e ao menos um colaborador ativo no setor.</small></span></div>}<div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy || !ready}><Save size={16} /> {busy ? "Salvando..." : "Bloquear período"}</button></div></form></AgendaModal>;
 }
 
 function MonthCalendar({ month, commitments, specialEvents, onPrevious, onNext, onOpenDay }: { month: Date; commitments: AgendaCommitment[]; specialEvents: AgendaSpecialEvent[]; onPrevious: () => void; onNext: () => void; onOpenDay: (date: string) => void }) {

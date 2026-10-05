@@ -36,6 +36,7 @@ public sealed record UpdateAgendaCommitmentCommand(
     string Title, string? Description, DateTimeOffset StartsAt, DateTimeOffset EndsAt,
     IReadOnlyCollection<Guid>? ParticipantUserIds);
 public sealed record ChangeAgendaCommitmentStatusCommand(Guid Id, Guid AgendaStatusId);
+public sealed record AssignAgendaCommitmentCommand(Guid Id, Guid ResponsibleUserId);
 
 public interface IAgendaService
 {
@@ -49,5 +50,6 @@ public interface IAgendaService
     Task<IReadOnlyCollection<Guid>> CreateCommitmentAsync(CreateAgendaCommitmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateCommitmentAsync(UpdateAgendaCommitmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangeCommitmentStatusAsync(ChangeAgendaCommitmentStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task AssignCommitmentAsync(AssignAgendaCommitmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteCommitmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
 }

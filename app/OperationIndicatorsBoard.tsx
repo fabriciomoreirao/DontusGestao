@@ -292,9 +292,15 @@ function metricsFor(module: string, contextKey: string, rows: Item[]): Metric[] 
     const complete = rows.filter((item) => finished(item.status)).length;
     const interactions = details.flatMap(({ detail }) => arrayOf(detail.follows ?? detail.history));
     const interactionKinds = interactions.map((entry) => typeof entry === "object" && entry ? clean((entry as Detail).kind ?? (entry as Detail).type ?? (entry as Detail).text) : clean(entry));
+    const kickOffs = details.filter(({ detail }) => Boolean(detail.firstMeetingAt || detail.firstMeetingCompletedAt)).length;
+    const trainings = details.filter(({ detail }) => Boolean(detail.trainingAt || detail.trainingCompletedAt)).length;
+    const singleAlignments = details.filter(({ detail }) => Boolean(detail.singleAlignmentAt || detail.singleAlignmentCompletedAt)).length;
     return [
       { label: "Total de clientes", value: rows.length, note: `${rows.length - complete} em acompanhamento` }, { label: "Em acompanhamento", value: rows.length - complete, note: percent(rows.length - complete, rows.length) },
       { label: "Finalizados", value: complete, note: percent(complete, rows.length) }, { label: "Concluídos c/ sucesso", value: rows.filter((item) => /sucesso/.test(clean(item.status))).length, note: "resultado positivo" },
+      { label: "Kick offs", value: kickOffs, note: `${details.filter(({ detail }) => Boolean(detail.firstMeetingCompletedAt)).length} concluído(s)` },
+      { label: "Treinamentos", value: trainings, note: `${details.filter(({ detail }) => Boolean(detail.trainingCompletedAt)).length} concluído(s)` },
+      { label: "Alinhamentos únicos", value: singleAlignments, note: `${details.filter(({ detail }) => Boolean(detail.singleAlignmentCompletedAt)).length} concluído(s)` },
       { label: "Health score médio", value: `${avg}%`, note: `${scores.filter((score) => score > 0).length} com score` }, { label: "Health alto (≥75%)", value: scores.filter((score) => score >= 75).length, note: "utilização saudável" },
       { label: "Health baixo (<50%)", value: scores.filter((score) => score < 50).length, note: "clientes em risco" }, { label: module === "lia" ? "Etapas ativas" : "Dias médios", value: module === "lia" ? new Set(rows.map((item) => item.status)).size : `${rows.length ? Math.round(rows.reduce((sum, item) => sum + durationDays(item), 0) / rows.length) : 0}d`, note: module === "lia" ? "no fluxo LIA" : "em acompanhamento" },
       { label: "Interações", value: interactions.length, note: "opções registradas no acompanhamento" },
