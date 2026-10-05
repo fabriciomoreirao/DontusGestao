@@ -225,3 +225,18 @@ test("mantém upload de tarefa sem rolagem e disponível nos cards", async () =>
   assert.match(css, /\.task-detail-overlay \.task-files-panel\{overflow:hidden\}/);
   assert.match(css, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\);grid-auto-rows:29px/);
 });
+
+test("exibe uploads como links e só abre a mídia quando solicitado", async () => {
+  const [field, tasks, css] = await Promise.all([
+    readFile(new URL("../app/MediaUploadField.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(field, /media-upload-links/);
+  assert.match(field, /window\.open\(url/);
+  assert.match(field, /previewUrl/);
+  assert.match(tasks, /className="task-attachment-link"/);
+  assert.doesNotMatch(tasks, /function TaskFilePreview/);
+  assert.doesNotMatch(tasks, /className="task-media-thumb"/);
+  assert.match(css, /\.task-attachment-link/);
+});

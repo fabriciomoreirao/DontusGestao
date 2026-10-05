@@ -3410,7 +3410,7 @@ function BackgroundImageSettings({ image, onChange }: { image: string; onChange:
         <div><ImageIcon size={29} /><strong>{image ? "Imagem de fundo configurada" : "Nenhuma imagem selecionada"}</strong><p>A imagem recebe uma camada de contraste automática nos temas claro e escuro.</p></div>
       </div>
       <div className="background-settings-actions">
-        <MediaUploadField label="Imagem de fundo" accept="image/png,image/jpeg,image/webp,image/gif" selectedText={image ? "Imagem configurada — clique para trocar" : undefined} hint="PNG, JPG, WEBP ou GIF, com no máximo 2 MB." onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; chooseImage(file); }} />
+        <MediaUploadField label="Imagem de fundo" accept="image/png,image/jpeg,image/webp,image/gif" selectedText={image ? "Imagem configurada — clique para trocar" : undefined} previewUrl={image} previewLabel="Abrir imagem de fundo" hint="PNG, JPG, WEBP ou GIF, com no máximo 2 MB." onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; chooseImage(file); }} />
         {image && <button className="secondary-button background-remove" onClick={() => onChange("")}><Trash2 size={16} /> Remover imagem</button>}
         {error && <p className="form-error">{error}</p>}
       </div>
@@ -3500,7 +3500,7 @@ function EmployeeModal({ employee, employees, departments, levels, roles, groups
     onSave({ displayName: form.get("displayName"), email: form.get("email"), birthDate: form.get("birthDate") || null, startedAt: form.get("startedAt") || null, departmentIds: form.getAll("departmentIds"), employeeLevelId: form.get("employeeLevelId"), photoDataUrl, jobTitle: form.get("jobTitle"), isCoordinator, subordinateUserIds: isCoordinator ? subordinateUserIds : [], groupIds, active });
   };
   return <ModalShell title={employee ? "Editar colaborador" : "Novo colaborador"} subtitle={employee ? "Atualize os dados cadastrais e o vínculo do colaborador." : "A senha temporária será gerada para o teste do login local."} onClose={onClose}><form className="form-grid" onSubmit={submit}>
-    <MediaUploadField className="wide" label="Foto do usuário" accept="image/*" selectedText={photoDataUrl ? "Foto selecionada" : undefined} hint="Selecione uma imagem para o perfil do colaborador, com no máximo 2 MB." onChange={(event) => choosePhoto(event.target.files?.[0])} />
+    <MediaUploadField className="wide" label="Foto do usuário" accept="image/*" selectedText={photoDataUrl ? "Foto selecionada" : undefined} previewUrl={photoDataUrl} previewLabel="Abrir foto do colaborador" hint="Selecione uma imagem para o perfil do colaborador, com no máximo 2 MB." onChange={(event) => choosePhoto(event.target.files?.[0])} />
     {photoError && <p className="form-error wide">{photoError}</p>}
     <label>Nome completo<input name="displayName" required defaultValue={employee?.displayName} /></label><label>E-mail<input name="email" type="email" required defaultValue={employee?.email} /></label>
     <label className="wide">Função na empresa<select name="jobTitle" required defaultValue={employee?.jobTitle ?? ""}><option value="">Selecione a função cadastrada</option>{[...new Set([...(employee?.jobTitle ? [employee.jobTitle] : []), ...roles])].map(role => <option key={role}>{role}</option>)}</select><small>A função permanece vinculada diretamente ao cadastro do colaborador.</small></label>

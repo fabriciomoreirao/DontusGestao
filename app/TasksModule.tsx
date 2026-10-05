@@ -261,6 +261,7 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
   const sectorCoordinators = module.collaborators.filter((item) => item.active && item.coordinatorDepartmentIds.includes(departmentId));
   const [customerId, setCustomerId] = useState("");
   const [customerCode, setCustomerCode] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const resolveCustomerCode = (value: string) => {
     setCustomerCode(value);
     const normalized = value.trim().toLocaleLowerCase("pt-BR");
@@ -276,7 +277,6 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
   };
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault(); const f = new FormData(e.currentTarget);
-    const files = f.getAll("files").filter((entry): entry is File => entry instanceof File && entry.size > 0);
     onSubmit({
       title: f.get("title"), description: f.get("description"),
       typeId: f.get("typeId"), priorityId: null, statusId: null,
@@ -305,7 +305,7 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
       <header><span>02</span><div><h3>Acesso e evidências</h3><p>Inclua participantes e arquivos somente quando forem necessários.</p></div></header>
       <div className="task-form-section-grid">
         <fieldset className="wide task-participants"><legend>Colaboradores participantes</legend><p>Somente participantes, criador, responsável e coordenação terão acesso.</p>{module.collaborators.filter((item) => item.active).map((item) => <label key={item.id}><input type="checkbox" name="participantUserIds" value={item.id} /> <CollaboratorAvatar collaborator={item} /> {item.name}</label>)}</fieldset>
-        <MediaUploadField className="wide" label="Imagens e vídeos" name="files" accept="image/*,video/*" multiple hint="Até 10 arquivos por envio, com no máximo 25 MB cada." />
+        <MediaUploadField className="wide" label="Imagens e vídeos" name="files" accept="image/*,video/*" multiple selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Até 10 arquivos por envio, com no máximo 25 MB cada." onChange={(event) => setFiles(Array.from(event.currentTarget.files ?? []))} />
       </div>
     </section>
     <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? "Salvando..." : "Criar tarefa"}</button></div>
@@ -427,9 +427,8 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
         ? <div className="task-attachment-grid">{task.attachments.map((attachment) => <TaskAttachmentPreview key={attachment.id} attachment={attachment} canDelete={canEdit} busy={busy} onDelete={deleteAttachment} onPreview={(preview) => setAttachmentPreview(preview)} />)}</div>
         : <p>Nenhum arquivo anexado.</p>}
       {canEdit && <div className="task-file-upload">
-        <MediaUploadField key={fileInputKey} className="compact" label="Imagens, vídeos e arquivos" inputRef={attachmentInput} accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple disabled={busy} selectedText={attachmentFiles.length ? `${attachmentFiles.length} arquivo(s) selecionado(s)` : busy ? "Enviando arquivos..." : undefined} hint="Selecione os arquivos para anexar à tarefa. O envio começa automaticamente." onChange={(event) => void selectAndUploadAttachments(Array.from(event.currentTarget.files ?? []))} />
+        <MediaUploadField key={fileInputKey} className="compact" label="Imagens, vídeos e arquivos" inputRef={attachmentInput} accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple disabled={busy} selectedFiles={attachmentFiles} selectedText={attachmentFiles.length ? `${attachmentFiles.length} arquivo(s) selecionado(s)` : busy ? "Enviando arquivos..." : undefined} hint="Selecione os arquivos para anexar à tarefa. O envio começa automaticamente." onChange={(event) => void selectAndUploadAttachments(Array.from(event.currentTarget.files ?? []))} />
       </div>}
-      {attachmentFiles.length > 0 && <div className="task-upload-preview">{attachmentFiles.map((file) => <TaskFilePreview key={`${file.name}-${file.lastModified}`} file={file} onPreview={(url) => setAttachmentPreview({ url, name: file.name, video: file.type.startsWith("video/"), temporary: true })} />)}</div>}
     </div>
     <section className="task-actions-panel">
       <header><div><span>AÇÕES DA TAREFA</span><h3>Atualizar e comunicar</h3></div><p>Use os controles abaixo para alterar o fluxo ou solicitar uma ação.</p></header>
@@ -473,15 +472,11 @@ const isImageFile = (fileName: string) => /\.(avif|gif|jpe?g|png|svg|webp)$/i.te
 const isVideoFile = (fileName: string) => /\.(mp4|mov|m4v|webm|ogg)$/i.test(fileName);
 
 function TaskAttachmentPreview({ attachment, canDelete, busy, onDelete, onPreview }: { attachment: CorporateTask["attachments"][number]; canDelete: boolean; busy: boolean; onDelete: (attachmentId: string) => Promise<boolean>; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
-  return <article className="task-attachment-preview">
-    {isImageFile(attachment.fileName) ? <button type="button" className="task-media-thumb" onClick={() => onPreview({ url: attachment.url, name: attachment.fileName, video: false })}><img src={attachment.url} alt={attachment.fileName} /></button> : isVideoFile(attachment.fileName) ? <button type="button" className="task-media-thumb" onClick={() => onPreview({ url: attachment.url, name: attachment.fileName, video: true })}><video muted preload="metadata"><source src={attachment.url} /></video></button> : <a href={attachment.url} target="_blank" rel="noreferrer"><Paperclip size={16} /> {attachment.fileName}</a>}
-    <footer><span title={attachment.fileName}>{attachment.fileName}</span>{isImageFile(attachment.fileName) || isVideoFile(attachment.fileName) ? <button type="button" onClick={() => onPreview({ url: attachment.url, name: attachment.fileName, video: isVideoFile(attachment.fileName) })}>Visualizar</button> : <a href={attachment.url} target="_blank" rel="noreferrer">Abrir</a>}{canDelete && <button type="button" disabled={busy} onClick={() => void onDelete(attachment.id)} aria-label={`Excluir ${attachment.fileName}`}><Trash2 size={14} /></button>}</footer>
+  const media = isImageFile(attachment.fileName) || isVideoFile(attachment.fileName);
+  return <article className="task-attachment-link">
+    {media ? <button type="button" onClick={() => onPreview({ url: attachment.url, name: attachment.fileName, video: isVideoFile(attachment.fileName) })}><Paperclip size={15} /><span><b>{attachment.fileName}</b><small>Clique para abrir o arquivo</small></span></button> : <a href={attachment.url} target="_blank" rel="noreferrer"><Paperclip size={15} /><span><b>{attachment.fileName}</b><small>Clique para abrir o arquivo</small></span></a>}
+    {canDelete && <button className="delete" type="button" disabled={busy} onClick={() => void onDelete(attachment.id)} aria-label={`Excluir ${attachment.fileName}`}><Trash2 size={14} /></button>}
   </article>;
-}
-
-function TaskFilePreview({ file, onPreview }: { file: File; onPreview: (url: string) => void }) {
-  const url = URL.createObjectURL(file);
-  return <article className="task-file-preview">{file.type.startsWith("image/") ? <button type="button" onClick={() => onPreview(url)}><img src={url} alt={file.name} /></button> : file.type.startsWith("video/") ? <button type="button" onClick={() => onPreview(url)}><video muted preload="metadata"><source src={url} type={file.type} /></video></button> : <span><Paperclip size={16} /> {file.name}</span>}<small>{Math.max(1, Math.round(file.size / 1024))} KB · {file.type.startsWith("image/") || file.type.startsWith("video/") ? "clique para visualizar" : "arquivo selecionado"}</small></article>;
 }
 
 export function CatalogsModule({ module, section, onSection, canManage, busy, operate }: { module: TaskModuleData; section: CatalogSection; onSection: (section: CatalogSection) => void; canManage: boolean; busy: boolean; operate: Props["operate"] }) {
