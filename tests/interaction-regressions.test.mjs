@@ -133,6 +133,11 @@ test("mantém os novos fluxos de CRM, evolução, metas e animações", async ()
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
   assert.match(operations, /dontus:commercial-settings-tab/);
+  assert.match(operations, /dontus:commercial-settings-area/);
+  assert.match(operations, /COMMERCIAL_CRM_CATALOGS/);
+  assert.match(operations, /COMMERCIAL_RETENTION_CATALOGS/);
+  assert.match(operations, /aria-label="Área dos cadastros comerciais"/);
+  assert.match(operations, /commercialArea === "retention" \? functionality === "CRM Retenção" : functionality !== "CRM Retenção"/);
   assert.match(operations, /<label>Funil selecionado<select/);
   assert.doesNotMatch(operations, /<section className="commercial-active-funnel"/);
   assert.match(journey, /function UsageLineChart/);
@@ -141,6 +146,7 @@ test("mantém os novos fluxos de CRM, evolução, metas e animações", async ()
   assert.match(goals, /<option value="annual">Anual<\/option>/);
   assert.match(marketing, /onClick=\{onClose\} aria-label="Fechar"><X size=\{18\}/);
   assert.match(css, /\.commercial-column\{flex:0 0 292px!important/);
+  assert.match(css, /\.commercial-catalog-area-tabs/);
   assert.match(css, /\.cs-usage-line-chart/);
   assert.match(css, /\.drawer-backdrop\.modal-leaving/);
 });

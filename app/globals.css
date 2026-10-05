@@ -1747,9 +1747,18 @@ button:not(:disabled):active {
 .customer-catalog-tabs { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 16px; }
 .customer-catalog-tabs button { min-height: 32px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); font-size: 10px; font-weight: 750; }
 .customer-catalog-tabs button.active { border-color: #168be6; color: #0875df; background: #edf7ff; box-shadow: 0 4px 12px rgba(8, 117, 223, .1); }
+.commercial-catalog-area-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 13px; }
+.commercial-catalog-area-tabs > button { min-height: 70px; display: flex; align-items: center; gap: 12px; padding: 13px 16px; border: 1px solid var(--line); border-radius: 14px; color: var(--muted); background: var(--surface); text-align: left; cursor: pointer; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease; }
+.commercial-catalog-area-tabs > button:hover { border-color: color-mix(in srgb, var(--primary) 42%, var(--line)); transform: translateY(-1px); }
+.commercial-catalog-area-tabs > button > svg { flex: 0 0 auto; width: 38px; height: 38px; padding: 9px; border-radius: 11px; color: var(--primary); background: var(--primary-soft); box-sizing: border-box; }
+.commercial-catalog-area-tabs > button > span { display: grid; gap: 4px; min-width: 0; }
+.commercial-catalog-area-tabs strong { color: var(--ink); font-size: 12px; }
+.commercial-catalog-area-tabs small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.commercial-catalog-area-tabs > button.active { border-color: color-mix(in srgb, var(--primary) 64%, var(--line)); background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface)); box-shadow: 0 9px 22px color-mix(in srgb, var(--primary) 13%, transparent); }
+.commercial-catalog-area-tabs > button.active > svg { color: #fff; background: var(--primary); }
 .catalog-head-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }.catalog-head-actions .checkbox-label { font-size: 10px; }
 .theme-dark .customer-filter-panel { border-color: #245778; border-top-color: #0aaef1; box-shadow: 0 12px 30px rgba(0, 0, 0, .2); }.theme-dark .customer-catalog-tabs button.active { color: #8ed7ff; background: #122b42; }.theme-dark .customer-form .form-section { background: var(--panel-elevated); }
-@media (max-width: 800px) { .customer-filter-panel { grid-template-columns: 1fr 1fr; }.customer-filter-panel .field-search { grid-column: 1 / -1; }.customer-filter-panel .toolbar-summary { padding-bottom: 0; }.catalog-head-actions { width: 100%; }.customer-filter-panel label { min-width: 0; } }
+@media (max-width: 800px) { .customer-filter-panel { grid-template-columns: 1fr 1fr; }.customer-filter-panel .field-search { grid-column: 1 / -1; }.customer-filter-panel .toolbar-summary { padding-bottom: 0; }.catalog-head-actions { width: 100%; }.customer-filter-panel label { min-width: 0; }.commercial-catalog-area-tabs { grid-template-columns: 1fr; } }
 
 /* Controles compactos e discretos no fluxo de tarefas. */
 .task-action-fields { gap: 8px; padding-top: 10px; }
