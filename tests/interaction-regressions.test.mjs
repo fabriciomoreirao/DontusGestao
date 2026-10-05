@@ -123,3 +123,24 @@ test("mantém o clique de indicadores estável e copia o padrão do processo sel
   assert.match(operations, /stageTemplateName:[^\n]+stages \}\)/);
   assert.match(operations, /const processStages = process/);
 });
+
+test("mantém os novos fluxos de CRM, evolução, metas e animações", async () => {
+  const [operations, journey, goals, marketing, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CustomerSuccessJourneyModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/GoalsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/MarketingWorkspaceModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(operations, /dontus:commercial-settings-tab/);
+  assert.match(operations, /<label>Funil selecionado<select/);
+  assert.doesNotMatch(operations, /<section className="commercial-active-funnel"/);
+  assert.match(journey, /function UsageLineChart/);
+  assert.match(journey, /<UsageLineChart milestones=\{milestones\} usageByDay=\{usageByDay\}/);
+  assert.match(goals, /type Cadence="daily"\|"weekly"\|"monthly"\|"annual"/);
+  assert.match(goals, /<option value="annual">Anual<\/option>/);
+  assert.match(marketing, /onClick=\{onClose\} aria-label="Fechar"><X size=\{18\}/);
+  assert.match(css, /\.commercial-column\{flex:0 0 292px!important/);
+  assert.match(css, /\.cs-usage-line-chart/);
+  assert.match(css, /\.drawer-backdrop\.modal-leaving/);
+});

@@ -14,11 +14,11 @@ import { createPortal } from "react-dom";
 import { allowedNextStatuses, MODULES, PRIORITIES, RECORD_TYPES, STATE_MACHINES, type ModuleKey } from "@/lib/domain";
 import TasksModule, { CatalogsModule, type CatalogSection, type TaskModuleData } from "@/app/TasksModule";
 import ChatModule, { type ChatModuleData } from "@/app/ChatModule";
-import AgendaModule, { AgendaCatalogsModule, type AgendaModuleData } from "@/app/AgendaModule";
+import AgendaModule, { AgendaCatalogsModule, QuickAgendaCommitmentModal, type AgendaModuleData } from "@/app/AgendaModule";
 import DiaryModule, { type DiaryModuleData } from "@/app/DiaryModule";
 import NotesModule, { type NotesModuleData } from "@/app/NotesModule";
 import RemindersModule, { ReminderComposerModal, ReminderDueModal, parseReminder } from "@/app/RemindersModule";
-import { REMINDER_COMPOSER_EVENT, ReminderCardEnhancer, type ReminderContext } from "@/app/ReminderAction";
+import { AGENDA_COMPOSER_EVENT, REMINDER_COMPOSER_EVENT, ReminderCardEnhancer, type ReminderContext } from "@/app/ReminderAction";
 import InternalChatModule, { type InternalChatModuleData } from "@/app/InternalChatModule";
 import SuggestionsModule, { SuggestionCatalogsModule, type SuggestionModuleData } from "@/app/SuggestionsModule";
 import NoticesModule, { NoticeAttentionModal, NoticesAdmin, type NoticesModuleData } from "@/app/NoticesModule";
@@ -127,10 +127,10 @@ function playNotificationAlert() {
     [0, 0.18, 0.36].forEach((delay, index) => {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
-      oscillator.type = "sine";
+      oscillator.type = "triangle";
       oscillator.frequency.value = index === 1 ? 1046 : 880;
       gain.gain.setValueAtTime(0.0001, context.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(0.34, context.currentTime + delay + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.48, context.currentTime + delay + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + delay + 0.15);
       oscillator.connect(gain).connect(context.destination);
       oscillator.start(context.currentTime + delay);
@@ -354,6 +354,9 @@ export default function OperationsApp() {
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
   const [profileEditable, setProfileEditable] = useState(false);
   const [reminderContext, setReminderContext] = useState<ReminderContext | null>(null);
+  const [agendaContext, setAgendaContext] = useState<ReminderContext | null>(null);
+  const [celebrationCenterOpen, setCelebrationCenterOpen] = useState(false);
+  const [chatRoomTarget, setChatRoomTarget] = useState("");
   const [reminderClock, setReminderClock] = useState(() => Date.now());
   const internalUnreadRef = useRef<number | null>(null);
   const operationalNotificationRef = useRef<string>("");
@@ -363,6 +366,26 @@ export default function OperationsApp() {
       ? "linear-gradient(rgba(8,18,31,.66), rgba(8,18,31,.76))"
       : "linear-gradient(rgba(244,247,251,.63), rgba(244,247,251,.72))") + ", url(\"" + backgroundImage + "\")",
   } as CSSProperties : undefined;
+
+  useEffect(() => {
+    const exitDuration = 220;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const removedNode of record.removedNodes) {
+          if (!(removedNode instanceof HTMLElement) || !removedNode.matches(".modal-backdrop,.drawer-backdrop") || removedNode.dataset.modalExitClone === "true") continue;
+          removedNode.dataset.modalExitClone = "true";
+          removedNode.classList.add("modal-leaving");
+          removedNode.setAttribute("aria-hidden", "true");
+          removedNode.inert = true;
+          const exitHost = record.target instanceof HTMLElement && record.target.isConnected ? record.target : document.body;
+          exitHost.appendChild(removedNode);
+          window.setTimeout(() => removedNode.remove(), exitDuration);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!data?.user.email) return;
@@ -378,6 +401,12 @@ export default function OperationsApp() {
     const openReminder = (event: Event) => setReminderContext((event as CustomEvent<ReminderContext>).detail ?? { module: active });
     window.addEventListener(REMINDER_COMPOSER_EVENT, openReminder);
     return () => window.removeEventListener(REMINDER_COMPOSER_EVENT, openReminder);
+  }, [active]);
+
+  useEffect(() => {
+    const openAgenda = (event: Event) => setAgendaContext((event as CustomEvent<ReminderContext>).detail ?? { module: active });
+    window.addEventListener(AGENDA_COMPOSER_EVENT, openAgenda);
+    return () => window.removeEventListener(AGENDA_COMPOSER_EVENT, openAgenda);
   }, [active]);
 
   useEffect(() => {
@@ -476,8 +505,7 @@ export default function OperationsApp() {
   }, []);
 
   useEffect(() => {
-    if (active !== "chat" && active !== "reporting" && active !== "waitingQueue") return;
-    const timer = window.setInterval(() => void load(true), active === "reporting" || active === "waitingQueue" ? 6_000 : 12_000);
+    const timer = window.setInterval(() => void load(true), active === "reporting" || active === "waitingQueue" ? 6_000 : 8_000);
     return () => window.clearInterval(timer);
   }, [active]);
 
@@ -523,10 +551,14 @@ export default function OperationsApp() {
     const newestNotice = [...(data.noticesModule?.notices ?? [])]
       .filter((notice) => notice.visibleToCurrentUser)
       .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())[0];
+    const newestOwnedUpdate = data.items
+      .filter((item) => item.owner.trim().toLocaleLowerCase("pt-BR") === data.user.displayName.trim().toLocaleLowerCase("pt-BR"))
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
     const signals = [
       newestSignal ? { key: `item:${newestSignal.id}:${newestSignal.updated_at}`, at: newestSignal.updated_at } : null,
       newestTaskNotification ? { key: `task:${newestTaskNotification.id}:${newestTaskNotification.createdAt}`, at: newestTaskNotification.createdAt } : null,
       newestNotice ? { key: `notice:${newestNotice.id}:${newestNotice.publishedAt}`, at: newestNotice.publishedAt } : null,
+      newestOwnedUpdate ? { key: `owned:${newestOwnedUpdate.id}:${newestOwnedUpdate.version}:${newestOwnedUpdate.updated_at}`, at: newestOwnedUpdate.updated_at } : null,
     ].filter((entry): entry is { key: string; at: string } => Boolean(entry));
     const signal = signals.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0]?.key ?? "";
     const previous = operationalNotificationRef.current;
@@ -948,6 +980,16 @@ export default function OperationsApp() {
   const dueReminder = pendingReminders.filter(({detail}) => new Date(detail.nextAlertAt || detail.remindAt).getTime() <= reminderClock).sort((a,b) => new Date(a.detail.nextAlertAt).getTime() - new Date(b.detail.nextAlertAt).getTime())[0];
   const reminderUnread = pendingReminders.length;
   const totalUnread = internalChatUnread + taskUnread + noticeUnread + reminderUnread;
+  const latestUnreadRoom = [...(data.internalChatModule?.rooms ?? [])]
+    .filter((room) => room.unreadCount > 0)
+    .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())[0];
+  const todayMonthDay = `${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+  const todayCelebrations = (data.access?.employees ?? []).filter((employee) => employee.active).flatMap((employee) => {
+    const kinds: string[] = [];
+    if (employee.birthDate?.slice(5, 10) === todayMonthDay) kinds.push("Aniversário");
+    if (employee.startedAt?.slice(5, 10) === todayMonthDay) kinds.push("Aniversário de empresa");
+    return kinds.length ? [{ employee, kinds }] : [];
+  });
   const upcomingCommitments = (data.agendaModule?.commitments ?? []).filter((entry) => {
     const minutes = (new Date(entry.startsAt).getTime() - Date.now()) / 60_000;
     return minutes >= 0 && minutes <= 30 && (entry.responsibleName === data.user.displayName || entry.participantUserIds.includes(data.user.email));
@@ -1158,6 +1200,11 @@ export default function OperationsApp() {
             <button className="icon-button theme-toggle" onClick={() => changeTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}>
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             </button>
+            <div className="topbar-celebration-wrap">
+              <button className={`icon-button celebration-button ${todayCelebrations.length ? "has-celebration" : ""}`} onClick={() => setCelebrationCenterOpen((current) => !current)} aria-label={`${todayCelebrations.length} aniversariante(s) hoje`} title="Aniversários de hoje"><CalendarDays size={18} />{todayCelebrations.length > 0 && <b>{todayCelebrations.length}</b>}</button>
+              {celebrationCenterOpen && <section className="celebration-center"><header><span><strong>Aniversários de hoje</strong><small>Datas especiais da equipe</small></span><button onClick={() => setCelebrationCenterOpen(false)} aria-label="Fechar aniversários"><X size={15}/></button></header><div>{todayCelebrations.length === 0 ? <p>Nenhum aniversário hoje.</p> : todayCelebrations.map(({ employee, kinds }) => <article key={employee.id}>{employee.photoDataUrl ? <img src={employee.photoDataUrl} alt=""/> : <span className="celebration-avatar">{employee.displayName.slice(0,2).toUpperCase()}</span>}<span><strong>{employee.displayName}</strong><small>{kinds.join(" · ")}</small></span></article>)}</div></section>}
+            </div>
+            <button className="icon-button topbar-chat-button" onClick={() => { setChatRoomTarget(latestUnreadRoom?.id ?? ""); navigate("internalChat"); }} aria-label={internalChatUnread ? `${internalChatUnread} mensagem(ns) recebida(s)` : "Abrir Chat Dontus"} title="Mensagens recebidas"><MessageCircleMore size={18} />{internalChatUnread > 0 && <b>{internalChatUnread > 99 ? "99+" : internalChatUnread}</b>}</button>
             <div className="notification-center-wrap"><button className="icon-button notification-button" aria-label={notificationTotal ? `${notificationTotal} notificações` : "Sem notificações"} onClick={() => setNotificationCenterOpen(current => !current)}><Bell size={19} />{notificationTotal > 0 && <b>{notificationTotal > 99 ? "99+" : notificationTotal}</b>}</button>{notificationCenterOpen&&<section className="notification-center"><header><span><strong>Notificações</strong><small>Atualizações em que você participa</small></span><div className="notification-center-head-actions">{notificationTotal>0&&<button className="mark-all-read" disabled={busy} onClick={()=>void markAllNotificationsRead()}><CheckCheck size={15}/>Marcar todas como vistas</button>}<button onClick={()=>setNotificationCenterOpen(false)} aria-label="Fechar notificações"><X size={15}/></button></div></header><div>{notificationEntries.length===0?<p>Nenhuma notificação pendente.</p>:notificationEntries.map(entry=><button key={entry.id} onClick={()=>{setNotificationCenterOpen(false);navigate(entry.module)}}><span><strong>{entry.title}</strong><small>{entry.meta} · {dateTime(entry.at)}</small></span><ChevronRight size={15}/></button>)}</div></section>}</div>
           </div>
         </header>
@@ -1226,6 +1273,7 @@ export default function OperationsApp() {
               operate={executeOperation}
               markRead={markInternalChatRead}
               uploadAttachments={uploadInternalChatAttachments}
+              initialRoomId={chatRoomTarget}
               onOpenProfile={(userId) => { setProfileEditable(false); setProfileEmployee(data.access?.employees.find(employee => employee.id === userId) ?? null); }}
             />
           )}
@@ -1307,6 +1355,30 @@ export default function OperationsApp() {
       {modal === "appointment" && <AppointmentModal customers={data.customers} busy={busy} onClose={() => setModal(null)} onSubmit={(payload) => operate({ action: "createAppointment", ...payload }, "Compromisso reservado sem conflito.")} />}
 
       {reminderContext && <ReminderComposerModal context={reminderContext} user={data.user} employees={data.access?.employees ?? []} busy={busy} onClose={() => setReminderContext(null)} operate={operate} />}
+      {agendaContext && data.agendaModule && <QuickAgendaCommitmentModal module={data.agendaModule} busy={busy} currentEmail={data.user.email} preset={{ title: agendaContext.title ? `Acompanhamento · ${agendaContext.title}` : "Novo compromisso", description: [agendaContext.customerName, agendaContext.summary].filter(Boolean).join(" · "), responsibleName: agendaContext.recipientName || data.user.displayName }} onClose={() => setAgendaContext(null)} onSave={async (payload) => {
+        const created = await operate({ action: "createAgendaCommitment", ...payload }, "Compromisso criado na agenda.");
+        if (!created) return;
+        const normalizeAgendaSource = (value: string | undefined) => String(value ?? "").trim().toLocaleLowerCase("pt-BR");
+        const source = agendaContext.entityId
+          ? data.items.find((item) => item.id === agendaContext.entityId)
+          : data.items.find((item) => item.module === agendaContext.module && [item.title, item.customer_name].some((value) => normalizeAgendaSource(value) === normalizeAgendaSource(agendaContext.title) || normalizeAgendaSource(value) === normalizeAgendaSource(agendaContext.customerName)));
+        if (source) {
+          try {
+            const detail = JSON.parse(source.description) as Record<string, unknown>;
+            const at = new Date().toISOString();
+            const text = `Compromisso \"${String(payload.title || "Agenda")}\" agendado para ${dateTime(String(payload.startsAt))}.`;
+            let nextDetail: Record<string, unknown> | null = null;
+            if (detail.kind === "enterpriseNetwork" && Array.isArray(detail.history)) nextDetail = { ...detail, history: [...detail.history, { id: crypto.randomUUID(), createdAt: at, user: data.user.displayName, type: "Agendamento", text, scheduledFor: payload.startsAt, scheduledCommitmentId: created.id }] };
+            else if (detail.kind === "hrEmployee" && Array.isArray(detail.comments)) nextDetail = { ...detail, comments: [...detail.comments, { id: crypto.randomUUID(), type: "Agendamento", text, at, author: data.user.displayName }] };
+            else if (detail.kind === "referral" && Array.isArray(detail.comments)) nextDetail = { ...detail, comments: [...detail.comments, { id: crypto.randomUUID(), text, at, by: data.user.displayName }] };
+            else if ((detail.kind === "commercialLead" || detail.kind === "csJourney") && Array.isArray(detail.follows)) nextDetail = { ...detail, follows: [...detail.follows, { type: "Agendamento", kind: "Agendamento", text, createdAt: at, author: data.user.displayName, actor: data.user.displayName }] };
+            else if (source.record_type === "Candidato" && Array.isArray(detail.comments)) nextDetail = { ...detail, comments: [...detail.comments, text] };
+            else if (Array.isArray(detail.history)) nextDetail = { ...detail, history: [...detail.history, { id: crypto.randomUUID(), type: "Agendamento", text, at, author: data.user.displayName }] };
+            if (nextDetail) await operate({ action: "updateWorkItem", id: source.id, title: source.title, owner: source.owner, customerName: source.customer_name, amountCents: source.amount_cents, version: source.version, description: JSON.stringify(nextDetail) }, "Agendamento registrado no histórico.");
+          } catch { /* Registros sem histórico estruturado mantêm somente o compromisso da agenda. */ }
+        }
+        setAgendaContext(null);
+      }} />}
       {dueReminder && !reminderContext && <ReminderDueModal item={dueReminder.item} detail={dueReminder.detail} busy={busy} onLater={() => { const next={...dueReminder.detail,nextAlertAt:new Date(Date.now()+60*60_000).toISOString(),snoozeCount:dueReminder.detail.snoozeCount+1}; void operate({action:"updateWorkItem",id:dueReminder.item.id,title:dueReminder.item.title,owner:dueReminder.item.owner,amountCents:0,version:dueReminder.item.version,description:JSON.stringify(next)},"Lembrete adiado por 1 hora."); }} onSeen={() => { const next={...dueReminder.detail,seenAt:new Date().toISOString(),seenBy:data.user.displayName}; void operate({action:"updateWorkItem",id:dueReminder.item.id,title:dueReminder.item.title,owner:dueReminder.item.owner,amountCents:0,version:dueReminder.item.version,description:JSON.stringify(next)},"Lembrete marcado como visto."); }} />}
 
       {changingPassword && <PasswordChangeModal busy={busy} onClose={() => setChangingPassword(false)} onComplete={() => { setChangingPassword(false); setToast({ kind: "success", message: "Senha alterada com sucesso." }); }} />}
@@ -1932,7 +2004,12 @@ const HR_CATALOGS = [
 type CommercialCatalogScope = "commercial" | "cs" | "lia" | "service" | "waitingQueue" | "enterprise" | "cancellation" | "hr" | "recruitment";
 function CommercialCatalogsView({ catalogs, busy, onOperate, scope = "commercial" }: { catalogs: CustomerCatalogOption[]; busy: boolean; onOperate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; scope?: CommercialCatalogScope }) {
   const catalogOptions = scope === "cs" ? CS_CATALOGS : scope === "lia" ? LIA_CATALOGS : scope === "service" ? SERVICE_CATALOGS : scope === "waitingQueue" ? WAITING_QUEUE_CATALOGS : scope === "enterprise" ? ENTERPRISE_CATALOGS : scope === "cancellation" ? CANCELLATION_CATALOGS : scope === "hr" ? HR_CATALOGS : scope === "recruitment" ? RECRUITMENT_CATALOGS : COMMERCIAL_CATALOGS;
-  const [catalog, setCatalog] = useState<string>(catalogOptions[0][0]);
+  const [catalog, setCatalog] = useState<string>(() => {
+    if (scope !== "commercial" || typeof window === "undefined") return catalogOptions[0][0];
+    const requested = window.sessionStorage.getItem("dontus:commercial-settings-tab");
+    window.sessionStorage.removeItem("dontus:commercial-settings-tab");
+    return catalogOptions.some(([key]) => key === requested) ? requested! : catalogOptions[0][0];
+  });
   const [editing, setEditing] = useState<CustomerCatalogOption | null | undefined>(undefined);
   const [showInactive, setShowInactive] = useState(false);
   const current = catalogs.filter((item) => item.catalog === catalog && (showInactive || item.active));
@@ -2125,7 +2202,6 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, employees, ag
   const [draggedLead, setDraggedLead] = useState<WorkItem | null>(null);
   const [stageLimits, setStageLimits] = useState<Record<string, number>>({});
   const [directSalesOpen, setDirectSalesOpen] = useState(false);
-  const [retentionSettingsOpen, setRetentionSettingsOpen] = useState(false);
   const [retentionAddMenuOpen, setRetentionAddMenuOpen] = useState(false);
   const [retentionBulkOpen, setRetentionBulkOpen] = useState(false);
   const activeCatalogs = useMemo(() => catalogs.filter((entry) => entry.active), [catalogs]);
@@ -2202,15 +2278,14 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, employees, ag
   if (directSalesOpen && flow !== "qualification") return <DirectSalesView flow={flow} catalogs={activeCatalogs} customers={customers} items={items} currentUser={currentUser} busy={busy} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} operate={operate} onBack={() => setDirectSalesOpen(false)} onOpenSettings={onOpenSettings} />;
 
   return <section className={`commercial-leads-module commercial-${view}-view ${flow === "retention" ? "retention-crm-module" : ""}`}>
-    <PageHeader eyebrow={`OPERAÇÃO · ${commercialFlowLabel(flow).toUpperCase()}`} title={commercialFlowLabel(flow)} description={flow === "retention" ? "Gerencie clientes, tratativas e etapas do processo de retenção." : "Acompanhe oportunidades, etapas, interações e próximos follow-ups em um só fluxo."} action={<span className="commercial-header-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" type="button" onClick={flow === "retention" ? () => setRetentionSettingsOpen(true) : onOpenSettings} aria-label={`Configurar ${commercialFlowLabel(flow)}`} title={`Configurar ${commercialFlowLabel(flow)}`}><Settings size={18} /></button>}{flow !== "qualification" && flow !== "retention" && <button className="secondary-button direct-sales-shortcut" type="button" onClick={() => setDirectSalesOpen(true)}><CircleDollarSign size={17} /> Venda direta</button>}{canCreate && (flow === "retention" ? <span className="retention-add-wrap"><button className="primary-button" type="button" aria-expanded={retentionAddMenuOpen} onClick={() => setRetentionAddMenuOpen((open) => !open)}><Plus size={17} /> Adicionar cliente <ChevronDown size={15} /></button>{retentionAddMenuOpen && <span className="retention-add-menu"><button type="button" onClick={() => { setRetentionAddMenuOpen(false); setCreating(true); }}><UserRound size={15} /> Cliente individual</button><button type="button" onClick={() => { setRetentionAddMenuOpen(false); setRetentionBulkOpen(true); }}><UsersRound size={15} /> Inserção em massa</button></span>}</span> : <button className="primary-button" onClick={() => setCreating(true)}><Plus size={17} /> Novo lead</button>)}</span>} />
+    <PageHeader eyebrow={`OPERAÇÃO · ${commercialFlowLabel(flow).toUpperCase()}`} title={commercialFlowLabel(flow)} description={flow === "retention" ? "Gerencie clientes, tratativas e etapas do processo de retenção." : "Acompanhe oportunidades, etapas, interações e próximos follow-ups em um só fluxo."} action={<span className="commercial-header-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" type="button" onClick={() => { if (flow === "retention") window.sessionStorage.setItem("dontus:commercial-settings-tab", "funnelStage"); onOpenSettings(); }} aria-label={`Configurar ${commercialFlowLabel(flow)}`} title={`Configurar ${commercialFlowLabel(flow)}`}><Settings size={18} /></button>}{flow !== "qualification" && flow !== "retention" && <button className="secondary-button direct-sales-shortcut" type="button" onClick={() => setDirectSalesOpen(true)}><CircleDollarSign size={17} /> Venda direta</button>}{canCreate && (flow === "retention" ? <span className="retention-add-wrap"><button className="primary-button" type="button" aria-expanded={retentionAddMenuOpen} onClick={() => setRetentionAddMenuOpen((open) => !open)}><Plus size={17} /> Adicionar cliente <ChevronDown size={15} /></button>{retentionAddMenuOpen && <span className="retention-add-menu"><button type="button" onClick={() => { setRetentionAddMenuOpen(false); setCreating(true); }}><UserRound size={15} /> Cliente individual</button><button type="button" onClick={() => { setRetentionAddMenuOpen(false); setRetentionBulkOpen(true); }}><UsersRound size={15} /> Inserção em massa</button></span>}</span> : <button className="primary-button" onClick={() => setCreating(true)}><Plus size={17} /> Novo lead</button>)}</span>} />
     {flow !== "retention" && <section className="commercial-value-summary" aria-label="Resumo comercial"><span>Oportunidades visíveis <b>{leads.length}</b></span><strong>Valor total <b>{formatMoney(totalPipelineValue)}</b></strong></section>}
     <section className="commercial-lead-filters panel">
       <label className="commercial-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar nome, telefone, responsável ou cliente" /></label>
-      {flow !== "retention" && <label>Funil selecionado<select value={activeFunnel?.entry.id ?? ""} onChange={(event) => chooseFunnel(event.target.value)} disabled={funnels.length === 0}>{funnels.length === 0 && <option value="">Nenhum funil disponível</option>}{funnels.map(({ entry }) => <option value={entry.id} key={entry.id}>{entry.name}</option>)}</select></label>}
+      <label>Funil selecionado<select value={activeFunnel?.entry.id ?? ""} onChange={(event) => chooseFunnel(event.target.value)} disabled={funnels.length === 0}>{funnels.length === 0 && <option value="">Nenhum funil disponível</option>}{funnels.map(({ entry }) => <option value={entry.id} key={entry.id}>{entry.name}</option>)}</select></label>
       <label>Responsável<select value={owner} onChange={(event) => setOwner(event.target.value)}><option value="all">Todos</option>{owners.map((entry) => <option key={entry}>{entry}</option>)}</select></label>
       <label>Temperatura<select value={temperature} onChange={(event) => setTemperature(event.target.value)}><option value="all">Todas</option>{temperatures.map((entry) => <option value={entry.name} key={entry.id}>{entry.name}</option>)}</select></label>
     </section>
-    {activeFunnel && flow !== "retention" && <section className="commercial-active-funnel" aria-label={`Etapas do funil ${activeFunnel.entry.name}`}><div><span>Funil ativo</span><strong>{activeFunnel.entry.name}</strong><small>{boardStages.length} etapa(s)</small></div><div className="commercial-active-stages">{boardStages.map((stage, index) => <span key={`${stage.name}-${index}`} style={{ "--stage-color": stage.color } as CSSProperties}><i />{stage.name}</span>)}</div></section>}
     {activeFunnel && stages.length > 0 && flow !== "retention" && <><div className="commercial-view-switch segmented" role="tablist" aria-label="Visualização dos leads"><button className={view === "list" ? "active" : ""} onClick={() => setView("list")}><List size={15} /> Lista</button><button className={view === "kanban" ? "active" : ""} onClick={() => setView("kanban")}><Columns3 size={15} /> Kanban</button></div>{view === "list" && <CommercialLeadList leads={leads} canEdit={canEdit} onOpen={setSelected} onEdit={(item) => { setEditRequested(true); setSelected(item); }} onDelete={(item) => { void operate({ action: "deleteWorkItem", id: item.id }, "Lead excluído com sucesso."); }} />}</>}
     {!activeFunnel || stages.length === 0 ? <section className="commercial-empty panel"><BadgeCheck size={23} /><h2>Configure o funil de {commercialFlowLabel(flow)}</h2><p>Crie um funil em Administração › Cadastros › Comercial › Configuração para visualizar os cards nesta funcionalidade.</p></section> : <section className="commercial-board" aria-label={`Funil ${activeFunnel.entry.name}`}>
       {boardStages.map((stage) => {
@@ -2231,7 +2306,6 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, employees, ag
       if (result) setCreating(false);
     }} />)}
     {flow === "retention" && retentionBulkOpen && activeFunnel && <RetentionBulkModal funnel={activeFunnel.entry} stages={stages} employees={employees} currentUser={currentUser} catalogs={activeCatalogs} busy={busy} onClose={() => setRetentionBulkOpen(false)} onCreate={async (payload) => Boolean(await operate({ action: "createWorkItem", module: "commercial", recordType: commercialRecordType(flow), ...payload }, "Cliente cadastrado no CRM de retenção."))} />}
-    {flow === "retention" && retentionSettingsOpen && <RetentionCrmSettings catalogs={catalogs} funnel={activeFunnel} leads={items.filter((item) => item.record_type === commercialRecordType("retention"))} busy={busy} onClose={() => setRetentionSettingsOpen(false)} operate={operate} />}
     {creating && !activeFunnel && <ModalShell title="Funil necessário" subtitle="Crie e ative um funil antes de cadastrar um lead." onClose={() => setCreating(false)}><div className="empty-state"><p>Não há funil ativo para esta funcionalidade.</p><div className="form-actions"><button className="primary-button" type="button" onClick={() => setCreating(false)}>Entendi</button></div></div></ModalShell>}
     {selected && <CommercialLeadDrawer item={selected} customers={customers} employees={employees} busy={busy} canEdit={canEdit} canDelete={canDelete} startEditing={editRequested} startLossReason={lossReasonRequested} catalogs={activeCatalogs} agendaModule={agendaModule} funnels={allFunnels} funnel={activeFunnel?.entry} details={activeFunnel?.details} onClose={closeSelectedLead} onSave={async (payload) => {
       const result = await operate({ action: "updateWorkItem", id: selected.id, title: selected.title, owner: selected.owner, amountCents: selected.amount_cents, version: selected.version, ...payload }, "Lead atualizado com sucesso.");

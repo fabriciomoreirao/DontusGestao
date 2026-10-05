@@ -38,6 +38,7 @@ type Props = {
   markRead: (roomId: string) => Promise<void>;
   uploadAttachments: (roomId: string, files: File[]) => Promise<boolean>;
   onOpenProfile: (userId: string) => void;
+  initialRoomId?: string;
 };
 type Conversation = {
   key: string; name: string; photoDataUrl: string; isGroup: boolean;
@@ -48,8 +49,8 @@ const stickers = ["😀", "😂", "😍", "🥳", "👏", "👍", "🙏", "🔥"
 const messageTime = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const roomTime = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
 
-export default function InternalChatModule({ module, busy, canCreate, operate, markRead, uploadAttachments, onOpenProfile }: Props) {
-  const [selectedKey, setSelectedKey] = useState("");
+export default function InternalChatModule({ module, busy, canCreate, operate, markRead, uploadAttachments, onOpenProfile, initialRoomId }: Props) {
+  const [selectedKey, setSelectedKey] = useState(initialRoomId ?? "");
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -74,6 +75,10 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   const selectedRoom = selectedConversation?.room;
   const archivedCount = module.rooms.filter((room) => room.isArchived).length;
   const pinnedMessages = selectedRoom?.messages.filter((entry) => entry.isPinned) ?? [];
+
+  useEffect(() => {
+    if (initialRoomId && module.rooms.some((room) => room.id === initialRoomId)) setSelectedKey(initialRoomId);
+  }, [initialRoomId, module.rooms]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });

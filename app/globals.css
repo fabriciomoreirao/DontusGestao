@@ -6927,3 +6927,173 @@ html[data-theme="dark"] .journey-module{--surface:#07111d;--panel:#0d1826;--inpu
 .development-column.cyan{border-top-color:#06b6d4}.development-column.cyan>header b{color:#0891b2;background:#cffafe}
 
 @media(max-width:760px){.reminder-card>footer{grid-template-columns:1fr 1fr}.recruitment-process-list article{grid-template-columns:1fr}.recruitment-process-actions{min-width:0}.survey-grid{grid-template-columns:1fr}}
+
+/* Tarefas: aproveita a faixa superior quando não há troca de responsável e organiza ações/transferência. */
+.task-detail-overlay .task-detail-layout:not(:has(>.task-owner-controls)){grid-template-rows:minmax(0,1.08fr) minmax(0,.88fr) minmax(0,1.15fr) minmax(0,.72fr) minmax(0,1fr);grid-template-areas:"description summary" "files summary" "conversation actions" "conversation transfer" "conversation history"}
+.task-detail-overlay .task-actions-panel{justify-content:flex-start;padding:10px 12px;overflow:hidden}
+.task-detail-overlay .task-actions-panel>header{flex:0 0 auto;min-height:37px}.task-detail-overlay .task-actions-panel>header p{max-width:55%}
+.task-detail-overlay .task-action-fields{gap:8px}.task-detail-overlay .task-action-fields select,.task-detail-overlay .task-action-fields .task-responsible-transfer button{height:36px;min-height:36px;border-radius:9px}
+.task-detail-overlay .task-action-fields .task-responsible-transfer button{width:36px;min-width:36px}
+.task-detail-overlay .task-action-buttons{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.task-detail-overlay .task-action-buttons button{width:100%;min-width:0;min-height:29px;height:29px;padding:4px 7px;border-radius:7px;font-size:.59rem;font-weight:800;line-height:1;white-space:nowrap}.task-detail-overlay .task-action-buttons button svg{width:12px;height:12px}.task-detail-overlay .task-action-buttons .task-complete-button{min-height:29px}
+.task-detail-overlay .task-detail-layout>.task-transfer{grid-template-columns:minmax(145px,.78fr) minmax(145px,1fr) minmax(155px,1fr) minmax(210px,1.35fr) auto;grid-template-rows:auto;gap:10px;padding:9px 12px;overflow:visible}
+.task-detail-overlay .task-transfer>div{display:grid;gap:2px;overflow:visible;white-space:normal}.task-detail-overlay .task-transfer>div span{font-size:.58rem}.task-detail-overlay .task-transfer>div h3{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;font-size:.72rem;white-space:normal}.task-detail-overlay .task-transfer>div p{position:static;width:auto;height:auto;margin:0;overflow:hidden;clip:auto;color:var(--muted);font-size:.58rem;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}
+.task-detail-overlay .task-transfer label{display:grid;gap:4px;color:var(--muted);font-size:.58rem;line-height:1.2}.task-detail-overlay .task-transfer :is(select,input),.task-detail-overlay .task-transfer>button{height:37px;min-height:37px;border-radius:9px;font-size:.66rem}.task-detail-overlay .task-transfer>button{padding-inline:13px;font-weight:850}
+
+/* Ação padronizada para abrir o formulário oficial da Agenda em qualquer detalhe operacional. */
+.agenda-detail-action{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;padding:0 11px;border:1px solid color-mix(in srgb,#0ea5e9 34%,var(--border));border-radius:8px;color:#087fbd;background:color-mix(in srgb,#0ea5e9 9%,var(--panel));font-size:10px;font-weight:850;white-space:nowrap}.agenda-detail-action:hover{border-color:#0ea5e9;color:#0369a1;background:color-mix(in srgb,#0ea5e9 16%,var(--panel))}.agenda-detail-action>span{font-size:14px}.task-detail-overlay .task-overlay-header-actions>.agenda-detail-action{flex:0 0 auto;width:auto;min-width:max-content}
+
+/* Atalhos globais de aniversários e mensagens recebidas. */
+.topbar-celebration-wrap{position:relative}.celebration-button,.topbar-chat-button{position:relative}.celebration-button>b,.topbar-chat-button>b{position:absolute;top:-6px;right:-6px;display:grid;min-width:17px;height:17px;place-items:center;padding:0 4px;border:2px solid var(--surface);border-radius:99px;color:#fff;background:#e24b75;font-size:8px;line-height:1}.celebration-button.has-celebration{color:#8a4bd5;background:color-mix(in srgb,#a855f7 11%,var(--surface))}.topbar-chat-button{color:#0786c8}.celebration-center{position:absolute;top:calc(100% + 11px);right:0;z-index:24000;width:min(360px,calc(100vw - 28px));overflow:hidden;border:1px solid var(--line);border-radius:13px;color:var(--ink);background:var(--surface);box-shadow:0 24px 65px rgba(16,43,67,.24)}.celebration-center>header{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;border-bottom:1px solid var(--line)}.celebration-center>header>span{display:grid;gap:2px}.celebration-center>header strong{font-size:.78rem}.celebration-center>header small{color:var(--muted);font-size:.6rem}.celebration-center>header button{display:grid;width:28px;height:28px;place-items:center;border:0;border-radius:7px;color:var(--muted);background:var(--surface-alt)}.celebration-center>div{display:grid;max-height:330px;overflow:auto}.celebration-center>div>p{margin:0;padding:22px;color:var(--muted);font-size:.7rem;text-align:center}.celebration-center article{display:grid;grid-template-columns:38px minmax(0,1fr);align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}.celebration-center article:last-child{border-bottom:0}.celebration-center article img,.celebration-avatar{display:grid;width:38px;height:38px;place-items:center;border-radius:11px;object-fit:cover;color:#7045aa;background:#f0e6ff;font-size:.68rem;font-weight:900}.celebration-center article>span:last-child{display:grid;gap:3px}.celebration-center article strong{font-size:.72rem}.celebration-center article small{color:#8a4bd5;font-size:.61rem;font-weight:750}
+@media(max-width:1080px){.task-detail-overlay .task-detail-layout:not(:has(>.task-owner-controls)){display:flex;height:auto}.task-detail-overlay .task-detail-layout>.task-transfer{grid-template-columns:repeat(2,minmax(0,1fr))}.task-detail-overlay .task-transfer>div{grid-column:1/-1}}
+@media(max-width:680px){.task-detail-overlay .task-action-buttons{grid-template-columns:repeat(2,minmax(0,1fr))}.task-detail-overlay .task-detail-layout>.task-transfer{grid-template-columns:1fr}.celebration-center{position:fixed;top:64px;right:14px}}
+
+/* Cadastros: padrão único, mais largo e com hierarquia tipográfica leve. */
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel),
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel){
+  width:min(940px,calc(100vw - 40px))!important;
+  max-height:calc(100dvh - 36px)!important;
+  padding:0!important;
+  overflow:auto;
+  border-radius:18px!important;
+}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel)>:is(.modal-head,.modal-header,header),
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>:is(.modal-head,.modal-header,header){
+  position:sticky!important;
+  top:0;
+  z-index:8;
+  min-height:84px;
+  padding:20px 72px 18px 26px!important;
+  border-bottom:1px solid var(--line)!important;
+  background:color-mix(in srgb,var(--surface) 97%,transparent)!important;
+  backdrop-filter:blur(12px);
+}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(.modal-head,.modal-header,header) h2,
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>:is(.modal-head,.modal-header,header) h2{
+  margin:4px 0 0!important;
+  font-size:1.28rem!important;
+  font-weight:800!important;
+  line-height:1.25!important;
+}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(.modal-head,.modal-header,header) :is(.eyebrow,p,small),
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>:is(.modal-head,.modal-header,header) :is(.eyebrow,p,small){
+  font-weight:400!important;
+}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel)>.form-grid,
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel)>form>.form-grid,
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel)>form.form-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  column-gap:18px!important;
+  row-gap:16px!important;
+  padding:22px 26px 26px!important;
+}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(label,legend),
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel) :is(label,legend){
+  gap:7px;
+  color:var(--ink)!important;
+  font-size:.78rem!important;
+  font-weight:400!important;
+  line-height:1.35;
+}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(label,legend)>:is(span,strong,b,small),
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel) :is(label,legend)>:is(span,strong,b,small){font-weight:400!important}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]),select,textarea),
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]),select,textarea){
+  width:100%;
+  min-height:46px!important;
+  padding:11px 14px!important;
+  border:1px solid var(--line)!important;
+  border-radius:11px!important;
+  color:var(--ink)!important;
+  background:var(--input)!important;
+  font-size:.84rem!important;
+  font-weight:400!important;
+  line-height:1.4!important;
+}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) textarea,
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel) textarea{min-height:104px!important;resize:vertical}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) select[multiple],
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel) select[multiple]{height:auto!important;min-height:116px!important;padding:6px!important}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) select option,
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel) select option{padding:8px;font-weight:400}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(.checkbox-label,.check-row),
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel) :is(.checkbox-label,.check-row){font-weight:400!important}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(.form-actions,.modal-actions),
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>:is(.form-actions,.modal-actions,footer){
+  position:sticky;
+  bottom:0;
+  z-index:7;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  margin:5px -26px -26px!important;
+  padding:16px 26px!important;
+  border-top:1px solid var(--line)!important;
+  background:color-mix(in srgb,var(--surface) 97%,transparent)!important;
+  backdrop-filter:blur(12px);
+}
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>:is(.form-actions,.modal-actions,footer){margin:0!important}
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>.field,
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>label{margin:16px 26px 0!important}
+:is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(.form-actions,.modal-actions)>button,
+form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>:is(.form-actions,.modal-actions,footer) button{
+  width:auto!important;
+  min-width:104px!important;
+  min-height:40px!important;
+  padding:0 17px!important;
+  border-radius:10px!important;
+  font-size:.76rem!important;
+  font-weight:600!important;
+}
+@media(max-width:700px){
+  :is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel),form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel){width:calc(100vw - 20px)!important;max-height:calc(100dvh - 20px)!important}
+  :is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel)>.form-grid,
+  :is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel)>form>.form-grid,
+  :is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel)>form.form-grid{grid-template-columns:1fr;padding:18px!important}
+  :is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) .form-grid .wide{grid-column:auto}
+  :is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(.form-actions,.modal-actions){display:grid;grid-template-columns:1fr;margin:4px -18px -18px!important;padding:14px 18px!important}
+  :is(.modal,.modal-shell):has(.form-grid):not(.modal-side-panel):not(.suggestion-side-panel) :is(.form-actions,.modal-actions)>button,
+  form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>:is(.form-actions,.modal-actions,footer) button{width:100%!important}
+}
+
+/* Movimento dos modais: entrada leve e saída preservada após concluir ou cancelar. */
+@keyframes modalBackdropEnter{from{opacity:0}to{opacity:1}}
+@keyframes modalContentEnter{from{opacity:0;transform:translateY(22px) scale(.975)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes modalBackdropLeave{from{opacity:1}to{opacity:0}}
+@keyframes modalContentLeave{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(18px) scale(.98)}}
+.modal-backdrop:not(.modal-side-backdrop):not(.task-side-overlay):not(.suggestion-side-overlay):not(.enterprise-interactions-backdrop){animation:modalBackdropEnter .18s ease-out both}
+.modal-backdrop:not(.modal-side-backdrop):not(.task-side-overlay):not(.suggestion-side-overlay):not(.enterprise-interactions-backdrop)>:is(.modal,.modal-shell){transform-origin:50% 45%;animation:modalContentEnter .26s cubic-bezier(.2,.82,.25,1) both}
+.modal-backdrop.modal-leaving{z-index:40000!important;pointer-events:none!important;animation:modalBackdropLeave .22s ease-in both!important}
+.modal-backdrop.modal-leaving>:is(.modal,.modal-shell){animation:modalContentLeave .22s cubic-bezier(.4,0,1,1) both!important}
+@media(prefers-reduced-motion:reduce){
+  .modal-backdrop,.modal-backdrop>:is(.modal,.modal-shell){animation-duration:.01ms!important}
+}
+
+/* Refinamentos dos fluxos comerciais, acompanhamento, Marketing e RH. */
+.commercial-board{align-items:stretch}
+.commercial-column{flex:0 0 292px!important;width:292px!important;min-width:292px!important;max-width:292px!important}
+.retention-crm-module .commercial-lead-filters{grid-template-columns:minmax(280px,1.35fr) repeat(3,minmax(155px,.72fr))}
+.retention-crm-module .commercial-board{grid-auto-columns:292px!important}
+.marketing-drawer>header{position:relative;padding-right:68px!important}
+.marketing-drawer .marketing-drawer-head-actions{margin-left:auto;padding-right:44px}
+.marketing-drawer .marketing-drawer-head-actions>.icon-button[aria-label="Fechar"]{position:absolute!important;top:14px!important;right:14px!important;z-index:30!important;margin:0!important}
+.marketing-drawer .marketing-drawer-head-actions>.agenda-detail-action{order:2}
+.hr-experience-decision button,.hr-termination-panel button,.hr-terminated-panel button,.hr-management-section>header button{min-height:34px!important;padding:0 10px!important;border-radius:8px!important;font-size:.62rem!important;font-weight:750!important}
+
+.cs-usage-line-chart{height:176px!important;min-height:176px;overflow:hidden!important;border:1px solid var(--line);border-radius:11px;background:linear-gradient(to bottom,color-mix(in srgb,var(--primary) 3%,var(--surface)),var(--surface))}
+.cs-usage-line-chart svg{display:block;width:100%;height:100%;overflow:visible}
+.cs-usage-grid-line{stroke:color-mix(in srgb,var(--line) 78%,transparent);stroke-width:1;stroke-dasharray:5 6}
+.cs-usage-axis-label,.cs-usage-line-chart g text{fill:var(--muted);font-family:inherit;font-size:19px}
+.cs-usage-area{fill:color-mix(in srgb,var(--primary) 12%,transparent)}
+.cs-usage-line{fill:none;stroke:var(--primary);stroke-width:5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 5px 7px color-mix(in srgb,var(--primary) 22%,transparent));transition:all .2s ease}
+.cs-usage-line-chart circle{fill:var(--surface);stroke:var(--primary);stroke-width:5;transition:cy .22s ease}
+.cs-usage-line-chart g.empty circle{fill:var(--surface-alt);stroke:var(--line-strong)}
+
+@keyframes drawerBackdropLeave{from{opacity:1}to{opacity:0}}
+@keyframes drawerContentLeave{from{opacity:1;transform:translateX(0)}to{opacity:.35;transform:translateX(34px)}}
+.drawer-backdrop{animation:modalBackdropEnter .18s ease-out both}
+.drawer-backdrop.modal-leaving{z-index:40000!important;pointer-events:none!important;animation:drawerBackdropLeave .22s ease-in both!important}
+.drawer-backdrop.modal-leaving>:is(.drawer,.journey-drawer,.lead-drawer){animation:drawerContentLeave .22s cubic-bezier(.4,0,1,1) both!important}
+@media(max-width:900px){.retention-crm-module .commercial-lead-filters{grid-template-columns:1fr 1fr}.commercial-column{flex-basis:280px!important;width:280px!important;min-width:280px!important;max-width:280px!important}}
+@media(max-width:600px){.retention-crm-module .commercial-lead-filters{grid-template-columns:1fr}.commercial-column{flex-basis:min(86vw,280px)!important;width:min(86vw,280px)!important;min-width:min(86vw,280px)!important;max-width:min(86vw,280px)!important}.cs-usage-line-chart{overflow-x:auto!important}.cs-usage-line-chart svg{min-width:660px}}
+@media(prefers-reduced-motion:reduce){.drawer-backdrop,.drawer-backdrop>:is(.drawer,.journey-drawer,.lead-drawer){animation-duration:.01ms!important}}

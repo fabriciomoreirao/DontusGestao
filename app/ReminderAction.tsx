@@ -15,9 +15,14 @@ export type ReminderContext = {
 };
 
 export const REMINDER_COMPOSER_EVENT = "dontus:create-reminder";
+export const AGENDA_COMPOSER_EVENT = "dontus:create-agenda-commitment";
 
 export function openReminderComposer(context: ReminderContext) {
   window.dispatchEvent(new CustomEvent<ReminderContext>(REMINDER_COMPOSER_EVENT, { detail: context }));
+}
+
+export function openAgendaComposer(context: ReminderContext) {
+  window.dispatchEvent(new CustomEvent<ReminderContext>(AGENDA_COMPOSER_EVENT, { detail: context }));
 }
 
 export default function ReminderAction({ context, compact = true, className = "" }: { context: ReminderContext; compact?: boolean; className?: string }) {
@@ -37,7 +42,7 @@ const CARD_SELECTORS = [
   "article.commission-row", ".goal-card", ".referral-card-shell",
 ];
 const ENABLED_MODULES = new Set(["internalChat","tasks","suggestions","commercial","cs","cancellations","marketing","ti","lia","hr","admin","commissions","goals","referrals"]);
-const DETAIL_SURFACES = ".task-modal,.suggestion-detail-modal,.drawer-backdrop>aside,.goal-detail-modal,.retention-detail-page,.enterprise-detail-page";
+const DETAIL_SURFACES = ".task-modal,.suggestion-detail-modal,.drawer-backdrop>aside,.goal-detail-modal,.commission-decision-modal,.retention-detail-page,.enterprise-detail-page";
 
 function cardContext(candidate: HTMLElement, module: string): ReminderContext {
   const title = candidate.querySelector<HTMLElement>("h2,h3,.task-card-title,:scope>span:first-child>b,.retention-card-company,strong")?.innerText?.trim() || "Registro do sistema";
@@ -49,7 +54,10 @@ function cardContext(candidate: HTMLElement, module: string): ReminderContext {
   const customerName = candidate.dataset.reminderCustomerName
     || candidate.querySelector<HTMLElement>(".task-card-customer b,.retention-card-company,.cancellation-card h3,.journey-card h3,.cs-client-card h3")?.innerText?.trim()
     || title;
-  return { module, entityId: candidate.dataset.reminderEntityId, clientId, customerName, title, summary };
+  const recipientName = candidate.dataset.reminderRecipientName
+    || candidate.querySelector<HTMLElement>("[data-collaborator-name]")?.dataset.collaboratorName
+    || candidate.querySelector<HTMLElement>(".task-card-owner,.lead-owner,.journey-responsible,.commission-person strong")?.innerText?.trim();
+  return { module, entityId: candidate.dataset.reminderEntityId, clientId, customerName, title, summary, recipientName };
 }
 
 function isManagementAction(target: HTMLElement) {
@@ -97,9 +105,10 @@ export function ReminderCardEnhancer({ module, reminders = [] }: { module: strin
     let pendingContext: ReminderContext | null = null;
     const rememberCard = (event: Event) => {
       const target = event.target as HTMLElement | null;
-      if (!target || isManagementAction(target)) return;
+      if (!target) return;
       const candidate = target.closest<HTMLElement>(CARD_SELECTORS.join(","));
       if (candidate && root.contains(candidate)) pendingContext = cardContext(candidate, module);
+      if (isManagementAction(target)) return;
     };
     const enhance = () => {
       if (module === "internalChat") root.querySelectorAll<HTMLElement>(".internal-chat-conversation-head").forEach((header) => {
@@ -132,33 +141,42 @@ export function ReminderCardEnhancer({ module, reminders = [] }: { module: strin
       if(context.clientId)surface.dataset.reminderSourceClientId=context.clientId;
       if(context.customerName)surface.dataset.reminderSourceCustomerName=context.customerName;
       if(context.title)surface.dataset.reminderSourceTitle=context.title;
-      const existingButton = header.querySelector<HTMLElement>(".reminder-action-button,.reminder-detail-action");
-      if (existingButton) {
-        updateLinkedHistory(surface,remindersRef.current);
-        return;
-      }
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "reminder-detail-action";
-      button.title = "Adicionar lembrete";
-      button.setAttribute("aria-label", `Adicionar lembrete para ${context.title || "este registro"}`);
-      button.innerHTML = `<span aria-hidden="true">◷</span><b>Adicionar lembrete</b>`;
-      button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openReminderComposer(context); });
-      if (surface.matches(".cancellation-drawer")) button.classList.add("centered");
       const actionHost = header.querySelector<HTMLElement>(".lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions")
         || (surface.matches(".retention-detail-page") ? header.lastElementChild as HTMLElement : header);
-      const copyLink = actionHost?.querySelector<HTMLElement>(".copy-task-link");
-      const closeButton = actionHost.querySelector<HTMLElement>('button[aria-label="Fechar"]');
-      if (copyLink) copyLink.insertAdjacentElement("afterend", button);
-      else if (closeButton?.parentElement === actionHost) actionHost.insertBefore(button, closeButton);
-      else actionHost.appendChild(button);
+      const closeButton = actionHost?.querySelector<HTMLElement>('button[aria-label="Fechar"]');
+      const insertAction = (button: HTMLElement) => {
+        if (closeButton?.parentElement === actionHost) actionHost.insertBefore(button, closeButton);
+        else actionHost.appendChild(button);
+      };
+      if (!header.querySelector<HTMLElement>(".reminder-action-button,.reminder-detail-action")) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "reminder-detail-action";
+        button.title = "Adicionar lembrete";
+        button.setAttribute("aria-label", `Adicionar lembrete para ${context.title || "este registro"}`);
+        button.innerHTML = `<span aria-hidden="true">◷</span><b>Adicionar lembrete</b>`;
+        button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openReminderComposer(context); });
+        if (surface.matches(".cancellation-drawer")) button.classList.add("centered");
+        const copyLink = actionHost?.querySelector<HTMLElement>(".copy-task-link");
+        if (copyLink) copyLink.insertAdjacentElement("afterend", button); else insertAction(button);
+      }
+      if (!header.querySelector<HTMLElement>(".agenda-detail-action")) {
+        const scheduleButton = document.createElement("button");
+        scheduleButton.type = "button";
+        scheduleButton.className = "agenda-detail-action";
+        scheduleButton.title = "Agendar compromisso";
+        scheduleButton.setAttribute("aria-label", `Agendar compromisso para ${context.title || "este registro"}`);
+        scheduleButton.innerHTML = `<span aria-hidden="true">▣</span><b>Agendar</b>`;
+        scheduleButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openAgendaComposer(context); });
+        insertAction(scheduleButton);
+      }
       updateLinkedHistory(surface,remindersRef.current);
     };
     root.addEventListener("click", rememberCard, true);
     enhance();
     const observer = new MutationObserver(enhance);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.reminder-linked-open").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
+    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.agenda-detail-action,.reminder-linked-open").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
   }, [module]);
   useEffect(()=>{document.querySelectorAll<HTMLElement>(DETAIL_SURFACES).forEach(surface=>{if(surface.dataset.reminderSourceModule)updateLinkedHistory(surface,reminders)})},[reminders]);
   return null;
