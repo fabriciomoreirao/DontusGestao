@@ -1356,7 +1356,7 @@ export default function OperationsApp() {
         </div>
       </main>
 
-      <ReminderCardEnhancer module={active} reminders={data.items.filter((entry) => entry.module === "reminders")} />
+      <ReminderCardEnhancer module={active} reminders={data.items.filter((entry) => entry.module === "reminders")} checklists={data.items.filter((entry) => entry.record_type === "Checklist vinculado")} />
 
       {selectedItem && (
         <ItemDrawer item={selectedItem} busy={busy} canEdit={userCan(data.user, selectedItem.module, "edit")} onClose={() => setSelectedItem(null)} onTransition={(nextStatus, confirmed) => operate({

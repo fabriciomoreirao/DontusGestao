@@ -12,6 +12,7 @@ export type ReminderContext = {
   summary?: string;
   recipientName?: string;
   recipientEmail?: string;
+  checklistDisplayOnly?: boolean;
 };
 
 export const REMINDER_COMPOSER_EVENT = "dontus:create-reminder";
@@ -85,6 +86,7 @@ function isManagementAction(target: HTMLElement) {
 
 /** Leva o contexto do card para o painel de detalhes, sem poluir visualmente o próprio card. */
 type ReminderSourceRecord = { id:string; description:string; created_at:string; updated_at:string };
+type ChecklistSourceRecord = { id:string; description:string; record_type?:string };
 type LinkedReminder = { title?:string; urgency?:string; recipientName?:string; remindAt?:string; seenAt?:string; sourceModule?:string; sourceEntityId?:string; sourceClientId?:string; sourceTitle?:string };
 const normalized=(value?:string)=>String(value??"").trim().toLocaleLowerCase("pt-BR");
 function reminderDetail(record:ReminderSourceRecord):LinkedReminder|null { try { const detail=JSON.parse(record.description) as LinkedReminder & {kind?:string}; return detail.kind==="systemReminder"?detail:null; } catch { return null; } }
@@ -112,8 +114,9 @@ function updateLinkedHistory(surface:HTMLElement, records:ReminderSourceRecord[]
   if(reminderButton)reminderButton.insertAdjacentElement("afterend",openButton);else header?.appendChild(openButton);
 }
 
-export function ReminderCardEnhancer({ module, reminders = [] }: { module: string; reminders?: ReminderSourceRecord[] }) {
+export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }: { module: string; reminders?: ReminderSourceRecord[]; checklists?: ChecklistSourceRecord[] }) {
   const remindersRef=useRef(reminders);remindersRef.current=reminders;
+  const checklistsRef=useRef(checklists);checklistsRef.current=checklists;
   useEffect(() => {
     if (!ENABLED_MODULES.has(module)) return;
     const root = document.querySelector(".content");
@@ -219,6 +222,8 @@ export function ReminderCardEnhancer({ module, reminders = [] }: { module: strin
         const checklistAction = header.querySelector<HTMLElement>(".client-checklist-detail-action");
         if (checklistAction) checklistAction.insertAdjacentElement("afterend", recordButton); else insertAction(recordButton);
       }
+      const hasLinkedChecklist=checklistsRef.current.some(item=>{try{const detail=JSON.parse(item.description) as {kind?:string;sourceModule?:string;sourceEntityId?:string;sourceTitle?:string};return detail.kind==="linkedChecklist"&&detail.sourceModule===context.module&&((context.entityId&&detail.sourceEntityId===context.entityId)||(!context.entityId&&normalized(detail.sourceTitle)===normalized(context.title)))}catch{return false}});
+      if(hasLinkedChecklist)window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_CHECKLIST_EVENT,{detail:{...context,checklistDisplayOnly:true}}));
       updateLinkedHistory(surface,remindersRef.current);
     };
     root.addEventListener("click", rememberCard, true);
