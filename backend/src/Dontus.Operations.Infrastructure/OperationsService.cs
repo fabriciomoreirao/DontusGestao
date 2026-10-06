@@ -647,9 +647,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     public async Task<CustomerModuleDto> GetCustomerModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
-        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view"))
+        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("commercial", "view") && !actor.HasPermission("cs", "view") && !actor.HasPermission("lia", "view") && !actor.HasPermission("support", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view"))
             throw new DomainException("Seu acesso não permite visualizar os cadastros de clientes.", 403);
-        var includeInactive = actor.HasPermission("catalogs", "manage") || actor.HasPermission("customers", "manage") || actor.HasPermission("cancellations", "manage") || actor.HasPermission("hr", "manage");
+        var includeInactive = actor.HasPermission("catalogs", "manage") || actor.HasPermission("customers", "manage") || actor.HasPermission("commercial", "manage") || actor.HasPermission("cs", "manage") || actor.HasPermission("lia", "manage") || actor.HasPermission("support", "manage") || actor.HasPermission("cancellations", "manage") || actor.HasPermission("hr", "manage");
         var entries = await db.CustomerCatalogOptions.AsNoTracking()
             .Where(entry => includeInactive || entry.Active)
             .OrderBy(entry => entry.Catalog).ThenBy(entry => entry.Name)
@@ -663,6 +663,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var canManageAllCatalogs = actor.HasPermission("catalogs", "manage");
         var customerCatalogs = new HashSet<string>(["status", "project", "version", "subscription", "server", "paymentMethod", "dueDay", "graceDays", "dueDays", "invoiceCompany"], StringComparer.OrdinalIgnoreCase);
         var canManageScopedCatalog = actor.HasPermission("customers", "manage") && customerCatalogs.Contains(catalog)
+            || actor.HasPermission("commercial", "manage") && (catalog.StartsWith("commercial", StringComparison.OrdinalIgnoreCase) || catalog.StartsWith("retention", StringComparison.OrdinalIgnoreCase) || catalog.Equals("funnelStage", StringComparison.OrdinalIgnoreCase))
+            || actor.HasPermission("cs", "manage") && (catalog.StartsWith("cs", StringComparison.OrdinalIgnoreCase) || catalog.StartsWith("enterprise", StringComparison.OrdinalIgnoreCase))
+            || actor.HasPermission("lia", "manage") && catalog.StartsWith("lia", StringComparison.OrdinalIgnoreCase)
+            || actor.HasPermission("support", "manage") && catalog.StartsWith("service", StringComparison.OrdinalIgnoreCase)
             || actor.HasPermission("cancellations", "manage") && catalog.StartsWith("cancellation", StringComparison.OrdinalIgnoreCase)
             || actor.HasPermission("hr", "manage") && (catalog.StartsWith("hr", StringComparison.OrdinalIgnoreCase) || catalog.Equals("employeeRole", StringComparison.OrdinalIgnoreCase));
         if (!canManageAllCatalogs && !canManageScopedCatalog)
@@ -685,6 +689,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var entry = await db.CustomerCatalogOptions.SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw new DomainException("Cadastro não encontrado.", 404);
         var customerCatalogs = new HashSet<string>(["status", "project", "version", "subscription", "server", "paymentMethod", "dueDay", "graceDays", "dueDays", "invoiceCompany"], StringComparer.OrdinalIgnoreCase);
         var canManageScopedCatalog = actor.HasPermission("customers", "manage") && customerCatalogs.Contains(entry.Catalog)
+            || actor.HasPermission("commercial", "manage") && (entry.Catalog.StartsWith("commercial", StringComparison.OrdinalIgnoreCase) || entry.Catalog.StartsWith("retention", StringComparison.OrdinalIgnoreCase) || entry.Catalog.Equals("funnelStage", StringComparison.OrdinalIgnoreCase))
+            || actor.HasPermission("cs", "manage") && (entry.Catalog.StartsWith("cs", StringComparison.OrdinalIgnoreCase) || entry.Catalog.StartsWith("enterprise", StringComparison.OrdinalIgnoreCase))
+            || actor.HasPermission("lia", "manage") && entry.Catalog.StartsWith("lia", StringComparison.OrdinalIgnoreCase)
+            || actor.HasPermission("support", "manage") && entry.Catalog.StartsWith("service", StringComparison.OrdinalIgnoreCase)
             || actor.HasPermission("cancellations", "manage") && entry.Catalog.StartsWith("cancellation", StringComparison.OrdinalIgnoreCase)
             || actor.HasPermission("hr", "manage") && (entry.Catalog.StartsWith("hr", StringComparison.OrdinalIgnoreCase) || entry.Catalog.Equals("employeeRole", StringComparison.OrdinalIgnoreCase));
         if (!actor.HasPermission("catalogs", "manage") && !canManageScopedCatalog)
@@ -706,7 +714,16 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var customerComment = string.Equals(command.Module, "customers", StringComparison.OrdinalIgnoreCase)
             && string.Equals(command.RecordType, "Comentário do cliente", StringComparison.OrdinalIgnoreCase)
             && actor.HasPermission("customers", "edit");
-        if (!cancellationRoute && !customerComment)
+        var customerEngagement = string.Equals(command.Module, "customers", StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(command.RecordType, "Alerta do cliente", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(command.RecordType, "Checklist vinculado", StringComparison.OrdinalIgnoreCase))
+            && !string.IsNullOrWhiteSpace(command.OriginType)
+            && actor.HasPermission(command.OriginType, "edit");
+        var retentionRestart = string.Equals(command.Module, "commercial", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(command.RecordType, "Lead de retenção", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(command.OriginType, "cs", StringComparison.OrdinalIgnoreCase)
+            && actor.HasPermission("cs", "edit");
+        if (!cancellationRoute && !customerComment && !customerEngagement && !retentionRestart)
             actor.RequirePermission(command.Module, "create");
         if (string.IsNullOrWhiteSpace(command.Module) ||
             string.IsNullOrWhiteSpace(command.RecordType) ||
@@ -826,6 +843,42 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         }
     }
 
+    private static bool CanEditCustomerEngagement(WorkItem item, ActorContext actor)
+    {
+        if (!string.Equals(item.Module, "customers", StringComparison.OrdinalIgnoreCase) ||
+            item.RecordType is not ("Alerta do cliente" or "Checklist vinculado"))
+            return false;
+        try
+        {
+            using var document = JsonDocument.Parse(item.Description);
+            var root = document.RootElement;
+            var sourceModule = root.TryGetProperty("sourceModule", out var source) ? source.GetString() : null;
+            return !string.IsNullOrWhiteSpace(sourceModule) && actor.HasPermission(sourceModule, "edit");
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool CanRestartRetentionJourney(WorkItem item, string? description, ActorContext actor)
+    {
+        if (!string.Equals(item.Module, "cs", StringComparison.OrdinalIgnoreCase) || !actor.HasPermission("commercial", "edit") || string.IsNullOrWhiteSpace(description))
+            return false;
+        try
+        {
+            using var document = JsonDocument.Parse(description);
+            var root = document.RootElement;
+            return root.TryGetProperty("kind", out var kind) && kind.GetString() == "csJourney"
+                && root.TryGetProperty("track", out var track) && track.GetString() == "retention"
+                && root.TryGetProperty("status", out var status) && status.GetString() == "Retomado pelo CRM Retenção";
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     public async Task UpdateWorkItemAsync(
         UpdateWorkItemCommand command,
         ActorContext actor,
@@ -833,7 +886,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     {
         var item = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Registro não encontrado.", 404);
-        actor.RequirePermission(item.Module, "edit");
+        if (!CanEditCustomerEngagement(item, actor) && !CanRestartRetentionJourney(item, command.Description, actor)) actor.RequirePermission(item.Module, "edit");
         if (item.Module == "commissions" && !actor.HasPermission("commissions", "approve") &&
             !actor.HasPermission("commissions", "manage") &&
             !string.Equals(item.Owner, actor.DisplayName, StringComparison.OrdinalIgnoreCase))
@@ -875,7 +928,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     {
         var item = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
             ?? throw new DomainException("Registro não encontrado.", 404);
-        actor.RequirePermission(item.Module, "edit");
+        if (!CanEditCustomerEngagement(item, actor)) actor.RequirePermission(item.Module, "edit");
         db.WorkItems.Remove(item);
         db.Activities.Add(new Activity
         {

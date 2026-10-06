@@ -304,3 +304,38 @@ test("configura clientes, vincula redes e consolida comentários por ID", async 
   assert.match(migration, /FK_customers_work_items_StrategicNetworkId/);
   assert.match(css, /\.client-comment-timeline/);
 });
+
+test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", async () => {
+  const [app, actions, enhancer, journey, serviceModule, backend, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ClientEngagementActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ReminderAction.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CustomerSuccessJourneyModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ServiceRecordsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/OperationsService.cs", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(enhancer, /CLIENT_ALERT_EVENT/);
+  assert.match(enhancer, /CLIENT_CHECKLIST_EVENT/);
+  assert.match(enhancer, /client-alert-detail-action/);
+  assert.match(enhancer, /client-checklist-detail-action/);
+  assert.match(actions, /recordType: "Alerta do cliente"/);
+  assert.match(actions, /recordType: "Checklist vinculado"/);
+  assert.match(actions, /className=\{entry\.checked \? "checked"/);
+  assert.match(app, /label: "Checklists"/);
+  assert.match(app, /commercialChecklist/);
+  assert.match(app, /retentionChecklist/);
+  assert.match(app, /csActivationChecklist/);
+  assert.match(app, /enterpriseChecklist/);
+  assert.match(app, /serviceChecklist/);
+  assert.match(app, /cancellationChecklist/);
+  assert.match(app, /Retomado pelo CRM Retenção/);
+  assert.match(app, /sourceJourneyId/);
+  assert.match(journey, /Retomar card no CRM Retenção/);
+  assert.match(journey, /Cliente no CRM Retenção/);
+  assert.match(serviceModule, /data-reminder-entity-id=\{item\.id\}/);
+  assert.match(backend, /CanEditCustomerEngagement/);
+  assert.match(backend, /CanRestartRetentionJourney/);
+  assert.match(css, /\.client-alert-list/);
+  assert.match(css, /\.linked-checklist-card/);
+});

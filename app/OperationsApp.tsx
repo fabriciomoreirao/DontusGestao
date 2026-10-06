@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Activity, ArrowLeft, ArrowRightLeft, BadgeCheck, Bell, BriefcaseBusiness, CalendarDays,
+  Activity, AlertTriangle, ArrowLeft, ArrowRightLeft, BadgeCheck, Bell, BriefcaseBusiness, CalendarDays,
   ChartNoAxesCombined, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Columns3, Copy,
   ClipboardCheck, Clock3, Command, Database, Eye, EyeOff, FileCheck2, Headphones, ImageIcon, LayoutDashboard,
   ExternalLink, List, ListTodo, LockKeyhole, Mail, Menu, MessageCircleMore, MessageSquareText, MonitorUp, Pencil, Plus, Save, Search, Send, ShieldCheck,
@@ -18,7 +18,8 @@ import AgendaModule, { AgendaCatalogsModule, QuickAgendaCommitmentModal, commerc
 import DiaryModule, { type DiaryModuleData } from "@/app/DiaryModule";
 import NotesModule, { type NotesModuleData } from "@/app/NotesModule";
 import RemindersModule, { ReminderComposerModal, ReminderDueModal, parseReminder } from "@/app/RemindersModule";
-import { AGENDA_COMPOSER_EVENT, REMINDER_COMPOSER_EVENT, ReminderCardEnhancer, type ReminderContext } from "@/app/ReminderAction";
+import { AGENDA_COMPOSER_EVENT, CLIENT_ALERT_EVENT, CLIENT_CHECKLIST_EVENT, REMINDER_COMPOSER_EVENT, ReminderCardEnhancer, type ReminderContext } from "@/app/ReminderAction";
+import { ClientAlertModal, ClientChecklistModal, parseCustomerAlert, parseLinkedChecklist } from "@/app/ClientEngagementActions";
 import InternalChatModule, { type InternalChatModuleData } from "@/app/InternalChatModule";
 import SuggestionsModule, { SuggestionCatalogsModule, type SuggestionModuleData } from "@/app/SuggestionsModule";
 import NoticesModule, { NoticeAttentionModal, NoticesAdmin, type NoticesModuleData } from "@/app/NoticesModule";
@@ -357,6 +358,8 @@ export default function OperationsApp() {
   const [profileEditable, setProfileEditable] = useState(false);
   const [reminderContext, setReminderContext] = useState<ReminderContext | null>(null);
   const [agendaContext, setAgendaContext] = useState<ReminderContext | null>(null);
+  const [clientAlertContext, setClientAlertContext] = useState<ReminderContext | null>(null);
+  const [clientChecklistContext, setClientChecklistContext] = useState<ReminderContext | null>(null);
   const [celebrationCenterOpen, setCelebrationCenterOpen] = useState(false);
   const [chatRoomTarget, setChatRoomTarget] = useState("");
   const [reminderClock, setReminderClock] = useState(() => Date.now());
@@ -409,6 +412,14 @@ export default function OperationsApp() {
     const openAgenda = (event: Event) => setAgendaContext((event as CustomEvent<ReminderContext>).detail ?? { module: active });
     window.addEventListener(AGENDA_COMPOSER_EVENT, openAgenda);
     return () => window.removeEventListener(AGENDA_COMPOSER_EVENT, openAgenda);
+  }, [active]);
+
+  useEffect(() => {
+    const openAlert = (event: Event) => setClientAlertContext((event as CustomEvent<ReminderContext>).detail ?? { module: active });
+    const openChecklist = (event: Event) => setClientChecklistContext((event as CustomEvent<ReminderContext>).detail ?? { module: active });
+    window.addEventListener(CLIENT_ALERT_EVENT, openAlert);
+    window.addEventListener(CLIENT_CHECKLIST_EVENT, openChecklist);
+    return () => { window.removeEventListener(CLIENT_ALERT_EVENT, openAlert); window.removeEventListener(CLIENT_CHECKLIST_EVENT, openChecklist); };
   }, [active]);
 
   useEffect(() => {
@@ -1357,6 +1368,8 @@ export default function OperationsApp() {
       {modal === "appointment" && <AppointmentModal customers={data.customers} busy={busy} onClose={() => setModal(null)} onSubmit={(payload) => operate({ action: "createAppointment", ...payload }, "Compromisso reservado sem conflito.")} />}
 
       {reminderContext && <ReminderComposerModal context={reminderContext} user={data.user} employees={data.access?.employees ?? []} busy={busy} onClose={() => setReminderContext(null)} operate={operate} />}
+      {clientAlertContext && <ClientAlertModal context={clientAlertContext} customers={data.customers} user={data.user} busy={busy} operate={operate} onClose={() => setClientAlertContext(null)} />}
+      {clientChecklistContext && <ClientChecklistModal context={clientChecklistContext} customers={data.customers} catalogs={data.customerModule?.catalogs ?? []} items={data.items} user={data.user} busy={busy} operate={operate} onClose={() => setClientChecklistContext(null)} />}
       {agendaContext && data.agendaModule && <QuickAgendaCommitmentModal module={data.agendaModule} busy={busy} currentEmail={data.user.email} preset={{ title: agendaContext.title ? `Acompanhamento · ${agendaContext.title}` : "Novo compromisso", description: [agendaContext.customerName, agendaContext.summary].filter(Boolean).join(" · "), responsibleName: agendaContext.recipientName || data.user.displayName }} onClose={() => setAgendaContext(null)} onSave={async (payload) => {
         const created = await operate({ action: "createAgendaCommitment", ...payload }, "Compromisso criado na agenda.");
         if (!created) return;
@@ -1422,7 +1435,7 @@ function structuredClientEvolutions(item: WorkItem): ClientEvolution[] {
 }
 
 function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNavigate }: { query: string; data: AppData; canEdit: boolean; busy: boolean; operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onClose: () => void; onNavigate: (module: ModuleKey) => void }) {
-  const [tab, setTab] = useState<"overview" | "records" | "tasks" | "support" | "suggestions" | "reminders" | "comments" | "alerts" | "timeline">("overview");
+  const [tab, setTab] = useState<"overview" | "records" | "tasks" | "support" | "suggestions" | "reminders" | "comments" | "alerts" | "checklists" | "timeline">("overview");
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState("");
   const key = query.trim().toLocaleLowerCase("pt-BR");
@@ -1458,6 +1471,8 @@ function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNav
     ...tasks.flatMap((task) => task.comments.map((entry) => ({ id: entry.id, text: entry.body, author: entry.authorName, at: entry.createdAt, source: `Tarefa ${task.protocol}`, type: entry.internal ? "Comentário interno" : "Comentário", sourceId: task.id }))),
     ...suggestions.flatMap((suggestion) => suggestion.comments.map((entry) => ({ id: entry.id, text: entry.body, author: entry.authorName, at: entry.createdAt, source: `Sugestão ${suggestion.protocol}`, type: "Comentário", sourceId: suggestion.id }))),
   ].filter((entry, index, entries) => entries.findIndex((candidate) => `${candidate.sourceId}|${candidate.at}|${candidate.author}|${candidate.text}` === `${entry.sourceId}|${entry.at}|${entry.author}|${entry.text}`) === index).sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  const alerts = workItems.map((item) => ({ item, detail: parseCustomerAlert(item.description) })).filter((entry): entry is { item: WorkItem; detail: NonNullable<ReturnType<typeof parseCustomerAlert>> } => Boolean(entry.detail)).sort((a, b) => new Date(b.detail.createdAt).getTime() - new Date(a.detail.createdAt).getTime());
+  const linkedChecklists = workItems.map((item) => ({ item, detail: parseLinkedChecklist(item.description) })).filter((entry): entry is { item: WorkItem; detail: NonNullable<ReturnType<typeof parseLinkedChecklist>> } => Boolean(entry.detail)).sort((a, b) => new Date(b.detail.createdAt).getTime() - new Date(a.detail.createdAt).getTime());
   const statusCounts = [...workItems.map((entry) => entry.status), ...tasks.map((entry) => entry.statusName), ...suggestions.map((entry) => entry.statusName)].reduce<Record<string, number>>((acc, status) => { const label = status || "Sem status"; acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
   const moduleCounts = [...workItems.map((entry) => MODULES[entry.module as ModuleKey]?.short ?? entry.module), ...tasks.map(() => "Tarefas"), ...suggestions.map(() => "Sugestões"), ...reminders.map(() => "Lembretes")].reduce<Record<string, number>>((acc, label) => { acc[label] = (acc[label] ?? 0) + 1; return acc; }, {});
   const themeCounts = attendances.reduce<Record<string, number>>((acc, entry) => { acc[entry.theme] = (acc[entry.theme] ?? 0) + 1; return acc; }, {});
@@ -1473,7 +1488,7 @@ function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNav
     ...reminders.map(({ item, detail }) => ({ id: item.id, title: detail.title, meta: `Lembrete · ${detail.urgency} · ${detail.seenAt ? "Visto" : "Aberto"}`, at: detail.createdAt || item.created_at, module: "reminders" as ModuleKey })),
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   const displayName = customer?.trade_name || tasks[0]?.customerName || workItems[0]?.customer_name || `Cliente ID ${query}`;
-  const tabs = [{ id: "overview", label: "Visão geral", count: timeline.length }, { id: "records", label: "Todos os registros", count: workItems.length }, { id: "tasks", label: "Tarefas", count: tasks.length }, { id: "support", label: "Atendimentos", count: attendances.length }, { id: "suggestions", label: "Sugestões", count: suggestions.length }, { id: "reminders", label: "Lembretes", count: reminders.length }, { id: "comments", label: "Comentários", count: comments.length }, { id: "alerts", label: "Alerta", count: 0 }, { id: "timeline", label: "Linha do tempo", count: timeline.length }] as const;
+  const tabs = [{ id: "overview", label: "Visão geral", count: timeline.length }, { id: "records", label: "Todos os registros", count: workItems.length }, { id: "tasks", label: "Tarefas", count: tasks.length }, { id: "support", label: "Atendimentos", count: attendances.length }, { id: "suggestions", label: "Sugestões", count: suggestions.length }, { id: "reminders", label: "Lembretes", count: reminders.length }, { id: "comments", label: "Comentários", count: comments.length }, { id: "alerts", label: "Alerta", count: alerts.length }, { id: "checklists", label: "Checklists", count: linkedChecklists.length }, { id: "timeline", label: "Linha do tempo", count: timeline.length }] as const;
   const addCustomerComment = async () => {
     if (!customer || !comment.trim()) return;
     const at = new Date().toISOString();
@@ -1491,7 +1506,8 @@ function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNav
     {tab === "suggestions" && <ClientRecordsPanel title="Sugestões vinculadas" empty="Nenhuma sugestão vinculada a este ID.">{suggestions.map((entry) => <button key={entry.id} onClick={() => onNavigate("suggestions")}><span><strong>{entry.name}</strong><small>{entry.protocol} · Responsável: {entry.responsibleName}</small></span><b className={`status-pill ${statusTone(entry.statusName)}`}>{entry.statusName}</b><time>{dateTime(entry.updatedAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "reminders" && <ClientRecordsPanel title="Lembretes vinculados ao cliente" empty="Nenhum lembrete vinculado a este cliente.">{reminders.map(({item,detail}) => <button key={item.id} onClick={() => onNavigate("reminders")}><span><strong>{detail.title}</strong><small>{detail.sourceModule} · Responsável: {detail.recipientName} · Criado por: {detail.createdBy}</small></span><b className={`status-pill ${detail.seenAt ? "success" : "warning"}`}>{detail.seenAt ? "Visto" : "Aberto"}</b><time>{dateTime(detail.remindAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "comments" && <section className="client-comments-panel"><header><div><span className="eyebrow">EVOLUÇÃO DO CLIENTE</span><h2>Comentários consolidados</h2><p>Comentários vinculados a este ID em Clientes, tarefas, sugestões e demais ferramentas.</p></div><b>{comments.length}</b></header>{customer&&canEdit&&<div className="client-comment-composer"><textarea rows={3} value={comment} onChange={(event)=>setComment(event.target.value)} placeholder="Registre uma nova evolução sobre este cliente..."/><button className="primary-button" type="button" disabled={busy||!comment.trim()} onClick={()=>void addCustomerComment()}><MessageSquareText size={15}/> Registrar comentário</button></div>}<div className="client-comment-timeline">{comments.length===0?<EmptyState compact text="Nenhum comentário vinculado a este cliente."/>:comments.map((entry)=><article key={`${entry.sourceId}-${entry.id}`}><i/><div><header><strong>{entry.type}</strong><span>{entry.source}</span></header><p>{entry.text}</p><footer><span>por {entry.author}</span><time>{dateTime(entry.at)}</time></footer></div></article>)}</div></section>}
-    {tab === "alerts" && <section className="client-alert-placeholder"><Bell size={24}/><div><h2>Alerta</h2><p>A aba está criada e pronta para receber as próximas regras e instruções.</p></div></section>}
+    {tab === "alerts" && <section className="client-alerts-panel"><header><div><span className="eyebrow">ALERTAS DO CLIENTE</span><h2>Informações que exigem atenção</h2><p>Registros criados diretamente nos cards das ferramentas e vinculados a este ID.</p></div><b>{alerts.length}</b></header>{alerts.length === 0 ? <div className="client-alert-placeholder"><Bell size={24}/><div><h2>Nenhum alerta registrado</h2><p>Use o botão Alerta dentro de um card para registrar uma informação específica.</p></div></div> : <div className="client-alert-list">{alerts.map(({ item, detail }) => <article className={detail.severity.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "")} key={item.id}><AlertTriangle /><span><header><strong>{detail.subject}</strong><b>{detail.severity}</b></header><p>{detail.text}</p><small>{MODULES[detail.sourceModule as ModuleKey]?.label || detail.sourceModule} · {detail.sourceTitle} · {detail.author} · {dateTime(detail.createdAt)}</small></span></article>)}</div>}</section>}
+    {tab === "checklists" && <section className="client-checklists-panel"><header><div><span className="eyebrow">CHECKLISTS DO CLIENTE</span><h2>Checklists vinculados</h2><p>Todos os modelos aplicados ao cliente, independentemente da ferramenta de origem.</p></div><b>{linkedChecklists.length}</b></header>{linkedChecklists.length === 0 ? <div className="checklist-empty"><ClipboardCheck size={24}/><strong>Nenhum checklist vinculado</strong><p>Os checklists aparecerão aqui depois que forem adicionados nos cards.</p></div> : <div className="client-checklist-list">{linkedChecklists.map(({ item, detail }) => { const completed = detail.items.filter((entry) => entry.checked).length; return <article key={item.id}><header><span><strong>{detail.templateName}</strong><small>{MODULES[detail.sourceModule as ModuleKey]?.label || detail.sourceModule} · {detail.sourceTitle}</small></span><b>{completed}/{detail.items.length}</b></header><div>{detail.items.map((entry) => <span className={entry.checked ? "checked" : ""} key={entry.id}><i>{entry.checked && <Check size={12}/>}</i>{entry.text}</span>)}</div><footer><span style={{ width: `${detail.items.length ? completed / detail.items.length * 100 : 0}%` }} /></footer><small>Vinculado por {detail.createdBy} em {dateTime(detail.createdAt)}</small></article>; })}</div>}</section>}
     {tab === "timeline" && <ClientRecordsPanel title="Linha do tempo consolidada" empty="Nenhuma movimentação localizada para este ID.">{timeline.map((entry) => <button key={`${entry.module}-${entry.id}`} onClick={() => onNavigate(entry.module)}><span><strong>{entry.title}</strong><small>{entry.meta}</small></span><time>{dateTime(entry.at)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {editing && customer && data.customerModule && <CustomerModal customer={customer} catalogs={data.customerModule.catalogs} networks={data.items.filter((item)=>item.module==="cs"&&/enterpriseNetwork/.test(item.description))} busy={busy} onClose={() => setEditing(false)} onSubmit={async (payload) => { const result = await operate({ action: "updateCustomer", requireConfirmation: true, id: customer.id, ...payload }, "Cliente atualizado com sucesso."); if (result) setEditing(false); }} />}
   </section>;
@@ -2011,23 +2027,23 @@ function ReportingView({ data }: { data: AppData }) {
 }
 
 const COMMERCIAL_CRM_CATALOGS = [
-  ["commercialProduct", "Produtos"], ["acquisitionChannel", "Canais de aquisição"], ["commercialLabel", "Etiquetas"], ["followUpType", "Tipos de follow"], ["lossReason", "Motivos de perda"], ["temperature", "Temperaturas"], ["funnelStage", "Funis e etapas"],
+  ["commercialProduct", "Produtos"], ["acquisitionChannel", "Canais de aquisição"], ["commercialLabel", "Etiquetas"], ["followUpType", "Tipos de follow"], ["lossReason", "Motivos de perda"], ["temperature", "Temperaturas"], ["funnelStage", "Funis e etapas"], ["commercialChecklist", "Tipos de checklist"],
 ] as const;
 const COMMERCIAL_RETENTION_CATALOGS = [
   ["funnelStage", "Funis e etapas"],
-  ["retentionStatus", "Status da retenção"], ["retentionFlag", "Marcações da retenção"], ["retentionCommentType", "Comentários da retenção"], ["retentionVersion", "Versões da retenção"],
+  ["retentionStatus", "Status da retenção"], ["retentionFlag", "Marcações da retenção"], ["retentionCommentType", "Comentários da retenção"], ["retentionVersion", "Versões da retenção"], ["retentionChecklist", "Tipos de checklist"],
 ] as const;
 const CS_CATALOGS = [
   ["csWorkflowStatus", "Status da jornada"], ["csUsage", "Status de Uso"], ["csCallStatus", "Status de Ligação"], ["csFinalStatus", "Status Final"],
   ["csFeatureActive", "Features Ativas"], ["csFeatureBase", "Features Base"], ["csFeaturePlus", "Feature Plus"],
   ["csRejectionReason", "Motivos de Reprova"], ["csApprovalReason", "Motivos de Aprovação"],
-  ["csLabel", "Etiquetas"], ["csFollowUp", "Tipos de follow"],
+  ["csLabel", "Etiquetas"], ["csFollowUp", "Tipos de follow"], ["csActivationChecklist", "Checklist · Ativação"], ["csRetentionChecklist", "Checklist · Retenção"],
 ] as const;
 
 const ENTERPRISE_CATALOGS = [
   ["enterpriseNetworkStatus", "Status Rede"], ["enterpriseUnitStatus", "Status Unidade"],
   ["enterpriseUsageStatus", "Status de utilização"],
-  ["enterpriseFeatureActive", "Features Ativas"], ["enterpriseFeatureBase", "Features Base"], ["enterpriseFeaturePlus", "Features Plus"],
+  ["enterpriseFeatureActive", "Features Ativas"], ["enterpriseFeatureBase", "Features Base"], ["enterpriseFeaturePlus", "Features Plus"], ["enterpriseChecklist", "Tipos de checklist"],
 ] as const;
 
 const RECRUITMENT_CATALOGS = [
@@ -2035,18 +2051,18 @@ const RECRUITMENT_CATALOGS = [
 ] as const;
 const SERVICE_CATALOGS = [
   ["serviceOrigin", "Origens"], ["serviceVersion", "Versões"], ["serviceProblem", "Problemas / situações"],
-  ["serviceStatus", "Status"], ["serviceContactType", "Tipos de contato"], ["serviceTool", "Ferramentas / módulos"],
+  ["serviceStatus", "Status"], ["serviceContactType", "Tipos de contato"], ["serviceTool", "Ferramentas / módulos"], ["serviceChecklist", "Tipos de checklist"],
 ] as const;
 const LIA_CATALOGS = [
   ["liaRequestType", "Tipos de solicitação"], ["liaOrigin", "Origens"], ["liaWorkflowStage", "Etapas adicionais"],
-  ["liaChecklistItem", "Itens do checklist"], ["liaAdjustmentType", "Tipos de ajuste"],
+  ["liaChecklistItem", "Itens do checklist"], ["liaChecklistTemplate", "Tipos de checklist"], ["liaAdjustmentType", "Tipos de ajuste"],
 ] as const;
 const WAITING_QUEUE_CATALOGS = [
   ["waitingQueueRequestType", "Tipos de solicitação"],
 ] as const;
 const CANCELLATION_CATALOGS = [
   ["cancellationStayRange", "Faixas de permanência"], ["cancellationPlan", "Planos"],
-  ["cancellationReason", "Motivos de cancelamento"], ["cancellationCommunicationType", "Tipos de comunicação"],
+  ["cancellationReason", "Motivos de cancelamento"], ["cancellationCommunicationType", "Tipos de comunicação"], ["cancellationChecklist", "Tipos de checklist"],
 ] as const;
 const HR_CATALOGS = [
   ["hrCommunicationType", "Tipos de comunicação"], ["hrDocumentType", "Tipos de documento"],
@@ -2097,7 +2113,7 @@ function CommercialCatalogsView({ catalogs, busy, onOperate, scope = "commercial
   </>;
 }
 
-type CommercialDetails = { color?: string; plans?: { name: string; value: string; active: boolean }[]; functionality?: string; stages?: { name: string; color: string; won: boolean; lost: boolean; automation: boolean; alertDays?: number }[]; description?: string };
+type CommercialDetails = { color?: string; plans?: { name: string; value: string; active: boolean }[]; functionality?: string; stages?: { name: string; color: string; won: boolean; lost: boolean; automation: boolean; alertDays?: number }[]; checks?: string[]; description?: string };
 const commercialColors = ["#3b82f6", "#8b5cf6", "#ec4899", "#ef4444", "#f97316", "#f59e0b", "#eab308", "#22c55e", "#14b8a6", "#06b6d4"];
 const DEFAULT_RECRUITMENT_STAGES = ["Currículo", "Triagem", "Entrevista", "Teste", "Aprovado", "Reprovado"];
 const defaultRetentionStages: NonNullable<CommercialDetails["stages"]> = [
@@ -2145,7 +2161,7 @@ const fileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
 
 function CommercialCatalogRow({ item, onEdit, onDelete }: { item: CustomerCatalogOption; onEdit: () => void; onDelete: () => void }) {
   const details = commercialDetails(item.description);
-  const detail = details.plans ? `${details.plans.length} plano(s) configurado(s)` : details.functionality ? `${details.functionality} · ${details.stages?.length ?? 0} etapa(s)` : details.stages ? `${details.stages.length} coluna(s) configurada(s)` : details.color ? "Cor personalizada" : details.description || "Sem descrição";
+  const detail = details.plans ? `${details.plans.length} plano(s) configurado(s)` : details.checks ? `${details.checks.length} item(ns) de conferência` : details.functionality ? `${details.functionality} · ${details.stages?.length ?? 0} etapa(s)` : details.stages ? `${details.stages.length} coluna(s) configurada(s)` : details.color ? "Cor personalizada" : details.description || "Sem descrição";
   return <article><span className="agenda-list-icon" style={details.color ? { background: details.color } : undefined}><Database size={18} /></span><span className="agenda-list-data"><strong>{item.name}</strong><small>{detail}</small></span><b className={`status-pill ${item.active ? "positive" : "negative"}`}>{item.active ? "Ativo" : "Inativo"}</b><button className="catalog-icon-button" onClick={onEdit} aria-label="Editar"><Pencil size={15} /></button><button className="catalog-icon-button delete" onClick={onDelete} aria-label="Excluir"><Trash2 size={15} /></button></article>;
 }
 
@@ -2153,6 +2169,7 @@ function CommercialCatalogModal({ scope, commercialArea = "crm", catalog, label,
   const details = commercialDetails(item?.description ?? "");
   const [color, setColor] = useState(details.color ?? commercialColors[0]);
   const [plans, setPlans] = useState(details.plans?.length ? details.plans : [{ name: "", value: "", active: true }]);
+  const [checkItems, setCheckItems] = useState<string[]>(details.checks?.length ? details.checks : [""]);
   const [functionality, setFunctionality] = useState(details.functionality ?? (catalog === "csFunnel" ? "Onboarding" : "Qualificação"));
   const [stages, setStages] = useState(details.stages?.length ? details.stages : catalog === "recruitmentStageTemplate" ? DEFAULT_RECRUITMENT_STAGES.map((name, index) => ({ name, color: commercialColors[index % commercialColors.length], won: false, lost: false, automation: false, alertDays: 1 })) : [{ name: "Nova etapa", color: commercialColors[0], won: false, lost: false, automation: false, alertDays: 1 }]);
   const isProduct = catalog === "commercialProduct";
@@ -2160,13 +2177,14 @@ function CommercialCatalogModal({ scope, commercialArea = "crm", catalog, label,
   const isFunnel = catalog === "funnelStage" || catalog === "csFunnel";
   const isCommercialFunnel = catalog === "funnelStage";
   const isRecruitmentTemplate = catalog === "recruitmentStageTemplate";
+  const isChecklist = catalog.endsWith("Checklist") || catalog === "liaChecklistTemplate";
   const funnelFunctionality = isCommercialFunnel
     ? (item ? details.functionality ?? (commercialArea === "retention" ? "CRM Retenção" : "CRM Comercial") : commercialArea === "retention" ? "CRM Retenção" : "CRM Comercial")
     : functionality;
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); const form = new FormData(event.currentTarget); const name = String(form.get("name") ?? "").trim();
     const funnelStages = stages.filter((stage) => stage.name.trim());
-    const catalogDescription = JSON.stringify(isProduct ? { plans: plans.filter((plan) => plan.name.trim()) } : usesColor ? { color } : isRecruitmentTemplate ? { stages: funnelStages } : isFunnel ? isCommercialFunnel ? { f: funnelFunctionality === "CRM Comercial" ? "c" : funnelFunctionality === "CRM Retenção" ? "r" : "q", s: funnelStages.map((stage) => [stage.name.trim(), stage.color, stage.won ? 1 : 0, stage.lost ? 1 : 0, stage.automation ? 1 : 0, stage.alertDays ?? 1]) } : { functionality, stages: funnelStages } : { description: String(form.get("description") ?? "").trim() });
+    const catalogDescription = JSON.stringify(isProduct ? { plans: plans.filter((plan) => plan.name.trim()) } : isChecklist ? { checks: checkItems.map((entry) => entry.trim()).filter(Boolean) } : usesColor ? { color } : isRecruitmentTemplate ? { stages: funnelStages } : isFunnel ? isCommercialFunnel ? { f: funnelFunctionality === "CRM Comercial" ? "c" : funnelFunctionality === "CRM Retenção" ? "r" : "q", s: funnelStages.map((stage) => [stage.name.trim(), stage.color, stage.won ? 1 : 0, stage.lost ? 1 : 0, stage.automation ? 1 : 0, stage.alertDays ?? 1]) } : { functionality, stages: funnelStages } : { description: String(form.get("description") ?? "").trim() });
     onSave({ name, catalogDescription, active: form.get("active") === "on" });
   };
   return <ModalShell title={item ? `Editar ${label.toLowerCase()}` : `Novo cadastro · ${label}`} subtitle={isRecruitmentTemplate ? "Monte as colunas que serão copiadas para cada novo processo seletivo." : isFunnel ? "Defina a funcionalidade e as etapas do funil." : `Configure as opções que estarão disponíveis em ${scope === "customers" ? "Clientes" : scope === "recruitment" ? "Processo seletivo" : scope === "cs" ? "CS" : scope === "lia" ? "LIA" : scope === "service" ? "Atendimentos" : scope === "enterprise" ? "Redes e Franquias" : scope === "cancellation" ? "Cancelamentos" : scope === "hr" ? "Gestão RH" : "Comercial"}.`} onClose={onClose}><form className="form-grid commercial-catalog-form" onSubmit={submit}>
@@ -2176,7 +2194,8 @@ function CommercialCatalogModal({ scope, commercialArea = "crm", catalog, label,
     {usesColor && <div className="commercial-color-picker wide"><span>Cor *</span><div>{commercialColors.map((tone) => <button type="button" key={tone} className={color === tone ? "selected" : ""} style={{ backgroundColor: tone }} onClick={() => setColor(tone)} aria-label={`Selecionar cor ${tone}`} />)}</div></div>}
     {isFunnel && <><label className="wide">Funcionalidade *{isCommercialFunnel ? <input readOnly value={funnelFunctionality} aria-label="Funcionalidade" /> : <select value={functionality} onChange={(event) => setFunctionality(event.target.value)}><option>Onboarding</option><option>Evolução</option><option>Clientes grandes</option></select>}</label><div className="commercial-dynamic-section wide"><div><h3>Etapas do funil</h3><small>Defina a ordem, a cor e o comportamento de cada etapa.</small></div>{stages.map((stage, index) => <div className="commercial-stage-wrap" key={index}><div className="commercial-stage-row"><input value={stage.name} onChange={(event) => setStages((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, name: event.target.value } : current))} placeholder="Nome da etapa" /><input type="color" value={stage.color} onChange={(event) => setStages((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, color: event.target.value } : current))} /><label><input type="checkbox" checked={stage.won} onChange={(event) => setStages((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, won: event.target.checked, lost: event.target.checked ? false : current.lost } : current))} /> Ganho</label><label><input type="checkbox" checked={stage.lost} onChange={(event) => setStages((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, lost: event.target.checked, won: event.target.checked ? false : current.won } : current))} /> Perda</label><label><input type="checkbox" checked={stage.automation} onChange={(event) => setStages((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, automation: event.target.checked } : current))} /> Automação</label><button type="button" aria-label="Remover etapa" onClick={() => setStages((items) => items.filter((_, currentIndex) => currentIndex !== index))}><Trash2 size={15} /></button></div>{stage.automation && <label className="commercial-automation-rule">Criar alerta após <input type="number" min="1" value={stage.alertDays ?? 1} onChange={(event) => setStages((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, alertDays: Number(event.target.value) || 1 } : current))} /> dia(s) sem interação.</label>}</div>)}<button className="commercial-add-row" type="button" onClick={() => setStages((items) => [...items, { name: "Nova etapa", color: commercialColors[0], won: false, lost: false, automation: false, alertDays: 1 }])}><Plus size={15} /> Adicionar etapa</button></div></>}
     {isRecruitmentTemplate && <div className="commercial-dynamic-section wide recruitment-template-editor"><div><h3>Colunas padrão</h3><small>Use as setas para definir a ordem exibida no Kanban.</small></div>{stages.map((stage, index) => <div className="recruitment-template-stage-row" key={index}><span>{index + 1}</span><input required value={stage.name} onChange={(event) => setStages((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, name: event.target.value } : current))} placeholder="Nome da coluna" /><button type="button" disabled={index === 0} aria-label="Mover coluna para cima" onClick={() => setStages((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</button><button type="button" disabled={index === stages.length - 1} aria-label="Mover coluna para baixo" onClick={() => setStages((items) => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</button><button type="button" disabled={stages.length === 1} aria-label="Remover coluna" onClick={() => setStages((items) => items.filter((_, currentIndex) => currentIndex !== index))}><Trash2 size={15} /></button></div>)}<button className="commercial-add-row" type="button" onClick={() => setStages((items) => [...items, { name: "Nova coluna", color: commercialColors[items.length % commercialColors.length], won: false, lost: false, automation: false, alertDays: 1 }])}><Plus size={15} /> Adicionar coluna</button></div>}
-    {!isProduct && !usesColor && !isFunnel && !isRecruitmentTemplate && <label className="wide">Descrição<textarea name="description" rows={4} defaultValue={details.description} placeholder="Informações complementares, se necessário." /></label>}
+    {isChecklist && <div className="commercial-dynamic-section wide checklist-template-editor"><div><h3>Itens do checklist</h3><small>Cadastre os checks que o colaborador deverá concluir dentro do card.</small></div>{checkItems.map((value, index) => <div className="checklist-template-row" key={index}><span>{index + 1}</span><input required value={value} onChange={(event) => setCheckItems((items) => items.map((entry, currentIndex) => currentIndex === index ? event.target.value : entry))} placeholder="Ex.: Confirmar dados do responsável" /><button type="button" disabled={checkItems.length === 1} onClick={() => setCheckItems((items) => items.filter((_, currentIndex) => currentIndex !== index))} aria-label="Remover item"><Trash2 size={15} /></button></div>)}<button className="commercial-add-row" type="button" onClick={() => setCheckItems((items) => [...items, ""])}><Plus size={15} /> Adicionar check</button></div>}
+    {!isProduct && !isChecklist && !usesColor && !isFunnel && !isRecruitmentTemplate && <label className="wide">Descrição<textarea name="description" rows={4} defaultValue={details.description} placeholder="Informações complementares, se necessário." /></label>}
     <div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy} type="submit"><Save size={16} /> {busy ? "Salvando..." : "Salvar"}</button></div>
   </form></ModalShell>;
 }
@@ -2196,6 +2215,7 @@ type CommercialLead = {
   customer: string;
   clientId?: string;
   version?: string;
+  sourceJourneyId?: string;
   retentionStatus?: string;
   retentionMarks?: string[];
   follows: Array<{ type: string; text: string; createdAt: string; author?: string; temperature?: string }>;
@@ -2249,7 +2269,7 @@ const parseCommercialLead = (value: string): CommercialLead | null => {
       funnel: parsed.funnel ?? "", stage: parsed.stage ?? "", temperature: parsed.temperature ?? "",
       labels: Array.isArray(parsed.labels) ? parsed.labels : [], products: Array.isArray(parsed.products) ? parsed.products : [],
       score: Number(parsed.score ?? 0), entryDate: parsed.entryDate ?? "", customer: parsed.customer ?? "",
-      clientId: parsed.clientId ?? "", version: parsed.version ?? "", retentionStatus: parsed.retentionStatus ?? "", retentionMarks: Array.isArray(parsed.retentionMarks) ? parsed.retentionMarks : [],
+      clientId: parsed.clientId ?? "", version: parsed.version ?? "", sourceJourneyId: parsed.sourceJourneyId, retentionStatus: parsed.retentionStatus ?? "", retentionMarks: Array.isArray(parsed.retentionMarks) ? parsed.retentionMarks : [],
       follows: Array.isArray(parsed.follows) ? parsed.follows : [],
       comments: Array.isArray(parsed.comments) ? parsed.comments : [],
       qualification: parsed.qualification === "qualified" || parsed.qualification === "disqualified" ? parsed.qualification : undefined,
@@ -2347,8 +2367,21 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, employees, ag
       setSelected(leadItem);
       return;
     }
-    const next = { ...lead, stage: nextStage, ...(nextStage === "Desqualificado" ? { qualification: "disqualified" as const } : {}), follows: [...lead.follows, { type: "Movimentação", text: `Lead movido para ${nextStage}.`, createdAt: new Date().toISOString() }] };
-    await operate({ action: "updateWorkItem", id: leadItem.id, title: leadItem.title, owner: leadItem.owner, amountCents: leadItem.amount_cents, description: JSON.stringify(next), version: leadItem.version }, "Lead movido com sucesso.");
+    const movedAt = new Date().toISOString();
+    const targetStage = boardStages.find((entry) => entry.name === nextStage);
+    const completesRetentionReturn = flow === "retention" && Boolean(targetStage?.won) && Boolean(lead.sourceJourneyId);
+    const next = { ...lead, stage: nextStage, ...(nextStage === "Desqualificado" ? { qualification: "disqualified" as const } : {}), follows: [...lead.follows, { type: completesRetentionReturn ? "Retorno ao acompanhamento" : "Movimentação", text: completesRetentionReturn ? `Contato concluído no CRM Retenção. Cliente devolvido ao Onboarding do Acompanhamento Retenção.` : `Lead movido para ${nextStage}.`, createdAt: movedAt, author: currentUser.displayName }] };
+    const moved = await operate({ action: "updateWorkItem", id: leadItem.id, title: leadItem.title, owner: leadItem.owner, amountCents: leadItem.amount_cents, description: JSON.stringify(next), version: leadItem.version }, completesRetentionReturn ? "Contato concluído e retorno ao acompanhamento iniciado." : "Lead movido com sucesso.");
+    if (!moved || !completesRetentionReturn) return;
+    const sourceJourney = items.find((entry) => entry.id === lead.sourceJourneyId);
+    if (!sourceJourney) return;
+    try {
+      const journey = JSON.parse(sourceJourney.description) as Record<string, unknown> & { follows?: Array<Record<string, unknown>>; cycles?: Array<Record<string, unknown>> };
+      const cycles = Array.isArray(journey.cycles) ? journey.cycles : [];
+      const follows = Array.isArray(journey.follows) ? journey.follows : [];
+      const restarted = { ...journey, phase: "onboarding", status: "Retomado pelo CRM Retenção", sourceLeadId: leadItem.id, onboardingStartedAt: movedAt, trackingStartedAt: undefined, checkedAt: movedAt, checkedBy: currentUser.displayName, firstMeetingAt: "", firstMeetingTime: "", firstMeetingCommitmentId: undefined, firstMeetingCompletedAt: undefined, trainingAt: "", trainingTime: "", trainingCommitmentId: undefined, trainingCompletedAt: undefined, singleAlignmentAt: "", singleAlignmentTime: "", singleAlignmentCommitmentId: undefined, singleAlignmentCompletedAt: undefined, conferenceRequestedAt: undefined, conferenceConfirmedAt: undefined, cycles: [...cycles, { restartedAt: movedAt, sourceRetentionLeadId: leadItem.id, previousStatus: journey.status, previousPhase: journey.phase, actor: currentUser.displayName }], follows: [...follows, { kind: "Retorno do CRM Retenção", text: `Contato concluído na etapa ${nextStage}. Processo reiniciado no Onboarding do Acompanhamento Retenção.`, createdAt: movedAt, actor: currentUser.displayName }] };
+      await operate({ action: "updateWorkItem", id: sourceJourney.id, title: sourceJourney.title, owner: sourceJourney.owner, customerName: sourceJourney.customer_name, amountCents: sourceJourney.amount_cents, description: JSON.stringify(restarted), version: sourceJourney.version }, "Cliente retornou ao Onboarding do Acompanhamento Retenção.");
+    } catch { /* O card comercial permanece concluído se o vínculo legado não puder ser interpretado. */ }
   };
 
   if (directSalesOpen && flow !== "qualification") return <DirectSalesView flow={flow} catalogs={activeCatalogs} customers={customers} items={items} currentUser={currentUser} busy={busy} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} operate={operate} onBack={() => setDirectSalesOpen(false)} onOpenSettings={onOpenSettings} />;
@@ -2383,7 +2416,7 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, employees, ag
     }} />)}
     {flow === "retention" && retentionBulkOpen && activeFunnel && <RetentionBulkModal funnel={activeFunnel.entry} stages={stages} employees={employees} currentUser={currentUser} catalogs={activeCatalogs} busy={busy} onClose={() => setRetentionBulkOpen(false)} onCreate={async (payload) => Boolean(await operate({ action: "createWorkItem", module: "commercial", recordType: commercialRecordType(flow), ...payload }, "Cliente cadastrado no CRM de retenção."))} />}
     {creating && !activeFunnel && <ModalShell title="Funil necessário" subtitle="Crie e ative um funil antes de cadastrar um lead." onClose={() => setCreating(false)}><div className="empty-state"><p>Não há funil ativo para esta funcionalidade.</p><div className="form-actions"><button className="primary-button" type="button" onClick={() => setCreating(false)}>Entendi</button></div></div></ModalShell>}
-    {selected && <CommercialLeadDrawer item={selected} customers={customers} employees={employees} busy={busy} canEdit={canEdit} canDelete={canDelete} startEditing={editRequested} startLossReason={lossReasonRequested} catalogs={activeCatalogs} agendaModule={agendaModule} funnels={allFunnels} funnel={activeFunnel?.entry} details={activeFunnel?.details} onClose={closeSelectedLead} onSave={async (payload) => {
+    {selected && <CommercialLeadDrawer item={selected} customers={customers} employees={employees} busy={busy} canEdit={canEdit} canDelete={canDelete} startEditing={editRequested} startLossReason={lossReasonRequested} catalogs={activeCatalogs} agendaModule={agendaModule} funnels={allFunnels} funnel={activeFunnel?.entry} details={activeFunnel?.details} onClose={closeSelectedLead} onMoveStage={(stage) => moveLeadToStage(selected, stage)} onSave={async (payload) => {
       const result = await operate({ action: "updateWorkItem", id: selected.id, title: selected.title, owner: selected.owner, amountCents: selected.amount_cents, version: selected.version, ...payload }, "Lead atualizado com sucesso.");
       if (result && selected.customer_id) {
         const detail = parseCommercialLead(String(payload.description ?? selected.description));
@@ -2634,7 +2667,7 @@ function LeadLabelPicker({ selected, labels, busy, onClose, onChange }: { select
   return <div className="modal-backdrop label-picker-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal lead-label-modal" role="dialog" aria-modal="true" aria-label="Selecionar etiquetas"><div className="modal-head"><div><span className="eyebrow">ETIQUETAS</span><h2>Selecionar etiquetas</h2><p>Escolha uma ou mais sinalizações para o card.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18} /></button></div><div className="label-picker-options">{labels.map((entry) => { const checked = values.includes(entry.name); return <button type="button" className={checked ? "selected" : ""} key={entry.id} onClick={() => toggle(entry.name)}><i style={{ background: commercialLabelColor(entry.name) }} />{checked && <Check size={14} />}{entry.name}</button>; })}</div><div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button type="button" className="primary-button" disabled={busy} onClick={() => onChange(values)}><Save size={15} /> Salvar etiquetas</button></div></section></div>;
 }
 
-function CommercialLeadDrawer({ item, customers, employees, catalogs, agendaModule, funnels, funnel, details, busy, canEdit, canDelete, startEditing, startLossReason, onClose, onSave, onAgendaOperation, onDelete }: { item: WorkItem; customers: Customer[]; employees: Employee[]; catalogs: CustomerCatalogOption[]; agendaModule: AgendaModuleData | null; funnels: Array<{ entry: CustomerCatalogOption; details: CommercialDetails }>; funnel?: CustomerCatalogOption; details?: CommercialDetails; busy: boolean; canEdit: boolean; canDelete: boolean; startEditing: boolean; startLossReason: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => Promise<OperationResult>; onAgendaOperation: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onDelete: () => Promise<void> }) {
+function CommercialLeadDrawer({ item, customers, employees, catalogs, agendaModule, funnels, funnel, details, busy, canEdit, canDelete, startEditing, startLossReason, onClose, onMoveStage, onSave, onAgendaOperation, onDelete }: { item: WorkItem; customers: Customer[]; employees: Employee[]; catalogs: CustomerCatalogOption[]; agendaModule: AgendaModuleData | null; funnels: Array<{ entry: CustomerCatalogOption; details: CommercialDetails }>; funnel?: CustomerCatalogOption; details?: CommercialDetails; busy: boolean; canEdit: boolean; canDelete: boolean; startEditing: boolean; startLossReason: boolean; onClose: () => void; onMoveStage?: (stage: string) => Promise<void>; onSave: (payload: Record<string, unknown>) => Promise<OperationResult>; onAgendaOperation: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onDelete: () => Promise<void> }) {
   const lead = parseCommercialLead(item.description) ?? { kind: "commercialLead", phone: "", source: "", seller: item.owner, funnel: funnel?.name ?? "", stage: "", temperature: "", labels: [], products: [], score: 0, entryDate: "", customer: item.customer_name, follows: [], comments: [] };
   const flow = commercialFlowFromRecordType(item.record_type);
   const stages = details?.stages?.filter((entry) => entry.name.trim()) ?? [];
@@ -2779,7 +2812,7 @@ function CommercialLeadDrawer({ item, customers, employees, catalogs, agendaModu
     const moved = await onSave({ recordType: commercialRecordType(targetFlow), description: JSON.stringify(next) });
     if (moved) onClose();
   };
-  if (flow === "retention") return <><RetentionLeadDetail item={item} lead={lead} stages={stages.length ? stages : defaultRetentionStages} catalogs={catalogs} busy={busy} canEdit={canEdit} canDelete={canDelete} onClose={onClose} onEdit={() => setEditing(true)} onDelete={onDelete} onMove={async (stage) => { await saveLead({ ...lead, stage, follows: [...lead.follows, { type: "Movimentação", text: `Cliente movido para ${stage}.`, createdAt: new Date().toISOString(), author: lead.seller || item.owner }] }); }} onSave={saveLead} onSendToOnboarding={async () => { await sendToOnboarding(undefined, { clientId: lead.clientId || clientId, version: lead.version || releaseVersion }); }} />{editing && <RetentionLeadEditModal item={item} lead={lead} busy={busy} onClose={() => setEditing(false)} onSave={async (payload) => { const saved = await onSave({ ...payload, requireConfirmation: true }); if (saved) setEditing(false); return saved; }} />}</>;
+  if (flow === "retention") return <><RetentionLeadDetail item={item} lead={lead} stages={stages.length ? stages : defaultRetentionStages} catalogs={catalogs} busy={busy} canEdit={canEdit} canDelete={canDelete} onClose={onClose} onEdit={() => setEditing(true)} onDelete={onDelete} onMove={async (stage) => { if (onMoveStage) await onMoveStage(stage); else await saveLead({ ...lead, stage, follows: [...lead.follows, { type: "Movimentação", text: `Cliente movido para ${stage}.`, createdAt: new Date().toISOString(), author: lead.seller || item.owner }] }); }} onSave={saveLead} onSendToOnboarding={async () => { await sendToOnboarding(undefined, { clientId: lead.clientId || clientId, version: lead.version || releaseVersion }); }} />{editing && <RetentionLeadEditModal item={item} lead={lead} busy={busy} onClose={() => setEditing(false)} onSave={async (payload) => { const saved = await onSave({ ...payload, requireConfirmation: true }); if (saved) setEditing(false); return saved; }} />}</>;
   return <div className="drawer-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><aside className="drawer commercial-lead-drawer"><header className="drawer-head simple"><div><span className="eyebrow">{commercialFlowLabel(flow)} · {lead.stage || "Sem etapa"}</span><h2>{item.title}</h2><p>{lead.customer || "Lead sem cliente vinculado"}</p></div><div className="lead-header-actions"><button className="secondary-button commercial-copy-link" type="button" onClick={() => void copyLeadLink()}><ClipboardCheck size={15} /> {linkCopied ? "Link copiado" : "Copiar link"}</button><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div></header><div className="commercial-lead-drawer-content">
     <section className="lead-summary-grid"><div><span>Contato</span><strong>{lead.phone || "Não informado"}</strong><small>{lead.source || "Origem não definida"}</small></div><div><span>Responsável</span><strong>{lead.seller || item.owner || "Não definido"}</strong><small>{lead.temperature || "Sem temperatura"}</small></div><div><span>Valor estimado</span><strong>{item.amount_cents ? formatMoney(item.amount_cents) : "—"}</strong><small>Score {"★".repeat(lead.score || 0) || "—"}</small></div>{lead.onboarding?.clientId && <div className="lead-client-id-summary"><span>ID do cliente</span><strong>{lead.onboarding.clientId}</strong><button type="button" onClick={() => void navigator.clipboard?.writeText(lead.onboarding?.clientId ?? "")}>Copiar ID</button></div>}</section>
     <section className="lead-drawer-section lead-labels-section"><div className="panel-header"><div><span className="eyebrow">ETIQUETAS</span><h3>Classificar lead</h3><p>As etiquetas selecionadas ficam visíveis no card.</p></div><button type="button" className="secondary-button" disabled={!canEdit || busy || labelCatalogs.length === 0} onClick={() => setLabelPicker(true)}><Plus size={15} /> Selecionar etiquetas</button></div>{lead.labels.length > 0 && <div className="selected-label-list">{lead.labels.map((label) => <span key={label} style={{ "--label-color": commercialLabelColor(label) } as CSSProperties}><i />{label}</span>)}</div>}</section>

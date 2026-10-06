@@ -16,6 +16,8 @@ export type ReminderContext = {
 
 export const REMINDER_COMPOSER_EVENT = "dontus:create-reminder";
 export const AGENDA_COMPOSER_EVENT = "dontus:create-agenda-commitment";
+export const CLIENT_ALERT_EVENT = "dontus:create-client-alert";
+export const CLIENT_CHECKLIST_EVENT = "dontus:manage-client-checklists";
 
 export function openReminderComposer(context: ReminderContext) {
   window.dispatchEvent(new CustomEvent<ReminderContext>(REMINDER_COMPOSER_EVENT, { detail: context }));
@@ -23,6 +25,14 @@ export function openReminderComposer(context: ReminderContext) {
 
 export function openAgendaComposer(context: ReminderContext) {
   window.dispatchEvent(new CustomEvent<ReminderContext>(AGENDA_COMPOSER_EVENT, { detail: context }));
+}
+
+export function openClientAlert(context: ReminderContext) {
+  window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_ALERT_EVENT, { detail: context }));
+}
+
+export function openClientChecklist(context: ReminderContext) {
+  window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_CHECKLIST_EVENT, { detail: context }));
 }
 
 export default function ReminderAction({ context, compact = true, className = "" }: { context: ReminderContext; compact?: boolean; className?: string }) {
@@ -37,12 +47,13 @@ export default function ReminderAction({ context, compact = true, className = ""
 
 const CARD_SELECTORS = [
   ".task-card", ".task-table-row:not(.head)", ".suggestion-kanban-cards > article", ".commercial-lead-card", ".retention-lead-card",
-  ".cs-client-card", ".enterprise-card", ".cancellation-card", ".marketing-card",
+  ".cs-client-card", ".enterprise-card", ".cancellation-card", ".marketing-card", ".service-list > article",
   ".development-card-shell", ".journey-card", ".hr-employee-card", ".recruitment-candidate",
   "article.commission-row", ".goal-card", ".referral-card-shell",
 ];
-const ENABLED_MODULES = new Set(["internalChat","tasks","suggestions","commercial","cs","cancellations","marketing","ti","lia","hr","admin","commissions","goals","referrals"]);
-const DETAIL_SURFACES = ".task-modal,.suggestion-detail-modal,.drawer-backdrop>aside,.goal-detail-modal,.commission-decision-modal,.retention-detail-page,.enterprise-detail-page";
+const ENABLED_MODULES = new Set(["internalChat","tasks","suggestions","support","commercial","cs","cancellations","marketing","ti","lia","hr","admin","commissions","goals","referrals"]);
+const DETAIL_SURFACES = ".task-modal,.suggestion-detail-modal,.drawer-backdrop>aside,.goal-detail-modal,.commission-decision-modal,.retention-detail-page,.enterprise-detail-page,.service-entry-modal";
+const CLIENT_ACTION_MODULES = new Set(["support", "commercial", "cs", "cancellations", "lia"]);
 
 function cardContext(candidate: HTMLElement, module: string): ReminderContext {
   const title = candidate.querySelector<HTMLElement>("h2,h3,.task-card-title,:scope>span:first-child>b,.retention-card-company,strong")?.innerText?.trim() || "Registro do sistema";
@@ -170,13 +181,35 @@ export function ReminderCardEnhancer({ module, reminders = [] }: { module: strin
         scheduleButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openAgendaComposer(context); });
         insertAction(scheduleButton);
       }
+      if (CLIENT_ACTION_MODULES.has(module) && !header.querySelector<HTMLElement>(".client-alert-detail-action")) {
+        const alertButton = document.createElement("button");
+        alertButton.type = "button";
+        alertButton.className = "client-alert-detail-action";
+        alertButton.title = "Registrar alerta do cliente";
+        alertButton.setAttribute("aria-label", `Registrar alerta para ${context.title || "este cliente"}`);
+        alertButton.innerHTML = `<span aria-hidden="true">!</span><b>Alerta</b>`;
+        alertButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openClientAlert(context); });
+        const reminderAction = header.querySelector<HTMLElement>(".reminder-detail-action,.reminder-action-button");
+        if (reminderAction) reminderAction.insertAdjacentElement("afterend", alertButton); else insertAction(alertButton);
+      }
+      if (CLIENT_ACTION_MODULES.has(module) && !header.querySelector<HTMLElement>(".client-checklist-detail-action")) {
+        const checklistButton = document.createElement("button");
+        checklistButton.type = "button";
+        checklistButton.className = "client-checklist-detail-action";
+        checklistButton.title = "Vincular checklist";
+        checklistButton.setAttribute("aria-label", `Gerenciar checklists de ${context.title || "este cliente"}`);
+        checklistButton.innerHTML = `<span aria-hidden="true">☑</span><b>Checklist</b>`;
+        checklistButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openClientChecklist(context); });
+        const alertAction = header.querySelector<HTMLElement>(".client-alert-detail-action");
+        if (alertAction) alertAction.insertAdjacentElement("afterend", checklistButton); else insertAction(checklistButton);
+      }
       updateLinkedHistory(surface,remindersRef.current);
     };
     root.addEventListener("click", rememberCard, true);
     enhance();
     const observer = new MutationObserver(enhance);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.agenda-detail-action,.reminder-linked-open").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
+    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.agenda-detail-action,.client-alert-detail-action,.client-checklist-detail-action,.reminder-linked-open").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
   }, [module]);
   useEffect(()=>{document.querySelectorAll<HTMLElement>(DETAIL_SURFACES).forEach(surface=>{if(surface.dataset.reminderSourceModule)updateLinkedHistory(surface,reminders)})},[reminders]);
   return null;
