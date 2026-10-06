@@ -323,6 +323,8 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(actions, /recordType: "Checklist vinculado"/);
   assert.match(actions, /resolveContextCustomer/);
   assert.match(actions, /CLIENTE VINCULADO/);
+  assert.match(actions, /createPortal/);
+  assert.match(actions, /client-checklist-inline-panel/);
   assert.match(actions, /className=\{entry\.checked \? "checked"/);
   assert.match(app, /label: "Checklists"/);
   assert.match(app, /commercialChecklist/);
@@ -360,6 +362,9 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   assert.match(app, /Retomar cliente/);
   assert.match(app, /label: "Acompanhamentos"/);
   assert.match(app, /EmployeeIndicatorsAdmin/);
+  assert.match(app, /DADOS DA GESTÃO RH/);
+  assert.match(app, /onSection\("employeeIndicators"\)/);
+  assert.match(app, /className="form-grid employee-form"/);
   assert.match(app, /userCan\(data\.user, "catalogs", "manage"\) \|\| userCan\(data\.user, "tasks", "manage"\)/);
   assert.match(reminders, /confirmedAt/);
   assert.match(reminders, /30 minutos/);
@@ -370,4 +375,6 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   assert.match(compose, /TZ: America\/Sao_Paulo/);
   assert.match(css, /\.client-engagement-backdrop\.embedded-checklist/);
   assert.match(css, /\.employee-indicator-kpis/);
+  assert.match(css, /\.client-checklist-inline-panel/);
+  assert.match(css, /\.employee-modal/);
 });
