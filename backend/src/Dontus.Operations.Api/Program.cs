@@ -843,6 +843,7 @@ operations.MapPost("", async (
                 request.ClinicsCount ?? 1,
                 request.MonthlyRevenueCents ?? 0,
                 request.Strategic ?? false,
+                request.StrategicNetworkId,
                 request.Status, request.Project, request.ProductVersion, request.DueDay,
                 request.Server, request.PaymentMethod, request.InvoiceCompany, request.GraceDays,
                 request.DueDays, request.Subscription, request.Email, request.Phone, request.Website,
@@ -854,7 +855,7 @@ operations.MapPost("", async (
                 request.Id ?? throw new DomainException("Cliente obrigatório."),
                 request.LegalName, request.TradeName, request.DocumentMasked, request.Segment,
                 request.Owner, request.CsOwner, request.ClinicsCount, request.MonthlyRevenueCents,
-                request.Strategic, request.Status, request.Project, request.ProductVersion,
+                request.Strategic, request.StrategicNetworkId, request.Status, request.Project, request.ProductVersion,
                 request.DueDay, request.Server, request.PaymentMethod, request.InvoiceCompany,
                 request.GraceDays, request.DueDays, request.Subscription, request.Email,
                 request.Phone, request.Website, request.Notes, request.Address, request.City,
@@ -1775,6 +1776,7 @@ public sealed class OperationsRequest
     public int? ClinicsCount { get; init; }
     public long? MonthlyRevenueCents { get; init; }
     public bool? Strategic { get; init; }
+    public Guid? StrategicNetworkId { get; init; }
     public bool? StrategicClient { get; init; }
     public bool? CancellationRisk { get; init; }
     public string? Priority { get; init; }

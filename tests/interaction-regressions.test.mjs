@@ -279,3 +279,28 @@ test("organiza múltiplos anexos, documentos de cancelamento e ID público", asy
   assert.match(journey, /publicCustomerId\(customer\)/);
   assert.match(tasks, /publicCustomerCode\(customer\)/);
 });
+
+test("configura clientes, vincula redes e consolida comentários por ID", async () => {
+  const [app, domain, contracts, service, migration, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Domain/Entities.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Application/Contracts.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/OperationsService.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/Migrations/20261006120000_CustomerStrategicNetwork.cs", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /Configurar opções do cadastro de clientes/);
+  assert.match(app, /const CUSTOMER_CATALOGS/);
+  assert.match(app, /scope="customers"/);
+  assert.match(app, /name="strategicNetworkId"/);
+  assert.match(app, /Rede: \{linkedNetwork\.title\}/);
+  assert.match(app, /label: "Comentários"/);
+  assert.match(app, /label: "Alerta"/);
+  assert.match(app, /structuredClientEvolutions/);
+  assert.match(app, /Comentário registrado na evolução do cliente/);
+  assert.match(domain, /Guid\? StrategicNetworkId/);
+  assert.match(contracts, /strategic_network_id/);
+  assert.match(service, /Selecione a rede da conta estratégica/);
+  assert.match(migration, /FK_customers_work_items_StrategicNetworkId/);
+  assert.match(css, /\.client-comment-timeline/);
+});

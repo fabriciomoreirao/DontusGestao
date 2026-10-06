@@ -75,6 +75,8 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.MonthlyRevenueCents).HasDefaultValue(0L);
             entity.HasIndex(x => x.Status);
             entity.HasIndex(x => x.Owner);
+            entity.HasIndex(x => x.StrategicNetworkId);
+            entity.HasOne<WorkItem>().WithMany().HasForeignKey(x => x.StrategicNetworkId).OnDelete(DeleteBehavior.SetNull);
         });
 
         ConfigureEntity(modelBuilder.Entity<WorkItem>(), "work_items");

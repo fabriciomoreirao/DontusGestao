@@ -23,6 +23,7 @@ public sealed class Customer : Entity
     public string CsOwner { get; set; } = "Não atribuído";
     public string SupportOwner { get; set; } = "Fila de suporte";
     public bool Strategic { get; set; }
+    public Guid? StrategicNetworkId { get; set; }
     public int ClinicsCount { get; set; } = 1;
     public long MonthlyRevenueCents { get; set; }
     public string Project { get; set; } = "";

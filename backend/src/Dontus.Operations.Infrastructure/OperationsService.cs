@@ -93,7 +93,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .ToListAsync(cancellationToken);
         var customers = customerEntities.Select(x => new CustomerDto(
             x.Id, x.LegalName, x.TradeName, x.DocumentMasked, x.Segment, x.Status,
-            x.Owner, x.CsOwner, x.SupportOwner, x.Strategic ? 1 : 0, x.ClinicsCount,
+            x.Owner, x.CsOwner, x.SupportOwner, x.Strategic ? 1 : 0, x.StrategicNetworkId, x.ClinicsCount,
             x.MonthlyRevenueCents, x.Project, x.ProductVersion, x.DueDay, x.Server,
             x.PaymentMethod, x.InvoiceCompany, x.GraceDays, x.DueDays, x.Subscription,
             x.Email, x.Phone, x.Website, x.Notes, x.Address, x.City, x.State, x.CreatedAt,
@@ -541,6 +541,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             throw new DomainException("Seu acesso não permite cadastrar clientes.", 403);
         if (string.IsNullOrWhiteSpace(command.LegalName))
             throw new DomainException("Informe a razão social.");
+        if (command.Strategic && !command.StrategicNetworkId.HasValue)
+            throw new DomainException("Selecione a rede da conta estratégica.");
+        if (command.StrategicNetworkId.HasValue && !await db.WorkItems.AsNoTracking().AnyAsync(
+            entry => entry.Id == command.StrategicNetworkId.Value && entry.Module == "cs" && entry.Description.Contains("enterpriseNetwork"), cancellationToken))
+            throw new DomainException("A rede estratégica selecionada não foi localizada.");
 
         var customer = new Customer
         {
@@ -551,6 +556,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             Owner = string.IsNullOrWhiteSpace(command.Owner) ? actor.DisplayName : command.Owner.Trim(),
             CsOwner = string.IsNullOrWhiteSpace(command.CsOwner) ? "Não atribuído" : command.CsOwner.Trim(),
             Strategic = command.Strategic,
+            StrategicNetworkId = command.Strategic ? command.StrategicNetworkId : null,
             ClinicsCount = Math.Max(1, command.ClinicsCount),
             MonthlyRevenueCents = Math.Max(0, command.MonthlyRevenueCents),
             Status = command.Status?.Trim() ?? "",
@@ -608,6 +614,13 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (command.ClinicsCount.HasValue) customer.ClinicsCount = Math.Max(1, command.ClinicsCount.Value);
         if (command.MonthlyRevenueCents.HasValue) customer.MonthlyRevenueCents = Math.Max(0, command.MonthlyRevenueCents.Value);
         if (command.Strategic.HasValue) customer.Strategic = command.Strategic.Value;
+        if (!customer.Strategic) customer.StrategicNetworkId = null;
+        else if (command.StrategicNetworkId.HasValue) customer.StrategicNetworkId = command.StrategicNetworkId;
+        if (customer.Strategic && !customer.StrategicNetworkId.HasValue)
+            throw new DomainException("Selecione a rede da conta estratégica.");
+        if (customer.StrategicNetworkId.HasValue && !await db.WorkItems.AsNoTracking().AnyAsync(
+            entry => entry.Id == customer.StrategicNetworkId.Value && entry.Module == "cs" && entry.Description.Contains("enterpriseNetwork"), cancellationToken))
+            throw new DomainException("A rede estratégica selecionada não foi localizada.");
         if (command.Status is not null) customer.Status = Clean(command.Status);
         if (command.Project is not null) customer.Project = Clean(command.Project);
         if (command.ProductVersion is not null) customer.ProductVersion = Clean(command.ProductVersion);
@@ -636,7 +649,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     {
         if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view"))
             throw new DomainException("Seu acesso não permite visualizar os cadastros de clientes.", 403);
-        var includeInactive = actor.HasPermission("catalogs", "manage") || actor.HasPermission("cancellations", "manage") || actor.HasPermission("hr", "manage");
+        var includeInactive = actor.HasPermission("catalogs", "manage") || actor.HasPermission("customers", "manage") || actor.HasPermission("cancellations", "manage") || actor.HasPermission("hr", "manage");
         var entries = await db.CustomerCatalogOptions.AsNoTracking()
             .Where(entry => includeInactive || entry.Active)
             .OrderBy(entry => entry.Catalog).ThenBy(entry => entry.Name)
@@ -648,7 +661,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     public async Task<Guid> SaveCustomerCatalogAsync(Guid? id, string catalog, string name, string? description, bool active, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var canManageAllCatalogs = actor.HasPermission("catalogs", "manage");
-        var canManageScopedCatalog = actor.HasPermission("cancellations", "manage") && catalog.StartsWith("cancellation", StringComparison.OrdinalIgnoreCase)
+        var customerCatalogs = new HashSet<string>(["status", "project", "version", "subscription", "server", "paymentMethod", "dueDay", "graceDays", "dueDays", "invoiceCompany"], StringComparer.OrdinalIgnoreCase);
+        var canManageScopedCatalog = actor.HasPermission("customers", "manage") && customerCatalogs.Contains(catalog)
+            || actor.HasPermission("cancellations", "manage") && catalog.StartsWith("cancellation", StringComparison.OrdinalIgnoreCase)
             || actor.HasPermission("hr", "manage") && (catalog.StartsWith("hr", StringComparison.OrdinalIgnoreCase) || catalog.Equals("employeeRole", StringComparison.OrdinalIgnoreCase));
         if (!canManageAllCatalogs && !canManageScopedCatalog)
             throw new DomainException("Seu acesso não permite alterar os cadastros desta funcionalidade.", 403);
@@ -668,7 +683,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     public async Task DeleteCustomerCatalogAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var entry = await db.CustomerCatalogOptions.SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw new DomainException("Cadastro não encontrado.", 404);
-        var canManageScopedCatalog = actor.HasPermission("cancellations", "manage") && entry.Catalog.StartsWith("cancellation", StringComparison.OrdinalIgnoreCase)
+        var customerCatalogs = new HashSet<string>(["status", "project", "version", "subscription", "server", "paymentMethod", "dueDay", "graceDays", "dueDays", "invoiceCompany"], StringComparer.OrdinalIgnoreCase);
+        var canManageScopedCatalog = actor.HasPermission("customers", "manage") && customerCatalogs.Contains(entry.Catalog)
+            || actor.HasPermission("cancellations", "manage") && entry.Catalog.StartsWith("cancellation", StringComparison.OrdinalIgnoreCase)
             || actor.HasPermission("hr", "manage") && (entry.Catalog.StartsWith("hr", StringComparison.OrdinalIgnoreCase) || entry.Catalog.Equals("employeeRole", StringComparison.OrdinalIgnoreCase));
         if (!actor.HasPermission("catalogs", "manage") && !canManageScopedCatalog)
             throw new DomainException("Seu acesso não permite excluir os cadastros desta funcionalidade.", 403);
@@ -686,7 +703,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             && (string.Equals(command.Module, "cs", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(command.Module, "lia", StringComparison.OrdinalIgnoreCase))
             && actor.HasPermission("cancellations", "edit");
-        if (!cancellationRoute)
+        var customerComment = string.Equals(command.Module, "customers", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(command.RecordType, "Comentário do cliente", StringComparison.OrdinalIgnoreCase)
+            && actor.HasPermission("customers", "edit");
+        if (!cancellationRoute && !customerComment)
             actor.RequirePermission(command.Module, "create");
         if (string.IsNullOrWhiteSpace(command.Module) ||
             string.IsNullOrWhiteSpace(command.RecordType) ||

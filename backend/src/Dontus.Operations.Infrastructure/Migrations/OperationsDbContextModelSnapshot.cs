@@ -1407,6 +1407,14 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("company_notice_reads", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.Customer", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("StrategicNetworkId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.CorporateTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1672,6 +1680,9 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.Property<bool>("Strategic")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid?>("StrategicNetworkId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Subscription")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1701,6 +1712,8 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.HasIndex("Owner");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("StrategicNetworkId");
 
                     b.ToTable("customers", (string)null);
                 });
