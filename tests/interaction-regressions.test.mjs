@@ -323,12 +323,15 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(actions, /recordType: "Alerta do cliente"/);
   assert.match(actions, /recordType: "Checklist vinculado"/);
   assert.match(actions, /resolveContextCustomer/);
-  assert.match(actions, /O cliente e o card já foram identificados automaticamente|Cliente não identificado/);
+  assert.match(actions, /sourceCustomerIdentity/);
+  assert.match(actions, /sharedTemplates/);
+  assert.match(actions, /customerId: customer\.id \|\| null/);
   assert.match(actions, /createPortal/);
   assert.match(actions, /client-checklist-card-slot/);
   assert.match(actions, /client-checklist-picker/);
   assert.match(actions, /client-checklist-card-field/);
-  assert.match(actions, /aria-modal="false"/);
+  assert.match(actions, /client-checklist-native-host/);
+  assert.match(actions, /Vincular checklist ao card/);
   assert.match(actions, /setShowComposer\(false\)/);
   assert.match(actions, /void add\(selected\)/);
   assert.match(actions, /Checklist finalizado/);
@@ -386,6 +389,7 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   assert.match(css, /\.client-engagement-backdrop\.embedded-checklist/);
   assert.match(css, /\.employee-indicator-kpis/);
   assert.match(css, /\.client-checklist-card-slot/);
+  assert.match(css, /\.client-checklist-native-host/);
   assert.match(css, /position:static!important/);
   assert.match(css, /\.client-checklist-picker/);
   assert.match(css, /\.client-checklist-card-field/);

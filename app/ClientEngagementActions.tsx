@@ -69,6 +69,17 @@ function resolveContextCustomer(context: ReminderContext, customers: Customer[],
   return resolveCustomer({ ...context, customerName: source?.customer_name || context.customerName }, customers);
 }
 
+function sourceCustomerIdentity(context: ReminderContext, customers: Customer[], items: WorkItem[]) {
+  const source = sourceItem(context, items);
+  const resolved = resolveContextCustomer(context, customers, items);
+  if (resolved) return resolved;
+  let detail: Record<string, unknown> = {};
+  try { detail = JSON.parse(source?.description || "{}") as Record<string, unknown>; } catch { /* registro legado */ }
+  const code = String(context.clientId || detail.clientId || detail.customerId || "").trim();
+  const name = String(source?.customer_name || detail.customerName || detail.clientName || detail.customer || context.customerName || context.title || "Cliente do card").trim();
+  return { id: source?.customer_id || "", trade_name: name, legal_name: name, document_masked: code } satisfies Customer;
+}
+
 export function checklistCatalogFor(context: ReminderContext, items: WorkItem[]) {
   if (context.module === "support") return "serviceChecklist";
   if (context.module === "cancellations") return "cancellationChecklist";
@@ -107,13 +118,21 @@ export function ClientAlertModal({ context, customers, user, busy, operate, onCl
 }
 
 function templateChecks(catalog: Catalog) {
-  try { const detail = JSON.parse(catalog.description) as { checks?: unknown[] }; return Array.isArray(detail.checks) ? detail.checks.map(String).map((entry) => entry.trim()).filter(Boolean) : []; } catch { return []; }
+  try {
+    const detail = JSON.parse(catalog.description) as { checks?: unknown[]; items?: unknown[]; description?: string };
+    const entries = Array.isArray(detail.checks) ? detail.checks : Array.isArray(detail.items) ? detail.items : [];
+    if (entries.length) return entries.map(String).map((entry) => entry.trim()).filter(Boolean);
+    return String(detail.description || "").split(/\r?\n|;/).map((entry) => entry.trim()).filter(Boolean);
+  } catch { return catalog.description.split(/\r?\n|;/).map((entry) => entry.trim()).filter(Boolean); }
 }
 
 export function ClientChecklistModal({ context, customers, catalogs, items, user, busy, operate, onClose }: { context: ReminderContext; customers: Customer[]; catalogs: Catalog[]; items: WorkItem[]; user: User; busy: boolean; operate: Operate; onClose: () => void }) {
-  const customer = resolveContextCustomer(context, customers, items);
+  const customer = sourceCustomerIdentity(context, customers, items);
   const catalog = checklistCatalogFor(context, items);
-  const templates = catalogs.filter((entry) => entry.active && entry.catalog === catalog && templateChecks(entry).length);
+  const configuredTemplates = catalogs.filter((entry) => entry.active && entry.catalog === catalog && templateChecks(entry).length);
+  const sharedTemplates = catalogs.filter((entry) => entry.active && (/Checklist$/i.test(entry.catalog) || entry.catalog === "liaChecklistTemplate") && templateChecks(entry).length);
+  const templates = configuredTemplates.length ? configuredTemplates : sharedTemplates;
+  const usingSharedTemplates = !configuredTemplates.length && sharedTemplates.length > 0;
   const [templateId, setTemplateId] = useState("");
   const [error, setError] = useState("");
   const [host, setHost] = useState<HTMLElement | null>(null);
@@ -124,23 +143,26 @@ export function ClientChecklistModal({ context, customers, catalogs, items, user
     const surfaces = Array.from(document.querySelectorAll<HTMLElement>(`[data-reminder-source-module="${context.module}"]`));
     const source = surfaces.at(-1);
     if (!source) return;
-    const contentHost = source.querySelector<HTMLElement>(".task-modal-body,.drawer-body,.retention-detail-body,.enterprise-detail-body,.service-entry-body,.suggestion-detail-body,.development-drawer-body,.lead-detail-body,.cs-pipeline-body") || source;
+    const contentHost = source.querySelector<HTMLElement>(".cs-drawer-content,.task-modal-body,.drawer-body,.retention-detail-body,.enterprise-detail-body,.service-entry-body,.suggestion-detail-body,.development-drawer-body,.lead-detail-body,.cs-pipeline-body") || source;
+    const portalHost = document.createElement("div");
+    portalHost.className = "client-checklist-native-host";
+    const historyAnchor = contentHost.querySelector<HTMLElement>(".cs-drawer-panel:last-of-type,.task-history,.retention-history-list,.lead-comments-history,.enterprise-timeline,.journey-comments");
+    if (historyAnchor?.parentElement === contentHost) contentHost.insertBefore(portalHost, historyAnchor); else contentHost.appendChild(portalHost);
     source.classList.add("checklist-inline-open");
-    setHost(contentHost);
-    window.setTimeout(() => contentHost.querySelector<HTMLElement>(".client-checklist-picker,.client-checklist-card-field")?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
+    setHost(portalHost);
+    window.setTimeout(() => portalHost.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
     const observer = new MutationObserver(() => { if (!source.isConnected) onClose(); });
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); source.classList.remove("checklist-inline-open"); };
+    return () => { observer.disconnect(); source.classList.remove("checklist-inline-open"); portalHost.remove(); };
   }, [context.module, onClose]);
   const linked = useMemo(() => items.map((item) => ({ item, detail: item.record_type === "Checklist vinculado" ? parseLinkedChecklist(item.description) : null })).filter((entry): entry is { item: WorkItem; detail: LinkedChecklistDetail } => Boolean(entry.detail)).filter(({ detail }) => detail.sourceModule === context.module && (context.entityId ? detail.sourceEntityId === context.entityId : detail.sourceTitle === context.title)), [items, context]);
   const add = async (selectedTemplateId = templateId) => {
     const template = templates.find((entry) => entry.id === selectedTemplateId);
-    if (!customer) { setError("Não foi possível identificar automaticamente o cliente vinculado a este card."); return; }
     if (!template) { setError("Selecione um tipo de checklist configurado."); return; }
     if (linked.some(({ detail }) => detail.templateId === template.id)) { setError("Este tipo de checklist já está vinculado ao card."); return; }
     const createdAt = new Date().toISOString();
     const detail: LinkedChecklistDetail = { kind: "linkedChecklist", sourceModule: context.module, sourceEntityId: context.entityId, sourceTitle: context.title || customer.trade_name, templateId: template.id, templateName: template.name, createdAt, createdBy: user.displayName, items: templateChecks(template).map((text, index) => ({ id: `${template.id}-${index}-${Date.now()}`, text, checked: false })), history: [{ at: createdAt, author: user.displayName, text: `Checklist “${template.name}” vinculado ao card.` }] };
-    const saved = await operate({ action: "createWorkItem", module: "customers", recordType: "Checklist vinculado", title: `Checklist · ${template.name} · ${customer.trade_name}`, customerId: customer.id, customerName: customer.trade_name || customer.legal_name, owner: user.displayName, team: "Customer 360", status: "Em andamento", priority: "P3", amountCents: 0, originType: context.module, originId: context.entityId, description: JSON.stringify(detail) }, "Checklist vinculado ao cliente.");
+    const saved = await operate({ action: "createWorkItem", module: "customers", recordType: "Checklist vinculado", title: `Checklist · ${template.name} · ${customer.trade_name}`, customerId: customer.id || null, customerName: customer.trade_name || customer.legal_name, owner: user.displayName, team: "Customer 360", status: "Em andamento", priority: "P3", amountCents: 0, originType: context.module, originId: context.entityId, description: JSON.stringify(detail) }, "Checklist vinculado ao cliente.");
     if (saved) { setError(""); setShowComposer(false); }
   };
   const update = async (item: WorkItem, detail: LinkedChecklistDetail, index: number) => {
@@ -153,7 +175,7 @@ export function ClientChecklistModal({ context, customers, catalogs, items, user
   const remove = async (item: WorkItem) => { await operate({ action: "deleteWorkItem", id: item.id }, "Checklist removido do card."); };
   if (!host) return null;
   return createPortal(<div className="client-checklist-card-slot">
-    {showComposer && <section className="client-checklist-picker" role="dialog" aria-modal="false" aria-labelledby="checklist-picker-title"><header><span><ClipboardCheck /><span><strong id="checklist-picker-title">Inserir checklist</strong><small>{customer ? `${customer.trade_name || customer.legal_name}${publicId(customer) ? ` · ID ${publicId(customer)}` : ""}` : "Cliente não identificado"}</small></span></span><button type="button" aria-label="Cancelar inserção" onClick={() => { setShowComposer(false); setTemplateId(""); setError(""); if (!linked.length) onClose(); }}><X size={15} /></button></header><label>Selecione o tipo de checklist<select autoFocus value={templateId} disabled={busy || !customer} onChange={(event) => { const selected = event.target.value; setTemplateId(selected); setError(""); if (selected) void add(selected); }}><option value="">Selecionar checklist</option>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label>{!templates.length && <small className="checklist-config-empty">Cadastre um tipo de checklist na engrenagem desta funcionalidade.</small>}{error && <p className="form-error">{error}</p>}</section>}
+    {showComposer && <section className="client-checklist-picker" aria-labelledby="checklist-picker-title"><header><span><ClipboardCheck /><span><strong id="checklist-picker-title">Vincular checklist ao card</strong><small>{customer.trade_name || customer.legal_name}{publicId(customer) ? ` · ID ${publicId(customer)}` : context.clientId ? ` · ID ${context.clientId}` : ""}</small></span></span><button type="button" aria-label="Cancelar inserção" onClick={() => { setShowComposer(false); setTemplateId(""); setError(""); if (!linked.length) onClose(); }}><X size={15} /></button></header><label>Tipo de checklist<select autoFocus value={templateId} disabled={busy} onChange={(event) => { const selected = event.target.value; setTemplateId(selected); setError(""); if (selected) void add(selected); }}><option value="">Selecionar checklist</option>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label>{usingSharedTemplates && <small className="checklist-shared-note">Ainda não há um modelo exclusivo desta funcionalidade; os modelos compartilhados disponíveis foram carregados.</small>}{!templates.length && <small className="checklist-config-empty">Nenhum tipo configurado. Cadastre um modelo na engrenagem para disponibilizá-lo aqui.</small>}{error && <p className="form-error">{error}</p>}</section>}
     {linked.length > 0 && <section className="client-checklist-card-field"><header><span><ClipboardCheck /><span><strong>Checklists do card</strong><small>{linked.length} checklist(s) vinculado(s) e salvo(s)</small></span></span><button className="secondary-button" type="button" onClick={() => { setTemplateId(""); setError(""); setShowComposer(true); }}><Plus size={15} /> Inserir outro</button></header><section className="linked-checklists">{linked.map(({ item, detail }) => { const completed = detail.items.filter((entry) => entry.checked).length; const percentage = detail.items.length ? Math.round(completed / detail.items.length * 100) : 0; const hideMarked = Boolean(hideCompleted[item.id]); const complete = percentage === 100; return <article className="linked-checklist-card" key={item.id}><header className="linked-checklist-card-head"><span className="linked-checklist-title"><i className={complete ? "complete" : ""}>{complete ? <Check size={13} /> : <ClipboardCheck size={14} />}</i><span><strong>{detail.templateName}</strong><small>{complete ? `Concluído${detail.completedBy ? ` por ${detail.completedBy}` : ""}` : "Em andamento"}</small></span></span><span className="linked-checklist-actions"><button type="button" className={hideMarked ? "active" : ""} onClick={() => setHideCompleted((current) => ({ ...current, [item.id]: !current[item.id] }))}>{hideMarked ? "Mostrar itens marcados" : "Ocultar itens marcados"}</button><button type="button" className="delete" disabled={busy} onClick={() => void remove(item)} aria-label={`Excluir checklist ${detail.templateName}`}><Trash2 size={14} /> Excluir</button></span></header><section className="linked-checklist-progress"><b>{percentage}%</b><span><i style={{ width: `${percentage}%` }} /></span></section><div className="linked-checklist-items">{detail.items.map((entry, index) => ({ entry, index })).filter(({ entry }) => !hideMarked || !entry.checked).map(({ entry, index }) => <button type="button" className={entry.checked ? "checked" : ""} disabled={busy} onClick={() => void update(item, detail, index)} key={entry.id}><i>{entry.checked && <Check size={13} />}</i><span>{entry.text}</span></button>)}{hideMarked && completed === detail.items.length && <small className="linked-checklist-all-hidden">Todos os itens marcados estão ocultos.</small>}</div><footer><span style={{ width: `${percentage}%` }} /></footer><small className="linked-checklist-author">Criado por {detail.createdBy}</small></article>; })}</section></section>}
   </div>, host);
 }
