@@ -325,6 +325,9 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(actions, /CLIENTE VINCULADO/);
   assert.match(actions, /createPortal/);
   assert.match(actions, /client-checklist-inline-panel/);
+  assert.match(actions, /aria-modal="false"/);
+  assert.match(actions, /setShowComposer\(false\)/);
+  assert.match(actions, /Vincular ao card/);
   assert.match(actions, /className=\{entry\.checked \? "checked"/);
   assert.match(app, /label: "Checklists"/);
   assert.match(app, /commercialChecklist/);
@@ -376,5 +379,7 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   assert.match(css, /\.client-engagement-backdrop\.embedded-checklist/);
   assert.match(css, /\.employee-indicator-kpis/);
   assert.match(css, /\.client-checklist-inline-panel/);
+  assert.match(css, /position:static!important/);
+  assert.match(css, /\.client-checklist-inline-composer/);
   assert.match(css, /\.employee-modal/);
 });
