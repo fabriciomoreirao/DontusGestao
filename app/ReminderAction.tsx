@@ -18,6 +18,7 @@ export const REMINDER_COMPOSER_EVENT = "dontus:create-reminder";
 export const AGENDA_COMPOSER_EVENT = "dontus:create-agenda-commitment";
 export const CLIENT_ALERT_EVENT = "dontus:create-client-alert";
 export const CLIENT_CHECKLIST_EVENT = "dontus:manage-client-checklists";
+export const CLIENT_RECORD_EVENT = "dontus:open-client-record";
 
 export function openReminderComposer(context: ReminderContext) {
   window.dispatchEvent(new CustomEvent<ReminderContext>(REMINDER_COMPOSER_EVENT, { detail: context }));
@@ -33,6 +34,10 @@ export function openClientAlert(context: ReminderContext) {
 
 export function openClientChecklist(context: ReminderContext) {
   window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_CHECKLIST_EVENT, { detail: context }));
+}
+
+export function openClientRecord(context: ReminderContext) {
+  window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_RECORD_EVENT, { detail: context }));
 }
 
 export default function ReminderAction({ context, compact = true, className = "" }: { context: ReminderContext; compact?: boolean; className?: string }) {
@@ -203,13 +208,24 @@ export function ReminderCardEnhancer({ module, reminders = [] }: { module: strin
         const alertAction = header.querySelector<HTMLElement>(".client-alert-detail-action");
         if (alertAction) alertAction.insertAdjacentElement("afterend", checklistButton); else insertAction(checklistButton);
       }
+      if (CLIENT_ACTION_MODULES.has(module) && !header.querySelector<HTMLElement>(".client-record-detail-action")) {
+        const recordButton = document.createElement("button");
+        recordButton.type = "button";
+        recordButton.className = "client-record-detail-action";
+        recordButton.title = "Acessar ficha do cliente";
+        recordButton.setAttribute("aria-label", `Acessar ficha de ${context.customerName || context.title || "cliente"}`);
+        recordButton.innerHTML = `<span aria-hidden="true">↗</span><b>Ficha do cliente</b>`;
+        recordButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openClientRecord(context); });
+        const checklistAction = header.querySelector<HTMLElement>(".client-checklist-detail-action");
+        if (checklistAction) checklistAction.insertAdjacentElement("afterend", recordButton); else insertAction(recordButton);
+      }
       updateLinkedHistory(surface,remindersRef.current);
     };
     root.addEventListener("click", rememberCard, true);
     enhance();
     const observer = new MutationObserver(enhance);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.agenda-detail-action,.client-alert-detail-action,.client-checklist-detail-action,.reminder-linked-open").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
+    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.agenda-detail-action,.client-alert-detail-action,.client-checklist-detail-action,.client-record-detail-action,.reminder-linked-open").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
   }, [module]);
   useEffect(()=>{document.querySelectorAll<HTMLElement>(DETAIL_SURFACES).forEach(surface=>{if(surface.dataset.reminderSourceModule)updateLinkedHistory(surface,reminders)})},[reminders]);
   return null;

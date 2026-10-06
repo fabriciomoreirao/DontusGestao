@@ -5,7 +5,7 @@ import {
   Clock3, Columns3, ExternalLink, Link2, List, MessageSquareText, Pencil, Phone, Plus, RotateCcw, Save,
   Search, Send, Settings, ShieldCheck, Trash2, UserRound, X, XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { AgendaModuleData } from "@/app/AgendaModule";
 import type { TaskModuleData } from "@/app/TasksModule";
 import { CancellationEntryModal, type CancellationDetail } from "@/app/CancellationsModule";
@@ -119,14 +119,26 @@ function UsageLineChart({ milestones, usageByDay }: { milestones: number[]; usag
     const y = top + (100 - value) / 100 * usableHeight;
     return { day, x, y, value, informed: Boolean(usageByDay[String(day)]) };
   });
-  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const area = points.length ? `${left},${height - bottom} ${polyline} ${width - right},${height - bottom}` : "";
+  const smoothLine = points.length ? points.slice(1).reduce((path, point, index) => {
+    const previous = points[index];
+    const middleX = (previous.x + point.x) / 2;
+    return `${path} C ${middleX},${previous.y} ${middleX},${point.y} ${point.x},${point.y}`;
+  }, `M ${points[0].x},${points[0].y}`) : "";
+  const baseline = height - bottom;
+  const area = points.length ? `${smoothLine} L ${points.at(-1)?.x},${baseline} L ${points[0].x},${baseline} Z` : "";
+  const animationKey = milestones.map((day) => usageByDay[String(day)] || "empty").join("|");
   return <div className="cs-usage-line-chart" aria-label={`Evolução da utilização nos dias ${milestones.map((day) => `D+${day}`).join(", ")}`}>
-    <svg viewBox={`0 0 ${width} ${height}`} role="img">
+    <svg key={animationKey} viewBox={`0 0 ${width} ${height}`} role="img">
+      <defs>
+        <linearGradient id="usageAreaGradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--primary)" stopOpacity=".34" /><stop offset="100%" stopColor="var(--primary)" stopOpacity=".025" /></linearGradient>
+        <linearGradient id="usageLineGradient" x1="0" x2="1"><stop offset="0%" stopColor="#06b6d4" /><stop offset="52%" stopColor="var(--primary)" /><stop offset="100%" stopColor="#6366f1" /></linearGradient>
+        <filter id="usageGlow" x="-20%" y="-30%" width="140%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="5" floodColor="#168be6" floodOpacity=".24" /></filter>
+      </defs>
       {[100, 50, 0].map((value) => { const y = top + (100 - value) / 100 * usableHeight; return <g key={value}><line className="cs-usage-grid-line" x1={left} x2={width - right} y1={y} y2={y} /><text className="cs-usage-axis-label" x={left - 10} y={y + 4} textAnchor="end">{value}%</text></g>; })}
-      {area && <polygon className="cs-usage-area" points={area} />}
-      {polyline && <polyline className="cs-usage-line" points={polyline} />}
-      {points.map((point) => <g className={point.informed ? "informed" : "empty"} key={point.day}><circle cx={point.x} cy={point.y} r="6" /><title>{`D+${point.day}: ${usageByDay[String(point.day)] || "Não informado"}`}</title><text x={point.x} y={height - 14} textAnchor="middle">D+{point.day}</text></g>)}
+      {points.map((point) => <line className="cs-usage-day-guide" key={`guide-${point.day}`} x1={point.x} x2={point.x} y1={top} y2={baseline} />)}
+      {area && <path className="cs-usage-area" d={area} />}
+      {smoothLine && <path className="cs-usage-line" d={smoothLine} pathLength="1" filter="url(#usageGlow)" />}
+      {points.map((point, index) => <g className={`cs-usage-point ${point.informed ? "informed" : "empty"}`} style={{ "--point-delay": `${Math.min(index * 55, 420)}ms` } as CSSProperties} key={point.day}><circle cx={point.x} cy={point.y} r="6" /><title>{`D+${point.day}: ${usageByDay[String(point.day)] || "Não informado"}`}</title>{point.informed && <text className="cs-usage-value-label" x={point.x} y={Math.max(13, point.y - 13)} textAnchor="middle">{point.value}%</text>}<text className="cs-usage-day-label" x={point.x} y={height - 14} textAnchor="middle">D+{point.day}</text></g>)}
     </svg>
   </div>;
 }

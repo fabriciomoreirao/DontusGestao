@@ -1,7 +1,8 @@
 "use client";
 
 import { CheckCircle2, ChevronRight, ClipboardList, Code2, Columns3, FileText, GitBranch, List, MessageSquareText, Pencil, Plus, Rocket, Send, Tag, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { createPortal } from "react-dom";
 
 type WorkItem = {
   id: string; module: string; record_type: string; title: string; customer_name: string; owner: string;
@@ -77,6 +78,7 @@ export default function DevelopmentModule({ items, employees, user, canEdit, can
   const [creating, setCreating] = useState(false);
   const [editingRelease, setEditingRelease] = useState<WorkItem | "new" | null>(null);
   const [processOwner, setProcessOwner] = useState("all");
+  const handledSubtaskRef = useRef("");
   const records = useMemo(() => items.filter((item) => item.module === "ti" && readDevelopment(item.description)), [items]);
   const releases = useMemo(() => items.filter((item) => item.module === "ti" && readRelease(item.description)), [items]);
   const processOwners = useMemo(() => [...new Set(records
@@ -87,7 +89,14 @@ export default function DevelopmentModule({ items, employees, user, canEdit, can
   const selectedDetail = selected ? readDevelopment(selected.description) : null;
   useEffect(() => {
     const subtaskId = new URLSearchParams(window.location.search).get("subtask");
-    if (subtaskId) setSelected(items.find((item) => item.id === subtaskId && Boolean(readDevelopment(item.description))) ?? null);
+    if (!subtaskId || handledSubtaskRef.current === subtaskId) return;
+    const requested = items.find((item) => item.id === subtaskId && Boolean(readDevelopment(item.description)));
+    if (!requested) return;
+    handledSubtaskRef.current = subtaskId;
+    setSelected(requested);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("subtask");
+    window.history.replaceState({}, "", url);
   }, [items]);
   const save = async (item: WorkItem, detail: DevelopmentData, success: string) => {
     const result = await operate({ action: "updateWorkItem", id: item.id, title: item.title, owner: item.owner, customerName: item.customer_name, amountCents: item.amount_cents, version: item.version, description: JSON.stringify(detail) }, success);
@@ -98,9 +107,9 @@ export default function DevelopmentModule({ items, employees, user, canEdit, can
     const detail = readDevelopment(item.description);
     if (!detail || !canEdit) return;
     const next = lane === "triage"
-      ? { ...detail, triageStage: target as DevelopmentData["triageStage"] }
+      ? target === "Concluído" ? { ...detail, processStage: "Finalizada" as const } : { ...detail, triageStage: target as DevelopmentData["triageStage"] }
       : { ...detail, processStage: target as DevelopmentData["processStage"] };
-    if ((lane === "triage" ? detail.triageStage : detail.processStage) === target) return;
+    if ((lane === "triage" ? target === "Concluído" ? detail.processStage === "Finalizada" : detail.triageStage === target : detail.processStage === target)) return;
     await save(item, stamp(next, `Movida para ${target} pelo kanban.`, user.displayName), `Demanda movida para ${target}.`);
   };
   const remove = async (item: WorkItem) => {
@@ -139,9 +148,16 @@ export default function DevelopmentModule({ items, employees, user, canEdit, can
     {tab === "process" && <ProcessView items={processRecords} view={view} canEdit={canEdit} canDelete={canDelete} onOpen={setSelected} onDelete={remove} onMove={(item, stage) => void moveCard(item, stage, "process")} />}
     {tab === "version" && <VersionView items={records} releases={releases} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} onCreate={() => setEditingRelease("new")} onEdit={setEditingRelease} onDelete={remove} onOpen={setSelected} />}
     {selected && selectedDetail && <DevelopmentDrawerV2 item={selected} detail={selectedDetail} releases={releases} employees={employees} canEdit={canEdit} canDelete={canDelete} busy={busy} user={user} onClose={() => setSelected(null)} onDelete={() => void remove(selected)} onSave={save} />}
+    {selected && selectedDetail?.processStage === "Aguardando triagem" && canEdit && <DevelopmentTriageCompletePortal busy={busy} onComplete={() => void save(selected, stamp({ ...selectedDetail, processStage: "Finalizada" }, "Tarefa concluída diretamente na triagem.", user.displayName), "Tarefa concluída sem encaminhamento ao time de TI.")} />}
     {creating && <DevelopmentCreateModal busy={busy} onClose={() => setCreating(false)} onCreate={create} />}
     {editingRelease && <DevelopmentReleaseModal release={editingRelease === "new" ? undefined : editingRelease} busy={busy} onClose={() => setEditingRelease(null)} onCreate={saveRelease} />}
   </section>;
+}
+
+function DevelopmentTriageCompletePortal({busy,onComplete}:{busy:boolean;onComplete:()=>void}){
+  const [target,setTarget]=useState<HTMLElement|null>(null);
+  useEffect(()=>{setTarget(document.querySelector<HTMLElement>(".development-drawer .development-actions .drawer-actions"))},[]);
+  return target?createPortal(<button className="secondary-button development-complete-direct" disabled={busy} onClick={onComplete}><CheckCircle2 size={15}/> Concluir</button>,target):null;
 }
 
 function DevelopmentCard({ item, canEdit, canDelete, onOpen, onDelete, onDragStart }: { item: WorkItem; canEdit: boolean; canDelete: boolean; onOpen: () => void; onDelete: () => void; onDragStart?: (event: DragEvent<HTMLElement>) => void }) {
@@ -154,11 +170,12 @@ function TriageView({ items, view, canEdit, canDelete, onOpen, onDelete, onMove 
   const triageItems = items.filter((item) => readDevelopment(item.description)?.processStage === "Aguardando triagem");
   const receivedItems = triageItems.filter((item) => readDevelopment(item.description)?.triageStage === "Recebida");
   const reviewItems = triageItems.filter((item) => !receivedItems.includes(item));
-  if (view === "kanban") return <section className="development-board"><DevelopmentColumn title="Recebida" items={receivedItems} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} onDropItem={(id, stage) => { const item = items.find((entry) => entry.id === id); if (item) onMove(item, stage); }} /><DevelopmentColumn title="Em análise" items={reviewItems} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} onDropItem={(id, stage) => { const item = items.find((entry) => entry.id === id); if (item) onMove(item, stage); }} /></section>;
+  const completedItems = items.filter((item) => readDevelopment(item.description)?.processStage === "Finalizada");
+  if (view === "kanban") return <section className="development-board triage-board"><DevelopmentColumn title="Recebida" items={receivedItems} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} onDropItem={(id, stage) => { const item = items.find((entry) => entry.id === id); if (item) onMove(item, stage); }} /><DevelopmentColumn title="Em análise" items={reviewItems} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} onDropItem={(id, stage) => { const item = items.find((entry) => entry.id === id); if (item) onMove(item, stage); }} /><DevelopmentColumn title="Concluído" tone="green" items={completedItems} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} onDropItem={(id, stage) => { const item = items.find((entry) => entry.id === id); if (item) onMove(item, stage); }} /></section>;
   const received = items.filter((item) => readDevelopment(item.description)?.triageStage === "Recebida" && readDevelopment(item.description)?.processStage === "Aguardando triagem");
   const review = items.filter((item) => readDevelopment(item.description)?.triageStage === "Em análise" && readDevelopment(item.description)?.processStage === "Aguardando triagem");
-  if (view === "list") return <section className="development-list"><div className="development-list-head"><span>Demanda</span><span>Origem</span><span>Etapa da triagem</span><span>Responsável</span><span>Ações</span></div>{[...received, ...review].length === 0 ? <Empty /> : [...received, ...review].map((item) => <DevelopmentListRow key={item.id} item={item} secondary={item.customer_name || "Interno"} stage={readDevelopment(item.description)?.triageStage || "Recebida"} owner={item.owner || "Triagem"} canEdit={canEdit} canDelete={canDelete} onOpen={() => onOpen(item)} onDelete={() => onDelete(item)} />)}</section>;
-  return <section className="development-board"><DevelopmentColumn title="Recebida" items={received} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} /><DevelopmentColumn title="Em análise" items={review} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} /></section>;
+  if (view === "list") return <section className="development-list"><div className="development-list-head"><span>Demanda</span><span>Origem</span><span>Etapa da triagem</span><span>Responsável</span><span>Ações</span></div>{[...received, ...review, ...completedItems].length === 0 ? <Empty /> : [...received, ...review, ...completedItems].map((item) => <DevelopmentListRow key={item.id} item={item} secondary={item.customer_name || "Interno"} stage={readDevelopment(item.description)?.processStage === "Finalizada" ? "Concluído" : readDevelopment(item.description)?.triageStage || "Recebida"} owner={item.owner || "Triagem"} canEdit={canEdit} canDelete={canDelete} onOpen={() => onOpen(item)} onDelete={() => onDelete(item)} />)}</section>;
+  return <section className="development-board triage-board"><DevelopmentColumn title="Recebida" items={received} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} /><DevelopmentColumn title="Em análise" items={review} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} /><DevelopmentColumn title="Concluído" tone="green" items={completedItems} canEdit={canEdit} canDelete={canDelete} onOpen={onOpen} onDelete={onDelete} /></section>;
 }
 
 function ProcessView({ items, view, canEdit, canDelete, onOpen, onDelete, onMove }: { items: WorkItem[]; view: "list" | "kanban"; canEdit: boolean; canDelete: boolean; onOpen: (item: WorkItem) => void; onDelete: (item: WorkItem) => void; onMove: (item: WorkItem, stage: string) => void }) {

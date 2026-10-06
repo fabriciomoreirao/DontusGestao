@@ -321,6 +321,8 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(enhancer, /client-checklist-detail-action/);
   assert.match(actions, /recordType: "Alerta do cliente"/);
   assert.match(actions, /recordType: "Checklist vinculado"/);
+  assert.match(actions, /resolveContextCustomer/);
+  assert.match(actions, /CLIENTE VINCULADO/);
   assert.match(actions, /className=\{entry\.checked \? "checked"/);
   assert.match(app, /label: "Checklists"/);
   assert.match(app, /commercialChecklist/);
@@ -338,4 +340,34 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(backend, /CanRestartRetentionJourney/);
   assert.match(css, /\.client-alert-list/);
   assert.match(css, /\.linked-checklist-card/);
+  assert.match(css, /\.client-engagement-backdrop\{z-index:35000/);
+  assert.match(css, /@keyframes usageLineDraw/);
+  assert.match(css, /\.cs-pipeline-tabs/);
+});
+
+test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async () => {
+  const [app, reminders, enhancer, development, journeys, compose, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/RemindersModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ReminderAction.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/DevelopmentModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationalJourneyModules.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../docker-compose.yml", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(enhancer, /CLIENT_RECORD_EVENT/);
+  assert.match(enhancer, /Ficha do cliente/);
+  assert.match(app, /Retomar cliente/);
+  assert.match(app, /label: "Acompanhamentos"/);
+  assert.match(app, /EmployeeIndicatorsAdmin/);
+  assert.match(app, /userCan\(data\.user, "catalogs", "manage"\) \|\| userCan\(data\.user, "tasks", "manage"\)/);
+  assert.match(reminders, /confirmedAt/);
+  assert.match(reminders, /30 minutos/);
+  assert.match(reminders, /ReminderDetailModal/);
+  assert.match(development, /DevelopmentTriageCompletePortal/);
+  assert.match(development, /searchParams\.delete\("subtask"\)/);
+  assert.match(journeys, /<div className="journey-board">/);
+  assert.match(compose, /TZ: America\/Sao_Paulo/);
+  assert.match(css, /\.client-engagement-backdrop\.embedded-checklist/);
+  assert.match(css, /\.employee-indicator-kpis/);
 });

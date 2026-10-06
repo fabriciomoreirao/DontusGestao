@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Check, ClipboardCheck, Link2, Plus, Save, Trash2, X } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { ReminderContext } from "@/app/ReminderAction";
 
 type OperationResult = { id?: string } | false;
@@ -56,6 +56,15 @@ function sourceItem(context: ReminderContext, items: WorkItem[]) {
   return context.entityId ? items.find((item) => item.id === context.entityId) : undefined;
 }
 
+function resolveContextCustomer(context: ReminderContext, customers: Customer[], items: WorkItem[]) {
+  const source = sourceItem(context, items);
+  if (source?.customer_id) {
+    const linked = customers.find((customer) => customer.id === source.customer_id);
+    if (linked) return linked;
+  }
+  return resolveCustomer({ ...context, customerName: source?.customer_name || context.customerName }, customers);
+}
+
 export function checklistCatalogFor(context: ReminderContext, items: WorkItem[]) {
   if (context.module === "support") return "serviceChecklist";
   if (context.module === "cancellations") return "cancellationChecklist";
@@ -98,17 +107,29 @@ function templateChecks(catalog: Catalog) {
 }
 
 export function ClientChecklistModal({ context, customers, catalogs, items, user, busy, operate, onClose }: { context: ReminderContext; customers: Customer[]; catalogs: Catalog[]; items: WorkItem[]; user: User; busy: boolean; operate: Operate; onClose: () => void }) {
-  const initialCustomer = resolveCustomer(context, customers);
-  const [customerId, setCustomerId] = useState(initialCustomer?.id || "");
+  const customer = resolveContextCustomer(context, customers, items);
   const catalog = checklistCatalogFor(context, items);
   const templates = catalogs.filter((entry) => entry.active && entry.catalog === catalog && templateChecks(entry).length);
   const [templateId, setTemplateId] = useState(templates[0]?.id || "");
   const [error, setError] = useState("");
+  useEffect(() => {
+    const surfaces = Array.from(document.querySelectorAll<HTMLElement>(`[data-reminder-source-module="${context.module}"]`));
+    const source = surfaces.at(-1);
+    const backdrop = Array.from(document.querySelectorAll<HTMLElement>(".client-engagement-backdrop")).at(-1);
+    if (!source || !backdrop) return;
+    const align = () => {
+      const rect = source.getBoundingClientRect();
+      backdrop.classList.add("embedded-checklist");
+      Object.assign(backdrop.style, { top: `${rect.top}px`, left: `${rect.left}px`, width: `${rect.width}px`, height: `${rect.height}px`, right: "auto", bottom: "auto" });
+    };
+    align();
+    window.addEventListener("resize", align);
+    return () => window.removeEventListener("resize", align);
+  }, [context.module]);
   const linked = useMemo(() => items.map((item) => ({ item, detail: item.record_type === "Checklist vinculado" ? parseLinkedChecklist(item.description) : null })).filter((entry): entry is { item: WorkItem; detail: LinkedChecklistDetail } => Boolean(entry.detail)).filter(({ detail }) => detail.sourceModule === context.module && (context.entityId ? detail.sourceEntityId === context.entityId : detail.sourceTitle === context.title)), [items, context]);
   const add = async () => {
-    const customer = customers.find((entry) => entry.id === customerId);
     const template = templates.find((entry) => entry.id === templateId);
-    if (!customer) { setError("Selecione o cliente deste checklist."); return; }
+    if (!customer) { setError("Não foi possível identificar automaticamente o cliente vinculado a este card."); return; }
     if (!template) { setError("Selecione um tipo de checklist configurado."); return; }
     if (linked.some(({ detail }) => detail.templateId === template.id)) { setError("Este tipo de checklist já está vinculado ao card."); return; }
     const createdAt = new Date().toISOString();
@@ -122,5 +143,5 @@ export function ClientChecklistModal({ context, customers, catalogs, items, user
     await operate({ action: "updateWorkItem", id: item.id, title: item.title, owner: item.owner, amountCents: 0, version: item.version, description: JSON.stringify({ ...detail, items: nextItems, history: [...detail.history, { at: changedAt, author: user.displayName, text: `${changed.checked ? "Concluiu" : "Reabriu"}: ${changed.text}` }] }) }, "Checklist atualizado.");
   };
   const remove = async (item: WorkItem) => { await operate({ action: "deleteWorkItem", id: item.id }, "Checklist removido do card."); };
-  return <div className="modal-backdrop client-engagement-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal client-checklist-modal"><header className="modal-head"><div><span className="eyebrow">CHECKLISTS DO CARD</span><h2>Vincular e acompanhar checklists</h2><p>Você pode usar mais de um modelo e marcar cada item diretamente aqui.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X /></button></header><div className="client-checklist-body"><div className="client-action-source"><ClipboardCheck /><span><small>ORIGEM · {context.module.toLocaleUpperCase("pt-BR")}</small><strong>{modalTitle(context)}</strong></span></div><section className="checklist-link-box"><label>Cliente *<select required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setError(""); }}><option value="">Selecionar cliente</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.trade_name || customer.legal_name}{publicId(customer) ? ` · ID ${publicId(customer)}` : ""}</option>)}</select></label><label>Tipo de checklist<select value={templateId} onChange={(event) => { setTemplateId(event.target.value); setError(""); }}><option value="">Selecionar modelo</option>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label><button className="primary-button" type="button" disabled={busy || !templateId} onClick={() => void add()}><Plus size={15} /> Vincular checklist</button>{!templates.length && <small className="checklist-config-empty">Cadastre um tipo de checklist na engrenagem desta funcionalidade.</small>}{error && <p className="form-error">{error}</p>}</section><section className="linked-checklists">{linked.length === 0 ? <div className="checklist-empty"><ClipboardCheck /><strong>Nenhum checklist vinculado</strong><p>Selecione um modelo acima para começar.</p></div> : linked.map(({ item, detail }) => { const completed = detail.items.filter((entry) => entry.checked).length; return <article className="linked-checklist-card" key={item.id}><header><span><strong>{detail.templateName}</strong><small>{completed} de {detail.items.length} concluído(s) · {detail.createdBy}</small></span><button type="button" disabled={busy} onClick={() => void remove(item)} aria-label={`Remover checklist ${detail.templateName}`}><Trash2 size={14} /></button></header><div>{detail.items.map((entry, index) => <button type="button" className={entry.checked ? "checked" : ""} disabled={busy} onClick={() => void update(item, detail, index)} key={entry.id}><i>{entry.checked && <Check size={13} />}</i><span>{entry.text}</span></button>)}</div><footer><span style={{ width: `${detail.items.length ? completed / detail.items.length * 100 : 0}%` }} /></footer></article>; })}</section></div><footer className="modal-actions"><button type="button" onClick={onClose}>Fechar</button></footer></section></div>;
+  return <div className="modal-backdrop client-engagement-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal client-checklist-modal"><header className="modal-head"><div><span className="eyebrow">CHECKLISTS DO CARD</span><h2>Vincular e acompanhar checklists</h2><p>Você pode usar mais de um modelo e marcar cada item diretamente aqui.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X /></button></header><div className="client-checklist-body"><div className="client-action-source"><ClipboardCheck /><span><small>ORIGEM · {context.module.toLocaleUpperCase("pt-BR")}</small><strong>{modalTitle(context)}</strong></span></div><section className="checklist-link-box"><div className={`checklist-auto-customer ${customer ? "resolved" : "missing"}`}><span><Link2 size={14} /> CLIENTE VINCULADO</span><strong>{customer ? customer.trade_name || customer.legal_name : "Cliente não identificado"}</strong><small>{customer ? `${publicId(customer) ? `ID ${publicId(customer)} · ` : ""}${customer.legal_name}` : "Revise o ID vinculado ao card antes de adicionar um checklist."}</small></div><label>Tipo de checklist<select value={templateId} onChange={(event) => { setTemplateId(event.target.value); setError(""); }}><option value="">Selecionar modelo</option>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label><button className="primary-button" type="button" disabled={busy || !templateId || !customer} onClick={() => void add()}><Plus size={15} /> Vincular checklist</button>{!templates.length && <small className="checklist-config-empty">Cadastre um tipo de checklist na engrenagem desta funcionalidade.</small>}{error && <p className="form-error">{error}</p>}</section><section className="linked-checklists">{linked.length === 0 ? <div className="checklist-empty"><ClipboardCheck /><strong>Nenhum checklist vinculado</strong><p>Selecione um modelo acima para começar.</p></div> : linked.map(({ item, detail }) => { const completed = detail.items.filter((entry) => entry.checked).length; return <article className="linked-checklist-card" key={item.id}><header><span><strong>{detail.templateName}</strong><small>{completed} de {detail.items.length} concluído(s) · {detail.createdBy}</small></span><button type="button" disabled={busy} onClick={() => void remove(item)} aria-label={`Remover checklist ${detail.templateName}`}><Trash2 size={14} /></button></header><div>{detail.items.map((entry, index) => <button type="button" className={entry.checked ? "checked" : ""} disabled={busy} onClick={() => void update(item, detail, index)} key={entry.id}><i>{entry.checked && <Check size={13} />}</i><span>{entry.text}</span></button>)}</div><footer><span style={{ width: `${detail.items.length ? completed / detail.items.length * 100 : 0}%` }} /></footer></article>; })}</section></div><footer className="modal-actions"><button type="button" onClick={onClose}>Fechar</button></footer></section></div>;
 }

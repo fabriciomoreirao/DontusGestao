@@ -7,6 +7,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-dontus}
       POSTGRES_USER: ${POSTGRES_USER:-dontus}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dontus_local_change_me}
+      TZ: America/Sao_Paulo
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -25,6 +26,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-dontus_pgadmin_change_me}
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      TZ: America/Sao_Paulo
     ports:
       - "${PGADMIN_PORT:-5050}:80"
     volumes:
@@ -42,6 +44,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      TZ: America/Sao_Paulo
       Authentication__DevelopmentBypass: ${DEVELOPMENT_AUTH_BYPASS:-false}
       Authentication__LocalPasswordEnabled: ${LOCAL_AUTH_ENABLED:-true}
       Authentication__BootstrapPassword: ${LOCAL_ADMIN_PASSWORD:-dontus_teste_2026}
@@ -85,6 +88,7 @@ services:
       LOCAL_USER_EMAIL: ${LOCAL_USER_EMAIL:-gestor@dontus.local}
       LOCAL_USER_NAME: ${LOCAL_USER_NAME:-Gestor Dontus}
       LOCAL_USER_ROLE: ${LOCAL_USER_ROLE:-Administrador técnico}
+      TZ: America/Sao_Paulo
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
