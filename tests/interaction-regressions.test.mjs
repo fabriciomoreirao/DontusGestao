@@ -266,6 +266,13 @@ test("organiza múltiplos anexos, documentos de cancelamento e ID público", asy
   assert.match(css, /\.task-detail-overlay \.task-attachment-grid\.multiple/);
   assert.match(cancellations, /attachments:Array/);
   assert.match(cancellations, /Documentos anexados/);
+  assert.match(cancellations, /requesterPhone:string/);
+  assert.match(cancellations, /Telefone do responsável pela solicitação/);
+  assert.match(cancellations, /Telefone da solicitação/);
+  assert.match(cancellations, /file\.arrayBuffer\(\)/);
+  assert.match(cancellations, /typeof globalThis\.crypto\?\.randomUUID/);
+  assert.doesNotMatch(cancellations, /id:crypto\.randomUUID\(\),name:file\.name/);
+  assert.match(cancellations, /Não foi possível salvar os documentos/);
   assert.match(cancellations, /publicCustomerId/);
   assert.match(cancellations, /pattern="\\d\{6\}"/);
   assert.doesNotMatch(cancellations, /setClientId\(id\)/);
