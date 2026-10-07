@@ -9,6 +9,20 @@ test("mantém o perfil amplo e legível nos temas claro e escuro", async () => {
   assert.match(css, /\.theme-dark \.employee-profile-drawer/);
 });
 
+test("exibe o presente de aniversário no chat somente na data de Brasília", async () => {
+  const [chat, operations, css] = await Promise.all([
+    readFile(new URL("../app/InternalChatModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(chat, /timeZone: "America\/Sao_Paulo"/);
+  assert.match(chat, /birthDate\?\.slice\(5, 10\) === todayInBrasilia/);
+  assert.match(chat, /function BirthdayGift/);
+  assert.match(chat, /window\.setInterval\(\(\) => setTodayInBrasilia/);
+  assert.match(operations, /employees=\{data\.access\?\.employees \?\? \[\]\}/);
+  assert.match(css, /\.internal-chat-birthday-gift/);
+});
+
 test("mantém movimentação direta por arraste nos kanbans", async () => {
   const [operations, marketing, development, service, contracts] = await Promise.all([
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),

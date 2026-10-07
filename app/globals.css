@@ -1852,6 +1852,9 @@ button:not(:disabled):active {
 .internal-chat-room-copy { min-width: 0; flex: 1; display: grid; gap: 5px; }
 .internal-chat-room-copy strong,.internal-chat-room-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .internal-chat-room-copy strong { color: inherit; font-size: 10px; line-height: 1.25; }
+.internal-chat-room-copy strong,.internal-chat-conversation-head h2,.internal-chat-participants-panel strong,.internal-chat-bubble-wrap>strong { display: flex; align-items: center; gap: 4px; }
+.internal-chat-birthday-gift { width: 18px; height: 18px; flex: 0 0 18px; border: 1px solid #f3c76a; border-radius: 50%; color: #a85d00; background: linear-gradient(145deg,#fff8cf,#ffe08a); box-shadow: 0 2px 6px rgba(190,114,0,.18); display: inline-flex; align-items: center; justify-content: center; animation: internal-chat-birthday-pop .55s cubic-bezier(.2,.85,.3,1.3); }
+@keyframes internal-chat-birthday-pop { 0% { opacity: 0; transform: scale(.45) rotate(-16deg); } 70% { transform: scale(1.12) rotate(5deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 .internal-chat-room-copy small { color: #7a8da1; font-size: 9px; }
 .internal-chat-room-meta { align-self: stretch; display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; }
 .internal-chat-room-meta time { padding-top: 4px; color: #9aa9b8; font-size: 8px; font-weight: 700; }
@@ -1931,6 +1934,7 @@ button:not(:disabled):active {
 .theme-dark .internal-chat-search input:focus,.theme-dark .internal-chat-composer textarea:focus { border-color: #4a91b9; background: #1a3044; }
 .theme-dark .internal-chat-room { color: #b7c8d7; }.theme-dark .internal-chat-room:hover { border-color: #304c63; background: #172b40; }.theme-dark .internal-chat-room.active { border-color: #3e7899; color: #e5f3fb; background: linear-gradient(100deg,#17374e,#162d41); box-shadow: none; }
 .theme-dark .internal-chat-room-copy small,.theme-dark .internal-chat-room-meta time,.theme-dark .internal-chat-privacy { color: #839bad; }
+.theme-dark .internal-chat-birthday-gift { border-color: #8b671e; color: #ffe49b; background: linear-gradient(145deg,#564017,#302715); box-shadow: 0 2px 8px rgba(0,0,0,.28); }
 .theme-dark .internal-chat-conversation { background: linear-gradient(145deg,#0f1d2c,#132538); }.theme-dark .internal-chat-conversation-head,.theme-dark .internal-chat-composer { background: rgba(17,32,49,.96); }
 .theme-dark .internal-chat-conversation-head h2,.theme-dark .internal-chat-welcome h2 { color: #ecf5fc; }.theme-dark .internal-chat-conversation-head p { color: #8fa5b8; }
 .theme-dark .internal-chat-secure { border-color: #285c4b; color: #82d0ad; background: #17382f; }

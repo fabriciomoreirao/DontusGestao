@@ -1287,6 +1287,7 @@ export default function OperationsApp() {
           {active === "internalChat" && data.internalChatModule && (
             <InternalChatModule
               module={data.internalChatModule}
+              employees={data.access?.employees ?? []}
               canCreate={userCan(data.user, "internalChat", "create")}
               busy={busy}
               operate={executeOperation}

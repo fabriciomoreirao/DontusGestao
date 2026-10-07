@@ -2,7 +2,7 @@
 
 import {
   Archive, ArchiveRestore, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
-  MessageCircleMore, Paperclip, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
+  Gift, MessageCircleMore, Paperclip, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -32,6 +32,7 @@ export type InternalChatModuleData = {
 type OperationResult = { id?: string } | false;
 type Props = {
   module: InternalChatModuleData;
+  employees?: Array<{ id: string; email: string; birthDate: string | null }>;
   busy: boolean;
   canCreate: boolean;
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
@@ -48,8 +49,16 @@ type Conversation = {
 const stickers = ["😀", "😂", "😍", "🥳", "👏", "👍", "🙏", "🔥", "💙", "🎉", "✅", "🚀"];
 const messageTime = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const roomTime = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
+const brasiliaMonthDay = () => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+  return `${month}-${day}`;
+};
 
-export default function InternalChatModule({ module, busy, canCreate, operate, markRead, uploadAttachments, onOpenProfile, initialRoomId }: Props) {
+export default function InternalChatModule({ module, employees = [], busy, canCreate, operate, markRead, uploadAttachments, onOpenProfile, initialRoomId }: Props) {
   const [selectedKey, setSelectedKey] = useState(initialRoomId ?? "");
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
@@ -59,6 +68,7 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   const [pollOpen, setPollOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [todayInBrasilia, setTodayInBrasilia] = useState(brasiliaMonthDay);
   const [mediaPreview, setMediaPreview] = useState<{ url: string; name: string; video: boolean } | null>(null);
   const [pinnedConversationKeys, setPinnedConversationKeys] = useState<string[]>(() => { if (typeof window === "undefined") return []; try { return JSON.parse(localStorage.getItem(`dontus:pinned-conversations:${module.currentUserId}`) || "[]") as string[]; } catch { return []; } });
   const fileInput = useRef<HTMLInputElement>(null);
@@ -75,6 +85,20 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   const selectedRoom = selectedConversation?.room;
   const archivedCount = module.rooms.filter((room) => room.isArchived).length;
   const pinnedMessages = selectedRoom?.messages.filter((entry) => entry.isPinned) ?? [];
+  const employeeBirthdays = useMemo(() => {
+    const values = new Map<string, string>();
+    employees.forEach((employee) => {
+      if (!employee.birthDate) return;
+      values.set(employee.id, employee.birthDate);
+      values.set(employee.email.trim().toLocaleLowerCase("pt-BR"), employee.birthDate);
+    });
+    return values;
+  }, [employees]);
+  const userHasBirthdayToday = (user?: InternalChatUser) => {
+    if (!user) return false;
+    const birthDate = employeeBirthdays.get(user.id) ?? employeeBirthdays.get(user.email.trim().toLocaleLowerCase("pt-BR"));
+    return birthDate?.slice(5, 10) === todayInBrasilia;
+  };
 
   useEffect(() => {
     if (initialRoomId && module.rooms.some((room) => room.id === initialRoomId)) setSelectedKey(initialRoomId);
@@ -87,6 +111,11 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
   useEffect(() => {
     if (selectedRoom?.unreadCount) void markRead(selectedRoom.id);
   }, [markRead, selectedRoom?.id, selectedRoom?.unreadCount]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTodayInBrasilia(brasiliaMonthDay()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const toggleConversationPin = () => {
     if (!selectedConversation) return;
@@ -186,7 +215,7 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
             const last = entry.room?.messages.at(-1);
             return <button className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`} onClick={() => setSelectedKey(entry.key)} key={entry.key}>
               <Avatar name={entry.name} photo={entry.photoDataUrl} group={entry.isGroup} coordinator={entry.user?.isCoordinator} />
-              <span className="internal-chat-room-copy"><strong>{pinnedConversationKeys.includes(entry.key)&&<Pin size={12}/>} {entry.name}</strong><small>{last ? messagePreview(last) : entry.isGroup ? "Grupo privado" : entry.user?.jobTitle || entry.user?.departmentName || "Inicie uma conversa"}</small></span>
+              <span className="internal-chat-room-copy"><strong>{userHasBirthdayToday(entry.user) && <BirthdayGift name={entry.name} />}{pinnedConversationKeys.includes(entry.key)&&<Pin size={12}/>}<span>{entry.name}</span></strong><small>{last ? messagePreview(last) : entry.isGroup ? "Grupo privado" : entry.user?.jobTitle || entry.user?.departmentName || "Inicie uma conversa"}</small></span>
               <span className="internal-chat-room-meta">{entry.room && <time>{roomTime.format(new Date(entry.room.lastMessageAt))}</time>}{!!entry.room?.unreadCount && <b>{entry.room.unreadCount}</b>}</span>
             </button>;
           })}
@@ -200,17 +229,17 @@ export default function InternalChatModule({ module, busy, canCreate, operate, m
             <span className="internal-chat-group-photo-wrap" role={selectedConversation.user?"button":undefined} tabIndex={selectedConversation.user?0:undefined} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)}><Avatar name={selectedConversation.name} photo={selectedConversation.photoDataUrl} group={selectedConversation.isGroup} coordinator={selectedConversation.user?.isCoordinator} />
               {selectedRoom?.isGroup && selectedRoom.canManage && <><input ref={groupPhotoInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void updateGroupPhoto(event.target.files?.[0])} /><button type="button" onClick={() => groupPhotoInput.current?.click()} aria-label="Alterar foto do grupo" title="Alterar foto do grupo"><Camera size={11} /></button></>}
             </span>
-            <div className={selectedConversation.user?"internal-chat-profile-link":selectedRoom?.isGroup?"internal-chat-group-profile-link":""} onClick={()=>selectedConversation.user?onOpenProfile(selectedConversation.user.id):selectedRoom?.isGroup&&setParticipantsOpen(value=>!value)}><h2>{selectedConversation.name}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · clique para visualizar` : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}</p></div>
+            <div className={selectedConversation.user?"internal-chat-profile-link":selectedRoom?.isGroup?"internal-chat-group-profile-link":""} onClick={()=>selectedConversation.user?onOpenProfile(selectedConversation.user.id):selectedRoom?.isGroup&&setParticipantsOpen(value=>!value)}><h2>{userHasBirthdayToday(selectedConversation.user) && <BirthdayGift name={selectedConversation.name} />}{selectedConversation.name}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · clique para visualizar` : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}</p></div>
             <span className="internal-chat-secure"><LockKeyhole size={13} /> Privado</span>
             <button type="button" className={`internal-chat-head-tool ${pinnedConversationKeys.includes(selectedConversation.key)?"active":""}`} onClick={toggleConversationPin} title={pinnedConversationKeys.includes(selectedConversation.key)?"Desafixar conversa":"Fixar conversa"}>{pinnedConversationKeys.includes(selectedConversation.key)?<PinOff size={16}/>:<Pin size={16}/>}</button>
             {selectedRoom?.isGroup && <button type="button" className={`internal-chat-head-tool ${pinnedOpen ? "active" : ""}`} onClick={() => setPinnedOpen((value) => !value)} title="Mensagens fixadas"><Pin size={16} />{pinnedMessages.length > 0 && <b>{pinnedMessages.length}</b>}</button>}
             {selectedRoom && <button type="button" className="internal-chat-archive" onClick={() => void archive()} title={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"} aria-label={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"}>{selectedRoom.isArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>}
           </header>
           {selectedRoom?.isGroup && pinnedOpen && <div className="internal-chat-pinned-panel"><header><span><Pin size={14} /> Mensagens fixadas</span><button type="button" onClick={() => setPinnedOpen(false)}><X size={14} /></button></header>{pinnedMessages.length ? pinnedMessages.map((entry) => <article key={entry.id}><b>{entry.senderName}</b><span>{messagePreview(entry)}</span><time>{roomTime.format(new Date(entry.createdAt))}</time></article>) : <p>Nenhuma mensagem foi fixada neste grupo.</p>}</div>}
-          {selectedRoom?.isGroup && participantsOpen && <div className="internal-chat-participants-panel"><header><span><UsersRound size={15}/> Participantes ({selectedRoom.memberUserIds.length})</span><button type="button" onClick={() => setParticipantsOpen(false)} aria-label="Fechar participantes"><X size={14}/></button></header><div>{selectedRoom.memberUserIds.map((userId) => { const participant=module.users.find(user=>user.id===userId); return <button type="button" key={userId} onClick={()=>participant&&onOpenProfile(participant.id)}><Avatar name={participant?.name||"Colaborador"} photo={participant?.photoDataUrl} coordinator={participant?.isCoordinator}/><span><strong>{participant?.name||"Colaborador removido"}</strong><small>{participant?.jobTitle||participant?.departmentName||"Participante"}</small></span></button>; })}</div><small>Novos participantes visualizam somente mensagens enviadas após a entrada no grupo.</small></div>}
+          {selectedRoom?.isGroup && participantsOpen && <div className="internal-chat-participants-panel"><header><span><UsersRound size={15}/> Participantes ({selectedRoom.memberUserIds.length})</span><button type="button" onClick={() => setParticipantsOpen(false)} aria-label="Fechar participantes"><X size={14}/></button></header><div>{selectedRoom.memberUserIds.map((userId) => { const participant=module.users.find(user=>user.id===userId); return <button type="button" key={userId} onClick={()=>participant&&onOpenProfile(participant.id)}><Avatar name={participant?.name||"Colaborador"} photo={participant?.photoDataUrl} coordinator={participant?.isCoordinator}/><span><strong>{userHasBirthdayToday(participant) && <BirthdayGift name={participant?.name || "Colaborador"} />}{participant?.name||"Colaborador removido"}</strong><small>{participant?.jobTitle||participant?.departmentName||"Participante"}</small></span></button>; })}</div><small>Novos participantes visualizam somente mensagens enviadas após a entrada no grupo.</small></div>}
           <div className="internal-chat-messages">
             {!selectedRoom?.messages.length && <div className="internal-chat-first-message"><SmilePlus size={23} /><strong>Diga olá!</strong><span>Envie a primeira mensagem para iniciar esta conversa privada.</span></div>}
-            {selectedRoom?.messages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} currentUserId={module.currentUserId} group={selectedRoom.isGroup} busy={busy} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
+            {selectedRoom?.messages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={selectedRoom.isGroup} busy={busy} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
             <div ref={endRef} />
           </div>
           <form className="internal-chat-composer" onSubmit={sendMessage}>
@@ -248,11 +277,15 @@ function buildConversations(module: InternalChatModuleData, archived: boolean): 
   });
 }
 
-function MessageBubble({ message, own, currentUserId, group, busy, onVote, onPin, onPreview }: { message: InternalChatMessage; own: boolean; currentUserId: string; group: boolean; busy: boolean; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
+function BirthdayGift({ name }: { name: string }) {
+  return <span className="internal-chat-birthday-gift" title={`Hoje é aniversário de ${name}`} aria-label={`Aniversário de ${name}`}><Gift size={12} aria-hidden="true" /></span>;
+}
+
+function MessageBubble({ message, own, birthday, currentUserId, group, busy, onVote, onPin, onPreview }: { message: InternalChatMessage; own: boolean; birthday: boolean; currentUserId: string; group: boolean; busy: boolean; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
   const fileUrl = `/api/internal-chat-files/${message.id}`;
   return <article className={`internal-chat-message ${own ? "own" : ""}`}>
     {!own && <Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator} />}
-    <div className="internal-chat-bubble-wrap">{!own && <strong>{message.senderName}</strong>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
+    <div className="internal-chat-bubble-wrap">{!own && <strong>{birthday && <BirthdayGift name={message.senderName} />}{message.senderName}</strong>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
       {group && <button type="button" className={`internal-chat-pin-message ${message.isPinned ? "active" : ""}`} disabled={busy} onClick={() => onPin(message)} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={13} /> : <Pin size={13} />}</button>}
       {message.type === "text" && <p>{message.body}</p>}
       {message.type === "sticker" && <span className="internal-chat-sticker-message">{message.body}</span>}
