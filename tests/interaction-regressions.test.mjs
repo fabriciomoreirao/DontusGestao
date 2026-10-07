@@ -23,6 +23,16 @@ test("exibe o presente de aniversário no chat somente na data de Brasília", as
   assert.match(css, /\.internal-chat-birthday-gift/);
 });
 
+test("abre o perfil lateral do colaborador pela busca global", async () => {
+  const operations = await readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8");
+  assert.match(operations, /kind: "employee" as const/);
+  assert.match(operations, /const openEmployeeFromGlobalSearch/);
+  assert.match(operations, /setProfileEmployee\(employee\)/);
+  assert.match(operations, /result\.kind === "employee"/);
+  assert.match(operations, /Buscar ID, clientes, colaboradores, protocolos, tarefas/);
+  assert.match(operations, /employee\.displayName\.toLocaleLowerCase\("pt-BR"\) === normalized/);
+});
+
 test("mantém movimentação direta por arraste nos kanbans", async () => {
   const [operations, marketing, development, service, contracts] = await Promise.all([
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),

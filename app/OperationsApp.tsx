@@ -824,6 +824,10 @@ export default function OperationsApp() {
   const globalResults = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
     if (!query || !data) return [];
+    const employees = (data.access?.employees ?? [])
+      .filter((employee) => `${employee.displayName} ${employee.email} ${employee.jobTitle} ${employee.departmentName} ${employee.departmentNames.join(" ")}`.toLocaleLowerCase("pt-BR").includes(query))
+      .slice(0, 5)
+      .map((employee) => ({ id: employee.id, label: employee.displayName, meta: `Colaborador · ${employee.jobTitle || employee.departmentName || "Dontus"}`, kind: "employee" as const }));
     const customers = data.customers
       .filter((customer) => `${customer.id} ${customer.trade_name} ${customer.legal_name} ${customer.document_masked} ${customer.phone}`.toLocaleLowerCase("pt-BR").includes(query))
       .slice(0, 4)
@@ -840,8 +844,29 @@ export default function OperationsApp() {
       .filter((suggestion) => `${suggestion.customerId ?? ""} ${suggestion.customerName} ${suggestion.protocol} ${suggestion.name} ${suggestion.description}`.toLocaleLowerCase("pt-BR").includes(query))
       .slice(0, 3)
       .map((suggestion) => ({ id: suggestion.id, label: `${suggestion.protocol} · ${suggestion.name}`, meta: `Sugestão · ${suggestion.statusName}`, kind: "suggestion" as const }));
-    return [...customers, ...records, ...tasks, ...suggestions].slice(0, 12);
+    return [...employees, ...customers, ...records, ...tasks, ...suggestions].slice(0, 12);
   }, [data, search]);
+
+  const openEmployeeFromGlobalSearch = (employeeId: string) => {
+    const employee = data?.access?.employees.find((entry) => entry.id === employeeId);
+    if (!employee) return false;
+    setProfileEditable(false);
+    setProfileEmployee(employee);
+    setSearch("");
+    return true;
+  };
+
+  const submitGlobalSearch = () => {
+    const query = search.trim();
+    if (query.length < 3 || !data) return;
+    const normalized = query.toLocaleLowerCase("pt-BR");
+    const exactEmployee = (data.access?.employees ?? []).find((employee) =>
+      employee.displayName.toLocaleLowerCase("pt-BR") === normalized || employee.email.toLocaleLowerCase("pt-BR") === normalized,
+    );
+    if (exactEmployee && openEmployeeFromGlobalSearch(exactEmployee.id)) return;
+    openClientHistoryPage(query);
+    setSearch("");
+  };
 
   const openCreate = (module: string) => {
     if (!data || !userCan(data.user, module, "create")) {
@@ -1184,16 +1209,18 @@ export default function OperationsApp() {
           <button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menu"><Menu size={21} /></button>
           <div className="global-search">
             <Search size={18} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && search.trim().length >= 3) { openClientHistoryPage(search); setSearch(""); } }} placeholder="Buscar ID, clientes, protocolos, tarefas..." aria-label="Busca global" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitGlobalSearch(); }} placeholder="Buscar ID, clientes, colaboradores, protocolos, tarefas..." aria-label="Busca global" />
             <kbd>⌘ K</kbd>
-            {(globalResults.length > 0 || search.trim().length >= 3) && (
+            {(globalResults.length > 0 || /^#?[\d-]{3,}$/.test(search.trim())) && (
               <div className="search-results">
-                {search.trim().length >= 3 && <button className="search-id-overview" onClick={() => { openClientHistoryPage(search); setSearch(""); }}><span><b>Abrir página do ID {search.trim()}</b></span><small>Tarefas, atendimentos, temas, sugestões, acompanhamentos, agenda e rede</small></button>}
+                {/^#?[\d-]{3,}$/.test(search.trim()) && <button className="search-id-overview" onClick={() => { openClientHistoryPage(search); setSearch(""); }}><span><b>Abrir página do ID {search.trim()}</b></span><small>Tarefas, atendimentos, temas, sugestões, acompanhamentos, agenda e rede</small></button>}
                 {globalResults.map((result) => (
                   <button key={`${result.kind}-${result.id}`} onClick={() => {
                     const searchedId = search.trim();
                     const idSearch = /^#?[\d-]{3,}$/.test(searchedId) || result.kind === "customer" && result.id.toLocaleLowerCase("pt-BR") === searchedId.toLocaleLowerCase("pt-BR");
-                    if (idSearch) {
+                    if (result.kind === "employee") {
+                      openEmployeeFromGlobalSearch(result.id);
+                    } else if (idSearch) {
                       openClientHistoryPage(searchedId);
                     } else if (result.kind === "customer") {
                       const customer = data.customers.find((entry) => entry.id === result.id) ?? null;
@@ -1206,7 +1233,7 @@ export default function OperationsApp() {
                     } else {
                       navigate("suggestions");
                     }
-                    setSearch("");
+                    if (result.kind !== "employee") setSearch("");
                   }}>
                     <span>{result.label}</span><small>{result.meta}</small>
                   </button>
