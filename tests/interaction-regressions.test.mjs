@@ -384,6 +384,29 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(css, /\.cs-pipeline-tabs/);
 });
 
+test("mantém checklist estável e sincroniza cancelamentos com acompanhamentos e comissões", async () => {
+  const [actions, cancellations, commissions, journey, enhancer, css] = await Promise.all([
+    readFile(new URL("../app/ClientEngagementActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CancellationsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CommissionsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CustomerSuccessJourneyModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ReminderAction.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(actions, /scrollIntoView/);
+  assert.doesNotMatch(actions, /select autoFocus/);
+  assert.match(actions, /onCloseRef/);
+  assert.match(cancellations, /cancelLinkedJourneys/);
+  assert.match(cancellations, /journey\.track==="activation"\|\|journey\.track==="retention"/);
+  assert.match(cancellations, /phase:"cancelled",status:"Cancelado"/);
+  assert.match(commissions, /Cancelado · disponível para reprovação/);
+  assert.match(commissions, /busy\|\|cancelled/);
+  assert.match(journey, /className="cs-card-labels"/);
+  assert.doesNotMatch(enhancer, /classList\.add\("centered"\)/);
+  assert.match(css, /\.cancellation-drawer>header\{display:flex;flex-wrap:wrap/);
+  assert.match(css, /\.commission-row\.cancelled/);
+});
+
 test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async () => {
   const [app, reminders, enhancer, development, journeys, compose, css] = await Promise.all([
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),

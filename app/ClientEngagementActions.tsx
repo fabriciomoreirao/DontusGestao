@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Check, ClipboardCheck, Plus, Save, Trash2, X } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReminderContext } from "@/app/ReminderAction";
 
@@ -138,7 +138,9 @@ export function ClientChecklistModal({ context, customers, catalogs, items, user
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [showComposer, setShowComposer] = useState(!context.checklistDisplayOnly);
   const [hideCompleted, setHideCompleted] = useState<Record<string, boolean>>({});
-  useEffect(() => setShowComposer(!context.checklistDisplayOnly), [context]);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => setShowComposer(!context.checklistDisplayOnly), [context.module, context.entityId, context.title, context.checklistDisplayOnly]);
   useEffect(() => {
     const surfaces = Array.from(document.querySelectorAll<HTMLElement>(`[data-reminder-source-module="${context.module}"]`));
     const source = surfaces.at(-1);
@@ -150,12 +152,11 @@ export function ClientChecklistModal({ context, customers, catalogs, items, user
     if (historyAnchor?.parentElement === contentHost) contentHost.insertBefore(portalHost, historyAnchor); else contentHost.appendChild(portalHost);
     source.classList.add("checklist-inline-open");
     setHost(portalHost);
-    window.setTimeout(() => portalHost.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
-    const observer = new MutationObserver(() => { if (!source.isConnected) onClose(); });
+    const observer = new MutationObserver(() => { if (!source.isConnected) onCloseRef.current(); });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => { observer.disconnect(); source.classList.remove("checklist-inline-open"); portalHost.remove(); };
-  }, [context.module, onClose]);
-  const linked = useMemo(() => items.map((item) => ({ item, detail: item.record_type === "Checklist vinculado" ? parseLinkedChecklist(item.description) : null })).filter((entry): entry is { item: WorkItem; detail: LinkedChecklistDetail } => Boolean(entry.detail)).filter(({ detail }) => detail.sourceModule === context.module && (context.entityId ? detail.sourceEntityId === context.entityId : detail.sourceTitle === context.title)), [items, context]);
+  }, [context.module, context.entityId, context.title]);
+  const linked = useMemo(() => items.map((item) => ({ item, detail: item.record_type === "Checklist vinculado" ? parseLinkedChecklist(item.description) : null })).filter((entry): entry is { item: WorkItem; detail: LinkedChecklistDetail } => Boolean(entry.detail)).filter(({ detail }) => detail.sourceModule === context.module && (context.entityId ? detail.sourceEntityId === context.entityId : detail.sourceTitle === context.title)), [items, context.module, context.entityId, context.title]);
   const add = async (selectedTemplateId = templateId) => {
     const template = templates.find((entry) => entry.id === selectedTemplateId);
     if (!template) { setError("Selecione um tipo de checklist configurado."); return; }
@@ -175,7 +176,7 @@ export function ClientChecklistModal({ context, customers, catalogs, items, user
   const remove = async (item: WorkItem) => { await operate({ action: "deleteWorkItem", id: item.id }, "Checklist removido do card."); };
   if (!host) return null;
   return createPortal(<div className="client-checklist-card-slot">
-    {showComposer && <section className="client-checklist-picker" aria-labelledby="checklist-picker-title"><header><span><ClipboardCheck /><span><strong id="checklist-picker-title">Vincular checklist ao card</strong><small>{customer.trade_name || customer.legal_name}{publicId(customer) ? ` · ID ${publicId(customer)}` : context.clientId ? ` · ID ${context.clientId}` : ""}</small></span></span><button type="button" aria-label="Cancelar inserção" onClick={() => { setShowComposer(false); setTemplateId(""); setError(""); if (!linked.length) onClose(); }}><X size={15} /></button></header><label>Tipo de checklist<select autoFocus value={templateId} disabled={busy} onChange={(event) => { const selected = event.target.value; setTemplateId(selected); setError(""); if (selected) void add(selected); }}><option value="">Selecionar checklist</option>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label>{usingSharedTemplates && <small className="checklist-shared-note">Ainda não há um modelo exclusivo desta funcionalidade; os modelos compartilhados disponíveis foram carregados.</small>}{!templates.length && <small className="checklist-config-empty">Nenhum tipo configurado. Cadastre um modelo na engrenagem para disponibilizá-lo aqui.</small>}{error && <p className="form-error">{error}</p>}</section>}
+    {showComposer && <section className="client-checklist-picker" aria-labelledby="checklist-picker-title"><header><span><ClipboardCheck /><span><strong id="checklist-picker-title">Vincular checklist ao card</strong><small>{customer.trade_name || customer.legal_name}{publicId(customer) ? ` · ID ${publicId(customer)}` : context.clientId ? ` · ID ${context.clientId}` : ""}</small></span></span><button type="button" aria-label="Cancelar inserção" onClick={() => { setShowComposer(false); setTemplateId(""); setError(""); if (!linked.length) onClose(); }}><X size={15} /></button></header><label>Tipo de checklist<select value={templateId} disabled={busy} onChange={(event) => { const selected = event.target.value; setTemplateId(selected); setError(""); if (selected) void add(selected); }}><option value="">Selecionar checklist</option>{templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}</select></label>{usingSharedTemplates && <small className="checklist-shared-note">Ainda não há um modelo exclusivo desta funcionalidade; os modelos compartilhados disponíveis foram carregados.</small>}{!templates.length && <small className="checklist-config-empty">Nenhum tipo configurado. Cadastre um modelo na engrenagem para disponibilizá-lo aqui.</small>}{error && <p className="form-error">{error}</p>}</section>}
     {linked.length > 0 && <section className="client-checklist-card-field"><header><span><ClipboardCheck /><span><strong>Checklists do card</strong><small>{linked.length} checklist(s) vinculado(s) e salvo(s)</small></span></span><button className="secondary-button" type="button" onClick={() => { setTemplateId(""); setError(""); setShowComposer(true); }}><Plus size={15} /> Inserir outro</button></header><section className="linked-checklists">{linked.map(({ item, detail }) => { const completed = detail.items.filter((entry) => entry.checked).length; const percentage = detail.items.length ? Math.round(completed / detail.items.length * 100) : 0; const hideMarked = Boolean(hideCompleted[item.id]); const complete = percentage === 100; return <article className="linked-checklist-card" key={item.id}><header className="linked-checklist-card-head"><span className="linked-checklist-title"><i className={complete ? "complete" : ""}>{complete ? <Check size={13} /> : <ClipboardCheck size={14} />}</i><span><strong>{detail.templateName}</strong><small>{complete ? `Concluído${detail.completedBy ? ` por ${detail.completedBy}` : ""}` : "Em andamento"}</small></span></span><span className="linked-checklist-actions"><button type="button" className={hideMarked ? "active" : ""} onClick={() => setHideCompleted((current) => ({ ...current, [item.id]: !current[item.id] }))}>{hideMarked ? "Mostrar itens marcados" : "Ocultar itens marcados"}</button><button type="button" className="delete" disabled={busy} onClick={() => void remove(item)} aria-label={`Excluir checklist ${detail.templateName}`}><Trash2 size={14} /> Excluir</button></span></header><section className="linked-checklist-progress"><b>{percentage}%</b><span><i style={{ width: `${percentage}%` }} /></span></section><div className="linked-checklist-items">{detail.items.map((entry, index) => ({ entry, index })).filter(({ entry }) => !hideMarked || !entry.checked).map(({ entry, index }) => <button type="button" className={entry.checked ? "checked" : ""} disabled={busy} onClick={() => void update(item, detail, index)} key={entry.id}><i>{entry.checked && <Check size={13} />}</i><span>{entry.text}</span></button>)}{hideMarked && completed === detail.items.length && <small className="linked-checklist-all-hidden">Todos os itens marcados estão ocultos.</small>}</div><footer><span style={{ width: `${percentage}%` }} /></footer><small className="linked-checklist-author">Criado por {detail.createdBy}</small></article>; })}</section></section>}
   </div>, host);
 }

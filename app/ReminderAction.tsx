@@ -175,7 +175,6 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
         button.setAttribute("aria-label", `Adicionar lembrete para ${context.title || "este registro"}`);
         button.innerHTML = `<span aria-hidden="true">◷</span><b>Adicionar lembrete</b>`;
         button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openReminderComposer(context); });
-        if (surface.matches(".cancellation-drawer")) button.classList.add("centered");
         const copyLink = actionHost?.querySelector<HTMLElement>(".copy-task-link");
         if (copyLink) copyLink.insertAdjacentElement("afterend", button); else insertAction(button);
       }
