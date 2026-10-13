@@ -463,12 +463,14 @@ test("integra chamados públicos, competência mensal e rolagem do chat", async 
   assert.match(app, /brasiliaMonthKey/);
   assert.match(app, /label: "Chamados", count: serviceRequests\.length/);
   assert.match(requests, /TRIAGE_STAGES/);
-  assert.match(requests, /Desenvolvimento.*Tarefa.*Reclamação.*Sugestão.*Elogio.*Cancelamento.*Nova contratação/s);
+  assert.match(requests, /Dúvida sobre o sistema.*Tarefa.*Reclamação.*Sugestão.*Bug.*Cancelamento.*Nova contratação/s);
   assert.match(requests, /PublicServiceRequestPage/);
-  assert.match(requests, /required multiple/);
+  assert.match(requests, /required=\{files\.length===0\} multiple/);
   assert.match(api, /MapPost\("\/api\/public-service-requests"/);
   assert.match(api, /X-API-Key/);
   assert.match(api, /customerMatched = customer is not null/);
+  assert.match(api, /maximum = 5/);
+  assert.match(api, /form\["companyName"\]/);
   assert.match(screens, /serviceRequests/);
   assert.match(screens, /serviceFollowup/);
   assert.match(compose, /PUBLIC_SERVICE_REQUESTS_API_KEY/);
@@ -476,4 +478,6 @@ test("integra chamados públicos, competência mensal e rolagem do chat", async 
   assert.match(chat, /messages\.scrollTo/);
   assert.match(css, /\.enterprise-detail-shell>\.drawer-head/);
   assert.match(css, /\.public-service-request-page/);
+  assert.match(css, /\.external-experience-page/);
+  assert.match(css, /\.public-request-type:has\(input:checked\)/);
 });

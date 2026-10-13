@@ -32,11 +32,11 @@ Campos:
 | Campo | Formato | Regra |
 | --- | --- | --- |
 | `clientId` | texto | exatamente 6 números do ID do cliente |
-| `fullName` | texto | nome completo |
+| `companyName` | texto | nome da empresa (`fullName` continua aceito como alias de compatibilidade) |
 | `whatsapp` | texto | contato com DDD |
-| `type` | texto | Desenvolvimento, Tarefa, Reclamação, Sugestão, Elogio, Cancelamento ou Nova contratação |
-| `summary` | texto | descrição da solicitação |
-| `files` | arquivo, repetível | obrigatório; de 1 a 10 arquivos, com no máximo 25 MB cada |
+| `type` | texto | Dúvida sobre o sistema, Tarefa, Reclamação, Sugestão, Bug, Cancelamento ou Nova contratação |
+| `summary` | texto | descrição da solicitação, de 10 a 1.000 caracteres |
+| `files` | arquivo, repetível | obrigatório; de 1 a 5 arquivos, com no máximo 25 MB cada |
 
 Exemplo com `curl`:
 
@@ -44,9 +44,9 @@ Exemplo com `curl`:
 curl -X POST "https://SEU_DOMINIO/api/public-service-requests" \
   -H "X-API-Key: SUA_CHAVE_DE_INTEGRACAO" \
   -F "clientId=230489" \
-  -F "fullName=Nome do cliente" \
+  -F "companyName=Nome da empresa" \
   -F "whatsapp=5599999999999" \
-  -F "type=Desenvolvimento" \
+  -F "type=Bug" \
   -F "summary=Descrição completa da solicitação" \
   -F "files=@evidencia.png"
 ```

@@ -15,7 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
-var serviceRequestTypes = new[] { "Desenvolvimento", "Tarefa", "Reclamação", "Sugestão", "Elogio", "Cancelamento", "Nova contratação" };
+var serviceRequestTypes = new[] { "Dúvida sobre o sistema", "Tarefa", "Reclamação", "Sugestão", "Bug", "Cancelamento", "Nova contratação" };
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
@@ -478,9 +478,10 @@ app.MapGet("/api/public-service-requests", (HttpContext context, IConfiguration 
         endpoint = "/api/public-service-requests",
         method = "POST",
         contentType = "multipart/form-data",
-        requiredFields = new[] { "clientId", "fullName", "whatsapp", "type", "summary", "files" },
+        requiredFields = new[] { "clientId", "companyName", "whatsapp", "type", "summary", "files" },
+        aliases = new { companyName = new[] { "fullName" } },
         types = serviceRequestTypes,
-        files = new { field = "files", required = true, maximum = 10, maximumSizeMb = 25 },
+        files = new { field = "files", required = true, maximum = 5, maximumSizeMb = 25 },
     });
 }).RequireRateLimiting("public-service-requests");
 
@@ -493,22 +494,22 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
 
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var clientId = form["clientId"].ToString().Trim();
-    var fullName = form["fullName"].ToString().Trim();
+    var fullName = (form["companyName"].ToString().Trim() is { Length: > 0 } companyName ? companyName : form["fullName"].ToString().Trim());
     var whatsapp = form["whatsapp"].ToString().Trim();
     var selectedType = form["type"].ToString().Trim();
     var summary = form["summary"].ToString().Trim();
     if (!Regex.IsMatch(clientId, "^[0-9]{6}$"))
         return Results.Problem(statusCode: 400, title: "ID inválido", detail: "O ID deve conter exatamente 6 números.");
     if (fullName.Length < 3 || fullName.Length > 180)
-        return Results.Problem(statusCode: 400, title: "Nome inválido", detail: "Informe o nome completo.");
+        return Results.Problem(statusCode: 400, title: "Nome inválido", detail: "Informe o nome da empresa.");
     if (Regex.Replace(whatsapp, "[^0-9]", "").Length is < 10 or > 15)
         return Results.Problem(statusCode: 400, title: "WhatsApp inválido", detail: "Informe um contato com DDD.");
     if (!serviceRequestTypes.Contains(selectedType, StringComparer.OrdinalIgnoreCase))
         return Results.Problem(statusCode: 400, title: "Tipo inválido", detail: "Selecione um dos tipos disponíveis.");
-    if (summary.Length < 10 || summary.Length > 6000)
-        return Results.Problem(statusCode: 400, title: "Resumo inválido", detail: "Descreva a solicitação com pelo menos 10 caracteres.");
-    if (form.Files.Count is < 1 or > 10 || form.Files.Any(file => file.Length <= 0 || file.Length > 25 * 1024 * 1024))
-        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie de 1 a 10 arquivos, com no máximo 25 MB cada.");
+    if (summary.Length < 10 || summary.Length > 1000)
+        return Results.Problem(statusCode: 400, title: "Descrição inválida", detail: "Descreva a solicitação com 10 a 1000 caracteres.");
+    if (form.Files.Count is < 1 or > 5 || form.Files.Any(file => file.Length <= 0 || file.Length > 25 * 1024 * 1024))
+        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie de 1 a 5 arquivos, com no máximo 25 MB cada.");
 
     var customers = await db.Customers.AsNoTracking().ToListAsync(cancellationToken);
     var customer = customers.FirstOrDefault(entry => PublicCustomerCode(entry.DocumentMasked) == clientId);
@@ -1662,13 +1663,18 @@ static (string Stage, string Priority, string Reason, double Confidence) Classif
 {
     var text = $"{selectedType} {summary}".ToLowerInvariant();
     if (Regex.IsMatch(text, "cancel|encerrar contrato|rescis")) return ("Cancelamento", "P0", "Foram identificados sinais explícitos de cancelamento.", .98);
-    if (Regex.IsMatch(text, "erro|bug|falha|sistema|integra|api|desenvolv")) return ("Desenvolvimento", "P1", "O relato indica erro técnico, integração ou necessidade de desenvolvimento.", .94);
+    if (Regex.IsMatch(text, "erro|bug|falha|integra|api|desenvolv")) return ("Desenvolvimento", "P1", "O relato indica erro técnico, integração ou necessidade de desenvolvimento.", .94);
     if (Regex.IsMatch(text, "reclama|insatis|demora|ruim|problema")) return ("Reclamação", "P1", "O texto apresenta insatisfação ou reclamação sobre o atendimento/produto.", .92);
     if (Regex.IsMatch(text, "elog|parab[eé]ns|excelente|agradec")) return ("Elogio", "P3", "O conteúdo possui manifestação positiva ou elogio.", .96);
     if (Regex.IsMatch(text, "sugest|melhoria|ideia|poderia")) return ("Sugestão", "P3", "O cliente propõe uma melhoria ou nova ideia.", .93);
     if (Regex.IsMatch(text, "contrat|comprar|adquirir|nova unidade|proposta")) return ("Nova contratação", "P1", "Foi detectado interesse comercial em nova contratação.", .94);
     if (Regex.IsMatch(text, "tarefa|solicita|ajustar|configurar|cadastro")) return ("Tarefa", "P2", "A solicitação descreve uma ação operacional executável.", .86);
-    var stage = selectedType;
+    var stage = selectedType switch
+    {
+        "Bug" => "Desenvolvimento",
+        "Dúvida sobre o sistema" => "Tarefa",
+        _ => selectedType,
+    };
     return (stage, "P2", "Classificação baseada no tipo selecionado e no contexto informado.", .78);
 }
 
