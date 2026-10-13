@@ -41,6 +41,7 @@ import { PortalLinksAdmin } from "@/app/PortalLinksModule";
 import SatisfactionSurveysModule, { PublicSurveyResponsePage } from "@/app/SatisfactionSurveysModule";
 import OperationIndicatorsBoard from "@/app/OperationIndicatorsBoard";
 import PublicOperationsOverview from "@/app/PublicOperationsOverview";
+import ServiceRequestsModule, { PublicServiceRequestPage } from "@/app/ServiceRequestsModule";
 import { cleanDepartmentDescription, departmentQueueMode, serializeDepartmentDescription, type DepartmentQueueMode } from "@/lib/waitingQueue";
 
 type Customer = {
@@ -208,6 +209,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavigationItem[] }> = [
       { label: "Lembretes", icon: Clock3, module: "reminders" },
       { label: "Chat interno", icon: MessageCircleMore, module: "internalChat" },
       { label: "Tarefas", icon: ListTodo, module: "tasks" },
+      { label: "Chamados", icon: Headphones, module: "serviceRequests" },
       { label: "Agenda", icon: CalendarDays, module: "work" },
       { label: "Sugestões", icon: Sparkles, module: "suggestions" },
       { label: "Avisos", icon: Bell, module: "notices" },
@@ -224,6 +226,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavigationItem[] }> = [
       { label: "CRM retenção", icon: ShieldCheck, module: "commercial", commercialFlow: "retention", configurable: true, configAdminSection: "commercialCatalogs" },
       { label: "Acompanhamento Ativação", icon: UserPlus, module: "cs", csFlow: "onboarding", configurable: true, configAdminSection: "csCatalogs" },
       { label: "Acompanhamento Retenção", icon: ChartNoAxesCombined, module: "cs", csFlow: "evolution", configurable: true, configAdminSection: "csCatalogs" },
+      { label: "Acompanhamento de chamados", icon: Headphones, module: "serviceFollowup" },
       { label: "Contas estratégicas", icon: UsersRound, module: "cs", csFlow: "enterprise", configurable: true, configAdminSection: "enterpriseCatalogs" },
       { label: "Cancelamentos", icon: RotateCcw, module: "cancellations", configurable: true, configAdminSection: "cancellationCatalogs" },
       { label: "Gestão de Marketing", icon: ImageIcon, module: "marketing", configurable: true },
@@ -266,11 +269,19 @@ const moduleDescriptions: Record<string, string> = {
   notices: "Comunicados e informações importantes para toda a empresa.",
   work: "Compromissos, reuniões e eventos com horário definido.",
   tasks: "Demandas internas, responsáveis, setores, comentários e SLA.",
+  serviceRequests: "Chamados externos, triagem inteligente e encaminhamento para a equipe responsável.",
+  serviceFollowup: "Acompanhamento de reclamações e elogios até a conclusão.",
   chat: "Conversas omnichannel, filas, números oficiais e atendimento entre setores.",
   waitingQueue: "Encaminhamentos do Portal Dontus aguardando contato dos setores.",
   commissions: "Comissões comerciais e de sucesso do cliente com aprovação e ciência.",
   goals: "Metas diárias, semanais e mensais de vendas, clientes e utilização.",
   catalogs: "Setores, tipos, prioridades, status, SLA e colaboradores.",
+};
+
+const kanbanModules = new Set<ModuleKey>(["commercial", "cs", "cancellations", "lia", "hr", "marketing", "support", "ti", "finance", "procurement", "waitingQueue", "referrals", "tasks", "suggestions", "serviceRequests", "serviceFollowup"]);
+const brasiliaMonthKey = (value: string | Date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" }).formatToParts(typeof value === "string" ? new Date(value) : value);
+  return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}`;
 };
 
 const formatMoney = (cents: number) =>
@@ -362,7 +373,9 @@ export default function OperationsApp() {
   const [clientChecklistContext, setClientChecklistContext] = useState<ReminderContext | null>(null);
   const [celebrationCenterOpen, setCelebrationCenterOpen] = useState(false);
   const [chatRoomTarget, setChatRoomTarget] = useState("");
+  const [kanbanMonth, setKanbanMonth] = useState(() => brasiliaMonthKey());
   const [reminderClock, setReminderClock] = useState(() => Date.now());
+  const [locationSearch, setLocationSearch] = useState("");
   const internalUnreadRef = useRef<number | null>(null);
   const operationalNotificationRef = useRef<string>("");
   const viewedNoticeIdsRef = useRef<Set<string>>(new Set());
@@ -498,9 +511,13 @@ export default function OperationsApp() {
   }, []);
 
   useEffect(() => {
+    setLocationSearch(window.location.search);
+  }, []);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("public") === "overview") { setLoading(false); return; }
+      if (["overview", "chamados"].includes(params.get("public") ?? "") || params.has("survey")) { setLoading(false); return; }
       const requestedModule = params.get("mod") as ModuleKey | null;
       if (requestedModule && requestedModule in MODULES) setActive(requestedModule);
       const requestedCommercialFlow = params.get("commercialFlow") as CommercialFlow | null;
@@ -816,10 +833,22 @@ export default function OperationsApp() {
     }
   };
 
-  const moduleItems = useMemo(
-    () => data?.items.filter((item) => item.module === active) ?? [],
-    [data, active],
-  );
+  const kanbanItems = useMemo(() => {
+    if (!data || !kanbanModules.has(active)) return data?.items ?? [];
+    const currentMonth = brasiliaMonthKey();
+    const visible = (item: WorkItem) => {
+      const matchesMonth = brasiliaMonthKey(item.created_at) === kanbanMonth || brasiliaMonthKey(item.updated_at) === kanbanMonth;
+      if (active === "commercial" && commercialFlow === "crm") {
+        const terminal = /(ganh|perdid|cancel|finaliz|conclu)/i.test(`${item.status} ${item.description}`);
+        if (kanbanMonth === currentMonth && !terminal) return true;
+      }
+      return matchesMonth;
+    };
+    return data.items.filter((item) => item.module !== active || visible(item));
+  }, [active, commercialFlow, data, kanbanMonth]);
+  const moduleItems = useMemo(() => kanbanItems.filter((item) => item.module === active), [active, kanbanItems]);
+  const monthTaskModule = useMemo(() => data?.taskModule ? ({ ...data.taskModule, tasks: data.taskModule.tasks.filter((task) => brasiliaMonthKey(task.createdAt) === kanbanMonth || brasiliaMonthKey(task.updatedAt) === kanbanMonth) }) : null, [data?.taskModule, kanbanMonth]);
+  const monthSuggestionModule = useMemo(() => data?.suggestionModule ? ({ ...data.suggestionModule, suggestions: data.suggestionModule.suggestions.filter((entry) => brasiliaMonthKey(entry.createdAt) === kanbanMonth || brasiliaMonthKey(entry.updatedAt) === kanbanMonth) }) : null, [data?.suggestionModule, kanbanMonth]);
 
   const globalResults = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
@@ -1005,15 +1034,18 @@ export default function OperationsApp() {
     });
   }, [attentionNotice?.id]);
 
-  const publicOverview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("public") === "overview";
+  const routeParams = new URLSearchParams(locationSearch);
+  const publicOverview = routeParams.get("public") === "overview";
   if (publicOverview) return <PublicOperationsOverview />;
-  const publicSurveyToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("survey") : null;
+  const publicServiceRequest = routeParams.get("public") === "chamados";
+  if (publicServiceRequest) return <PublicServiceRequestPage />;
+  const publicSurveyToken = routeParams.get("survey");
   if (publicSurveyToken) return <PublicSurveyResponsePage token={publicSurveyToken} />;
   if (loading) return <LoadingScreen />;
   if (loginRequired) return <LoginScreen onAuthenticated={() => { setLoginRequired(false); void load(); }} />;
   if (error || !data) return <ErrorScreen message={error} onRetry={load} />;
-  const publicProcessId = new URLSearchParams(window.location.search).get("process");
-  if (new URLSearchParams(window.location.search).get("application") === "processo-seletivo" && publicProcessId)
+  const publicProcessId = routeParams.get("process");
+  if (routeParams.get("application") === "processo-seletivo" && publicProcessId)
     return <PublicRecruitmentApplication data={data} processId={publicProcessId} busy={busy} onOperate={operate} />;
   const internalChatUnread = data.internalChatModule?.rooms.reduce((sum, room) => sum + room.unreadCount, 0) ?? 0;
   const taskUnread = data.taskModule?.notifications.filter((notification) => !notification.read && !data.taskModule?.tasks.some((task) => task.id === notification.taskId && Boolean(task.completedAt))).length ?? 0;
@@ -1040,10 +1072,16 @@ export default function OperationsApp() {
   });
   const cancellationAlerts = data.items.filter((item) => item.module === "cs" && item.owner === data.user.displayName).flatMap((item) => {
     try {
-      const journey = JSON.parse(item.description) as { cancellationRequestedAt?: string; cancellationOutcome?: string; cancellationReason?: string };
+      const journey = JSON.parse(item.description) as { cancellationRequestedAt?: string; cancellationOutcome?: string; cancellationPendingApproval?: boolean; cancellationReason?: string };
       if (!journey.cancellationRequestedAt || Date.now() - new Date(item.updated_at).getTime() > 14 * 86_400_000) return [];
-      const resolved = journey.cancellationOutcome === "cancelled";
-      return [{ id: `cancellation-${item.id}-${item.version}`, title: resolved ? `${item.title}: cancelamento enviado para conferência` : `${item.title}: entrar em contato para alinhar a reversão`, meta: journey.cancellationReason || "Cancelamentos", module: "cs" as ModuleKey, at: item.updated_at }];
+      const title = journey.cancellationPendingApproval
+        ? `${item.title}: não convertido pelo Comercial, aguarda conferência`
+        : journey.cancellationOutcome === "reverted"
+          ? `${item.title}: cliente decidiu permanecer; continue o acompanhamento`
+          : journey.cancellationOutcome === "cancelled"
+            ? `${item.title}: cancelamento aprovado`
+            : `${item.title}: entrar em contato para alinhar a reversão`;
+      return [{ id: `cancellation-${item.id}-${item.version}`, title, meta: journey.cancellationReason || "Cancelamentos", module: "cs" as ModuleKey, at: item.updated_at }];
     } catch { return []; }
   });
   const notificationEntries = [
@@ -1258,6 +1296,7 @@ export default function OperationsApp() {
         <div className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}>
           {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext && canViewOperationIndicators ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} onClose={closeIndicatorsPage} /> : <>
           {operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
+          {kanbanModules.has(active) && <section className="kanban-month-filter"><span><CalendarDays size={16}/><b>Competência do Kanban</b><small>Na virada do mês, o quadro inicia limpo. Selecione uma competência anterior para consultar o histórico.</small></span><label>Mês<input type="month" value={kanbanMonth} onChange={(event) => setKanbanMonth(event.target.value || brasiliaMonthKey())}/></label>{kanbanMonth !== brasiliaMonthKey() && <button type="button" onClick={() => setKanbanMonth(brasiliaMonthKey())}>Voltar ao mês atual</button>}</section>}
           {active === "dashboard" && (
             dashboardPage === "portal"
               ? <PortalDontus data={data} busy={busy} operate={operate} onBack={() => setDashboardPage("home")} />
@@ -1268,7 +1307,7 @@ export default function OperationsApp() {
             flow={commercialFlow}
             catalogs={data.customerModule.catalogs}
             customers={data.customers}
-            items={data.items}
+            items={kanbanItems}
             employees={data.access?.employees ?? []}
             agendaModule={data.agendaModule}
             currentUser={data.user}
@@ -1279,12 +1318,12 @@ export default function OperationsApp() {
             operate={operate}
             onOpenSettings={userCan(data.user, "commercial", "manage") ? () => navigate("admin", "commercialCatalogs") : undefined}
           />}
-          {active === "cs" && data.customerModule && (csFlow === "enterprise" ? <CustomerSuccessModule flow={csFlow} catalogs={data.customerModule.catalogs} items={data.items} agendaModule={data.agendaModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "cs", "edit")} canDelete={userCan(data.user, "cs", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => navigate("admin", "enterpriseCatalogs") : undefined} /> : <CustomerSuccessJourneyModule flow={csFlow} catalogs={data.customerModule.catalogs} items={data.items} customers={data.customers} agendaModule={data.agendaModule} taskModule={data.taskModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cs", "create")} canEdit={userCan(data.user, "cs", "edit")} canDelete={userCan(data.user, "cs", "edit")} canCreateTask={userCan(data.user, "cancellations", "create")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => navigate("admin", "csCatalogs") : undefined} />)}
-          {active === "cancellations" && data.customerModule && <CancellationsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cancellations", "create")} canEdit={userCan(data.user, "cancellations", "edit")} canDelete={userCan(data.user, "cancellations", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cancellations", "manage") ? () => navigate("admin", "cancellationCatalogs") : undefined} />}
-          {active === "hr" && data.customerModule && <HrManagementModule items={data.items} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "hr", "edit")} operate={operate} onOpenSettings={userCan(data.user, "hr", "manage") ? () => navigate("admin", "hrCatalogs") : undefined} />}
-          {active === "support" && data.customerModule && <ServiceRecordsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "support", "create")} canEdit={userCan(data.user, "support", "edit")} canDelete={userCan(data.user, "support", "edit")} operate={operate} onOpenSettings={userCan(data.user, "support", "manage") ? () => navigate("admin", "serviceCatalogs") : undefined} />}
-          {active === "waitingQueue" && <WaitingQueueModule items={data.items} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "waitingQueue", "manage") ? () => navigate("admin", "waitingQueueCatalogs") : undefined} />}
-          {active === "referrals" && data.customerModule && <ReferralsModule items={data.items} catalogs={data.customerModule.catalogs} employees={(data.access?.employees ?? []).filter(employee => employee.active)} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "referrals", "edit")} operate={operate} onOpenSettings={userCan(data.user, "referrals", "manage") ? ()=>navigate("admin","referralCatalogs") : undefined} />}
+          {active === "cs" && data.customerModule && (csFlow === "enterprise" ? <CustomerSuccessModule flow={csFlow} catalogs={data.customerModule.catalogs} items={kanbanItems} agendaModule={data.agendaModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "cs", "edit")} canDelete={userCan(data.user, "cs", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => navigate("admin", "enterpriseCatalogs") : undefined} /> : <CustomerSuccessJourneyModule flow={csFlow} catalogs={data.customerModule.catalogs} items={kanbanItems} customers={data.customers} agendaModule={data.agendaModule} taskModule={data.taskModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cs", "create")} canEdit={userCan(data.user, "cs", "edit") || userCan(data.user, "cs", "approve") || data.user.isCoordinator} canDelete={userCan(data.user, "cs", "edit")} canCreateTask={userCan(data.user, "cancellations", "create")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => navigate("admin", "csCatalogs") : undefined} />)}
+          {active === "cancellations" && data.customerModule && <CancellationsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cancellations", "create")} canEdit={userCan(data.user, "cancellations", "edit")} canDelete={userCan(data.user, "cancellations", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cancellations", "manage") ? () => navigate("admin", "cancellationCatalogs") : undefined} />}
+          {active === "hr" && data.customerModule && <HrManagementModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "hr", "edit")} operate={operate} onOpenSettings={userCan(data.user, "hr", "manage") ? () => navigate("admin", "hrCatalogs") : undefined} />}
+          {active === "support" && data.customerModule && <ServiceRecordsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "support", "create")} canEdit={userCan(data.user, "support", "edit")} canDelete={userCan(data.user, "support", "edit")} operate={operate} onOpenSettings={userCan(data.user, "support", "manage") ? () => navigate("admin", "serviceCatalogs") : undefined} />}
+          {active === "waitingQueue" && <WaitingQueueModule items={kanbanItems} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "waitingQueue", "manage") ? () => navigate("admin", "waitingQueueCatalogs") : undefined} />}
+          {active === "referrals" && data.customerModule && <ReferralsModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={(data.access?.employees ?? []).filter(employee => employee.active)} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "referrals", "edit")} operate={operate} onOpenSettings={userCan(data.user, "referrals", "manage") ? ()=>navigate("admin","referralCatalogs") : undefined} />}
           {active === "commissions" && data.customerModule && <CommissionsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canApprove={userCan(data.user,"commissions","approve")} canManage={userCan(data.user,"commissions","manage")} operate={operate} />}
           {active === "goals" && <GoalsModule items={data.items} taskItems={data.taskModule?.tasks ?? []} catalogs={data.customerModule?.catalogs ?? []} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user,"goals","create")} canEdit={userCan(data.user,"goals","edit")} canManage={userCan(data.user,"goals","manage")} operate={operate} />}
           {active === "surveys" && <SatisfactionSurveysModule items={data.items} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user,"surveys","edit")} operate={operate} />}
@@ -1303,14 +1342,15 @@ export default function OperationsApp() {
               onMove={(item, status) => operate({ action: "transitionWorkItem", id: item.id, nextStatus: status, version: item.version, confirmed: true, boardMove: true }, `Registro movido para ${status}.`)}
             />
           )}
-          {active === "lia" && <LiaJourneyModule items={data.items} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} catalogs={data.customerModule?.catalogs ?? []} currentUser={data.user.displayName} canEdit={userCan(data.user, "lia", "edit")} busy={busy} operate={operate} agendaModule={data.agendaModule} onOpenSettings={userCan(data.user, "lia", "manage") ? () => navigate("admin", "liaCatalogs") : undefined} />}
-          {active === "marketing" && <MarketingWorkspaceModule items={data.items} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} currentUser={data.user} agendaModule={data.agendaModule} canEdit={userCan(data.user, "marketing", "edit")} busy={busy} operate={operate} onOpenSettings={undefined} />}
+          {active === "lia" && <LiaJourneyModule items={kanbanItems} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} catalogs={data.customerModule?.catalogs ?? []} currentUser={data.user.displayName} canEdit={userCan(data.user, "lia", "edit")} busy={busy} operate={operate} agendaModule={data.agendaModule} onOpenSettings={userCan(data.user, "lia", "manage") ? () => navigate("admin", "liaCatalogs") : undefined} />}
+          {active === "marketing" && <MarketingWorkspaceModule items={kanbanItems} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} currentUser={data.user} agendaModule={data.agendaModule} canEdit={userCan(data.user, "marketing", "edit")} busy={busy} operate={operate} onOpenSettings={undefined} />}
           {active === "work" && data.agendaModule && <AgendaModule module={data.agendaModule} busy={busy} operate={operate} currentEmail={data.user.email} onOpenSettings={userCan(data.user, "work", "manage") ? () => navigate("admin", "agenda") : undefined} />}
           {active === "diary" && data.diaryModule && <DiaryModule module={data.diaryModule} busy={busy} canCreate={userCan(data.user,"diary","create")} canEdit={userCan(data.user,"diary","edit")} operate={operate} />}
           {active === "notes" && data.notesModule && <NotesModule module={data.notesModule} busy={busy} operate={operate} />}
           {active === "reminders" && <RemindersModule items={reminderItems} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} operate={operate} onCreate={setReminderContext} />}
           {active === "notices" && data.noticesModule && <NoticesModule module={data.noticesModule} busy={busy} operate={operate} />}
-          {active === "suggestions" && data.suggestionModule && <SuggestionsModule module={data.suggestionModule} customers={data.customers} canCreate={userCan(data.user, "suggestions", "create")} canEdit={userCan(data.user, "suggestions", "edit")} canDelete={userCan(data.user, "suggestions", "edit")} busy={busy} operate={operate} uploadAttachments={uploadSuggestionAttachments} onOpenSettings={userCan(data.user, "suggestions", "manage") ? () => navigate("admin", "suggestions") : undefined} />}
+          {active === "suggestions" && monthSuggestionModule && <SuggestionsModule module={monthSuggestionModule} customers={data.customers} canCreate={userCan(data.user, "suggestions", "create")} canEdit={userCan(data.user, "suggestions", "edit")} canDelete={userCan(data.user, "suggestions", "edit")} busy={busy} operate={operate} uploadAttachments={uploadSuggestionAttachments} onOpenSettings={userCan(data.user, "suggestions", "manage") ? () => navigate("admin", "suggestions") : undefined} />}
+          {(active === "serviceRequests" || active === "serviceFollowup") && <ServiceRequestsModule mode={active === "serviceRequests" ? "triage" : "followup"} items={kanbanItems} customers={data.customers} currentUser={data.user} taskModule={data.taskModule} suggestionModule={data.suggestionModule} canEdit={userCan(data.user, active, "edit")} busy={busy} operate={operate} uploadTaskAttachments={uploadTaskAttachments}/>}
           {active === "internalChat" && data.internalChatModule && (
             <InternalChatModule
               module={data.internalChatModule}
@@ -1327,9 +1367,9 @@ export default function OperationsApp() {
           {active === "approvals" && (
             <ApprovalsView approvals={data.approvals} busy={busy} canApprove={userCan(data.user, "approvals", "approve")} onDecision={(id, decision) => operate({ action: "decideApproval", id, decision, justification: decision === "Aprovado" ? "" : "Necessário revisar os dados apresentados." }, `Solicitação ${decision.toLowerCase()}.`)} />
           )}
-          {active === "tasks" && data.taskModule && (
+          {active === "tasks" && monthTaskModule && (
             <TasksModule
-              module={data.taskModule}
+              module={monthTaskModule}
               customers={data.customers}
               user={data.user}
               canCreate={userCan(data.user, "tasks", "create")}
@@ -1360,7 +1400,7 @@ export default function OperationsApp() {
               onOpenSettings={() => navigateCatalog("types")}
             />
           )}
-          {active === "ti" && <DevelopmentModule items={data.items} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} user={data.user} canCreate={userCan(data.user, "ti", "create")} canEdit={userCan(data.user, "ti", "edit")} busy={busy} operate={operate} />}
+          {active === "ti" && <DevelopmentModule items={kanbanItems} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} user={data.user} canCreate={userCan(data.user, "ti", "create")} canEdit={userCan(data.user, "ti", "edit")} busy={busy} operate={operate} />}
           {active === "chat" && data.chatModule && (
             <ChatModule
               module={data.chatModule}
@@ -1469,7 +1509,7 @@ function structuredClientEvolutions(item: WorkItem): ClientEvolution[] {
 }
 
 function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNavigate }: { query: string; data: AppData; canEdit: boolean; busy: boolean; operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onClose: () => void; onNavigate: (module: ModuleKey) => void }) {
-  const [tab, setTab] = useState<"overview" | "records" | "tasks" | "support" | "suggestions" | "reminders" | "comments" | "alerts" | "checklists" | "followups" | "timeline">("overview");
+  const [tab, setTab] = useState<"overview" | "records" | "tasks" | "support" | "serviceRequests" | "suggestions" | "reminders" | "comments" | "alerts" | "checklists" | "followups" | "timeline">("overview");
   const [editing, setEditing] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
   const [comment, setComment] = useState("");
@@ -1495,6 +1535,7 @@ function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNav
   const completedTasks = tasks.filter((entry) => Boolean(entry.completedAt) || entry.cancelled);
   const solvedAttendances = attendances.filter((entry) => /conclu|resolvid|finaliz|encerrad/i.test(entry.status));
   const tracking = workItems.filter((entry) => ["cs", "lia"].includes(entry.module));
+  const serviceRequests = workItems.filter((entry) => ["serviceRequests", "serviceFollowup"].includes(entry.module)).map((item) => { try { const detail = JSON.parse(item.description) as { protocol?:string; selectedType?:string; summary?:string }; return { item, protocol:detail.protocol||item.id.slice(0,8), type:detail.selectedType||item.record_type, summary:detail.summary||item.description }; } catch { return { item, protocol:item.id.slice(0,8), type:item.record_type, summary:item.description }; } });
   const enterpriseNetworks = data.items.filter((entry) => entry.module === "cs" && /enterpriseNetwork/.test(entry.description));
   const linkedNetwork = customer?.strategic_network_id ? enterpriseNetworks.find((entry) => entry.id === customer.strategic_network_id) : undefined;
   const networks = enterpriseNetworks.filter((entry) => {
@@ -1523,7 +1564,7 @@ function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNav
     ...reminders.map(({ item, detail }) => ({ id: item.id, title: detail.title, meta: `Lembrete · ${detail.urgency} · ${detail.seenAt ? "Visto" : "Aberto"}`, at: detail.createdAt || item.created_at, module: "reminders" as ModuleKey })),
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   const displayName = customer?.trade_name || tasks[0]?.customerName || workItems[0]?.customer_name || `Cliente ID ${query}`;
-  const tabs = [{ id: "overview", label: "Visão geral", count: timeline.length }, { id: "records", label: "Todos os registros", count: workItems.length }, { id: "tasks", label: "Tarefas", count: tasks.length }, { id: "support", label: "Atendimentos", count: attendances.length }, { id: "suggestions", label: "Sugestões", count: suggestions.length }, { id: "reminders", label: "Lembretes", count: reminders.length }, { id: "comments", label: "Comentários", count: comments.length }, { id: "alerts", label: "Alerta", count: alerts.length }, { id: "checklists", label: "Checklists", count: linkedChecklists.length }, { id: "followups", label: "Acompanhamentos", count: tracking.length }, { id: "timeline", label: "Linha do tempo", count: timeline.length }] as const;
+  const tabs = [{ id: "overview", label: "Visão geral", count: timeline.length }, { id: "records", label: "Todos os registros", count: workItems.length }, { id: "tasks", label: "Tarefas", count: tasks.length }, { id: "support", label: "Atendimentos", count: attendances.length }, { id: "serviceRequests", label: "Chamados", count: serviceRequests.length }, { id: "suggestions", label: "Sugestões", count: suggestions.length }, { id: "reminders", label: "Lembretes", count: reminders.length }, { id: "comments", label: "Comentários", count: comments.length }, { id: "alerts", label: "Alerta", count: alerts.length }, { id: "checklists", label: "Checklists", count: linkedChecklists.length }, { id: "followups", label: "Acompanhamentos", count: tracking.length }, { id: "timeline", label: "Linha do tempo", count: timeline.length }] as const;
   const addCustomerComment = async () => {
     if (!customer || !comment.trim()) return;
     const at = new Date().toISOString();
@@ -1538,6 +1579,7 @@ function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNav
     {tab === "records" && <ClientRecordsPanel title="Registros encontrados em todas as funcionalidades" empty="Nenhum registro operacional vinculado a este ID.">{workItems.map((entry) => <button key={entry.id} onClick={() => onNavigate(entry.module as ModuleKey)}><span><strong>{entry.title}</strong><small>{MODULES[entry.module as ModuleKey]?.label ?? entry.module} · {entry.record_type} · Responsável: {entry.owner || "Não informado"}</small></span><b className={`status-pill ${statusTone(entry.status)}`}>{statusLabel(entry.status)}</b><time>{dateTime(entry.updated_at)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "tasks" && <ClientRecordsPanel title="Tarefas vinculadas" empty="Nenhuma tarefa vinculada a este ID.">{tasks.map((entry) => <button key={entry.id} onClick={() => onNavigate("tasks")}><span><strong>{entry.title}</strong><small>{entry.protocol} · {entry.typeName} · {entry.departmentName}</small></span><b className={`status-pill ${statusTone(entry.statusName)}`}>{entry.statusName}</b><time>{dateTime(entry.updatedAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "support" && <div className="client-history-record-grid"><ClientRecordsPanel title="Atendimentos realizados" empty="Nenhum atendimento vinculado a este ID.">{attendances.map((entry) => <button key={entry.item.id} onClick={() => onNavigate("support")}><span><strong>{entry.theme}</strong><small>{entry.responsible}{entry.solution ? ` · ${entry.solution}` : ""}</small></span><b className={`status-pill ${statusTone(entry.status)}`}>{entry.status}</b><time>{dateTime(entry.at)}</time><ChevronRight /></button>)}</ClientRecordsPanel><section className="operation-bi-panel client-theme-panel"><header><span><Headphones />Temas dos atendimentos</span><b>{Object.keys(themeCounts).length} tema(s)</b></header><div className="operation-status-bars">{Object.entries(themeCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxTheme * 100}%` }} /></i><strong>{count}</strong></div>)}</div></section></div>}
+    {tab === "serviceRequests" && <ClientRecordsPanel title="Chamados vinculados ao ID" empty="Nenhum chamado vinculado a este cliente.">{serviceRequests.map(({item,protocol,type,summary})=><button key={item.id} onClick={()=>onNavigate(item.module as ModuleKey)}><span><strong>{protocol} · {type}</strong><small>{summary.slice(0,160)} · Responsável: {item.owner||"Fila compartilhada"}</small></span><b className={`status-pill ${statusTone(item.status)}`}>{item.status}</b><time>{dateTime(item.updated_at)}</time><ChevronRight/></button>)}</ClientRecordsPanel>}
     {tab === "suggestions" && <ClientRecordsPanel title="Sugestões vinculadas" empty="Nenhuma sugestão vinculada a este ID.">{suggestions.map((entry) => <button key={entry.id} onClick={() => onNavigate("suggestions")}><span><strong>{entry.name}</strong><small>{entry.protocol} · Responsável: {entry.responsibleName}</small></span><b className={`status-pill ${statusTone(entry.statusName)}`}>{entry.statusName}</b><time>{dateTime(entry.updatedAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "reminders" && <ClientRecordsPanel title="Lembretes vinculados ao cliente" empty="Nenhum lembrete vinculado a este cliente.">{reminders.map(({item,detail}) => <button key={item.id} onClick={() => onNavigate("reminders")}><span><strong>{detail.title}</strong><small>{detail.sourceModule} · Responsável: {detail.recipientName} · Criado por: {detail.createdBy}</small></span><b className={`status-pill ${detail.seenAt ? "success" : "warning"}`}>{detail.seenAt ? "Visto" : "Aberto"}</b><time>{dateTime(detail.remindAt)}</time><ChevronRight /></button>)}</ClientRecordsPanel>}
     {tab === "comments" && <section className="client-comments-panel"><header><div><span className="eyebrow">EVOLUÇÃO DO CLIENTE</span><h2>Comentários consolidados</h2><p>Comentários vinculados a este ID em Clientes, tarefas, sugestões e demais ferramentas.</p></div><b>{comments.length}</b></header>{customer&&canEdit&&<div className="client-comment-composer"><textarea rows={3} value={comment} onChange={(event)=>setComment(event.target.value)} placeholder="Registre uma nova evolução sobre este cliente..."/><button className="primary-button" type="button" disabled={busy||!comment.trim()} onClick={()=>void addCustomerComment()}><MessageSquareText size={15}/> Registrar comentário</button></div>}<div className="client-comment-timeline">{comments.length===0?<EmptyState compact text="Nenhum comentário vinculado a este cliente."/>:comments.map((entry)=><article key={`${entry.sourceId}-${entry.id}`}><i/><div><header><strong>{entry.type}</strong><span>{entry.source}</span></header><p>{entry.text}</p><footer><span>por {entry.author}</span><time>{dateTime(entry.at)}</time></footer></div></article>)}</div></section>}

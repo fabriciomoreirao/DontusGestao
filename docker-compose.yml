@@ -60,6 +60,8 @@ services:
       TaskFiles__Region: ${AWS_REGION:-us-east-1}
       Chat__DataProtectionKeysPath: /app/data-protection-keys
       InternalChat__FilesPath: /app/internal-chat-files
+      ServiceRequests__FilesPath: /app/service-request-files
+      PublicServiceRequests__ApiKey: ${PUBLIC_SERVICE_REQUESTS_API_KEY:-dontus-chamados-local-2026-change-me}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
@@ -71,6 +73,7 @@ services:
     volumes:
       - dontus_chat_keys:/app/data-protection-keys
       - dontus_internal_chat_files:/app/internal-chat-files
+      - dontus_service_request_files:/app/service-request-files
     depends_on:
       database:
         condition: service_healthy
@@ -88,6 +91,7 @@ services:
       LOCAL_USER_EMAIL: ${LOCAL_USER_EMAIL:-gestor@dontus.local}
       LOCAL_USER_NAME: ${LOCAL_USER_NAME:-Gestor Dontus}
       LOCAL_USER_ROLE: ${LOCAL_USER_ROLE:-Administrador técnico}
+      PUBLIC_SERVICE_REQUESTS_API_KEY: ${PUBLIC_SERVICE_REQUESTS_API_KEY:-dontus-chamados-local-2026-change-me}
       TZ: America/Sao_Paulo
     ports:
       - "${WEB_PORT:-3000}:3000"
@@ -103,5 +107,7 @@ volumes:
     name: dontus_chat_keys
   dontus_internal_chat_files:
     name: dontus_internal_chat_files
+  dontus_service_request_files:
+    name: dontus_service_request_files
   dontus_pgadmin_data:
     name: dontus_pgadmin_data

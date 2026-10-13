@@ -52,7 +52,7 @@ type Notification = { id: string; taskId: string; taskNumber: number; eventType:
 type TaskComment = { id: string; authorUserId: string; authorName: string; body: string; internal: boolean; createdAt: string; attachments: Array<{ id: string; commentId: string | null; fileName: string; url: string; createdAt: string }> };
 type TaskHistory = { id: string; eventType: string; summary: string; actorName: string; previousValue: string; newValue: string; source: string; justification: string; createdAt: string };
 
-type CustomerOption = { id: string; trade_name: string; legal_name?: string; document_masked?: string };
+export type CustomerOption = { id: string; trade_name: string; legal_name?: string; document_masked?: string };
 
 const publicCustomerCode = (customer?: CustomerOption) => {
   const digits = customer?.document_masked?.replace(/\D/g, "") ?? "";
@@ -263,15 +263,15 @@ function TaskClientStateBadge({state}:{state:string}){
   return <span className={`task-client-state ${tone}`}>{normalized==="Cliente Informado"?<CheckCircle2 size={12}/>:normalized==="Sem Necessidade"?<Check size={12}/>:<Bell size={12}/>} {normalized}</span>
 }
 
-function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; busy: boolean; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
+export function CreateTaskModal({ module, customers, user, departmentIds, busy, initial, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; busy: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
   const originDepartment = module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.name.toLocaleLowerCase("pt-BR") === user.department.toLocaleLowerCase("pt-BR"))
     ?? module.departments.find((department) => department.active && departmentIds.includes(department.id));
   const [departmentId, setDepartmentId] = useState(originDepartment?.id ?? "");
   const validTypes = module.types.filter((t) => t.active && t.departmentIds.includes(departmentId));
   const selectedDepartment = module.departments.find((department) => department.id === departmentId);
   const sectorCoordinators = module.collaborators.filter((item) => item.active && item.coordinatorDepartmentIds.includes(departmentId));
-  const [customerId, setCustomerId] = useState("");
-  const [customerCode, setCustomerCode] = useState("");
+  const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
+  const [customerCode, setCustomerCode] = useState(initial?.customerCode ?? "");
   const [files, setFiles] = useState<File[]>([]);
   const resolveCustomerCode = (value: string) => {
     setCustomerCode(value);
@@ -300,14 +300,14 @@ function CreateTaskModal({ module, customers, user, departmentIds, busy, onClose
     <section className="task-form-section wide">
       <header><span>01</span><div><h3>Solicitação</h3><p>Descreva de forma simples o que precisa ser analisado.</p></div></header>
       <div className="task-form-section-grid">
-        <label className="wide">Título *<input name="title" required placeholder="Resuma a demanda em uma frase" /></label>
+        <label className="wide">Título *<input name="title" required defaultValue={initial?.title} placeholder="Resuma a demanda em uma frase" /></label>
         <label>Cliente<select name="customerId" value={customerId} onChange={(event) => selectCustomer(event.target.value)}><option value="">Sem cliente vinculado</option>{customers.map((c) => <option value={c.id} key={c.id}>{c.trade_name}</option>)}</select></label>
         <label>ID do cliente<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
-        <label>WhatsApp do cliente *<input name="clientWhatsApp" type="tel" required minLength={10} placeholder="(11) 99999-9999" /></label>
+        <label>WhatsApp do cliente *<input name="clientWhatsApp" type="tel" required minLength={10} defaultValue={initial?.clientWhatsApp} placeholder="(11) 99999-9999" /></label>
         <div className="task-readonly-field"><span>Setor responsável</span><strong>{selectedDepartment?.name ?? "Setor não configurado"}</strong></div>
         <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators.map((item) => item.name).join(", ") || "Coordenador do setor não cadastrado"}</strong><small>A conclusão ficará pendente até a aprovação do coordenador.</small></div>
         <label className="wide">Tipo de tarefa *<select name="typeId" required><option value="">Selecionar...</option>{validTypes.map((t) => <option value={t.id} key={t.id}>{t.name}</option>)}</select></label>
-        <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} placeholder="Explique o problema, o resultado esperado e as informações necessárias para a análise." /></label>
+        <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={initial?.description} placeholder="Explique o problema, o resultado esperado e as informações necessárias para a análise." /></label>
       </div>
     </section>
     <section className="task-form-section wide">

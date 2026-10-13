@@ -73,7 +73,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const [pinnedConversationKeys, setPinnedConversationKeys] = useState<string[]>(() => { if (typeof window === "undefined") return []; try { return JSON.parse(localStorage.getItem(`dontus:pinned-conversations:${module.currentUserId}`) || "[]") as string[]; } catch { return []; } });
   const fileInput = useRef<HTMLInputElement>(null);
   const groupPhotoInput = useRef<HTMLInputElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   const conversations = useMemo(() => buildConversations(module, archivedView).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, pinnedConversationKeys]);
   const filteredConversations = useMemo(() => {
@@ -105,8 +105,11 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   }, [initialRoomId, module.rooms]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [selectedRoom?.id, selectedRoom?.messages.length]);
+    const messages = messagesRef.current;
+    if (!messages) return;
+    const frame = window.requestAnimationFrame(() => messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedRoom?.id, selectedRoom?.messages.at(-1)?.id]);
 
   useEffect(() => {
     if (selectedRoom?.unreadCount) void markRead(selectedRoom.id);
@@ -237,10 +240,10 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
           </header>
           {selectedRoom?.isGroup && pinnedOpen && <div className="internal-chat-pinned-panel"><header><span><Pin size={14} /> Mensagens fixadas</span><button type="button" onClick={() => setPinnedOpen(false)}><X size={14} /></button></header>{pinnedMessages.length ? pinnedMessages.map((entry) => <article key={entry.id}><b>{entry.senderName}</b><span>{messagePreview(entry)}</span><time>{roomTime.format(new Date(entry.createdAt))}</time></article>) : <p>Nenhuma mensagem foi fixada neste grupo.</p>}</div>}
           {selectedRoom?.isGroup && participantsOpen && <div className="internal-chat-participants-panel"><header><span><UsersRound size={15}/> Participantes ({selectedRoom.memberUserIds.length})</span><button type="button" onClick={() => setParticipantsOpen(false)} aria-label="Fechar participantes"><X size={14}/></button></header><div>{selectedRoom.memberUserIds.map((userId) => { const participant=module.users.find(user=>user.id===userId); return <button type="button" key={userId} onClick={()=>participant&&onOpenProfile(participant.id)}><Avatar name={participant?.name||"Colaborador"} photo={participant?.photoDataUrl} coordinator={participant?.isCoordinator}/><span><strong>{userHasBirthdayToday(participant) && <BirthdayGift name={participant?.name || "Colaborador"} />}{participant?.name||"Colaborador removido"}</strong><small>{participant?.jobTitle||participant?.departmentName||"Participante"}</small></span></button>; })}</div><small>Novos participantes visualizam somente mensagens enviadas após a entrada no grupo.</small></div>}
-          <div className="internal-chat-messages">
+          <div className="internal-chat-messages" ref={messagesRef}>
             {!selectedRoom?.messages.length && <div className="internal-chat-first-message"><SmilePlus size={23} /><strong>Diga olá!</strong><span>Envie a primeira mensagem para iniciar esta conversa privada.</span></div>}
             {selectedRoom?.messages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={selectedRoom.isGroup} busy={busy} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
-            <div ref={endRef} />
+            <div aria-hidden="true" />
           </div>
           <form className="internal-chat-composer" onSubmit={sendMessage}>
             <input ref={fileInput} hidden type="file" multiple accept="image/*,video/*,.pdf,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={(event) => void upload(event.target.files)} />

@@ -77,6 +77,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             || actor.HasPermission("tasks", "view")
             || actor.HasPermission("waitingQueue", "view")
             || actor.HasPermission("cancellations", "view")
+            || actor.HasPermission("serviceRequests", "view")
+            || actor.HasPermission("serviceFollowup", "view")
             || actor.HasPermission("commissions", "view")
             || actor.HasPermission("referrals", "view");
         var customerEntities = canViewCustomers
@@ -593,6 +595,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (!actor.HasPermission("customers", "edit")
             && !actor.HasPermission("commercial", "edit")
             && !actor.HasPermission("cs", "edit")
+            && !actor.HasPermission("cs", "approve")
             && !actor.HasPermission("cancellations", "edit")
             && !actor.HasPermission("admin", "manage"))
             throw new DomainException("Seu acesso não permite editar clientes.", 403);
@@ -647,7 +650,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     public async Task<CustomerModuleDto> GetCustomerModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
-        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("commercial", "view") && !actor.HasPermission("cs", "view") && !actor.HasPermission("lia", "view") && !actor.HasPermission("support", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view"))
+        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("commercial", "view") && !actor.HasPermission("cs", "view") && !actor.HasPermission("lia", "view") && !actor.HasPermission("support", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view") && !actor.HasPermission("serviceRequests", "view") && !actor.HasPermission("serviceFollowup", "view"))
             throw new DomainException("Seu acesso não permite visualizar os cadastros de clientes.", 403);
         var includeInactive = actor.HasPermission("catalogs", "manage") || actor.HasPermission("customers", "manage") || actor.HasPermission("commercial", "manage") || actor.HasPermission("cs", "manage") || actor.HasPermission("lia", "manage") || actor.HasPermission("support", "manage") || actor.HasPermission("cancellations", "manage") || actor.HasPermission("hr", "manage");
         var entries = await db.CustomerCatalogOptions.AsNoTracking()
@@ -723,7 +726,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             && string.Equals(command.RecordType, "Lead de retenção", StringComparison.OrdinalIgnoreCase)
             && string.Equals(command.OriginType, "cs", StringComparison.OrdinalIgnoreCase)
             && actor.HasPermission("cs", "edit");
-        if (!cancellationRoute && !customerComment && !customerEngagement && !retentionRestart)
+        var serviceRequestRoute = string.Equals(command.OriginType, "serviceRequests", StringComparison.OrdinalIgnoreCase)
+            && actor.HasPermission("serviceRequests", "edit");
+        if (!cancellationRoute && !customerComment && !customerEngagement && !retentionRestart && !serviceRequestRoute)
             actor.RequirePermission(command.Module, "create");
         if (string.IsNullOrWhiteSpace(command.Module) ||
             string.IsNullOrWhiteSpace(command.RecordType) ||
@@ -879,6 +884,15 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         }
     }
 
+    private static bool CanCoordinateCustomerSuccessJourney(WorkItem item, ActorContext actor)
+    {
+        if (!string.Equals(item.Module, "cs", StringComparison.OrdinalIgnoreCase) ||
+            !actor.HasPermission("cs", "approve"))
+            return false;
+        return TryReadJourneyIdentity(item.Description, out var kind, out _, out _) &&
+               string.Equals(kind, "csJourney", StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task UpdateWorkItemAsync(
         UpdateWorkItemCommand command,
         ActorContext actor,
@@ -886,7 +900,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     {
         var item = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Registro não encontrado.", 404);
-        if (!CanEditCustomerEngagement(item, actor) && !CanRestartRetentionJourney(item, command.Description, actor)) actor.RequirePermission(item.Module, "edit");
+        if (!CanEditCustomerEngagement(item, actor) &&
+            !CanRestartRetentionJourney(item, command.Description, actor) &&
+            !CanCoordinateCustomerSuccessJourney(item, actor))
+            actor.RequirePermission(item.Module, "edit");
         if (item.Module == "commissions" && !actor.HasPermission("commissions", "approve") &&
             !actor.HasPermission("commissions", "manage") &&
             !string.Equals(item.Owner, actor.DisplayName, StringComparison.OrdinalIgnoreCase))

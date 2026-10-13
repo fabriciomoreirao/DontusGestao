@@ -20,6 +20,8 @@ export const MODULES = {
   notices: { label: "Avisos", short: "Avisos" },
   work: { label: "Agenda", short: "Agenda" },
   tasks: { label: "Tarefas", short: "Tarefas" },
+  serviceRequests: { label: "Chamados", short: "Chamados" },
+  serviceFollowup: { label: "Acompanhamento de chamados", short: "Acomp. chamados" },
   chat: { label: "Atendimento", short: "Chat" },
   waitingQueue: { label: "Fila de Espera", short: "Fila" },
   referrals: { label: "Indicações", short: "Indicações" },
@@ -75,6 +77,8 @@ export const STATE_MACHINES: Record<string, readonly string[]> = {
   commissions: ["Pendente", "Aprovada", "Reprovada"],
   goals: ["Ativa", "Encerrada"],
   surveys: ["Ativa", "Inativa"],
+  serviceRequests: ["Triagem", "Desenvolvimento", "Tarefa", "Reclamação", "Sugestão", "Elogio", "Cancelamento", "Nova contratação"],
+  serviceFollowup: ["Em espera", "Em processo", "Concluído", "Descartado"],
 };
 
 const TERMINAL = new Set([
@@ -124,6 +128,8 @@ export const RECORD_TYPES: Record<string, string[]> = {
   reminders: ["Lembrete"],
   commissions: ["Comissão comercial", "Comissão de Sucesso do Cliente"],
   goals: ["Meta"],
+  serviceRequests: ["Chamado externo"],
+  serviceFollowup: ["Acompanhamento de chamado"],
 };
 
 export const PRIORITIES = ["P0", "P1", "P2", "P3", "P4"] as const;

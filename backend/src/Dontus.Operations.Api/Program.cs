@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Encodings.Web;
+using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
@@ -14,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+var serviceRequestTypes = new[] { "Desenvolvimento", "Tarefa", "Reclamação", "Sugestão", "Elogio", "Cancelamento", "Nova contratação" };
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
@@ -45,6 +47,15 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(15),
+                QueueLimit = 0,
+            }));
+    options.AddPolicy("public-service-requests", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
                 Window = TimeSpan.FromMinutes(15),
                 QueueLimit = 0,
             }));
@@ -458,6 +469,104 @@ app.MapPost("/api/public-surveys/{token}", async (string token, PublicSurveyResp
     return Results.Problem(statusCode: 404, title: "Pesquisa não encontrada", detail: "Este link não existe ou a pesquisa não está mais ativa.");
 }).RequireRateLimiting("operations");
 
+app.MapGet("/api/public-service-requests", (HttpContext context, IConfiguration configuration) =>
+{
+    if (!ValidServiceRequestKey(context, configuration))
+        return Results.Problem(statusCode: 401, title: "Chave inválida", detail: "Informe a chave da integração no cabeçalho X-API-Key.");
+    return Results.Ok(new
+    {
+        endpoint = "/api/public-service-requests",
+        method = "POST",
+        contentType = "multipart/form-data",
+        requiredFields = new[] { "clientId", "fullName", "whatsapp", "type", "summary", "files" },
+        types = serviceRequestTypes,
+        files = new { field = "files", required = true, maximum = 10, maximumSizeMb = 25 },
+    });
+}).RequireRateLimiting("public-service-requests");
+
+app.MapPost("/api/public-service-requests", async (HttpContext context, IConfiguration configuration, OperationsDbContext db, CancellationToken cancellationToken) =>
+{
+    if (!ValidServiceRequestKey(context, configuration))
+        return Results.Problem(statusCode: 401, title: "Chave inválida", detail: "Informe a chave da integração no cabeçalho X-API-Key.");
+    if (!context.Request.HasFormContentType)
+        return Results.Problem(statusCode: 415, title: "Formato inválido", detail: "Envie os dados como multipart/form-data.");
+
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var clientId = form["clientId"].ToString().Trim();
+    var fullName = form["fullName"].ToString().Trim();
+    var whatsapp = form["whatsapp"].ToString().Trim();
+    var selectedType = form["type"].ToString().Trim();
+    var summary = form["summary"].ToString().Trim();
+    if (!Regex.IsMatch(clientId, "^[0-9]{6}$"))
+        return Results.Problem(statusCode: 400, title: "ID inválido", detail: "O ID deve conter exatamente 6 números.");
+    if (fullName.Length < 3 || fullName.Length > 180)
+        return Results.Problem(statusCode: 400, title: "Nome inválido", detail: "Informe o nome completo.");
+    if (Regex.Replace(whatsapp, "[^0-9]", "").Length is < 10 or > 15)
+        return Results.Problem(statusCode: 400, title: "WhatsApp inválido", detail: "Informe um contato com DDD.");
+    if (!serviceRequestTypes.Contains(selectedType, StringComparer.OrdinalIgnoreCase))
+        return Results.Problem(statusCode: 400, title: "Tipo inválido", detail: "Selecione um dos tipos disponíveis.");
+    if (summary.Length < 10 || summary.Length > 6000)
+        return Results.Problem(statusCode: 400, title: "Resumo inválido", detail: "Descreva a solicitação com pelo menos 10 caracteres.");
+    if (form.Files.Count is < 1 or > 10 || form.Files.Any(file => file.Length <= 0 || file.Length > 25 * 1024 * 1024))
+        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie de 1 a 10 arquivos, com no máximo 25 MB cada.");
+
+    var customers = await db.Customers.AsNoTracking().ToListAsync(cancellationToken);
+    var customer = customers.FirstOrDefault(entry => PublicCustomerCode(entry.DocumentMasked) == clientId);
+    var classification = ClassifyServiceRequest(selectedType, summary);
+    var item = new WorkItem
+    {
+        Module = "serviceRequests",
+        RecordType = "Chamado externo",
+        Title = $"{classification.Stage} · {fullName}",
+        CustomerId = customer?.Id,
+        CustomerName = customer?.TradeName ?? fullName,
+        Owner = "Triagem inteligente",
+        Team = "Central de Chamados",
+        Status = "Triagem",
+        Priority = classification.Priority,
+        CreatedBy = "integracao-chamados",
+    };
+    var filesPath = configuration["ServiceRequests:FilesPath"] ?? Path.Combine(AppContext.BaseDirectory, "service-request-files");
+    var requestPath = Path.Combine(filesPath, item.Id.ToString("N"));
+    Directory.CreateDirectory(requestPath);
+    var attachments = new List<object>();
+    foreach (var file in form.Files)
+    {
+        var attachmentId = Guid.NewGuid();
+        await using var stream = File.Create(Path.Combine(requestPath, attachmentId.ToString("N")));
+        await file.CopyToAsync(stream, cancellationToken);
+        attachments.Add(new { id = attachmentId, name = Path.GetFileName(file.FileName), contentType = file.ContentType, sizeBytes = file.Length });
+    }
+    var protocol = $"CH-{DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3)):yyyyMMdd}-{item.Id.ToString("N")[..6].ToUpperInvariant()}";
+    item.Description = JsonSerializer.Serialize(new
+    {
+        kind = "serviceRequest", protocol, clientId, fullName, whatsapp, selectedType, summary,
+        aiClassification = classification.Stage, aiReason = classification.Reason, aiConfidence = classification.Confidence,
+        attachments, comments = Array.Empty<object>(), history = new[] { new { text = $"Chamado recebido e classificado como {classification.Stage}.", at = DateTimeOffset.UtcNow, by = "Triagem inteligente" } },
+        submittedAt = DateTimeOffset.UtcNow,
+    });
+    db.WorkItems.Add(item);
+    db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module, Kind = "Chamado recebido", Summary = $"{protocol} · {classification.Stage}", Actor = "Integração externa" });
+    db.AuditEvents.Add(new AuditEvent { ActorEmail = "integracao-chamados", Action = "Create", Resource = "work_item", ResourceId = item.Id.ToString(), Module = item.Module, DetailsJson = JsonSerializer.Serialize(new { protocol, clientId, selectedType, classification = classification.Stage }), Result = "Sucesso" });
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.Created($"/api/public-service-requests/{item.Id}", new { id = item.Id, protocol, status = item.Status, classification = classification.Stage, customerMatched = customer is not null, message = "Chamado recebido com sucesso." });
+}).DisableAntiforgery().RequireRateLimiting("public-service-requests");
+
+app.MapGet("/api/service-request-files/{requestId:guid}/{attachmentId:guid}", async (Guid requestId, Guid attachmentId, IConfiguration configuration, OperationsDbContext db, CancellationToken cancellationToken) =>
+{
+    var item = await db.WorkItems.AsNoTracking().SingleOrDefaultAsync(entry => entry.Id == requestId && (entry.Module == "serviceRequests" || entry.Module == "serviceFollowup"), cancellationToken);
+    if (item is null) return Results.NotFound();
+    using var document = JsonDocument.Parse(item.Description);
+    if (!document.RootElement.TryGetProperty("attachments", out var values) || values.ValueKind != JsonValueKind.Array) return Results.NotFound();
+    var attachment = values.EnumerateArray().FirstOrDefault(entry => entry.TryGetProperty("id", out var id) && Guid.TryParse(id.ToString(), out var parsed) && parsed == attachmentId);
+    if (attachment.ValueKind == JsonValueKind.Undefined) return Results.NotFound();
+    var path = Path.Combine(configuration["ServiceRequests:FilesPath"] ?? Path.Combine(AppContext.BaseDirectory, "service-request-files"), requestId.ToString("N"), attachmentId.ToString("N"));
+    if (!File.Exists(path)) return Results.NotFound();
+    var contentType = attachment.TryGetProperty("contentType", out var contentTypeValue) ? contentTypeValue.GetString() ?? "application/octet-stream" : "application/octet-stream";
+    var name = attachment.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? "arquivo" : "arquivo";
+    return Results.File(path, contentType, name, enableRangeProcessing: true);
+}).RequireAuthorization().RequireRateLimiting("operations");
+
 var operations = app.MapGroup("/api/operations")
     .RequireAuthorization()
     .RequireRateLimiting("operations");
@@ -491,7 +600,7 @@ operations.MapGet("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view"))
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view"))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("admin", "manage"))
         snapshot = snapshot with { Access = await accessControl.GetManagementAsync(actor, cancellationToken) };
@@ -1523,7 +1632,7 @@ operations.MapPost("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view"))
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view"))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     var access = actor.HasPermission("admin", "manage")
         ? await accessControl.GetManagementAsync(actor, cancellationToken)
@@ -1534,6 +1643,34 @@ operations.MapPost("", async (
 
 await InitializeDatabaseAsync(app);
 await app.RunAsync();
+
+static bool ValidServiceRequestKey(HttpContext context, IConfiguration configuration)
+{
+    var expected = configuration["PublicServiceRequests:ApiKey"];
+    var supplied = context.Request.Headers["X-API-Key"].FirstOrDefault();
+    return !string.IsNullOrWhiteSpace(expected) && !string.IsNullOrWhiteSpace(supplied) &&
+           string.Equals(expected.Trim(), supplied.Trim(), StringComparison.Ordinal);
+}
+
+static string PublicCustomerCode(string value)
+{
+    var digits = Regex.Replace(value ?? "", "[^0-9]", "");
+    return digits.Length >= 6 ? digits[^6..] : "";
+}
+
+static (string Stage, string Priority, string Reason, double Confidence) ClassifyServiceRequest(string selectedType, string summary)
+{
+    var text = $"{selectedType} {summary}".ToLowerInvariant();
+    if (Regex.IsMatch(text, "cancel|encerrar contrato|rescis")) return ("Cancelamento", "P0", "Foram identificados sinais explícitos de cancelamento.", .98);
+    if (Regex.IsMatch(text, "erro|bug|falha|sistema|integra|api|desenvolv")) return ("Desenvolvimento", "P1", "O relato indica erro técnico, integração ou necessidade de desenvolvimento.", .94);
+    if (Regex.IsMatch(text, "reclama|insatis|demora|ruim|problema")) return ("Reclamação", "P1", "O texto apresenta insatisfação ou reclamação sobre o atendimento/produto.", .92);
+    if (Regex.IsMatch(text, "elog|parab[eé]ns|excelente|agradec")) return ("Elogio", "P3", "O conteúdo possui manifestação positiva ou elogio.", .96);
+    if (Regex.IsMatch(text, "sugest|melhoria|ideia|poderia")) return ("Sugestão", "P3", "O cliente propõe uma melhoria ou nova ideia.", .93);
+    if (Regex.IsMatch(text, "contrat|comprar|adquirir|nova unidade|proposta")) return ("Nova contratação", "P1", "Foi detectado interesse comercial em nova contratação.", .94);
+    if (Regex.IsMatch(text, "tarefa|solicita|ajustar|configurar|cadastro")) return ("Tarefa", "P2", "A solicitação descreve uma ação operacional executável.", .86);
+    var stage = selectedType;
+    return (stage, "P2", "Classificação baseada no tipo selecionado e no contexto informado.", .78);
+}
 
 static PublicServiceEntry ParsePublicService(string team, string owner, string status, string description, DateTimeOffset createdAt)
 {

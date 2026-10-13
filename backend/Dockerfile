@@ -29,4 +29,4 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=25s --retries=5 \
   CMD curl --fail --silent http://127.0.0.1:8080/health/ready > /dev/null || exit 1
 
 USER root
-ENTRYPOINT ["sh", "-c", "mkdir -p /app/data-protection-keys && chown -R app:app /app/data-protection-keys && exec su -s /bin/sh app -c 'exec dotnet Dontus.Operations.Api.dll'"]
+ENTRYPOINT ["sh", "-c", "mkdir -p /app/data-protection-keys /app/internal-chat-files /app/service-request-files && chown -R app:app /app/data-protection-keys /app/internal-chat-files /app/service-request-files && exec su -s /bin/sh app -c 'exec dotnet Dontus.Operations.Api.dll'"]

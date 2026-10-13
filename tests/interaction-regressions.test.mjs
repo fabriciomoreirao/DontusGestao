@@ -396,9 +396,11 @@ test("mantém checklist estável e sincroniza cancelamentos com acompanhamentos 
   assert.doesNotMatch(actions, /scrollIntoView/);
   assert.doesNotMatch(actions, /select autoFocus/);
   assert.match(actions, /onCloseRef/);
-  assert.match(cancellations, /cancelLinkedJourneys/);
+  assert.match(cancellations, /sendLinkedJourneysToConference/);
   assert.match(cancellations, /journey\.track==="activation"\|\|journey\.track==="retention"/);
-  assert.match(cancellations, /phase:"cancelled",status:"Cancelado"/);
+  assert.match(cancellations, /phase:"conference",status:"Não convertido pelo Comercial · aguardando conferência"/);
+  assert.match(cancellations, /restoreLinkedJourneys/);
+  assert.match(journey, /phase:\s*"cancelled",\s*status:\s*"Cancelado"/);
   assert.match(commissions, /Cancelado · disponível para reprovação/);
   assert.match(commissions, /busy\|\|cancelled/);
   assert.match(journey, /className="cs-card-labels"/);
@@ -443,4 +445,35 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   assert.match(css, /\.linked-checklist-actions/);
   assert.match(css, /\.linked-checklist-progress/);
   assert.match(css, /\.employee-modal/);
+});
+
+test("integra chamados públicos, competência mensal e rolagem do chat", async () => {
+  const [app, requests, chat, api, screens, compose, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ServiceRequestsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/InternalChatModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Api/Program.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Domain/ScreenCatalog.cs", import.meta.url), "utf8"),
+    readFile(new URL("../docker-compose.yml", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /label: "Chamados"/);
+  assert.match(app, /label: "Acompanhamento de chamados"/);
+  assert.match(app, /kanban-month-filter/);
+  assert.match(app, /brasiliaMonthKey/);
+  assert.match(app, /label: "Chamados", count: serviceRequests\.length/);
+  assert.match(requests, /TRIAGE_STAGES/);
+  assert.match(requests, /Desenvolvimento.*Tarefa.*Reclamação.*Sugestão.*Elogio.*Cancelamento.*Nova contratação/s);
+  assert.match(requests, /PublicServiceRequestPage/);
+  assert.match(requests, /required multiple/);
+  assert.match(api, /MapPost\("\/api\/public-service-requests"/);
+  assert.match(api, /X-API-Key/);
+  assert.match(api, /customerMatched = customer is not null/);
+  assert.match(screens, /serviceRequests/);
+  assert.match(screens, /serviceFollowup/);
+  assert.match(compose, /PUBLIC_SERVICE_REQUESTS_API_KEY/);
+  assert.match(chat, /messagesRef/);
+  assert.match(chat, /messages\.scrollTo/);
+  assert.match(css, /\.enterprise-detail-shell>\.drawer-head/);
+  assert.match(css, /\.public-service-request-page/);
 });
