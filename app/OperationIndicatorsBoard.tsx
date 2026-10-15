@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowLeft, BarChart3, CheckCircle2, Clock3, Filter, Gauge, Lightbulb, TrendingUp, UsersRound, WalletCards } from "lucide-react";
+import { Activity, ArrowLeft, BarChart3, CheckCircle2, Clock3, Filter, Gauge, Lightbulb, Target, TrendingUp, UsersRound, WalletCards } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type Item = {
@@ -8,6 +8,7 @@ type Item = {
   status: string; priority?: string; amount_cents: number; description?: string; due_at?: string | null; created_at: string; updated_at: string;
 };
 type Employee = { id: string; displayName: string; departmentName: string; active: boolean; photoDataUrl?: string };
+type Catalog = { id: string; catalog: string; name: string; description: string; active: boolean };
 type Detail = Record<string, unknown>;
 type Metric = { label: string; value: string | number; note: string };
 type CountEntry = { label: string; count: number };
@@ -519,6 +520,7 @@ function commercialEntries(items: Item[], contextKey: string): CommercialEntry[]
 }
 
 function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClose }: { title: string; contextKey: string; items: Item[]; employees: Employee[]; onClose: () => void }) {
+  const [tab, setTab] = useState<"overview" | "campaigns">("overview");
   const [month, setMonth] = useState(new Date().toLocaleDateString("en-CA").slice(0, 7));
   const [seller, setSeller] = useState("all"); const [stage, setStage] = useState("all"); const [origin, setOrigin] = useState("all");
   const all = useMemo(() => commercialEntries(items, contextKey), [items, contextKey]);
@@ -554,12 +556,29 @@ function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClos
   const activityCards = [{ label: "Leads novos", value: leads.length, delta: delta(leads.length, previous.filter((entry) => !entry.direct).length) }, { label: "Contatos realizados", value: contacts, delta: 0 }, { label: "Demonstrações", value: demos, delta: 0 }, { label: "Propostas enviadas", value: proposals, delta: 0 }, { label: "Vendas sistema", value: systemSales.length, delta: delta(systemSales.length, previousSales.filter((entry) => !entry.lia).length) }, { label: "Vendas LIA", value: liaSales.length, delta: delta(liaSales.length, previousSales.filter((entry) => entry.lia).length) }];
   return <main className="operation-bi-page cancellation-bi-style" aria-labelledby="operation-bi-title"><section className="operation-bi-board commercial-bi-board">
     <header><div><span className="operation-bi-mark"><BarChart3 /></span><span><small>INDICADORES · CRM</small><h1 id="operation-bi-title">{title} BI comercial</h1><p>Metas, receita, funil e desempenho calculados pelos registros reais do CRM.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para a funcionalidade"><ArrowLeft /><span>Voltar</span></button></header>
+    <nav className="commercial-bi-tabs" aria-label="Visões dos indicadores comerciais"><button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}><TrendingUp /> Visão comercial</button><button className={tab === "campaigns" ? "active" : ""} onClick={() => setTab("campaigns")}><BarChart3 /> Campanhas e qualificação</button></nav>
     <section className="operation-bi-filters commercial-bi-filters"><Filter /><label>Competência<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><label>Vendedor<select value={seller} onChange={(event) => setSeller(event.target.value)}><option value="all">Todos</option>{[...new Set(all.map((entry) => entry.seller))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Etapa<select value={stage} onChange={(event) => setStage(event.target.value)}><option value="all">Todas</option>{[...new Set(all.map((entry) => entry.stage))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Origem<select value={origin} onChange={(event) => setOrigin(event.target.value)}><option value="all">Todas</option>{[...new Set(all.map((entry) => entry.origin))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><button onClick={() => { setSeller("all"); setStage("all"); setOrigin("all"); }}>Limpar</button><strong>{scoped.length} oportunidade(s)</strong></section>
+    {tab === "overview" ? <>
     <section className="commercial-bi-primary"><GoalKpi label="Meta de receita" value={money(revenue)} target={valueGoal ? money(valueGoal) : "Sem meta cadastrada"} progress={valueGoal ? valueProgress : 0} /><GoalKpi label="Meta de vendas" value={sales.length} target={salesGoal ? `Meta: ${salesGoal} vendas` : "Sem meta cadastrada"} progress={salesGoal ? salesProgress : 0} /><article><small>Receita total (mês)</small><strong>{money(revenue)}</strong><span>Ticket médio: <b>{money(Math.round(revenue / Math.max(1, sales.length)))}</b></span></article><article><small>Pipeline (previsão)</small><strong>{money(pipeline)}</strong><span>{scoped.filter((entry) => !entry.won && !rejected(entry.item.status)).length} oportunidades · valor médio {money(Math.round(pipeline / Math.max(1, scoped.length - sales.length)))}</span></article></section>
     <section className="commercial-bi-activity">{activityCards.map((entry) => <article key={entry.label}><small>{entry.label}</small><strong>{entry.value}</strong><span className={entry.delta >= 0 ? "positive" : "negative"}>{entry.delta >= 0 ? "+" : ""}{entry.delta}% vs mês anterior</span></article>)}</section>
     <section className="commercial-bi-charts"><article><header>Funil de vendas (quantidade)</header><div className="commercial-funnel">{funnel.map((entry) => <span key={entry.label} style={{ width: `${42 + entry.count / maxFunnel * 58}%` }}><b>{entry.label}</b><em>{entry.count}</em></span>)}</div></article><article><header>Conversão do funil</header><div className="commercial-conversion"><b>{percent(sales.length, Math.max(1, leads.length + directSales.length))}</b><span>Conversão geral</span><i><em style={{ width: percent(sales.length, Math.max(1, scoped.length)) }} /></i><small>{sales.length} vendas em {scoped.length} oportunidades</small></div></article><article><header>Evolução da receita</header><div className="commercial-revenue-chart">{months.map((entry) => <span key={entry.key}><i style={{ height: `${Math.max(5, entry.value / maxRevenue * 100)}%` }} /><b>{entry.value ? money(entry.value) : "—"}</b><small>{entry.label}</small></span>)}</div></article><article><header>Origem dos leads</header><div className="commercial-origin"><i style={{ background: originGradient(origins, originTotal) }} /><div>{origins.map((entry, index) => <span key={entry.label}><b style={{ background: `hsl(${215 - index * 31} 78% ${45 + index * 3}%)` }} />{entry.label}<em>{percent(entry.count, originTotal)}</em></span>)}</div></div></article></section>
-    <section className="commercial-bi-bottom"><article><header>Ranking da equipe (mês)</header><div className="commercial-ranking">{team.length ? team.map((entry, index) => <span key={entry.name}><b>#{index + 1}</b><strong>{entry.name}</strong><em>{money(entry.revenue)}</em><small>{entry.sales} vendas · {entry.lia} LIA · {entry.conversion}%</small></span>) : <p>Sem vendas neste recorte.</p>}</div></article><article><header>Atividades pendentes</header><div className="commercial-pending"><span><b>{overdue}</b> follow-ups atrasados</span><span><b>{withoutContact}</b> oportunidades sem contato</span><span><b>{todayFollowups}</b> interações hoje</span><span><b>{directSales.length}</b> vendas diretas</span></div></article><article><header>Oportunidades quentes</header><div className="commercial-hot">{hot.length ? hot.map((entry) => <span key={entry.item.id}><strong>{entry.item.title}</strong><small>{entry.stage}</small><b>{money(entry.amount)}</b></span>) : <p>Nenhuma oportunidade quente no filtro.</p>}</div></article><article><header>Desempenho vs mês anterior</header><div className="commercial-performance"><span>Receita <b className={delta(revenue, previousRevenue) >= 0 ? "positive" : "negative"}>{delta(revenue, previousRevenue)}%</b></span><span>Leads <b className={delta(leads.length, previous.filter((entry) => !entry.direct).length) >= 0 ? "positive" : "negative"}>{delta(leads.length, previous.filter((entry) => !entry.direct).length)}%</b></span><span>Vendas <b className={delta(sales.length, previousSales.length) >= 0 ? "positive" : "negative"}>{delta(sales.length, previousSales.length)}%</b></span><span>Conversão <b>{percent(sales.length, scoped.length)}</b></span></div></article></section>
+    <section className="commercial-bi-bottom"><article><header>Ranking da equipe (mês)</header><div className="commercial-ranking">{team.length ? team.map((entry, index) => <span key={entry.name}><b>#{index + 1}</b><strong>{entry.name}</strong><em>{money(entry.revenue)}</em><small>{entry.sales} vendas · {entry.lia} LIA · {entry.conversion}%</small></span>) : <p>Sem vendas neste recorte.</p>}</div></article><article><header>Atividades pendentes</header><div className="commercial-pending"><span><b>{overdue}</b> follow-ups atrasados</span><span><b>{withoutContact}</b> oportunidades sem contato</span><span><b>{todayFollowups}</b> interações hoje</span><span><b>{directSales.length}</b> vendas diretas</span></div></article><article><header>Oportunidades quentes</header><div className="commercial-hot">{hot.length ? hot.map((entry) => <span key={entry.item.id}><strong>{entry.item.title}</strong><small>{entry.stage}</small><b>{money(entry.amount)}</b></span>) : <p>Nenhuma oportunidade quente no filtro.</p>}</div></article><article><header>Desempenho vs mês anterior</header><div className="commercial-performance"><span>Receita <b className={delta(revenue, previousRevenue) >= 0 ? "positive" : "negative"}>{delta(revenue, previousRevenue)}%</b></span><span>Leads <b className={delta(leads.length, previous.filter((entry) => !entry.direct).length) >= 0 ? "positive" : "negative"}>{delta(leads.length, previous.filter((entry) => !entry.direct).length)}%</b></span><span>Vendas <b className={delta(sales.length, previousSales.length) >= 0 ? "positive" : "negative"}>{delta(sales.length, previousSales.length)}%</b></span><span>Conversão <b>{percent(sales.length, scoped.length)}</b></span></div></article></section></> : <CommercialCampaignIndicators entries={scoped} />}
   </section></main>;
+}
+
+function CommercialCampaignIndicators({ entries }: { entries: CommercialEntry[] }) {
+  const leads = entries.filter((entry) => !entry.direct || entry.detail.leadQualification === "qualified" || entry.detail.leadQualification === "not-qualified");
+  const qualified = leads.filter((entry) => entry.detail.leadQualification === "qualified");
+  const notQualified = leads.filter((entry) => entry.detail.leadQualification === "not-qualified");
+  const campaigns = counted(leads.map((entry) => stringOf(entry.detail.campaignName)).filter(Boolean), 12);
+  const regions = counted(leads.map((entry) => stringOf(entry.detail.region)).filter(Boolean), 12);
+  const bestCampaign = campaigns[0]; const bestRegion = regions[0];
+  const weeks = Array.from({ length: 5 }, (_, index) => {
+    const rows = leads.filter((entry) => Math.min(5, Math.ceil(Number(entry.date.slice(8, 10)) / 7)) === index + 1);
+    return { label: `${index + 1}ª semana`, qualified: rows.filter((entry) => entry.detail.leadQualification === "qualified").length, notQualified: rows.filter((entry) => entry.detail.leadQualification === "not-qualified").length };
+  });
+  const maxWeek = Math.max(1, ...weeks.flatMap((entry) => [entry.qualified, entry.notQualified]));
+  return <section className="commercial-campaign-bi"><section className="campaign-lead-kpis"><article><small>Leads analisados</small><strong>{leads.length}</strong><span>{leads.length - qualified.length - notQualified.length} sem qualificação</span></article><article className="positive"><small>Qualificados</small><strong>{qualified.length}</strong><span>{percent(qualified.length, leads.length)} dos leads</span></article><article className="negative"><small>Não qualificados</small><strong>{notQualified.length}</strong><span>{percent(notQualified.length, leads.length)} dos leads</span></article><article><small>Melhor campanha</small><strong>{bestCampaign?.label || "—"}</strong><span>{bestCampaign ? `${bestCampaign.count} lead(s)` : "Sem atribuição"}</span></article><article><small>Melhor região</small><strong>{bestRegion?.label || "—"}</strong><span>{bestRegion ? `${bestRegion.count} lead(s)` : "Sem região"}</span></article></section><section className="campaign-lead-grid"><article><header>Qualificação por semana do mês</header><div className="campaign-week-chart">{weeks.map((week) => <div key={week.label}><span><i className="qualified" style={{ height: `${Math.max(3, week.qualified / maxWeek * 100)}%` }} title={`${week.qualified} qualificado(s)`}/><i className="not-qualified" style={{ height: `${Math.max(3, week.notQualified / maxWeek * 100)}%` }} title={`${week.notQualified} não qualificado(s)`}/></span><b>{week.label}</b><small>{week.qualified} / {week.notQualified}</small></div>)}</div><footer><span><i className="qualified"/>Qualificados</span><span><i className="not-qualified"/>Não qualificados</span></footer></article><article><header>Campanhas com mais leads</header><div className="campaign-ranking-bars">{campaigns.length ? campaigns.map((entry) => <div key={entry.label}><span><strong>{entry.label}</strong><b>{entry.count}</b></span><i><em style={{ width: `${entry.count / Math.max(1, campaigns[0].count) * 100}%` }}/></i></div>) : <p>Nenhum lead vinculado a campanha publicada.</p>}</div></article><article><header>Regiões com mais leads</header><div className="campaign-ranking-bars region">{regions.length ? regions.map((entry) => <div key={entry.label}><span><strong>{entry.label}</strong><b>{entry.count}</b></span><i><em style={{ width: `${entry.count / Math.max(1, regions[0].count) * 100}%` }}/></i></div>) : <p>Nenhuma região informada.</p>}</div></article></section></section>;
 }
 
 function RetentionIndicatorsBoard({ title, contextKey, items, onClose }: { title: string; contextKey: string; items: Item[]; onClose: () => void }) {
@@ -602,10 +621,116 @@ function RetentionIndicatorsBoard({ title, contextKey, items, onClose }: { title
   </section></main>;
 }
 
+type GoalDetail = {
+  kind: "performanceGoal";
+  metric: string;
+  cadence: string;
+  target: number;
+  employeeName?: string;
+  departmentName?: string;
+  periodStart: string;
+  periodEnd: string;
+  active?: boolean;
+};
+type GoalMetricConfig = { kind?: string; sourceModule?: string; recordType?: string; statusFilter?: string; aggregation?: "count" | "amount" | "averageScore" };
+type GoalProgress = { item: Item; goal: GoalDetail; current: number; percent: number; department: string };
+
+const goalCadenceLabel: Record<string, string> = { daily: "Diária", weekly: "Semanal", monthly: "Mensal", annual: "Anual" };
+const goalMetricLabel: Record<string, string> = { salesValue: "Valor de vendas", salesCount: "Quantidade de vendas", clientCount: "Quantidade de clientes", usageScore: "Score de utilização" };
+const goalDate = (item: Item) => stringOf(parse(item.description).saleDate, item.created_at).slice(0, 10);
+const isGoalSale = (item: Item) => {
+  if (item.module !== "commercial") return false;
+  const detail = parse(item.description);
+  if (detail.kind === "directSale") return true;
+  const outcome = `${stringOf(detail.stage)} ${item.status}`;
+  return finished(outcome) && !rejected(outcome);
+};
+const parseGoalDetail = (item: Item): GoalDetail | null => {
+  const detail = parse(item.description);
+  if (detail.kind !== "performanceGoal") return null;
+  return {
+    kind: "performanceGoal",
+    metric: stringOf(detail.metric),
+    cadence: stringOf(detail.cadence),
+    target: numberOf(detail.target),
+    employeeName: stringOf(detail.employeeName),
+    departmentName: stringOf(detail.departmentName),
+    periodStart: stringOf(detail.periodStart),
+    periodEnd: stringOf(detail.periodEnd),
+    active: detail.active !== false,
+  };
+};
+
+function calculateGoalProgress(goal: GoalDetail, items: Item[], catalogs: Catalog[]) {
+  const sources = items.filter((item) => {
+    const date = goalDate(item);
+    return date >= goal.periodStart && date <= goal.periodEnd
+      && (!goal.employeeName || clean(item.owner) === clean(goal.employeeName))
+      && (!goal.departmentName || clean(item.team).includes(clean(goal.departmentName)));
+  });
+  if (goal.metric === "salesValue") return sources.filter(isGoalSale).reduce((sum, item) => sum + item.amount_cents / 100, 0);
+  if (goal.metric === "salesCount") return sources.filter(isGoalSale).length;
+  if (goal.metric === "clientCount") return sources.filter((item) => item.module === "cs" || item.module === "lia").length;
+  if (goal.metric === "usageScore") {
+    const scores = sources.filter((item) => item.module === "cs").map((item) => scoreOf(parse(item.description)));
+    return scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0;
+  }
+  if (!goal.metric.startsWith("custom:")) return 0;
+  const catalog = catalogs.find((entry) => entry.id === goal.metric.slice(7) && entry.catalog === "goalMetric");
+  const config = catalog ? parse(catalog.description) as GoalMetricConfig : null;
+  if (!config?.sourceModule) return 0;
+  const matching = sources.filter((item) => item.module === config.sourceModule
+    && (!config.recordType || clean(item.record_type).includes(clean(config.recordType)))
+    && (!config.statusFilter || clean(item.status).includes(clean(config.statusFilter))));
+  if (config.aggregation === "amount") return matching.reduce((sum, item) => sum + item.amount_cents / 100, 0);
+  if (config.aggregation === "averageScore") {
+    const scores = matching.map((item) => scoreOf(parse(item.description)));
+    return scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0;
+  }
+  return matching.length;
+}
+
+function GoalsIndicatorsBoard({ title, items, catalogs, onClose }: { title: string; items: Item[]; catalogs: Catalog[]; onClose: () => void }) {
+  const [tab, setTab] = useState<"overview" | "tracking">("overview");
+  const [month, setMonth] = useState(new Date().toLocaleDateString("en-CA").slice(0, 7));
+  const [department, setDepartment] = useState("all");
+  const [state, setState] = useState<"all" | "active" | "achieved" | "attention">("active");
+  const goals = useMemo(() => items.filter((item) => item.module === "goals").flatMap((item) => {
+    const goal = parseGoalDetail(item);
+    if (!goal) return [];
+    const current = calculateGoalProgress(goal, items, catalogs);
+    return [{ item, goal, current, percent: goal.target > 0 ? Math.round(current / goal.target * 100) : 0, department: goal.departmentName || item.team || "Sem setor" } satisfies GoalProgress];
+  }), [items, catalogs]);
+  const periodGoals = goals.filter(({ goal }) => (!month || goal.periodStart.slice(0, 7) <= month && goal.periodEnd.slice(0, 7) >= month));
+  const departments = [...new Set(periodGoals.map((entry) => entry.department))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const scoped = periodGoals.filter((entry) => (department === "all" || entry.department === department)
+    && (state === "all" || state === "active" && entry.goal.active !== false || state === "achieved" && entry.percent >= 100 || state === "attention" && entry.percent < 75));
+  const activeGoals = periodGoals.filter((entry) => entry.goal.active !== false);
+  const achieved = activeGoals.filter((entry) => entry.percent >= 100).length;
+  const averageReach = activeGoals.length ? Math.round(activeGoals.reduce((sum, entry) => sum + entry.percent, 0) / activeGoals.length) : 0;
+  const closeToTarget = activeGoals.filter((entry) => entry.percent >= 75 && entry.percent < 100).length;
+  const departmentRows = departments.map((name) => {
+    const rows = activeGoals.filter((entry) => entry.department === name);
+    return { name, count: rows.length, achieved: rows.filter((entry) => entry.percent >= 100).length, average: rows.length ? Math.round(rows.reduce((sum, entry) => sum + entry.percent, 0) / rows.length) : 0 };
+  }).sort((a, b) => b.average - a.average || b.count - a.count);
+  const metricName = (metric: string) => metric.startsWith("custom:") ? catalogs.find((entry) => entry.id === metric.slice(7))?.name || "Meta personalizada" : goalMetricLabel[metric] || metric;
+  const isCurrency = (metric: string) => metric === "salesValue" || (() => { const catalog = catalogs.find((entry) => entry.id === metric.slice(7)); return catalog ? (parse(catalog.description) as GoalMetricConfig).aggregation === "amount" : false; })();
+  const isScore = (metric: string) => metric === "usageScore" || (() => { const catalog = catalogs.find((entry) => entry.id === metric.slice(7)); return catalog ? (parse(catalog.description) as GoalMetricConfig).aggregation === "averageScore" : false; })();
+  const formattedValue = (value: number, metric: string) => isCurrency(metric) ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value) : isScore(metric) ? `${Math.round(value)}%` : value.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  return <main className="operation-bi-page cancellation-bi-style" aria-labelledby="operation-bi-title"><section className="operation-bi-board goals-bi-board">
+    <header><div><span className="operation-bi-mark"><Target /></span><span><small>INDICADORES · DESEMPENHO</small><h1 id="operation-bi-title">{title} e alcance</h1><p>Acompanhe metas ativas, evolução por setor e a margem que falta para cada objetivo.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para metas"><ArrowLeft /><span>Voltar</span></button></header>
+    <nav className="commercial-bi-tabs goals-bi-tabs" aria-label="Visões dos indicadores de metas"><button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}><BarChart3 /> Visão geral</button><button className={tab === "tracking" ? "active" : ""} onClick={() => setTab("tracking")}><Target /> Acompanhar metas <b>{scoped.length}</b></button></nav>
+    <section className="operation-bi-filters goals-bi-filters"><Filter /><label>Competência<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><label>Setor<select value={department} onChange={(event) => setDepartment(event.target.value)}><option value="all">Todos</option>{departments.map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Situação<select value={state} onChange={(event) => setState(event.target.value as typeof state)}><option value="all">Todas</option><option value="active">Ativas</option><option value="achieved">Atingidas</option><option value="attention">Abaixo de 75%</option></select></label><button onClick={() => { setDepartment("all"); setState("active"); }}>Limpar</button><strong>{scoped.length} meta(s)</strong></section>
+    <section className="goals-bi-kpis"><article><Target /><span><small>Metas ativas</small><strong>{activeGoals.length}</strong><em>na competência</em></span></article><article className="success"><CheckCircle2 /><span><small>Metas atingidas</small><strong>{achieved}</strong><em>{percent(achieved, activeGoals.length)} das ativas</em></span></article><article><UsersRound /><span><small>Setores com metas</small><strong>{departmentRows.length}</strong><em>áreas acompanhadas</em></span></article><article className={averageReach >= 100 ? "success" : "progress"}><Gauge /><span><small>Alcance médio</small><strong>{averageReach}%</strong><em>{averageReach >= 100 ? `margem +${averageReach - 100} p.p.` : `faltam ${100 - averageReach} p.p.`}</em></span></article><article className="warning"><TrendingUp /><span><small>Próximas da meta</small><strong>{closeToTarget}</strong><em>entre 75% e 99%</em></span></article></section>
+    {tab === "overview" ? <section className="goals-bi-overview"><article className="goals-bi-sector-panel"><header><span><UsersRound />Alcance por setor</span><b>{departmentRows.length} setor(es)</b></header><div>{departmentRows.length ? departmentRows.map((entry) => <section key={entry.name}><span><strong>{entry.name}</strong><small>{entry.achieved} de {entry.count} atingida(s)</small></span><i><em style={{ width: `${Math.min(100, entry.average)}%` }} /></i><b>{entry.average}%</b></section>) : <p>Nenhuma meta ativa nesta competência.</p>}</div></article><article className="goals-bi-distribution"><header><span><BarChart3 />Distribuição do alcance</span></header><div><span className="success"><b>{achieved}</b><small>Atingidas</small></span><span className="near"><b>{closeToTarget}</b><small>Entre 75% e 99%</small></span><span className="attention"><b>{activeGoals.filter((entry) => entry.percent < 75).length}</b><small>Abaixo de 75%</small></span></div><p>{activeGoals.length ? `${Math.max(0, 100 - averageReach)} ponto(s) percentual(is) separam, em média, as metas ativas do objetivo.` : "Cadastre e ative metas para iniciar o acompanhamento."}</p></article></section> : <section className="goals-bi-tracking">{scoped.length ? scoped.sort((a, b) => a.percent - b.percent).map((entry) => { const margin = entry.current - entry.goal.target; return <article key={entry.item.id} className={entry.percent >= 100 ? "achieved" : entry.percent < 75 ? "attention" : "near"}><header><span><small>{goalCadenceLabel[entry.goal.cadence] || entry.goal.cadence} · {entry.department}</small><strong>{entry.item.title}</strong><em>{metricName(entry.goal.metric)} · {entry.goal.employeeName || "Todo o setor"}</em></span><b>{entry.percent}%</b></header><div className="goals-bi-values"><span><small>Realizado</small><strong>{formattedValue(entry.current, entry.goal.metric)}</strong></span><span><small>Meta</small><strong>{formattedValue(entry.goal.target, entry.goal.metric)}</strong></span><span className={margin >= 0 ? "positive" : "negative"}><small>Margem de alcance</small><strong>{margin >= 0 ? "+" : "−"}{formattedValue(Math.abs(margin), entry.goal.metric)}</strong></span></div><div className="goals-bi-progress"><i style={{ width: `${Math.min(100, entry.percent)}%` }} /></div><footer><span>{entry.goal.periodStart.split("-").reverse().join("/")} a {entry.goal.periodEnd.split("-").reverse().join("/")}</span><strong>{margin >= 0 ? "Objetivo superado" : `Faltam ${formattedValue(Math.abs(margin), entry.goal.metric)}`}</strong></footer></article>; }) : <p className="goals-bi-empty">Nenhuma meta corresponde aos filtros selecionados.</p>}</section>}
+  </section></main>;
+}
+
 function GoalKpi({ label, value, target, progress }: { label: string; value: string | number; target: string; progress: number }) { return <article className="commercial-goal-kpi"><small>{label}</small><strong>{value}</strong><span>{target}</span><i><em style={{ width: `${progress}%` }} /></i><b style={{ "--goal-progress": `${progress}%` } as React.CSSProperties}>{progress}%</b></article>; }
 function originGradient(entries: CountEntry[], total: number) { let cursor = 0; const parts = entries.map((entry, index) => { const start = cursor; cursor += entry.count / total * 100; return `hsl(${215 - index * 31} 78% ${45 + index * 3}%) ${start}% ${cursor}%`; }); return `conic-gradient(${parts.length ? parts.join(",") : "var(--surface-alt) 0 100%"})`; }
 
-export default function OperationIndicatorsBoard(props: { title: string; module: string; contextKey?: string; items: Item[]; employees: Employee[]; onClose: () => void }) {
+export default function OperationIndicatorsBoard(props: { title: string; module: string; contextKey?: string; items: Item[]; employees: Employee[]; catalogs?: Catalog[]; onClose: () => void }) {
   if (props.module === "commercial" && (props.contextKey ?? "").includes("retention")) return <RetentionIndicatorsBoard title={props.title} contextKey={props.contextKey ?? ""} items={props.items} onClose={props.onClose} />;
+  if (props.module === "goals") return <GoalsIndicatorsBoard title={props.title} items={props.items} catalogs={props.catalogs ?? []} onClose={props.onClose} />;
   return props.module === "commercial" ? <CommercialIndicatorsBoard title={props.title} contextKey={props.contextKey ?? ""} items={props.items} employees={props.employees} onClose={props.onClose} /> : <GenericOperationIndicatorsBoard {...props} />;
 }

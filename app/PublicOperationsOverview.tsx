@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  Activity, BadgeCheck, BarChart3, BriefcaseBusiness, CalendarDays, CheckCircle2, Clock3,
-  Headphones, ListTodo, Pause, Play, RefreshCw, Sparkles, Target, TrendingUp, Trophy, UsersRound, WalletCards,
+  Activity, BadgeCheck, BarChart3, BriefcaseBusiness, CalendarDays, CheckCircle2,
+  Database, Headphones, Home, ListTodo, Pause, Play, Radio, RefreshCw, Sparkles, Star, Target, TrendingUp, Trophy, UsersRound, WalletCards,
 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -111,19 +111,19 @@ export default function PublicOperationsOverview() {
   return <main className="public-ops-page public-bi-page">
     <header className="public-ops-header public-bi-header">
       <Image src="/dontus-logo.png" alt="Dontus Gestão Odontológica" width={158} height={46} unoptimized />
-      <span><small>COMMAND CENTER · OPERAÇÕES</small><h1>Dontus BI em tempo real</h1><p>Competência: <strong>{data.monthLabel}</strong></p></span>
+      <span><small>COMMAND CENTER – OPERAÇÕES</small><h1>Dontus BI em tempo real</h1><p>Dados que impulsionam o crescimento da sua clínica</p></span>
       <div className="public-bi-controls">
         <label><CalendarDays /><span>Competência</span><input type="month" value={month} onChange={(event) => { setMonth(event.target.value); setTab("overview"); }} /></label>
         <button className={autoRotate ? "active" : ""} onClick={() => setAutoRotate((current) => !current)}>{autoRotate ? <Pause /> : <Play />}<span>{autoRotate ? "Pausar rotação" : "Retomar rotação"}</span></button>
         <button onClick={() => void load()} disabled={refreshing}><RefreshCw className={refreshing ? "spin" : ""} /><span>Atualizar</span></button>
-        <b><i />AO VIVO<small>{secondsSinceUpdate < 5 ? "agora" : `há ${secondsSinceUpdate}s`}</small></b>
+        <b><Radio /><span>AO VIVO<small>{secondsSinceUpdate < 5 ? "agora" : `há ${secondsSinceUpdate}s`}</small></span></b>
       </div>
     </header>
 
     <nav className="public-ops-tabs public-bi-tabs" aria-label="Setores e indicadores">
-      <button className={tab === "overview" ? "active" : ""} onClick={() => chooseTab("overview")}>Visão geral</button>
-      {data.departments.map((entry) => <button className={tab === entry.id ? "active" : ""} onClick={() => chooseTab(entry.id)} key={entry.id}>{entry.name}</button>)}
-      <button className={tab === "referrals" ? "active referral" : "referral"} onClick={() => chooseTab("referrals")}><Sparkles />Indicações</button>
+      <button className={tab === "overview" ? "active" : ""} onClick={() => chooseTab("overview")}><Home />Visão geral</button>
+      {data.departments.map((entry) => <button className={tab === entry.id ? "active" : ""} onClick={() => chooseTab(entry.id)} key={entry.id}><DepartmentTabIcon name={entry.name} />{entry.name}</button>)}
+      <button className={tab === "referrals" ? "active referral" : "referral"} onClick={() => chooseTab("referrals")}><BarChart3 />Indicações</button>
       {autoRotate && <i className="public-bi-rotation"><b style={{ width: `${rotationProgress}%` }} /></i>}
     </nav>
 
@@ -132,16 +132,16 @@ export default function PublicOperationsOverview() {
       {department && <DepartmentView department={department} />}
       {tab === "referrals" && <ReferralsView referrals={data.referrals} activity={data.overview.activityByDay} />}
     </section>
-    <footer className="public-ops-footer"><span><Clock3 />Atualização automática a cada {data.refreshAfterSeconds}s</span><span>Rotação entre telas a cada {ROTATION_LABEL}</span><span>Valores de comissão não são exibidos</span></footer>
+    <footer className="public-ops-footer"><span><RefreshCw />Atualização automática a cada {data.refreshAfterSeconds}s</span><span><Activity />Rotação entre telas a cada {ROTATION_LABEL}</span><span><BadgeCheck />Valores de comissão não são exibidos</span></footer>
   </main>;
 }
 
 function OverviewView({ data, completionRate, solutionRate, maxDepartmentVolume, onDepartment }: { data: PublicOverviewData; completionRate: number; solutionRate: number; maxDepartmentVolume: number; onDepartment: (id: string) => void }) {
   return <>
-    <section className="public-ops-kpis public-bi-kpis public-overview-kpis"><Metric icon={<BriefcaseBusiness />} label="Setores ativos" value={data.overview.departments} note="estrutura vinculada" /><Metric icon={<CalendarDays />} label="Compromissos" value={data.overview.commitments} note="na competência" /><Metric icon={<ListTodo />} label="Tarefas" value={data.overview.tasks} note={`${data.overview.activeTasks} em andamento`} /><Metric icon={<Headphones />} label="Atendimentos" value={data.overview.attendances} note={`${solutionRate}% solucionados`} /><Metric icon={<Target />} label="Meta de vendas" value={`${data.overview.goals.salesActual}/${data.overview.goals.salesCount || "—"}`} note={data.overview.goals.salesCount ? `${data.overview.goals.salesProgress}% atingido` : "sem meta cadastrada"} /><Metric icon={<Activity />} label="Acompanhamentos" value={data.overview.goals.trackingActual} note={data.overview.goals.trackingCount ? `${data.overview.goals.trackingProgress}% da meta` : `${data.overview.followUps} CS · ${data.overview.liaFollowUps} LIA`} /><Metric icon={<WalletCards />} label="Receita / meta" value={money(data.overview.goals.salesValueActualCents)} note={data.overview.goals.salesValueCents ? `${data.overview.goals.salesValueProgress}% de ${money(data.overview.goals.salesValueCents)}` : "sem meta de receita"} /><Metric icon={<UsersRound />} label="Colaboradores" value={data.overview.collaborators} note="ativos nos setores" /></section>
+    <section className="public-ops-kpis public-bi-kpis public-overview-kpis"><Metric tone="blue" icon={<BriefcaseBusiness />} label="Setores ativos" value={data.overview.departments} note="estrutura vinculada" /><Metric tone="violet" icon={<CalendarDays />} label="Compromissos" value={data.overview.commitments} note="na competência" /><Metric tone="teal" icon={<ListTodo />} label="Tarefas" value={data.overview.tasks} note={`${data.overview.activeTasks} em andamento`} /><Metric tone="cyan" icon={<Headphones />} label="Atendimentos" value={data.overview.attendances} note={`${solutionRate}% solucionados`} /><Metric tone="amber" icon={<Target />} label="Meta de vendas" value={`${data.overview.goals.salesActual}/${data.overview.goals.salesCount || "—"}`} note={data.overview.goals.salesCount ? `${data.overview.goals.salesProgress}% atingido` : "sem meta cadastrada"} /><Metric tone="purple" icon={<Activity />} label="Acompanhamentos" value={data.overview.goals.trackingActual} note={data.overview.goals.trackingCount ? `${data.overview.goals.trackingProgress}% da meta` : `${data.overview.followUps} CS · ${data.overview.liaFollowUps} LIA`} /><Metric tone="gold" icon={<WalletCards />} label="Receita / meta" value={money(data.overview.goals.salesValueActualCents)} note={data.overview.goals.salesValueCents ? `${data.overview.goals.salesValueProgress}% de ${money(data.overview.goals.salesValueCents)}` : "sem meta de receita"} /><Metric tone="sky" icon={<UsersRound />} label="Colaboradores" value={data.overview.collaborators} note="ativos nos setores" /></section>
     <section className="public-bi-main-grid">
       <ActivityChart title="Pulso operacional diário" subtitle="Volume de movimentações no mês" days={data.overview.activityByDay} series={[{ key: "commitments", label: "Agenda", color: "#2f7cf6" }, { key: "tasks", label: "Tarefas", color: "#8b5cf6" }, { key: "attendances", label: "Atendimentos", color: "#12b8a6" }, { key: "followUps", label: "Acompanhamentos", color: "#f59e0b" }]} />
-      <article className="public-ops-panel public-ops-progress-panel public-bi-efficiency"><header><span><BadgeCheck />Eficiência operacional</span></header><ProgressRow label="Conclusão de tarefas" value={completionRate} detail={`${data.overview.completedTasks} de ${data.overview.tasks}`} /><ProgressRow label="Solução de atendimentos" value={solutionRate} detail={`${data.overview.solvedAttendances} de ${data.overview.attendances}`} /><ProgressRow label="Indicações encaminhadas" value={percentage(data.referrals.forwarded, data.referrals.total)} detail={`${data.referrals.forwarded} de ${data.referrals.total}`} /></article>
+      <article className="public-ops-panel public-ops-progress-panel public-bi-efficiency"><header><span><BadgeCheck />Eficiência operacional</span></header><ProgressRow icon={<CheckCircle2 />} label="Conclusão de tarefas" value={completionRate} detail={`${data.overview.completedTasks} de ${data.overview.tasks}`} /><ProgressRow icon={<Headphones />} label="Solução de atendimentos" value={solutionRate} detail={`${data.overview.solvedAttendances} de ${data.overview.attendances}`} /><ProgressRow icon={<TrendingUp />} label="Indicações encaminhadas" value={percentage(data.referrals.forwarded, data.referrals.total)} detail={`${data.referrals.forwarded} de ${data.referrals.total}`} /></article>
     </section>
     <section className="public-bi-bottom-grid">
       <article className="public-ops-panel public-department-volume"><header><span><BarChart3 />Movimentação por setor</span><small>Somente fontes alimentadas na competência</small></header><div style={{ gridTemplateRows: `repeat(${Math.max(1, data.departments.length)}, minmax(0, 1fr))` }}>{data.departments.map((entry) => { const total = entry.tasks + entry.attendances + entry.commitments + entry.followUps + entry.liaFollowUps + entry.commercial.sales; return <button key={entry.id} onClick={() => onDepartment(entry.id)}><span><strong>{entry.name}</strong><small>{entry.collaborators} colaborador(es)</small></span><i><b style={{ width: `${total / maxDepartmentVolume * 100}%` }} /></i><em>{total}</em></button>; })}</div></article>
@@ -150,25 +150,38 @@ function OverviewView({ data, completionRate, solutionRate, maxDepartmentVolume,
   </>;
 }
 
-function Metric({ icon, label, value, note }: { icon: React.ReactNode; label: string; value: number | string; note: string }) {
-  return <article><span>{icon}</span><div><small>{label}</small><strong>{value}</strong><p>{note}</p></div></article>;
+function DepartmentTabIcon({ name }: { name: string }) {
+  const normalized = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  if (/comercial/.test(normalized)) return <BarChart3 />;
+  if (/desenvolvimento|tecnologia|ti/.test(normalized)) return <TrendingUp />;
+  if (/financeiro/.test(normalized)) return <Database />;
+  if (/lia/.test(normalized)) return <UsersRound />;
+  if (/sucesso|cliente/.test(normalized)) return <Target />;
+  if (/suporte|atendimento/.test(normalized)) return <Headphones />;
+  return <BriefcaseBusiness />;
 }
 
-function ProgressRow({ label, value, detail }: { label: string; value: number; detail: string }) {
-  return <div className="public-progress-row"><span><strong>{label}</strong><small>{detail}</small></span><i><b style={{ width: `${Math.min(100, value)}%` }} /></i><em>{value}%</em></div>;
+function Metric({ icon, label, value, note, tone = "blue" }: { icon: React.ReactNode; label: string; value: number | string; note: string; tone?: string }) {
+  return <article className={`tone-${tone}`}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong><p>{note}</p></div></article>;
+}
+
+function ProgressRow({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: number; detail: string }) {
+  return <div className="public-progress-row"><b className="public-progress-icon">{icon}</b><span><strong>{label}</strong><small>{detail}</small></span><i><b style={{ width: `${Math.min(100, value)}%` }} /></i><em>{value}%</em></div>;
 }
 
 function TalentRadar({ attendances, referrals }: { attendances: PublicRanking[]; referrals: PublicRanking[] }) {
-  const board = (title: string, icon: React.ReactNode, entries: PublicRanking[], unit: string) => <section><h3>{icon}{title}</h3>{entries.length ? entries.slice(0, 3).map((entry, index) => <div key={`${title}-${entry.name}`}><b>{index + 1}</b><i className={entry.photo ? "has-photo" : ""} style={entry.photo ? { backgroundImage: `url("${entry.photo}")` } : undefined}>{!entry.photo && entry.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</i><span><strong>{entry.name}</strong><small>{entry.department || "Setor não informado"}</small></span><em>{entry.count}<small>{unit}</small></em></div>) : <p className="public-ops-empty">Sem registros na competência.</p>}</section>;
-  return <article className="public-ops-panel public-talent-radar"><header><span><Trophy />Destaques do mês</span><small>Produtividade registrada na plataforma</small></header><div>{board("Top 3 atendimentos", <Headphones />, attendances, "atend.")}{board("Top 3 indicações", <Sparkles />, referrals, "indic.")}</div></article>;
+  const board = (title: string, icon: React.ReactNode, entries: PublicRanking[], unit: string) => <section><h3>{icon}{title}</h3>{entries.length ? entries.slice(0, 3).map((entry, index) => <div key={`${title}-${entry.name}`}><b>{index + 1}</b><i className={entry.photo ? "has-photo" : ""} style={entry.photo ? { backgroundImage: `url("${entry.photo}")` } : undefined}>{!entry.photo && entry.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</i><span><strong>{entry.name}</strong><small>{entry.department || "Setor não informado"}</small></span><em>{entry.count}<small>{unit}</small></em></div>) : <p className="public-ops-empty"><ListTodo /><span>Sem registros na competência.<small>Os principais resultados serão exibidos aqui.</small></span></p>}</section>;
+  return <article className="public-ops-panel public-talent-radar"><header><span><Trophy />Destaques do mês</span><small>Produtividade registrada na plataforma</small></header><div>{board("Top 3 atendimentos", <Headphones />, attendances, "atend.")}{board("Top 3 indicações", <Star />, referrals, "indic.")}</div></article>;
 }
 
 function ActivityChart({ title, subtitle, days, series }: { title: string; subtitle: string; days: PublicDay[]; series: Series[] }) {
-  const width = 1000; const height = 190; const top = 18; const bottom = 25;
+  const width = 1000; const height = 190; const top = 18; const bottom = 25; const left = 24; const right = 4;
   const max = Math.max(1, ...days.flatMap((day) => series.map((entry) => Number(day[entry.key] ?? 0))));
-  const point = (value: number, index: number) => `${days.length <= 1 ? width / 2 : index / (days.length - 1) * width},${top + (height - top - bottom) * (1 - value / max)}`;
+  const chartMax = Math.max(4, Math.ceil(max / 2) * 2);
+  const point = (value: number, index: number) => `${days.length <= 1 ? width / 2 : left + index / (days.length - 1) * (width - left - right)},${top + (height - top - bottom) * (1 - value / chartMax)}`;
   const labels = days.length ? [days[0], days[Math.floor((days.length - 1) / 2)], days[days.length - 1]] : [];
-  return <article className="public-ops-panel public-bi-chart"><header><span><TrendingUp />{title}<small>{subtitle}</small></span><div>{series.map((entry) => <b key={String(entry.key)}><i style={{ background: entry.color }} />{entry.label}</b>)}</div></header><div className="public-bi-chart-canvas"><svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={title}><g className="grid"><line x1="0" x2={width} y1={top} y2={top} /><line x1="0" x2={width} y1={height / 2} y2={height / 2} /><line x1="0" x2={width} y1={height - bottom} y2={height - bottom} /></g>{series.map((entry) => <polyline key={String(entry.key)} points={days.map((day, index) => point(Number(day[entry.key] ?? 0), index)).join(" ")} fill="none" stroke={entry.color} strokeWidth="4" vectorEffect="non-scaling-stroke" />)}</svg><div className="public-bi-chart-labels">{labels.map((day) => <span key={day.date}>{new Date(`${day.date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>)}</div></div></article>;
+  const ticks = [chartMax, Math.round(chartMax * .75), Math.round(chartMax * .5), Math.round(chartMax * .25), 0];
+  return <article className="public-ops-panel public-bi-chart"><header><span><TrendingUp />{title}<small>{subtitle}</small></span><div>{series.map((entry) => <b key={String(entry.key)}><i style={{ background: entry.color }} />{entry.label}</b>)}</div></header><div className="public-bi-chart-canvas"><span className="public-bi-y-axis">{ticks.map((tick) => <b key={tick}>{tick}</b>)}</span><svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={title}><g className="grid">{ticks.map((tick) => { const y = top + (height - top - bottom) * (1 - tick / chartMax); return <line key={tick} x1={left} x2={width - right} y1={y} y2={y} />; })}</g>{series.map((entry) => { const points = days.map((day, index) => point(Number(day[entry.key] ?? 0), index)); return <g key={String(entry.key)}><polygon points={`${left},${height - bottom} ${points.join(" ")} ${width - right},${height - bottom}`} fill={entry.color} opacity=".055" /><polyline points={points.join(" ")} fill="none" stroke={entry.color} strokeWidth="4" vectorEffect="non-scaling-stroke" />{days.map((day, index) => { const [cx, cy] = point(Number(day[entry.key] ?? 0), index).split(","); return Number(day[entry.key] ?? 0) > 0 ? <circle key={`${day.date}-${String(entry.key)}`} cx={cx} cy={cy} r="4" fill={entry.color} vectorEffect="non-scaling-stroke" /> : null; })}</g>; })}</svg><div className="public-bi-chart-labels">{labels.map((day) => <span key={day.date}>{new Date(`${day.date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>)}</div></div></article>;
 }
 
 function DepartmentView({ department }: { department: PublicDepartment }) {

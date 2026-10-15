@@ -10,7 +10,7 @@ public static class WorkflowPolicy
             ["cancellations"] = ["Fila de espera", "Em processo", "Follow up", "Convertido", "Não convertido"],
             ["lia"] = ["AguardandoKickoff", "KickoffAgendado", "ConfiguracaoInicial", "EmTesteCliente", "EmAjustes", "AguardandoAprovacao", "GoLiveAgendado", "EmProducaoAssistida", "ImplantacaoPrincipalConcluida", "ConfigurandoCRC", "Concluida", "BloqueadaPeloCliente", "Pausada", "Cancelada"],
             ["hr"] = ["Experiência", "Ativos", "Desligados"],
-            ["marketing"] = ["Recebida", "Em planejamento", "Em produção", "Em revisão", "Concluída"],
+            ["marketing"] = ["Recebida", "Em planejamento", "Em produção", "Em revisão", "Concluída", "Planejada", "Em desenvolvimento", "Publicada"],
             ["referrals"] = ["Em acompanhamento", "Em conferência", "Aprovado", "Reprovado"],
             ["support"] = ["Novo", "EmAtendimento", "AguardandoCliente", "AguardandoSetor", "AguardandoTI", "Resolvido", "Encerrado", "Reaberto"],
             ["ti"] = ["Nova", "EmTriagem", "AguardandoInformacoes", "Classificada", "EmAnaliseTecnica", "Priorizada", "EmDesenvolvimento", "EmCorrecao", "EmTeste", "AguardandoHomologacao", "AguardandoTerceiro", "AguardandoDeploy", "Concluida", "Cancelada", "Reprovada", "Reaberta"],
@@ -32,6 +32,11 @@ public static class WorkflowPolicy
 
     public static IReadOnlyCollection<string> AllowedNext(string module, string current)
     {
+        if (module.Equals("marketing", StringComparison.OrdinalIgnoreCase) &&
+            current is "Planejada" or "Em desenvolvimento" or "Publicada")
+            return [.. new[] { "Planejada", "Em desenvolvimento", "Publicada" }
+                .Where(state => !state.Equals(current, StringComparison.OrdinalIgnoreCase))];
+
         if (!States.TryGetValue(module, out var states) ||
             (Terminal.Contains(current) && !(module.Equals("marketing", StringComparison.OrdinalIgnoreCase) && current == "Recebida")))
             return [];

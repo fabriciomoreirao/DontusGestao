@@ -481,3 +481,98 @@ test("integra chamados públicos, competência mensal e rolagem do chat", async 
   assert.match(css, /\.external-experience-page/);
   assert.match(css, /\.public-request-type:has\(input:checked\)/);
 });
+
+test("integra campanhas de marketing com qualificação e indicadores do CRM", async () => {
+  const [marketing, app, indicators, workflow, css] = await Promise.all([
+    readFile(new URL("../app/MarketingWorkspaceModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationIndicatorsBoard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Domain/WorkflowPolicy.cs", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(marketing, /kind:"marketingCampaign"/);
+  assert.match(marketing, /"Planejada","Em desenvolvimento","Publicada"/);
+  assert.match(marketing, /Indicadores de campanhas/);
+  assert.match(marketing, /Nova campanha/);
+  assert.match(marketing, /Até 10 arquivos, com no máximo 25 MB cada/);
+  assert.match(app, /marketingCampaigns=\{data\.items\.filter/);
+  assert.match(app, /leadQualification/);
+  assert.match(app, /Link do post/);
+  assert.match(app, /Selecionar campanha publicada/);
+  assert.match(indicators, /Campanhas e qualificação/);
+  assert.match(indicators, /Qualificação por semana do mês/);
+  assert.match(indicators, /Melhor campanha/);
+  assert.match(workflow, /"Planejada", "Em desenvolvimento", "Publicada"/);
+  assert.match(css, /\.campaign-kanban/);
+  assert.match(css, /\.commercial-campaign-fields/);
+});
+
+test("qualifica vendas diretas, acompanha metas e retorna das configurações", async () => {
+  const [app, indicators, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationIndicatorsBoard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /type DirectSale = \{[\s\S]*leadQualification\?: "qualified" \| "not-qualified"/);
+  assert.match(app, /Qualificação do lead \*/);
+  assert.match(app, /Lead não qualificado/);
+  assert.match(app, /openFunctionSettings/);
+  assert.match(app, /ConfigurationReturnBar/);
+  assert.match(app, /Voltar para \{label\}/);
+  assert.match(indicators, /function GoalsIndicatorsBoard/);
+  assert.match(indicators, /Metas ativas/);
+  assert.match(indicators, /Alcance por setor/);
+  assert.match(indicators, /Acompanhar metas/);
+  assert.match(indicators, /Margem de alcance/);
+  assert.match(css, /\.configuration-return-bar/);
+  assert.match(css, /\.goals-bi-tracking/);
+});
+
+test("mantém o painel público em tempo real escuro e sem cartões internos brancos", async () => {
+  const [overview, css] = await Promise.all([
+    readFile(new URL("../app/PublicOperationsOverview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(overview, /Dontus BI em tempo real/);
+  assert.match(overview, /public-talent-radar/);
+  assert.match(css, /Painel público em tempo real: command center escuro e uniforme/);
+  assert.match(css, /\.public-ops-page\.public-bi-page\{/);
+  assert.match(css, /--public-surface:#0d1a28/);
+  assert.match(css, /\.public-ops-page\.public-bi-page \.public-talent-radar section/);
+  assert.match(css, /background:linear-gradient\(145deg,#142a3f,#0d1c2b\)/);
+});
+
+test("finaliza a conferência em quatro destinos e notifica o responsável", async () => {
+  const [journey, css] = await Promise.all([
+    readFile(new URL("../app/CustomerSuccessJourneyModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(journey, /moveFromConference\("tracking", "Em acompanhamento"\)/);
+  assert.match(journey, /moveFromConference\("finished", "Finalizado"\)/);
+  assert.match(journey, /moveFromConference\("cancelled", "Cancelado"\)/);
+  assert.match(journey, /moveFromConference\("cancelledWithoutTraining", "Cancelado sem treinamento"\)/);
+  assert.match(journey, /action: "saveNotice"/);
+  assert.match(journey, /Cliente marcado como CANCELADO/);
+  assert.match(css, /\.cs-conference-actions/);
+  assert.match(css, /\.warning-button/);
+});
+
+test("mantém acompanhamentos perenes e corrige modais, permissões e reabertura", async () => {
+  const [app, cancellations, development, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CancellationsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/DevelopmentModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /const kanbanModules = new Set<ModuleKey>\(\["commercial", "cancellations", "marketing"/);
+  assert.doesNotMatch(app, /kanbanModules = new Set<ModuleKey>\([^\n]*"cs"/);
+  assert.doesNotMatch(app, /kanbanModules = new Set<ModuleKey>\([^\n]*"lia"/);
+  assert.doesNotMatch(app, /kanbanModules = new Set<ModuleKey>\([^\n]*"hr"/);
+  assert.match(app, /if \(screen === "catalogs"\)/);
+  assert.match(app, /taskPermission\?\.canManage === true/);
+  assert.match(app, /client-cancelled-status/);
+  assert.match(cancellations, /searchParams\.delete\("cancellation"\)/);
+  assert.match(development, /className="modal development-create-modal"/);
+  assert.match(development, /className="form-grid"/);
+  assert.match(css, /\.cs-pipeline-metrics\{grid-template-columns:repeat\(7/);
+});

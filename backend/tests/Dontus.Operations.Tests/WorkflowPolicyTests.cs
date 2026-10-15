@@ -29,4 +29,13 @@ public sealed class WorkflowPolicyTests
     {
         Assert.True(WorkflowPolicy.RequiresExplicitConfirmation(module, status));
     }
+
+    [Theory]
+    [InlineData("Planejada", "Em desenvolvimento")]
+    [InlineData("Em desenvolvimento", "Publicada")]
+    [InlineData("Publicada", "Planejada")]
+    public void Allows_campaigns_to_move_between_marketing_columns(string current, string next)
+    {
+        Assert.True(WorkflowPolicy.CanTransition("marketing", current, next));
+    }
 }

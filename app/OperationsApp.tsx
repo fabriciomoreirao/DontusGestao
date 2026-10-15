@@ -278,7 +278,7 @@ const moduleDescriptions: Record<string, string> = {
   catalogs: "Setores, tipos, prioridades, status, SLA e colaboradores.",
 };
 
-const kanbanModules = new Set<ModuleKey>(["commercial", "cs", "cancellations", "lia", "hr", "marketing", "support", "ti", "finance", "procurement", "waitingQueue", "referrals", "tasks", "suggestions", "serviceRequests", "serviceFollowup"]);
+const kanbanModules = new Set<ModuleKey>(["commercial", "cancellations", "marketing", "support", "ti", "finance", "procurement", "waitingQueue", "referrals", "tasks", "suggestions", "serviceRequests", "serviceFollowup"]);
 const brasiliaMonthKey = (value: string | Date = new Date()) => {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" }).formatToParts(typeof value === "string" ? new Date(value) : value);
   return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}`;
@@ -316,7 +316,12 @@ type PermissionAction = "view" | "create" | "edit" | "approve" | "manage";
 function userCan(user: AppData["user"], screen: string, action: PermissionAction = "view") {
   const permission = user.permissions.find((entry) => entry.screen === screen);
   const key = `can${action[0].toUpperCase()}${action.slice(1)}` as keyof EffectivePermission;
-  return permission?.[key] === true;
+  if (permission?.[key] === true) return true;
+  if (screen === "catalogs") {
+    const taskPermission = user.permissions.find((entry) => entry.screen === "tasks");
+    return taskPermission?.canManage === true || taskPermission?.capabilities?.includes("manageCatalogs") === true;
+  }
+  return false;
 }
 
 const VIEW_INDICATORS_CAPABILITY = "viewIndicators";
@@ -344,6 +349,7 @@ export default function OperationsApp() {
   const [adminSection, setAdminSection] = useState<AdminSection>("collaborators");
   const [commercialFlow, setCommercialFlow] = useState<CommercialFlow>("qualification");
   const [csFlow, setCsFlow] = useState<CsFlow>("onboarding");
+  const [settingsReturnTarget, setSettingsReturnTarget] = useState<{ module: ModuleKey; commercialFlow: CommercialFlow; csFlow: CsFlow } | null>(null);
   const [dashboardPage, setDashboardPage] = useState<"home" | "portal">("home");
   const [reportingSection, setReportingSection] = useState<ReportingSection>("bi");
   const [analyticsDepartment, setAnalyticsDepartment] = useState("Todos");
@@ -384,6 +390,10 @@ export default function OperationsApp() {
       ? "linear-gradient(rgba(8,18,31,.66), rgba(8,18,31,.76))"
       : "linear-gradient(rgba(244,247,251,.63), rgba(244,247,251,.72))") + ", url(\"" + backgroundImage + "\")",
   } as CSSProperties : undefined;
+
+  useEffect(() => {
+    if (active !== "admin" && active !== "catalogs" && settingsReturnTarget) setSettingsReturnTarget(null);
+  }, [active, settingsReturnTarget]);
 
   useEffect(() => {
     const exitDuration = 220;
@@ -609,6 +619,7 @@ export default function OperationsApp() {
       return;
     }
     setActive(module);
+    if (module === "admin" || module === "catalogs") setSettingsReturnTarget(null);
     setDashboardPage("home");
     if (module === "commercial" && nextCommercialFlow) setCommercialFlow(nextCommercialFlow);
     if (module === "cs" && nextCsFlow) setCsFlow(nextCsFlow);
@@ -723,6 +734,19 @@ export default function OperationsApp() {
     url.searchParams.set("mod", "catalogs");
     url.searchParams.set("cad", section);
     window.history.replaceState({}, "", url);
+  };
+
+  const openFunctionSettings = (section: AdminSection | CatalogSection, destination: "admin" | "catalogs" = "admin") => {
+    if (destination === "catalogs") navigateCatalog(section as CatalogSection);
+    else navigate("admin", section as AdminSection);
+    setSettingsReturnTarget({ module: active, commercialFlow, csFlow });
+  };
+
+  const returnFromSettings = () => {
+    const target = settingsReturnTarget;
+    if (!target) return;
+    setSettingsReturnTarget(null);
+    navigate(target.module, undefined, target.commercialFlow, target.csFlow);
   };
 
   const executeOperation = async (payload: Record<string, unknown>, success: string): Promise<OperationResult> => {
@@ -1294,7 +1318,7 @@ export default function OperationsApp() {
         </header>
 
         <div className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}>
-          {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext && canViewOperationIndicators ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} onClose={closeIndicatorsPage} /> : <>
+          {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext && canViewOperationIndicators ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} catalogs={data.customerModule?.catalogs ?? []} onClose={closeIndicatorsPage} /> : <>
           {operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
           {kanbanModules.has(active) && <section className="kanban-month-filter"><span><CalendarDays size={16}/><b>Competência do Kanban</b><small>Na virada do mês, o quadro inicia limpo. Selecione uma competência anterior para consultar o histórico.</small></span><label>Mês<input type="month" value={kanbanMonth} onChange={(event) => setKanbanMonth(event.target.value || brasiliaMonthKey())}/></label>{kanbanMonth !== brasiliaMonthKey() && <button type="button" onClick={() => setKanbanMonth(brasiliaMonthKey())}>Voltar ao mês atual</button>}</section>}
           {active === "dashboard" && (
@@ -1302,12 +1326,13 @@ export default function OperationsApp() {
               ? <PortalDontus data={data} busy={busy} operate={operate} onBack={() => setDashboardPage("home")} />
               : <Dashboard data={data} onNavigate={navigate} onPortal={() => setDashboardPage("portal")} />
           )}
-          {active === "customers" && data.customerModule && <CustomersView customers={data.customers} catalogs={data.customerModule.catalogs} items={data.items} selected={null} onSelect={(customer)=>customer&&openClientHistoryPage(customer.document_masked||customer.id)} onCreate={()=>openCreate("customers")} onOpenSettings={userCan(data.user,"customers","manage")?()=>navigate("admin","customers"):undefined} canCreate={userCan(data.user,"customers","create")} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate}/>}
+          {active === "customers" && data.customerModule && <CustomersView customers={data.customers} catalogs={data.customerModule.catalogs} items={data.items} selected={null} onSelect={(customer)=>customer&&openClientHistoryPage(customer.document_masked||customer.id)} onCreate={()=>openCreate("customers")} onOpenSettings={userCan(data.user,"customers","manage")?()=>openFunctionSettings("customers"):undefined} canCreate={userCan(data.user,"customers","create")} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate}/>}
           {active === "commercial" && data.customerModule && <CommercialLeadsModule key={commercialFlow}
             flow={commercialFlow}
             catalogs={data.customerModule.catalogs}
             customers={data.customers}
             items={kanbanItems}
+            marketingCampaigns={data.items.filter((item) => item.module === "marketing")}
             employees={data.access?.employees ?? []}
             agendaModule={data.agendaModule}
             currentUser={data.user}
@@ -1316,14 +1341,14 @@ export default function OperationsApp() {
             canEdit={userCan(data.user, "commercial", "edit")}
             canDelete={userCan(data.user, "commercial", "edit")}
             operate={operate}
-            onOpenSettings={userCan(data.user, "commercial", "manage") ? () => navigate("admin", "commercialCatalogs") : undefined}
+            onOpenSettings={userCan(data.user, "commercial", "manage") ? () => openFunctionSettings("commercialCatalogs") : undefined}
           />}
-          {active === "cs" && data.customerModule && (csFlow === "enterprise" ? <CustomerSuccessModule flow={csFlow} catalogs={data.customerModule.catalogs} items={kanbanItems} agendaModule={data.agendaModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "cs", "edit")} canDelete={userCan(data.user, "cs", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => navigate("admin", "enterpriseCatalogs") : undefined} /> : <CustomerSuccessJourneyModule flow={csFlow} catalogs={data.customerModule.catalogs} items={kanbanItems} customers={data.customers} agendaModule={data.agendaModule} taskModule={data.taskModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cs", "create")} canEdit={userCan(data.user, "cs", "edit") || userCan(data.user, "cs", "approve") || data.user.isCoordinator} canDelete={userCan(data.user, "cs", "edit")} canCreateTask={userCan(data.user, "cancellations", "create")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => navigate("admin", "csCatalogs") : undefined} />)}
-          {active === "cancellations" && data.customerModule && <CancellationsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cancellations", "create")} canEdit={userCan(data.user, "cancellations", "edit")} canDelete={userCan(data.user, "cancellations", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cancellations", "manage") ? () => navigate("admin", "cancellationCatalogs") : undefined} />}
-          {active === "hr" && data.customerModule && <HrManagementModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "hr", "edit")} operate={operate} onOpenSettings={userCan(data.user, "hr", "manage") ? () => navigate("admin", "hrCatalogs") : undefined} />}
-          {active === "support" && data.customerModule && <ServiceRecordsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "support", "create")} canEdit={userCan(data.user, "support", "edit")} canDelete={userCan(data.user, "support", "edit")} operate={operate} onOpenSettings={userCan(data.user, "support", "manage") ? () => navigate("admin", "serviceCatalogs") : undefined} />}
-          {active === "waitingQueue" && <WaitingQueueModule items={kanbanItems} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "waitingQueue", "manage") ? () => navigate("admin", "waitingQueueCatalogs") : undefined} />}
-          {active === "referrals" && data.customerModule && <ReferralsModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={(data.access?.employees ?? []).filter(employee => employee.active)} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "referrals", "edit")} operate={operate} onOpenSettings={userCan(data.user, "referrals", "manage") ? ()=>navigate("admin","referralCatalogs") : undefined} />}
+          {active === "cs" && data.customerModule && (csFlow === "enterprise" ? <CustomerSuccessModule flow={csFlow} catalogs={data.customerModule.catalogs} items={kanbanItems} agendaModule={data.agendaModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "cs", "edit")} canDelete={userCan(data.user, "cs", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => openFunctionSettings("enterpriseCatalogs") : undefined} /> : <CustomerSuccessJourneyModule flow={csFlow} catalogs={data.customerModule.catalogs} items={kanbanItems} customers={data.customers} agendaModule={data.agendaModule} taskModule={data.taskModule} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cs", "create")} canEdit={userCan(data.user, "cs", "edit") || userCan(data.user, "cs", "approve") || data.user.isCoordinator} canDelete={userCan(data.user, "cs", "edit")} canCreateTask={userCan(data.user, "cancellations", "create")} operate={operate} onOpenSettings={userCan(data.user, "cs", "manage") ? () => openFunctionSettings("csCatalogs") : undefined} />)}
+          {active === "cancellations" && data.customerModule && <CancellationsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cancellations", "create")} canEdit={userCan(data.user, "cancellations", "edit")} canDelete={userCan(data.user, "cancellations", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cancellations", "manage") ? () => openFunctionSettings("cancellationCatalogs") : undefined} />}
+          {active === "hr" && data.customerModule && <HrManagementModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "hr", "edit")} operate={operate} onOpenSettings={userCan(data.user, "hr", "manage") ? () => openFunctionSettings("hrCatalogs") : undefined} />}
+          {active === "support" && data.customerModule && <ServiceRecordsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "support", "create")} canEdit={userCan(data.user, "support", "edit")} canDelete={userCan(data.user, "support", "edit")} operate={operate} onOpenSettings={userCan(data.user, "support", "manage") ? () => openFunctionSettings("serviceCatalogs") : undefined} />}
+          {active === "waitingQueue" && <WaitingQueueModule items={kanbanItems} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "waitingQueue", "manage") ? () => openFunctionSettings("waitingQueueCatalogs") : undefined} />}
+          {active === "referrals" && data.customerModule && <ReferralsModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={(data.access?.employees ?? []).filter(employee => employee.active)} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "referrals", "edit")} operate={operate} onOpenSettings={userCan(data.user, "referrals", "manage") ? ()=>openFunctionSettings("referralCatalogs") : undefined} />}
           {active === "commissions" && data.customerModule && <CommissionsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canApprove={userCan(data.user,"commissions","approve")} canManage={userCan(data.user,"commissions","manage")} operate={operate} />}
           {active === "goals" && <GoalsModule items={data.items} taskItems={data.taskModule?.tasks ?? []} catalogs={data.customerModule?.catalogs ?? []} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user,"goals","create")} canEdit={userCan(data.user,"goals","edit")} canManage={userCan(data.user,"goals","manage")} operate={operate} />}
           {active === "surveys" && <SatisfactionSurveysModule items={data.items} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user,"surveys","edit")} operate={operate} />}
@@ -1342,14 +1367,14 @@ export default function OperationsApp() {
               onMove={(item, status) => operate({ action: "transitionWorkItem", id: item.id, nextStatus: status, version: item.version, confirmed: true, boardMove: true }, `Registro movido para ${status}.`)}
             />
           )}
-          {active === "lia" && <LiaJourneyModule items={kanbanItems} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} catalogs={data.customerModule?.catalogs ?? []} currentUser={data.user.displayName} canEdit={userCan(data.user, "lia", "edit")} busy={busy} operate={operate} agendaModule={data.agendaModule} onOpenSettings={userCan(data.user, "lia", "manage") ? () => navigate("admin", "liaCatalogs") : undefined} />}
-          {active === "marketing" && <MarketingWorkspaceModule items={kanbanItems} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} currentUser={data.user} agendaModule={data.agendaModule} canEdit={userCan(data.user, "marketing", "edit")} busy={busy} operate={operate} onOpenSettings={undefined} />}
-          {active === "work" && data.agendaModule && <AgendaModule module={data.agendaModule} busy={busy} operate={operate} currentEmail={data.user.email} onOpenSettings={userCan(data.user, "work", "manage") ? () => navigate("admin", "agenda") : undefined} />}
+          {active === "lia" && <LiaJourneyModule items={kanbanItems} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} catalogs={data.customerModule?.catalogs ?? []} currentUser={data.user.displayName} canEdit={userCan(data.user, "lia", "edit")} busy={busy} operate={operate} agendaModule={data.agendaModule} onOpenSettings={userCan(data.user, "lia", "manage") ? () => openFunctionSettings("liaCatalogs") : undefined} />}
+          {active === "marketing" && <MarketingWorkspaceModule items={kanbanItems} campaignItems={data.items.filter((item) => item.module === "marketing")} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} currentUser={data.user} agendaModule={data.agendaModule} canEdit={userCan(data.user, "marketing", "edit")} busy={busy} operate={operate} onOpenSettings={undefined} />}
+          {active === "work" && data.agendaModule && <AgendaModule module={data.agendaModule} busy={busy} operate={operate} currentEmail={data.user.email} onOpenSettings={userCan(data.user, "work", "manage") ? () => openFunctionSettings("agenda") : undefined} />}
           {active === "diary" && data.diaryModule && <DiaryModule module={data.diaryModule} busy={busy} canCreate={userCan(data.user,"diary","create")} canEdit={userCan(data.user,"diary","edit")} operate={operate} />}
           {active === "notes" && data.notesModule && <NotesModule module={data.notesModule} busy={busy} operate={operate} />}
           {active === "reminders" && <RemindersModule items={reminderItems} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} operate={operate} onCreate={setReminderContext} />}
           {active === "notices" && data.noticesModule && <NoticesModule module={data.noticesModule} busy={busy} operate={operate} />}
-          {active === "suggestions" && monthSuggestionModule && <SuggestionsModule module={monthSuggestionModule} customers={data.customers} canCreate={userCan(data.user, "suggestions", "create")} canEdit={userCan(data.user, "suggestions", "edit")} canDelete={userCan(data.user, "suggestions", "edit")} busy={busy} operate={operate} uploadAttachments={uploadSuggestionAttachments} onOpenSettings={userCan(data.user, "suggestions", "manage") ? () => navigate("admin", "suggestions") : undefined} />}
+          {active === "suggestions" && monthSuggestionModule && <SuggestionsModule module={monthSuggestionModule} customers={data.customers} canCreate={userCan(data.user, "suggestions", "create")} canEdit={userCan(data.user, "suggestions", "edit")} canDelete={userCan(data.user, "suggestions", "edit")} busy={busy} operate={operate} uploadAttachments={uploadSuggestionAttachments} onOpenSettings={userCan(data.user, "suggestions", "manage") ? () => openFunctionSettings("suggestions") : undefined} />}
           {(active === "serviceRequests" || active === "serviceFollowup") && <ServiceRequestsModule mode={active === "serviceRequests" ? "triage" : "followup"} items={kanbanItems} customers={data.customers} currentUser={data.user} taskModule={data.taskModule} suggestionModule={data.suggestionModule} canEdit={userCan(data.user, active, "edit")} busy={busy} operate={operate} uploadTaskAttachments={uploadTaskAttachments}/>}
           {active === "internalChat" && data.internalChatModule && (
             <InternalChatModule
@@ -1397,7 +1422,7 @@ export default function OperationsApp() {
               }}
               uploadAttachments={uploadTaskAttachments}
               deleteAttachment={deleteTaskAttachment}
-              onOpenSettings={() => navigateCatalog("types")}
+              onOpenSettings={() => openFunctionSettings("types", "catalogs")}
             />
           )}
           {active === "ti" && <DevelopmentModule items={kanbanItems} employees={(data.access?.employees ?? []).filter((employee) => employee.active)} user={data.user} canCreate={userCan(data.user, "ti", "create")} canEdit={userCan(data.user, "ti", "edit")} busy={busy} operate={operate} />}
@@ -1416,10 +1441,10 @@ export default function OperationsApp() {
           )}
           {active === "access" && <SupportAccessView access={data.access} onOpen={(name) => { setToast({ kind: "success", message: `Acesso de ${name} selecionado.` }); window.setTimeout(() => setToast(null), 2600); }} />}
           {active === "catalogs" && data.taskModule && (
-            <CatalogsModule module={data.taskModule} section={catalogSection} onSection={navigateCatalog} canManage={userCan(data.user, "catalogs", "manage") || userCan(data.user, "tasks", "manage")} busy={busy} operate={operate} />
+            <><ConfigurationReturnBar target={settingsReturnTarget} onBack={returnFromSettings} /><CatalogsModule module={data.taskModule} section={catalogSection} onSection={navigateCatalog} canManage={userCan(data.user, "catalogs", "manage") || userCan(data.user, "tasks", "manage")} busy={busy} operate={operate} /></>
           )}
           {active === "reporting" && <AnalyticsWorkspace data={data} section={reportingSection === "biExecutive" ? "bi" : reportingSection} sector={analyticsDepartment} />}
-          {active === "admin" && <AdminView data={data} section={adminSection} onSection={setAdminSection} busy={busy} onOperate={operate} backgroundImage={backgroundImage} onBackgroundChange={changeBackgroundImage} />}
+          {active === "admin" && <><ConfigurationReturnBar target={settingsReturnTarget} onBack={returnFromSettings} /><AdminView data={data} section={adminSection} onSection={setAdminSection} busy={busy} onOperate={operate} backgroundImage={backgroundImage} onBackgroundChange={changeBackgroundImage} /></>}
           </>}
         </div>
       </main>
@@ -1572,7 +1597,7 @@ function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNav
     if (result) setComment("");
   };
   return <section className="client-history-page">
-    <header className="client-history-page-head"><button type="button" onClick={onClose} aria-label="Voltar"><ArrowLeft /></button><span className="operation-bi-mark"><Search /></span><span><small>VISÃO 360 DO CLIENTE</small><h1>{displayName}</h1><p>{customer ? customer.legal_name : `Informações consolidadas encontradas em todo o sistema para o ID ${query}.`}</p><span className="client-history-identifiers"><strong className="client-history-id">ID {customer?.document_masked || customer?.id || query}</strong>{linkedNetwork&&<strong className="client-history-network"><UsersRound size={13}/> Rede: {linkedNetwork.title}</strong>}</span></span><div className="client-history-head-actions"><b className={customer ? "located" : "partial"}>{customer ? "Cadastro localizado" : "Vínculos localizados"}</b>{customer && canEdit && <button type="button" className="secondary-button" onClick={() => setResumeOpen(true)}><RotateCcw size={15}/> Retomar cliente</button>}{customer && canEdit && <button type="button" className="secondary-button" onClick={() => setEditing(true)}><Pencil size={15}/> Editar dados</button>}</div></header>
+    <header className="client-history-page-head"><button type="button" onClick={onClose} aria-label="Voltar"><ArrowLeft /></button><span className="operation-bi-mark"><Search /></span><span><small>VISÃO 360 DO CLIENTE</small><h1>{displayName}</h1><p>{customer ? customer.legal_name : `Informações consolidadas encontradas em todo o sistema para o ID ${query}.`}</p><span className="client-history-identifiers"><strong className="client-history-id">ID {customer?.document_masked || customer?.id || query}</strong>{linkedNetwork&&<strong className="client-history-network"><UsersRound size={13}/> Rede: {linkedNetwork.title}</strong>}</span></span><div className="client-history-head-actions"><b className={customer ? "located" : "partial"}>{customer ? "Cadastro localizado" : "Vínculos localizados"}</b>{customer && /cancel/i.test(customer.status || "") && <b className="client-cancelled-status"><XCircle size={13}/> CANCELADO</b>}{customer && canEdit && <button type="button" className="secondary-button" onClick={() => setResumeOpen(true)}><RotateCcw size={15}/> Retomar cliente</button>}{customer && canEdit && <button type="button" className="secondary-button" onClick={() => setEditing(true)}><Pencil size={15}/> Editar dados</button>}</div></header>
     <nav className="client-history-tabs">{tabs.map((entry) => <button className={tab === entry.id ? "active" : ""} onClick={() => setTab(entry.id)} key={entry.id}>{entry.label}<b>{entry.count}</b></button>)}</nav>
     <section className="operation-bi-kpis client-history-kpis"><article><ListTodo /><span><small>Tarefas ativas</small><strong>{openTasks.length}</strong><em>{protocols.length} protocolo(s)</em></span></article><article><CheckCircle2 /><span><small>Tarefas finalizadas</small><strong>{completedTasks.length}</strong><em>concluídas ou canceladas</em></span></article><article><Headphones /><span><small>Atendimentos</small><strong>{attendances.length}</strong><em>{solvedAttendances.length} solucionado(s)</em></span></article><article><Sparkles /><span><small>Sugestões</small><strong>{suggestions.length}</strong><em>vinculadas ao ID</em></span></article><article><Bell /><span><small>Lembretes</small><strong>{reminders.length}</strong><em>{reminders.filter(({detail}) => !detail.seenAt).length} aberto(s)</em></span></article><article><ChartNoAxesCombined /><span><small>Acompanhamentos</small><strong>{tracking.length}</strong><em>Ativação, retenção e LIA</em></span></article><article><CalendarDays /><span><small>Compromissos</small><strong>{commitments.length + legacyAppointments.length}</strong><em>registros na agenda</em></span></article><article><UsersRound /><span><small>Redes vinculadas</small><strong>{networks.length}</strong><em>contas estratégicas</em></span></article><article><BadgeCheck /><span><small>Status do cadastro</small><strong>{customer?.status || "Não localizado"}</strong><em>{customer?.strategic ? "Cliente estratégico" : "Cadastro convencional"}</em></span></article></section>
     {tab === "overview" && <><div className="operation-bi-grid client-history-grid"><section className="operation-bi-panel"><header><span><BarChart3Icon />Passagens por funcionalidade</span><b>{Object.values(moduleCounts).reduce((sum, value) => sum + value, 0)} registros</b></header><div className="operation-status-bars">{Object.entries(moduleCounts).length ? Object.entries(moduleCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxModule * 100}%` }} /></i><strong>{count}</strong></div>) : <p>Não há passagens operacionais para este ID.</p>}</div></section><section className="operation-bi-panel"><header><span><Activity />Distribuição por status</span><b>{Object.keys(statusCounts).length} status</b></header><div className="operation-status-bars">{Object.entries(statusCounts).length ? Object.entries(statusCounts).map(([label, count]) => <div key={label}><span>{label}</span><i><b style={{ width: `${count / maxStatus * 100}%` }} /></i><strong>{count}</strong></div>) : <p>Não há status registrados.</p>}</div></section></div><section className="client-history-registration"><h2>Cadastro e vínculos</h2><dl><div><dt>ID pesquisado</dt><dd>{query}</dd></div><div><dt>Responsável comercial</dt><dd>{customer?.owner || "Não informado"}</dd></div><div><dt>CS responsável</dt><dd>{customer?.cs_owner || "Não informado"}</dd></div><div><dt>Suporte responsável</dt><dd>{customer?.support_owner || "Não informado"}</dd></div><div><dt>Produto / versão</dt><dd>{[customer?.project, customer?.product_version].filter(Boolean).join(" · ") || "Não informado"}</dd></div><div><dt>Rede</dt><dd>{networks.map((entry) => entry.title).join(", ") || "Sem vínculo com rede"}</dd></div><div><dt>Protocolos</dt><dd>{protocols.join(", ") || "Nenhum protocolo"}</dd></div><div><dt>Contato</dt><dd>{customer?.phone || customer?.email || "Não informado"}</dd></div></dl></section></>}
@@ -1741,6 +1766,16 @@ function PasswordChangeModal({ busy, onClose, onComplete }: { busy: boolean; onC
     finally { setSaving(false); }
   };
   return <ModalShell title="Alterar senha" subtitle="Use pelo menos 10 caracteres." onClose={onClose}><form className="form-grid" onSubmit={submit}><label className="wide">Senha atual<input name="currentPassword" type="password" required autoComplete="current-password" /></label><label>Nova senha<input name="newPassword" type="password" minLength={10} required autoComplete="new-password" /></label><label>Confirmar nova senha<input name="confirmation" type="password" minLength={10} required autoComplete="new-password" /></label>{error && <p className="form-error wide">{error}</p>}<div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || saving} type="submit">{saving ? "Alterando..." : "Salvar senha"}</button></div></form></ModalShell>;
+}
+
+function ConfigurationReturnBar({ target, onBack }: { target: { module: ModuleKey; commercialFlow: CommercialFlow; csFlow: CsFlow } | null; onBack: () => void }) {
+  if (!target) return null;
+  const label = target.module === "commercial"
+    ? commercialFlowLabel(target.commercialFlow)
+    : target.module === "cs"
+      ? target.csFlow === "enterprise" ? "Contas estratégicas" : target.csFlow === "evolution" ? "Acompanhamento Retenção" : "Acompanhamento Ativação"
+      : MODULES[target.module].label;
+  return <section className="configuration-return-bar"><span><Settings size={17} /><span><small>CONFIGURAÇÕES</small><strong>Você veio de {label}</strong></span></span><button type="button" className="secondary-button" onClick={onBack}><ArrowLeft size={16} /> Voltar para {label}</button></section>;
 }
 
 function PageHeader({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: React.ReactNode }) {
@@ -2307,6 +2342,11 @@ type CommercialLead = {
   follows: Array<{ type: string; text: string; createdAt: string; author?: string; temperature?: string }>;
   comments: Array<{ type?: string; text: string; createdAt: string; author?: string; temperature?: string }>;
   qualification?: "qualified" | "disqualified";
+  leadQualification?: "qualified" | "not-qualified";
+  postUrl?: string;
+  region?: string;
+  campaignId?: string;
+  campaignName?: string;
   onboarding?: { status: "sent" | "scheduled"; date?: string; time?: string; commitmentId?: string; sentAt: string; clientId?: string; version?: string; commerciallyApproved?: boolean };
 };
 
@@ -2323,6 +2363,7 @@ type DirectSale = {
   origin: string;
   version: string;
   seller: string;
+  leadQualification?: "qualified" | "not-qualified";
   products: Array<{ product: string; plan: string; unitValue: number; quantity: number }>;
   subtotalCents: number;
   discountCents: number;
@@ -2337,6 +2378,7 @@ const parseDirectSale = (value: string): DirectSale | null => {
     return {
       kind: "directSale", flow: parsed.flow, followUpTrack: parsed.followUpTrack === "lia" ? "lia" : parsed.followUpTrack === "retention" ? "retention" : parsed.flow === "retention" ? "retention" : "activation", saleId: parsed.saleId ?? "", saleDate: parsed.saleDate ?? "",
       name: parsed.name ?? "", origin: parsed.origin ?? "", version: parsed.version ?? "", seller: parsed.seller ?? "",
+      leadQualification: parsed.leadQualification === "qualified" || parsed.leadQualification === "not-qualified" ? parsed.leadQualification : undefined,
       products: Array.isArray(parsed.products) ? parsed.products : [], subtotalCents: Number(parsed.subtotalCents ?? 0),
       discountCents: Number(parsed.discountCents ?? 0), totalCents: Number(parsed.totalCents ?? 0),
     };
@@ -2359,6 +2401,8 @@ const parseCommercialLead = (value: string): CommercialLead | null => {
       follows: Array.isArray(parsed.follows) ? parsed.follows : [],
       comments: Array.isArray(parsed.comments) ? parsed.comments : [],
       qualification: parsed.qualification === "qualified" || parsed.qualification === "disqualified" ? parsed.qualification : undefined,
+      leadQualification: parsed.leadQualification === "qualified" || parsed.leadQualification === "not-qualified" ? parsed.leadQualification : undefined,
+      postUrl: parsed.postUrl ?? "", region: parsed.region ?? "", campaignId: parsed.campaignId ?? "", campaignName: parsed.campaignName ?? "",
       onboarding: parsed.onboarding && (parsed.onboarding.status === "sent" || parsed.onboarding.status === "scheduled") ? parsed.onboarding : undefined,
     };
   } catch { return null; }
@@ -2371,7 +2415,7 @@ const commercialLabelColor = (label: string) => {
   return palette[Math.abs(hash) % palette.length];
 };
 
-function CommercialLeadsModule({ flow, catalogs, customers, items, employees, agendaModule, currentUser, busy, canCreate, canEdit, canDelete, operate, onOpenSettings }: { flow: CommercialFlow; catalogs: CustomerCatalogOption[]; customers: Customer[]; items: WorkItem[]; employees: Employee[]; agendaModule: AgendaModuleData | null; currentUser: AppData["user"]; busy: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onOpenSettings?: () => void }) {
+function CommercialLeadsModule({ flow, catalogs, customers, items, marketingCampaigns, employees, agendaModule, currentUser, busy, canCreate, canEdit, canDelete, operate, onOpenSettings }: { flow: CommercialFlow; catalogs: CustomerCatalogOption[]; customers: Customer[]; items: WorkItem[]; marketingCampaigns: WorkItem[]; employees: Employee[]; agendaModule: AgendaModuleData | null; currentUser: AppData["user"]; busy: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onOpenSettings?: () => void }) {
   const [view, setView] = useState<"list" | "kanban">(flow === "retention" ? "kanban" : "list");
   const [query, setQuery] = useState("");
   const [owner, setOwner] = useState("all");
@@ -2502,7 +2546,7 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, employees, ag
     }} />)}
     {flow === "retention" && retentionBulkOpen && activeFunnel && <RetentionBulkModal funnel={activeFunnel.entry} stages={stages} employees={employees} currentUser={currentUser} catalogs={activeCatalogs} busy={busy} onClose={() => setRetentionBulkOpen(false)} onCreate={async (payload) => Boolean(await operate({ action: "createWorkItem", module: "commercial", recordType: commercialRecordType(flow), ...payload }, "Cliente cadastrado no CRM de retenção."))} />}
     {creating && !activeFunnel && <ModalShell title="Funil necessário" subtitle="Crie e ative um funil antes de cadastrar um lead." onClose={() => setCreating(false)}><div className="empty-state"><p>Não há funil ativo para esta funcionalidade.</p><div className="form-actions"><button className="primary-button" type="button" onClick={() => setCreating(false)}>Entendi</button></div></div></ModalShell>}
-    {selected && <CommercialLeadDrawer item={selected} customers={customers} employees={employees} busy={busy} canEdit={canEdit} canDelete={canDelete} startEditing={editRequested} startLossReason={lossReasonRequested} catalogs={activeCatalogs} agendaModule={agendaModule} funnels={allFunnels} funnel={activeFunnel?.entry} details={activeFunnel?.details} onClose={closeSelectedLead} onMoveStage={(stage) => moveLeadToStage(selected, stage)} onSave={async (payload) => {
+    {selected && <CommercialLeadDrawer item={selected} customers={customers} employees={employees} marketingCampaigns={marketingCampaigns} busy={busy} canEdit={canEdit} canDelete={canDelete} startEditing={editRequested} startLossReason={lossReasonRequested} catalogs={activeCatalogs} agendaModule={agendaModule} funnels={allFunnels} funnel={activeFunnel?.entry} details={activeFunnel?.details} onClose={closeSelectedLead} onMoveStage={(stage) => moveLeadToStage(selected, stage)} onSave={async (payload) => {
       const result = await operate({ action: "updateWorkItem", id: selected.id, title: selected.title, owner: selected.owner, amountCents: selected.amount_cents, version: selected.version, ...payload }, "Lead atualizado com sucesso.");
       if (result && selected.customer_id) {
         const detail = parseCommercialLead(String(payload.description ?? selected.description));
@@ -2544,8 +2588,8 @@ function DirectSalesView({ flow, catalogs, customers, items, currentUser, busy, 
       <label>Produto<select value={product} onChange={(event) => setProduct(event.target.value)}><option value="all">Todos</option>{products.map((entry) => <option key={entry}>{entry}</option>)}</select></label>
     </section>
     <section className="direct-sales-list panel">
-      <div className="direct-sales-row direct-sales-head"><span>ID · DATA</span><span>CLIENTE</span><span>ORIGEM</span><span>PRODUTOS</span><span>VERSÃO</span><span>VENDEDOR</span><span>DESCONTO</span><span>VALOR FINAL</span><span>AÇÕES</span></div>
-      {filtered.length === 0 ? <EmptyState text="Nenhuma venda direta encontrada para os filtros selecionados." /> : filtered.map(({ item, detail }) => <article className="direct-sales-row" key={item.id}><span><strong>{detail.saleId}</strong><small>{detail.saleDate ? new Date(`${detail.saleDate}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</small></span><span><strong>{detail.name}</strong><small>{commercialFlowLabel(flow)}</small></span><span>{detail.origin || "—"}</span><span><strong>{detail.products.length} produto(s)</strong><small>{detail.products.map((entry) => `${entry.product}${entry.plan ? ` · ${entry.plan}` : ""}`).join(", ")}</small></span><span>{detail.version || "—"}</span><span>{detail.seller || item.owner}</span><span>{detail.discountCents ? `− ${formatMoney(detail.discountCents)}` : "—"}</span><span className="direct-sale-value"><small>{formatMoney(detail.subtotalCents)}</small><strong>{formatMoney(detail.totalCents)}</strong></span><span className="direct-sales-actions">{canEdit && <button type="button" onClick={() => setEditing({ item, detail })} title="Editar venda direta" aria-label={`Editar venda direta ${detail.saleId}`}><Pencil size={14} /></button>}{canDelete && <button type="button" className="delete" onClick={() => void operate({ action: "deleteWorkItem", id: item.id }, "Venda direta excluída com sucesso.")} title="Excluir venda direta" aria-label={`Excluir venda direta ${detail.saleId}`}><Trash2 size={14} /></button>}{!canEdit && !canDelete && <small>—</small>}</span></article>)}
+      <div className="direct-sales-row direct-sales-head"><span>ID · DATA</span><span>CLIENTE</span><span>ORIGEM · QUALIFICAÇÃO</span><span>PRODUTOS</span><span>VERSÃO</span><span>VENDEDOR</span><span>DESCONTO</span><span>VALOR FINAL</span><span>AÇÕES</span></div>
+      {filtered.length === 0 ? <EmptyState text="Nenhuma venda direta encontrada para os filtros selecionados." /> : filtered.map(({ item, detail }) => <article className="direct-sales-row" key={item.id}><span><strong>{detail.saleId}</strong><small>{detail.saleDate ? new Date(`${detail.saleDate}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</small></span><span><strong>{detail.name}</strong><small>{commercialFlowLabel(flow)}</small></span><span><strong>{detail.origin || "—"}</strong><small>{detail.leadQualification === "qualified" ? "Lead qualificado" : detail.leadQualification === "not-qualified" ? "Lead não qualificado" : "Sem qualificação"}</small></span><span><strong>{detail.products.length} produto(s)</strong><small>{detail.products.map((entry) => `${entry.product}${entry.plan ? ` · ${entry.plan}` : ""}`).join(", ")}</small></span><span>{detail.version || "—"}</span><span>{detail.seller || item.owner}</span><span>{detail.discountCents ? `− ${formatMoney(detail.discountCents)}` : "—"}</span><span className="direct-sale-value"><small>{formatMoney(detail.subtotalCents)}</small><strong>{formatMoney(detail.totalCents)}</strong></span><span className="direct-sales-actions">{canEdit && <button type="button" onClick={() => setEditing({ item, detail })} title="Editar venda direta" aria-label={`Editar venda direta ${detail.saleId}`}><Pencil size={14} /></button>}{canDelete && <button type="button" className="delete" onClick={() => void operate({ action: "deleteWorkItem", id: item.id }, "Venda direta excluída com sucesso.")} title="Excluir venda direta" aria-label={`Excluir venda direta ${detail.saleId}`}><Trash2 size={14} /></button>}{!canEdit && !canDelete && <small>—</small>}</span></article>)}
     </section>
     {creating && <DirectSaleModal flow={flow} catalogs={catalogs} items={items} currentUser={currentUser} busy={busy} onClose={() => setCreating(false)} onSave={async (detail) => {
       const existingCustomer = customers.find((entry) => entry.trade_name.localeCompare(detail.name, "pt-BR", { sensitivity: "base" }) === 0 || entry.legal_name.localeCompare(detail.name, "pt-BR", { sensitivity: "base" }) === 0);
@@ -2580,6 +2624,7 @@ function DirectSaleModal({ flow, catalogs, items, currentUser, busy, sale, onClo
   const [name, setName] = useState(sale?.name ?? "");
   const [origin, setOrigin] = useState(sale?.origin ?? "");
   const [version, setVersion] = useState(sale?.version ?? "");
+  const [leadQualification, setLeadQualification] = useState<DirectSale["leadQualification"] | "">(sale?.leadQualification ?? "");
   const [productId, setProductId] = useState("");
   const [plan, setPlan] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -2601,22 +2646,23 @@ function DirectSaleModal({ flow, catalogs, items, currentUser, busy, sale, onClo
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const effectiveProducts=selectedProducts.length?selectedProducts:selectedProduct?[{product:selectedProduct.name,plan,unitValue:Number(selectedPlan?.value??0),quantity}]:[];
-    if (!name.trim() || !origin || !version || effectiveProducts.length === 0) return;
+    if (!name.trim() || !origin || !version || !leadQualification || effectiveProducts.length === 0) return;
     const effectiveSubtotal=effectiveProducts.reduce((sum,entry)=>sum+Math.round(entry.unitValue*entry.quantity*100),0);const effectiveDiscount=Math.min(effectiveSubtotal,discountCents);const effectiveTotal=Math.max(0,effectiveSubtotal-effectiveDiscount);
-    await onSave({ kind: "directSale", flow, followUpTrack, saleId, saleDate, name: name.trim(), origin, version, seller: sale?.seller || currentUser.displayName, products: effectiveProducts, subtotalCents:effectiveSubtotal, discountCents:effectiveDiscount, totalCents:effectiveTotal });
+    await onSave({ kind: "directSale", flow, followUpTrack, saleId, saleDate, name: name.trim(), origin, version, seller: sale?.seller || currentUser.displayName, leadQualification, products: effectiveProducts, subtotalCents:effectiveSubtotal, discountCents:effectiveDiscount, totalCents:effectiveTotal });
   };
   return <ModalShell title={sale ? "Editar venda direta" : "Adicionar venda direta"} subtitle={`${commercialFlowLabel(flow)} · ID ${saleId}${sale ? "" : " gerado automaticamente"}`} onClose={onClose}><form className="form-grid direct-sale-form" onSubmit={submit}>
     <label>Data *<input type="date" required value={saleDate} onChange={(event) => setSaleDate(event.target.value)} /></label><label>ID da venda<input readOnly value={saleId} /></label>
     <label className="wide">Nome *<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome do cliente ou empresa" /></label>
     <label>Origem *<select required value={origin} onChange={(event) => setOrigin(event.target.value)}><option value="">Selecionar origem</option>{origins.map((entry) => <option value={entry.name} key={entry.id}>{entry.name}</option>)}</select></label>
     <label>Versão *<select required value={version} onChange={(event) => setVersion(event.target.value)}><option value="">Selecionar versão</option>{versionOptions.map((entry) => <option key={entry}>{entry}</option>)}</select></label>
+    <label className="wide">Qualificação do lead *<select required value={leadQualification} onChange={(event) => setLeadQualification(event.target.value as DirectSale["leadQualification"] | "")}><option value="">Selecionar qualificação</option><option value="qualified">Qualificado</option><option value="not-qualified">Não qualificado</option></select><small>Esta classificação também será considerada nos indicadores comerciais.</small></label>
     <label className="wide direct-sale-routing">Tipo de acompanhamento *<select required value={followUpTrack} disabled={Boolean(sale)} onChange={(event) => setFollowUpTrack(event.target.value as FollowUpTrack)}><option value="activation">Acompanhamento Ativação</option><option value="retention">Acompanhamento Retenção</option><option value="lia">Acompanhamento LIA</option></select><small>{sale ? "O encaminhamento original é preservado durante a edição." : "Ao salvar, o cliente será encaminhado automaticamente para a fila selecionada."}</small></label>
     <fieldset className="wide direct-sale-products"><legend>Produtos da venda *</legend><div className="direct-sale-product-picker"><label>Produto<select value={productId} onChange={(event) => { setProductId(event.target.value); setPlan(""); }}><option value="">Selecionar produto</option>{productCatalogs.map((entry) => <option value={entry.id} key={entry.id}>{entry.name}</option>)}</select></label><label>Plano / versão<select value={plan} onChange={(event) => setPlan(event.target.value)} disabled={!selectedProduct}><option value="">Sem plano</option>{plans.map((entry) => <option value={entry.name} key={entry.name}>{entry.name} · R$ {entry.value}</option>)}</select></label><label>Valor unitário<input readOnly value={selectedProduct ? formatMoney(Math.round(Number(selectedPlan?.value ?? 0) * 100)) : "R$ 0,00"} /></label><label>Qtd.<input type="number" min="1" value={quantity} onChange={(event) => setQuantity(Math.max(1, Number(event.target.value) || 1))} /></label><button type="button" className="secondary-button" disabled={!selectedProduct} onClick={addProduct}><Plus size={15} /> Adicionar</button></div>
       <div className="direct-sale-selected-products">{selectedProducts.length === 0 ? <p>Adicione um ou mais produtos para calcular o valor.</p> : selectedProducts.map((entry, index) => <article key={`${entry.product}-${entry.plan}-${index}`}><span><strong>{entry.product}</strong><small>{entry.plan || "Sem plano"} · {entry.quantity} un.</small></span><b>{formatMoney(Math.round(entry.unitValue * entry.quantity * 100))}</b><button type="button" aria-label="Remover produto" onClick={() => setSelectedProducts((current) => current.filter((_, currentIndex) => currentIndex !== index))}><Trash2 size={15} /></button></article>)}</div>
     </fieldset>
     <label>Subtotal<input readOnly value={formatMoney(subtotalCents)} /></label><label>Desconto (R$)<input type="number" min="0" step="0.01" value={discount || ""} onChange={(event) => setDiscount(Math.max(0, Number(event.target.value) || 0))} placeholder="0,00" /></label>
     <div className="direct-sale-final-value wide"><span>Valor final da venda</span><strong>{formatMoney(totalCents)}</strong><small>{discountCents > 0 ? `${formatMoney(discountCents)} de desconto aplicado` : "Sem desconto aplicado"}</small></div>
-    <div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy || !name.trim() || !origin || !version || (selectedProducts.length === 0&&!selectedProduct)}><Save size={16} /> {busy ? "Salvando..." : sale ? "Salvar alterações" : "Salvar venda direta"}</button></div>
+    <div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy || !name.trim() || !origin || !version || !leadQualification || (selectedProducts.length === 0&&!selectedProduct)}><Save size={16} /> {busy ? "Salvando..." : sale ? "Salvar alterações" : "Salvar venda direta"}</button></div>
   </form></ModalShell>;
 }
 
@@ -2753,13 +2799,19 @@ function LeadLabelPicker({ selected, labels, busy, onClose, onChange }: { select
   return <div className="modal-backdrop label-picker-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal lead-label-modal" role="dialog" aria-modal="true" aria-label="Selecionar etiquetas"><div className="modal-head"><div><span className="eyebrow">ETIQUETAS</span><h2>Selecionar etiquetas</h2><p>Escolha uma ou mais sinalizações para o card.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18} /></button></div><div className="label-picker-options">{labels.map((entry) => { const checked = values.includes(entry.name); return <button type="button" className={checked ? "selected" : ""} key={entry.id} onClick={() => toggle(entry.name)}><i style={{ background: commercialLabelColor(entry.name) }} />{checked && <Check size={14} />}{entry.name}</button>; })}</div><div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button type="button" className="primary-button" disabled={busy} onClick={() => onChange(values)}><Save size={15} /> Salvar etiquetas</button></div></section></div>;
 }
 
-function CommercialLeadDrawer({ item, customers, employees, catalogs, agendaModule, funnels, funnel, details, busy, canEdit, canDelete, startEditing, startLossReason, onClose, onMoveStage, onSave, onAgendaOperation, onDelete }: { item: WorkItem; customers: Customer[]; employees: Employee[]; catalogs: CustomerCatalogOption[]; agendaModule: AgendaModuleData | null; funnels: Array<{ entry: CustomerCatalogOption; details: CommercialDetails }>; funnel?: CustomerCatalogOption; details?: CommercialDetails; busy: boolean; canEdit: boolean; canDelete: boolean; startEditing: boolean; startLossReason: boolean; onClose: () => void; onMoveStage?: (stage: string) => Promise<void>; onSave: (payload: Record<string, unknown>) => Promise<OperationResult>; onAgendaOperation: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onDelete: () => Promise<void> }) {
+function CommercialLeadDrawer({ item, customers, employees, marketingCampaigns, catalogs, agendaModule, funnels, funnel, details, busy, canEdit, canDelete, startEditing, startLossReason, onClose, onMoveStage, onSave, onAgendaOperation, onDelete }: { item: WorkItem; customers: Customer[]; employees: Employee[]; marketingCampaigns: WorkItem[]; catalogs: CustomerCatalogOption[]; agendaModule: AgendaModuleData | null; funnels: Array<{ entry: CustomerCatalogOption; details: CommercialDetails }>; funnel?: CustomerCatalogOption; details?: CommercialDetails; busy: boolean; canEdit: boolean; canDelete: boolean; startEditing: boolean; startLossReason: boolean; onClose: () => void; onMoveStage?: (stage: string) => Promise<void>; onSave: (payload: Record<string, unknown>) => Promise<OperationResult>; onAgendaOperation: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onDelete: () => Promise<void> }) {
   const lead = parseCommercialLead(item.description) ?? { kind: "commercialLead", phone: "", source: "", seller: item.owner, funnel: funnel?.name ?? "", stage: "", temperature: "", labels: [], products: [], score: 0, entryDate: "", customer: item.customer_name, follows: [], comments: [] };
   const flow = commercialFlowFromRecordType(item.record_type);
   const stages = details?.stages?.filter((entry) => entry.name.trim()) ?? [];
   const labelCatalogs = catalogs.filter((entry) => entry.catalog === "commercialLabel");
   const followTypes = catalogs.filter((entry) => entry.catalog === "followUpType");
   const lossReasons = catalogs.filter((entry) => entry.catalog === "lossReason");
+  const publishedCampaigns = useMemo(() => marketingCampaigns.flatMap((campaign) => {
+    try {
+      const parsed = JSON.parse(campaign.description) as { kind?: string; name?: string };
+      return parsed.kind === "marketingCampaign" && campaign.status === "Publicada" ? [{ id: campaign.id, name: parsed.name || campaign.title }] : [];
+    } catch { return []; }
+  }).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")), [marketingCampaigns]);
   const crmFunnels = funnels.filter((entry) => entry.details.functionality === commercialFlowLabel("crm") || entry.details.functionality === commercialFlowLabel("retention"));
   const transferableFunnels = crmFunnels.filter((entry) => entry.entry.name !== lead.funnel);
   const [editing, setEditing] = useState(startEditing);
@@ -2774,6 +2826,7 @@ function CommercialLeadDrawer({ item, customers, employees, catalogs, agendaModu
   const [followText, setFollowText] = useState("");
   const [followType, setFollowType] = useState("");
   const [commentText, setCommentText] = useState("");
+  const [leadCampaignProfile, setLeadCampaignProfile] = useState({ qualification: lead.leadQualification ?? "", postUrl: lead.postUrl ?? "", region: lead.region ?? "", campaignId: lead.campaignId ?? "" });
   const [linkCopied, setLinkCopied] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [followUpTrack, setFollowUpTrack] = useState<FollowUpTrack>(flow === "retention" ? "retention" : "activation");
@@ -2848,6 +2901,11 @@ function CommercialLeadDrawer({ item, customers, employees, catalogs, agendaModu
     return days;
   })();
   const saveLead = async (next: CommercialLead) => onSave({ description: JSON.stringify(next) });
+  const saveCampaignProfile = async () => {
+    const campaignName = publishedCampaigns.find((entry) => entry.id === leadCampaignProfile.campaignId)?.name ?? "";
+    const qualification = leadCampaignProfile.qualification === "qualified" || leadCampaignProfile.qualification === "not-qualified" ? leadCampaignProfile.qualification : undefined;
+    await saveLead({ ...lead, leadQualification: qualification, postUrl: leadCampaignProfile.postUrl.trim(), region: leadCampaignProfile.region, campaignId: leadCampaignProfile.campaignId, campaignName, follows: [...lead.follows, { type: "Dados de campanha", text: `Qualificação: ${qualification === "qualified" ? "Qualificado" : qualification === "not-qualified" ? "Não qualificado" : "Não informada"} · Campanha: ${campaignName || "Não informada"} · Região: ${leadCampaignProfile.region || "Não informada"}.`, createdAt: new Date().toISOString(), author: lead.seller || item.owner }] });
+  };
   const qualifiedStage = stages.find((entry) => /qualificado|conclu/i.test(entry.name))?.name ?? "Qualificado";
   const wonStage = stages.find((entry) => entry.won || /ganho|conclu/i.test(entry.name))?.name ?? lead.stage;
   const lostStage = stages.find((entry) => entry.lost || /perd/i.test(entry.name))?.name ?? "Perdido";
@@ -2902,6 +2960,7 @@ function CommercialLeadDrawer({ item, customers, employees, catalogs, agendaModu
   return <div className="drawer-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><aside className="drawer commercial-lead-drawer"><header className="drawer-head simple"><div><span className="eyebrow">{commercialFlowLabel(flow)} · {lead.stage || "Sem etapa"}</span><h2>{item.title}</h2><p>{lead.customer || "Lead sem cliente vinculado"}</p></div><div className="lead-header-actions"><button className="secondary-button commercial-copy-link" type="button" onClick={() => void copyLeadLink()}><ClipboardCheck size={15} /> {linkCopied ? "Link copiado" : "Copiar link"}</button><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div></header><div className="commercial-lead-drawer-content">
     <section className="lead-summary-grid"><div><span>Contato</span><strong>{lead.phone || "Não informado"}</strong><small>{lead.source || "Origem não definida"}</small></div><div><span>Responsável</span><strong>{lead.seller || item.owner || "Não definido"}</strong><small>{lead.temperature || "Sem temperatura"}</small></div><div><span>Valor estimado</span><strong>{item.amount_cents ? formatMoney(item.amount_cents) : "—"}</strong><small>Score {"★".repeat(lead.score || 0) || "—"}</small></div>{lead.onboarding?.clientId && <div className="lead-client-id-summary"><span>ID do cliente</span><strong>{lead.onboarding.clientId}</strong><button type="button" onClick={() => void navigator.clipboard?.writeText(lead.onboarding?.clientId ?? "")}>Copiar ID</button></div>}</section>
     <section className="lead-drawer-section lead-labels-section"><div className="panel-header"><div><span className="eyebrow">ETIQUETAS</span><h3>Classificar lead</h3><p>As etiquetas selecionadas ficam visíveis no card.</p></div><button type="button" className="secondary-button" disabled={!canEdit || busy || labelCatalogs.length === 0} onClick={() => setLabelPicker(true)}><Plus size={15} /> Selecionar etiquetas</button></div>{lead.labels.length > 0 && <div className="selected-label-list">{lead.labels.map((label) => <span key={label} style={{ "--label-color": commercialLabelColor(label) } as CSSProperties}><i />{label}</span>)}</div>}</section>
+    {flow === "crm" && <section className="lead-drawer-section commercial-campaign-profile"><span className="eyebrow">ORIGEM DA CAMPANHA</span><h3>Qualificação e atribuição do lead</h3><p>Classifique o lead e relacione a campanha publicada que gerou a oportunidade.</p><div className="commercial-campaign-fields"><label>Qualificação do lead<select value={leadCampaignProfile.qualification} onChange={(event) => setLeadCampaignProfile((current) => ({ ...current, qualification: event.target.value as "" | "qualified" | "not-qualified" }))}><option value="">Selecionar</option><option value="qualified">Qualificado</option><option value="not-qualified">Não qualificado</option></select></label><label>Link do post<input type="url" value={leadCampaignProfile.postUrl} onChange={(event) => setLeadCampaignProfile((current) => ({ ...current, postUrl: event.target.value }))} placeholder="https://..." /></label><label>Região<select value={leadCampaignProfile.region} onChange={(event) => setLeadCampaignProfile((current) => ({ ...current, region: event.target.value }))}><option value="">Selecionar</option><option>Norte</option><option>Nordeste</option><option>Centro-Oeste</option><option>Sudeste</option><option>Sul</option><option>Internacional</option></select></label><label>Campanha<select value={leadCampaignProfile.campaignId} onChange={(event) => setLeadCampaignProfile((current) => ({ ...current, campaignId: event.target.value }))}><option value="">Selecionar campanha publicada</option>{publishedCampaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}</select>{publishedCampaigns.length === 0 && <small>Nenhuma campanha publicada no Marketing.</small>}</label></div><div className="drawer-actions"><button type="button" className="primary-button" disabled={!canEdit || busy} onClick={() => void saveCampaignProfile()}><Save size={15} /> Salvar dados da campanha</button></div></section>}
     {flow === "qualification" && <section className="lead-drawer-section commercial-outcome-section"><span className="eyebrow">VALIDAÇÃO</span><h3>Qualificação do lead</h3>{!qualifying && !lossPrompt ? <div className="drawer-actions"><button className="secondary-button danger-action" disabled={!canEdit || busy} onClick={() => setLossPrompt(true)}>Desqualificado</button><button className="primary-button" disabled={!canEdit || busy} onClick={() => setQualifying(true)}>Qualificado (com envio para CRM)</button></div> : qualifying ? <div className="lead-control-grid"><label className="wide">Enviar para o CRM<select value={targetFunnelId} onChange={(event) => setTargetFunnelId(event.target.value)}><option value="">Selecione o CRM</option>{crmFunnels.map(({ entry }) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><div className="drawer-actions wide"><button className="secondary-button" onClick={() => setQualifying(false)}>Cancelar</button><button className="primary-button" disabled={!targetFunnelId || busy} onClick={() => void qualifyAndCopy()}>Enviar para o CRM</button></div></div> : null}</section>}
     {(flow === "crm" || lossPrompt) && <section className="lead-drawer-section commercial-outcome-section">{flow === "crm" && !lossPrompt && <><span className="eyebrow">RESULTADO COMERCIAL</span><h3>Fechar oportunidade</h3><div className="drawer-actions"><button className="primary-button" disabled={!canEdit || busy} onClick={() => { void saveLead({ ...lead, stage: wonStage, follows: [...lead.follows, { type: "Resultado comercial", text: "Lead marcado como ganho. Comissão comercial disponibilizada para conferência.", createdAt: new Date().toISOString() }] }).then((saved) => { if (saved) setShowOnboarding(true); }); }}>Ganho</button><button className="secondary-button danger-action" disabled={!canEdit || busy} onClick={() => setLossPrompt(true)}>Perdido</button></div></>}{lossPrompt && <div className="lead-control-grid"><label className="wide">Motivo da perda<select value={lossReason} onChange={(event) => setLossReason(event.target.value)}><option value="">Selecione o motivo</option>{lossReasons.map((entry) => <option key={entry.id}>{entry.name}</option>)}</select>{lossReasons.length === 0 && <small>Cadastre os motivos em Comercial › Configuração › Motivos de perda.</small>}</label><div className="drawer-actions wide"><button className="secondary-button" onClick={() => setLossPrompt(false)}>Cancelar</button><button className="secondary-button danger-action" disabled={!lossReason || busy} onClick={() => void confirmLoss()}>Confirmar perda</button></div></div>}</section>}
     {flow === "crm" && showOnboarding && <section className="lead-drawer-section commercial-onboarding-box">

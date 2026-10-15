@@ -78,7 +78,7 @@ export default function CancellationsModule({items,customers,catalogs,employees,
   const [dragging,setDragging]=useState<WorkItem|null>(null);
   const [showIndicators,setShowIndicators]=useState(false);
   const records=useMemo(()=>items.filter(item=>item.module==="cancellations").map(item=>({item,detail:parse(item.description)})).filter((entry):entry is {item:WorkItem;detail:CancellationDetail}=>Boolean(entry.detail)),[items]);
-  useEffect(()=>{const requested=new URLSearchParams(window.location.search).get("cancellation");if(!requested)return;const match=records.find(entry=>entry.item.id===requested);if(match){setStage(match.item.status);setSelected(match.item)}},[records]);
+  useEffect(()=>{const url=new URL(window.location.href);const requested=url.searchParams.get("cancellation");if(!requested)return;const match=records.find(entry=>entry.item.id===requested);if(!match)return;setStage(match.item.status);setSelected(match.item);url.searchParams.delete("cancellation");window.history.replaceState({},"",url)},[records]);
   const stageCounts=Object.fromEntries(STAGES.map(entry=>[entry.id,records.filter(record=>record.item.status===entry.id).length])) as Record<string,number>;
   const owners=[...new Set(records.flatMap(({item,detail})=>[item.owner,detail.csOwner]).filter(Boolean))];
   const recordSector=(item:WorkItem,detail:CancellationDetail)=>employees.find(entry=>entry.displayName===(detail.csOwner||item.owner))?.departmentName||item.team||"Sem setor";
