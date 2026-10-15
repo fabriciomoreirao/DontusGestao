@@ -1407,14 +1407,6 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("company_notice_reads", (string)null);
                 });
 
-            modelBuilder.Entity("Dontus.Operations.Domain.Customer", b =>
-                {
-                    b.HasOne("Dontus.Operations.Domain.WorkItem", null)
-                        .WithMany()
-                        .HasForeignKey("StrategicNetworkId")
-                        .OnDelete(DeleteBehavior.SetNull);
-                });
-
             modelBuilder.Entity("Dontus.Operations.Domain.CorporateTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2044,6 +2036,61 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.HasIndex("UserId", "ExpiresAt");
 
                     b.ToTable("local_auth_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.ServiceRequestAiSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("EncryptedApiKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("SystemPrompt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("TimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("service_request_ai_settings", (string)null);
                 });
 
             modelBuilder.Entity("Dontus.Operations.Domain.Suggestion", b =>
@@ -3343,6 +3390,14 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .HasForeignKey("TypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.Customer", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.WorkItem", null)
+                        .WithMany()
+                        .HasForeignKey("StrategicNetworkId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Dontus.Operations.Domain.EmployeeSupervision", b =>

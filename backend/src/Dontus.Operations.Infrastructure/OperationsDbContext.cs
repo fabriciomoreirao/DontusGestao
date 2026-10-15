@@ -64,6 +64,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<SuggestionAttachment> SuggestionAttachments => Set<SuggestionAttachment>();
     public DbSet<CompanyNotice> CompanyNotices => Set<CompanyNotice>();
     public DbSet<CompanyNoticeRead> CompanyNoticeReads => Set<CompanyNoticeRead>();
+    public DbSet<ServiceRequestAiSetting> ServiceRequestAiSettings => Set<ServiceRequestAiSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -157,6 +158,17 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.Description).HasMaxLength(600);
             entity.HasIndex(x => new { x.Catalog, x.Name }).IsUnique();
             entity.HasIndex(x => new { x.Catalog, x.Active });
+        });
+
+        ConfigureEntity(modelBuilder.Entity<ServiceRequestAiSetting>(), "service_request_ai_settings");
+        modelBuilder.Entity<ServiceRequestAiSetting>(entity =>
+        {
+            entity.Property(x => x.Provider).HasMaxLength(40);
+            entity.Property(x => x.Endpoint).HasMaxLength(1000);
+            entity.Property(x => x.Model).HasMaxLength(160);
+            entity.Property(x => x.EncryptedApiKey).HasColumnType("text");
+            entity.Property(x => x.SystemPrompt).HasColumnType("text");
+            entity.Property(x => x.UpdatedBy).HasMaxLength(254);
         });
 
         ConfigureEntity(modelBuilder.Entity<AgendaCalendar>(), "agenda_calendars");

@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Encodings.Web;
@@ -8,6 +10,7 @@ using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Dontus.Operations.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
@@ -485,7 +488,110 @@ app.MapGet("/api/public-service-requests", (HttpContext context, IConfiguration 
     });
 }).RequireRateLimiting("public-service-requests");
 
-app.MapPost("/api/public-service-requests", async (HttpContext context, IConfiguration configuration, OperationsDbContext db, CancellationToken cancellationToken) =>
+app.MapGet("/api/service-request-ai-settings", async (
+    ClaimsPrincipal principal,
+    IAccessControlService accessControl,
+    OperationsDbContext db,
+    IDataProtectionProvider protectionProvider,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    actor.RequirePermission("serviceRequests", "view");
+    var setting = await db.ServiceRequestAiSettings.AsNoTracking().OrderByDescending(entry => entry.UpdatedAt).FirstOrDefaultAsync(cancellationToken);
+    var hasApiKey = setting is not null && !string.IsNullOrWhiteSpace(setting.EncryptedApiKey);
+    return Results.Ok(new
+    {
+        enabled = setting?.Enabled ?? false,
+        provider = setting?.Provider ?? "openai",
+        endpoint = setting?.Endpoint ?? "https://api.openai.com/v1/chat/completions",
+        model = setting?.Model ?? "gpt-4.1-mini",
+        systemPrompt = string.IsNullOrWhiteSpace(setting?.SystemPrompt) ? DefaultServiceRequestAiPrompt() : setting.SystemPrompt,
+        timeoutSeconds = setting?.TimeoutSeconds ?? 20,
+        hasApiKey,
+        apiKeyMasked = hasApiKey ? MaskProtectedApiKey(setting!.EncryptedApiKey, protectionProvider) : "",
+        updatedAt = setting?.UpdatedAt,
+        updatedBy = setting?.UpdatedBy ?? "",
+    });
+}).RequireAuthorization().RequireRateLimiting("operations");
+
+app.MapPut("/api/service-request-ai-settings", async (
+    ServiceRequestAiSettingsRequest request,
+    ClaimsPrincipal principal,
+    IAccessControlService accessControl,
+    OperationsDbContext db,
+    IDataProtectionProvider protectionProvider,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    if (!actor.HasPermission("serviceRequests", "manage") && !actor.HasPermission("serviceRequests", "edit"))
+        throw new DomainException("Seu acesso não permite configurar a integração de IA dos chamados.", 403);
+
+    var provider = (request.Provider ?? "openai").Trim().ToLowerInvariant();
+    if (provider is not ("openai" or "azure-openai" or "compatible"))
+        throw new DomainException("Selecione um provedor de IA válido.");
+    if (!Uri.TryCreate(request.Endpoint?.Trim(), UriKind.Absolute, out var endpoint) || endpoint.Scheme is not ("http" or "https"))
+        throw new DomainException("Informe um endpoint HTTP ou HTTPS válido.");
+    var model = request.Model?.Trim() ?? "";
+    if (model.Length is < 2 or > 160)
+        throw new DomainException("Informe o modelo usado pela integração.");
+    var prompt = string.IsNullOrWhiteSpace(request.SystemPrompt) ? DefaultServiceRequestAiPrompt() : request.SystemPrompt.Trim();
+    if (prompt.Length > 6000)
+        throw new DomainException("O prompt pode ter no máximo 6.000 caracteres.");
+    var timeoutSeconds = Math.Clamp(request.TimeoutSeconds ?? 20, 5, 90);
+
+    var setting = await db.ServiceRequestAiSettings.OrderByDescending(entry => entry.UpdatedAt).FirstOrDefaultAsync(cancellationToken);
+    if (setting is null)
+    {
+        setting = new ServiceRequestAiSetting { UpdatedBy = actor.Email };
+        db.ServiceRequestAiSettings.Add(setting);
+    }
+    setting.Provider = provider;
+    setting.Endpoint = endpoint.ToString();
+    setting.Model = model;
+    setting.SystemPrompt = prompt;
+    setting.TimeoutSeconds = timeoutSeconds;
+    setting.Enabled = request.Enabled;
+    setting.UpdatedBy = actor.Email;
+    setting.UpdatedAt = DateTimeOffset.UtcNow;
+    setting.Version++;
+    if (request.ClearApiKey) setting.EncryptedApiKey = "";
+    if (!string.IsNullOrWhiteSpace(request.ApiKey))
+        setting.EncryptedApiKey = protectionProvider.CreateProtector("Dontus.ServiceRequests.AiCredentials.v1").Protect(request.ApiKey.Trim());
+    if (setting.Enabled && string.IsNullOrWhiteSpace(setting.EncryptedApiKey))
+        throw new DomainException("Informe a chave da API antes de ativar a integração.");
+
+    db.AuditEvents.Add(new AuditEvent
+    {
+        ActorEmail = actor.Email,
+        Action = "UpdateAiIntegration",
+        Resource = "service_request_ai_settings",
+        ResourceId = setting.Id.ToString(),
+        Module = "serviceRequests",
+        DetailsJson = JsonSerializer.Serialize(new { setting.Provider, setting.Endpoint, setting.Model, setting.Enabled, setting.TimeoutSeconds }),
+        Result = "Sucesso",
+    });
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.Ok(new { saved = true, hasApiKey = !string.IsNullOrWhiteSpace(setting.EncryptedApiKey), updatedAt = setting.UpdatedAt });
+}).RequireAuthorization().RequireRateLimiting("operations");
+
+app.MapPost("/api/service-request-ai-settings/test", async (
+    ClaimsPrincipal principal,
+    IAccessControlService accessControl,
+    OperationsDbContext db,
+    IDataProtectionProvider protectionProvider,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    if (!actor.HasPermission("serviceRequests", "manage") && !actor.HasPermission("serviceRequests", "edit"))
+        throw new DomainException("Seu acesso não permite testar a integração de IA dos chamados.", 403);
+    var result = await ClassifyServiceRequestAsync("Bug", "O sistema apresenta erro ao salvar uma configuração e precisa de análise técnica.", db, protectionProvider, httpClientFactory, cancellationToken);
+    return result.Source == "external"
+        ? Results.Ok(new { connected = true, classification = result.Stage, priority = result.Priority, reason = result.Reason, confidence = result.Confidence })
+        : Results.Problem(statusCode: 422, title: "Integração não validada", detail: result.IntegrationError ?? "Ative e salve a integração antes de testar.");
+}).RequireAuthorization().RequireRateLimiting("operations");
+
+app.MapPost("/api/public-service-requests", async (HttpContext context, IConfiguration configuration, OperationsDbContext db, IDataProtectionProvider protectionProvider, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     if (!ValidServiceRequestKey(context, configuration))
         return Results.Problem(statusCode: 401, title: "Chave inválida", detail: "Informe a chave da integração no cabeçalho X-API-Key.");
@@ -513,7 +619,7 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
 
     var customers = await db.Customers.AsNoTracking().ToListAsync(cancellationToken);
     var customer = customers.FirstOrDefault(entry => PublicCustomerCode(entry.DocumentMasked) == clientId);
-    var classification = ClassifyServiceRequest(selectedType, summary);
+    var classification = await ClassifyServiceRequestAsync(selectedType, summary, db, protectionProvider, httpClientFactory, cancellationToken);
     var item = new WorkItem
     {
         Module = "serviceRequests",
@@ -542,7 +648,7 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
     item.Description = JsonSerializer.Serialize(new
     {
         kind = "serviceRequest", protocol, clientId, fullName, whatsapp, selectedType, summary,
-        aiClassification = classification.Stage, aiReason = classification.Reason, aiConfidence = classification.Confidence,
+        aiClassification = classification.Stage, aiReason = classification.Reason, aiConfidence = classification.Confidence, aiSource = classification.Source,
         attachments, comments = Array.Empty<object>(), history = new[] { new { text = $"Chamado recebido e classificado como {classification.Stage}.", at = DateTimeOffset.UtcNow, by = "Triagem inteligente" } },
         submittedAt = DateTimeOffset.UtcNow,
     });
@@ -1659,23 +1765,112 @@ static string PublicCustomerCode(string value)
     return digits.Length >= 6 ? digits[^6..] : "";
 }
 
-static (string Stage, string Priority, string Reason, double Confidence) ClassifyServiceRequest(string selectedType, string summary)
+static ServiceRequestClassification ClassifyServiceRequest(string selectedType, string summary)
 {
     var text = $"{selectedType} {summary}".ToLowerInvariant();
-    if (Regex.IsMatch(text, "cancel|encerrar contrato|rescis")) return ("Cancelamento", "P0", "Foram identificados sinais explícitos de cancelamento.", .98);
-    if (Regex.IsMatch(text, "erro|bug|falha|integra|api|desenvolv")) return ("Desenvolvimento", "P1", "O relato indica erro técnico, integração ou necessidade de desenvolvimento.", .94);
-    if (Regex.IsMatch(text, "reclama|insatis|demora|ruim|problema")) return ("Reclamação", "P1", "O texto apresenta insatisfação ou reclamação sobre o atendimento/produto.", .92);
-    if (Regex.IsMatch(text, "elog|parab[eé]ns|excelente|agradec")) return ("Elogio", "P3", "O conteúdo possui manifestação positiva ou elogio.", .96);
-    if (Regex.IsMatch(text, "sugest|melhoria|ideia|poderia")) return ("Sugestão", "P3", "O cliente propõe uma melhoria ou nova ideia.", .93);
-    if (Regex.IsMatch(text, "contrat|comprar|adquirir|nova unidade|proposta")) return ("Nova contratação", "P1", "Foi detectado interesse comercial em nova contratação.", .94);
-    if (Regex.IsMatch(text, "tarefa|solicita|ajustar|configurar|cadastro")) return ("Tarefa", "P2", "A solicitação descreve uma ação operacional executável.", .86);
+    if (Regex.IsMatch(text, "cancel|encerrar contrato|rescis")) return new("Cancelamento", "P0", "Foram identificados sinais explícitos de cancelamento.", .98, "local");
+    if (Regex.IsMatch(text, "erro|bug|falha|integra|api|desenvolv")) return new("Desenvolvimento", "P1", "O relato indica erro técnico, integração ou necessidade de desenvolvimento.", .94, "local");
+    if (Regex.IsMatch(text, "reclama|insatis|demora|ruim|problema")) return new("Reclamação", "P1", "O texto apresenta insatisfação ou reclamação sobre o atendimento/produto.", .92, "local");
+    if (Regex.IsMatch(text, "elog|parab[eé]ns|excelente|agradec")) return new("Elogio", "P3", "O conteúdo possui manifestação positiva ou elogio.", .96, "local");
+    if (Regex.IsMatch(text, "sugest|melhoria|ideia|poderia")) return new("Sugestão", "P3", "O cliente propõe uma melhoria ou nova ideia.", .93, "local");
+    if (Regex.IsMatch(text, "contrat|comprar|adquirir|nova unidade|proposta")) return new("Nova contratação", "P1", "Foi detectado interesse comercial em nova contratação.", .94, "local");
+    if (Regex.IsMatch(text, "tarefa|solicita|ajustar|configurar|cadastro")) return new("Tarefa", "P2", "A solicitação descreve uma ação operacional executável.", .86, "local");
     var stage = selectedType switch
     {
         "Bug" => "Desenvolvimento",
         "Dúvida sobre o sistema" => "Tarefa",
         _ => selectedType,
     };
-    return (stage, "P2", "Classificação baseada no tipo selecionado e no contexto informado.", .78);
+    return new(stage, "P2", "Classificação baseada no tipo selecionado e no contexto informado.", .78, "local");
+}
+
+static async Task<ServiceRequestClassification> ClassifyServiceRequestAsync(
+    string selectedType,
+    string summary,
+    OperationsDbContext db,
+    IDataProtectionProvider protectionProvider,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken)
+{
+    var fallback = ClassifyServiceRequest(selectedType, summary);
+    var setting = await db.ServiceRequestAiSettings.AsNoTracking().OrderByDescending(entry => entry.UpdatedAt).FirstOrDefaultAsync(cancellationToken);
+    if (setting is null || !setting.Enabled)
+        return fallback;
+    if (string.IsNullOrWhiteSpace(setting.EncryptedApiKey))
+        return fallback with { Source = "local-fallback", IntegrationError = "A integração está ativa, mas não possui uma chave de API salva." };
+
+    try
+    {
+        var apiKey = protectionProvider.CreateProtector("Dontus.ServiceRequests.AiCredentials.v1").Unprotect(setting.EncryptedApiKey);
+        var payload = new Dictionary<string, object?>
+        {
+            ["messages"] = new object[]
+            {
+                new { role = "system", content = string.IsNullOrWhiteSpace(setting.SystemPrompt) ? DefaultServiceRequestAiPrompt() : setting.SystemPrompt },
+                new { role = "user", content = $"Tipo informado: {selectedType}\nDescrição: {summary}" },
+            },
+            ["temperature"] = 0.1,
+        };
+        if (!string.Equals(setting.Provider, "azure-openai", StringComparison.OrdinalIgnoreCase))
+            payload["model"] = setting.Model;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, setting.Endpoint) { Content = JsonContent.Create(payload) };
+        if (string.Equals(setting.Provider, "azure-openai", StringComparison.OrdinalIgnoreCase))
+            request.Headers.TryAddWithoutValidation("api-key", apiKey);
+        else
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+        var client = httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(Math.Clamp(setting.TimeoutSeconds, 5, 90));
+        using var response = await client.SendAsync(request, cancellationToken);
+        var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"O provedor respondeu HTTP {(int)response.StatusCode}.");
+
+        using var responseJson = JsonDocument.Parse(responseText);
+        var content = responseJson.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+        content = Regex.Replace(content.Trim(), "^```(?:json)?\\s*|\\s*```$", "", RegexOptions.IgnoreCase);
+        using var classificationJson = JsonDocument.Parse(content);
+        var root = classificationJson.RootElement;
+        var stage = root.TryGetProperty("stage", out var stageValue) ? stageValue.GetString()?.Trim() ?? "" : "";
+        var priority = root.TryGetProperty("priority", out var priorityValue) ? priorityValue.GetString()?.Trim().ToUpperInvariant() ?? "" : "";
+        var reason = root.TryGetProperty("reason", out var reasonValue) ? reasonValue.GetString()?.Trim() ?? "" : "";
+        var confidence = root.TryGetProperty("confidence", out var confidenceValue) && confidenceValue.TryGetDouble(out var parsedConfidence) ? parsedConfidence : .8;
+        var allowedStages = new[] { "Desenvolvimento", "Tarefa", "Reclamação", "Sugestão", "Elogio", "Cancelamento", "Nova contratação" };
+        if (!allowedStages.Contains(stage, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException("A IA retornou uma etapa que não existe na Central de Chamados.");
+        stage = allowedStages.First(value => string.Equals(value, stage, StringComparison.OrdinalIgnoreCase));
+        if (priority is not ("P0" or "P1" or "P2" or "P3")) priority = fallback.Priority;
+        if (confidence > 1) confidence /= 100;
+        confidence = Math.Clamp(confidence, 0, 1);
+        if (string.IsNullOrWhiteSpace(reason)) reason = "Classificação realizada pela integração de IA configurada.";
+        return new(stage, priority, reason, confidence, "external");
+    }
+    catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+    {
+        return fallback with
+        {
+            Source = "local-fallback",
+            Reason = $"Contingência local aplicada. {fallback.Reason}",
+            IntegrationError = exception.Message.Length > 300 ? exception.Message[..300] : exception.Message,
+        };
+    }
+}
+
+static string DefaultServiceRequestAiPrompt() =>
+    "Classifique chamados da Dontus em exatamente uma destas etapas: Desenvolvimento, Tarefa, Reclamação, Sugestão, Elogio, Cancelamento ou Nova contratação. " +
+    "Defina também a prioridade entre P0, P1, P2 e P3. Responda somente JSON válido no formato " +
+    "{\"stage\":\"Tarefa\",\"priority\":\"P2\",\"reason\":\"justificativa objetiva\",\"confidence\":0.90}.";
+
+static string MaskProtectedApiKey(string encryptedApiKey, IDataProtectionProvider protectionProvider)
+{
+    try
+    {
+        var value = protectionProvider.CreateProtector("Dontus.ServiceRequests.AiCredentials.v1").Unprotect(encryptedApiKey);
+        var suffix = value.Length <= 4 ? value : value[^4..];
+        return $"••••••••{suffix}";
+    }
+    catch { return "••••••••"; }
 }
 
 static PublicServiceEntry ParsePublicService(string team, string owner, string status, string description, DateTimeOffset createdAt)
@@ -1881,6 +2076,7 @@ sealed record PublicReferralEntry(string SenderName, string SenderDepartment, st
 sealed record PublicCommercialEntry(string Team, string Seller, string Stage, string Origin, DateTime Date, long AmountCents, bool Direct, bool Won, bool Rejected);
 sealed record PublicGoalEntry(string Department, string Employee, string Metric, double Target, DateTime PeriodStart, DateTime PeriodEnd, bool Active);
 sealed record PublicJourneyEntry(string Module, string Team, string Owner, string Status, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+sealed record ServiceRequestClassification(string Stage, string Priority, string Reason, double Confidence, string Source, string? IntegrationError = null);
 
 public sealed class OperationsRequest
 {
@@ -2084,6 +2280,18 @@ public sealed class PublicSurveyResponseRequest
 {
     public string? RespondentName { get; init; }
     public Dictionary<string, string>? Answers { get; init; }
+}
+
+public sealed class ServiceRequestAiSettingsRequest
+{
+    public bool Enabled { get; init; }
+    public string? Provider { get; init; }
+    public string? Endpoint { get; init; }
+    public string? Model { get; init; }
+    public string? ApiKey { get; init; }
+    public bool ClearApiKey { get; init; }
+    public string? SystemPrompt { get; init; }
+    public int? TimeoutSeconds { get; init; }
 }
 
 public sealed class LocalPasswordChangeRequest

@@ -576,3 +576,25 @@ test("mantém acompanhamentos perenes e corrige modais, permissões e reabertura
   assert.match(development, /className="form-grid"/);
   assert.match(css, /\.cs-pipeline-metrics\{grid-template-columns:repeat\(7/);
 });
+
+test("configura a IA dos chamados com segredo criptografado e contingência local", async () => {
+  const [requests, api, entities, context, route, css] = await Promise.all([
+    readFile(new URL("../app/ServiceRequestsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Api/Program.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Domain/Entities.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/OperationsDbContext.cs", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/service-request-ai-settings/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(requests, /Configurar IA/);
+  assert.match(requests, /ServiceRequestAiSettingsModal/);
+  assert.match(requests, /Testar integração/);
+  assert.match(api, /Dontus\.ServiceRequests\.AiCredentials\.v1/);
+  assert.match(api, /ClassifyServiceRequestAsync/);
+  assert.match(api, /local-fallback/);
+  assert.match(api, /service-request-ai-settings\/test/);
+  assert.match(entities, /class ServiceRequestAiSetting/);
+  assert.match(context, /ServiceRequestAiSettings/);
+  assert.match(route, /api\/service-request-ai-settings/);
+  assert.match(css, /\.service-request-ai-modal/);
+});

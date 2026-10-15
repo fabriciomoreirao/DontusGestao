@@ -215,3 +215,15 @@ public sealed class GroupPermission
     public bool CanManage { get; set; }
     public string CapabilitiesJson { get; set; } = "[]";
 }
+
+public sealed class ServiceRequestAiSetting : Entity
+{
+    public string Provider { get; set; } = "openai";
+    public string Endpoint { get; set; } = "https://api.openai.com/v1/chat/completions";
+    public string Model { get; set; } = "gpt-4.1-mini";
+    public string EncryptedApiKey { get; set; } = "";
+    public string SystemPrompt { get; set; } = "";
+    public bool Enabled { get; set; }
+    public int TimeoutSeconds { get; set; } = 20;
+    public required string UpdatedBy { get; set; }
+}
