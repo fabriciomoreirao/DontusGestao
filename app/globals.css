@@ -7529,3 +7529,47 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 .service-entry-modal>form{overflow:hidden!important}.service-entry-modal .service-entry-scroll{min-height:0;max-height:none;overflow-y:auto;scrollbar-gutter:stable}.service-entry-modal .service-modal-footer{flex:0 0 auto}
 .employee-modal{display:flex!important;height:auto!important;max-height:calc(100dvh - 24px)!important}.employee-modal>.employee-form{height:auto!important;padding-bottom:28px!important}.employee-modal .employee-form>.form-actions{position:sticky!important;bottom:-28px!important;z-index:12!important;margin:5px -24px -28px!important;padding:15px 24px!important;border-top:1px solid var(--line)!important;background:color-mix(in srgb,var(--surface) 98%,transparent)!important;box-shadow:0 -10px 24px rgba(5,22,38,.06)!important}
 @media(max-width:700px){:is(.modal,.standard-modal):has(>form):not(.modal-side-panel):not(.suggestion-side-panel){min-height:0!important;max-height:calc(100dvh - 12px)!important}.employee-modal{min-height:0!important;max-height:calc(100dvh - 12px)!important}.employee-modal .employee-form>.form-actions{margin-inline:-16px!important;padding-inline:16px!important}}
+
+/* Agenda geral: filtros organizados e controle exclusivo da sala de reunião. */
+.agenda-filters{min-height:auto!important;padding:11px 12px!important;display:grid!important;grid-template-columns:auto minmax(0,1fr) auto!important;align-items:end!important;gap:12px!important}
+.agenda-filter-heading{min-width:154px;min-height:42px;display:flex;align-items:center;gap:9px}
+.agenda-filter-heading>span{width:34px;height:34px;border:1px solid color-mix(in srgb,var(--primary) 24%,var(--line));border-radius:9px;color:var(--primary);background:var(--primary-soft);display:grid;place-items:center;flex:0 0 auto}
+.agenda-filter-heading>div{display:grid;gap:2px}.agenda-filter-heading strong{color:var(--ink);font-size:.7rem}.agenda-filter-heading small{color:var(--muted);font-size:.56rem;white-space:nowrap}
+.agenda-filter-controls{min-width:0;display:grid;grid-template-columns:repeat(3,minmax(135px,1fr)) minmax(172px,.9fr);align-items:end;gap:8px}
+.agenda-filter-field{min-width:0;display:grid;gap:5px;color:var(--muted);font-size:.58rem;font-weight:850;text-transform:uppercase;letter-spacing:.04em}
+.agenda-filter-field select{width:100%;min-width:0!important;height:38px!important;color:var(--ink)!important;border-color:var(--line)!important;background:var(--input)!important;text-transform:none}
+.agenda-room-visibility{min-width:0;height:38px;padding:0 9px;border:1px solid var(--line);border-radius:9px;color:var(--muted);background:var(--input);display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;cursor:pointer;transition:border-color .16s ease,color .16s ease,background .16s ease,box-shadow .16s ease}
+.agenda-room-visibility:hover,.agenda-room-visibility.active{border-color:color-mix(in srgb,#8b5cf6 42%,var(--line));color:#7c3aed;background:color-mix(in srgb,#8b5cf6 7%,var(--surface));box-shadow:0 3px 10px color-mix(in srgb,#8b5cf6 9%,transparent)}
+.agenda-room-visibility input{position:absolute;opacity:0;pointer-events:none}.agenda-room-visibility-icon{width:24px;height:24px;border-radius:7px;color:inherit;background:color-mix(in srgb,currentColor 9%,transparent);display:grid;place-items:center}
+.agenda-room-visibility>span:last-child{min-width:0;display:grid;gap:1px}.agenda-room-visibility strong{overflow:hidden;color:var(--ink);font-size:.62rem;text-overflow:ellipsis;white-space:nowrap}.agenda-room-visibility small{overflow:hidden;color:var(--muted);font-size:.53rem;text-overflow:ellipsis;white-space:nowrap}
+.agenda-filters>.agenda-view-switch{align-self:end;margin-left:0;height:38px}
+.agenda-event.meeting-room,.agenda-schedule-event.meeting-room{border-color:color-mix(in srgb,#8b5cf6 42%,var(--line))!important;border-left-color:#8b5cf6!important;background:color-mix(in srgb,#8b5cf6 10%,var(--surface))!important}
+@media(max-width:1180px){.agenda-filters{grid-template-columns:1fr auto!important}.agenda-filter-heading{grid-column:1/-1}.agenda-filter-controls{grid-column:1}.agenda-filters>.agenda-view-switch{grid-column:2}}
+@media(max-width:820px){.agenda-filters{grid-template-columns:1fr!important}.agenda-filter-controls{grid-column:1;grid-template-columns:1fr 1fr}.agenda-filters>.agenda-view-switch{grid-column:1;width:100%}.agenda-filter-heading{min-width:0}.agenda-view-switch button{flex:1}}
+@media(max-width:520px){.agenda-filter-controls{grid-template-columns:1fr}.agenda-filter-heading small{white-space:normal}}
+
+/* Portal: painel de reservas da sala mais legível e responsivo. */
+.portal-room-overview{margin-bottom:12px;display:grid;grid-template-columns:repeat(3,minmax(120px,.42fr)) minmax(280px,1fr);gap:9px}
+.portal-room-overview>article,.portal-room-legend{min-height:72px;padding:12px 14px;border:1px solid var(--portal-line);border-radius:13px;color:var(--portal-text);background:var(--portal-surface);box-shadow:0 8px 22px rgba(4,31,61,.055)}
+.portal-room-overview>article{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 8px}
+.portal-room-overview article small{grid-column:1;color:var(--portal-muted);font-size:.62rem;font-weight:850;text-transform:uppercase;letter-spacing:.05em}
+.portal-room-overview article strong{grid-column:1;font-size:1.25rem;line-height:1}
+.portal-room-overview article span{grid-column:2;grid-row:1/3;align-self:center;color:var(--portal-muted);font-size:.66rem}
+.portal-room-legend{display:flex;align-items:center;justify-content:center;gap:16px}
+.portal-room-legend span{display:flex;align-items:center;gap:6px;color:var(--portal-muted);font-size:.66rem;font-weight:780;white-space:nowrap}
+.portal-room-legend i{width:8px;height:8px;border-radius:50%;background:#2563eb}.portal-room-legend .completed i{background:#22c55e}.portal-room-legend .cancelled i{background:#ef4444}
+.portal-room-permission-note{margin-bottom:12px;padding:11px 14px;border:1px solid color-mix(in srgb,#0ea5e9 30%,var(--portal-line));border-radius:12px;color:#087fbd;background:color-mix(in srgb,#0ea5e9 8%,var(--portal-surface));display:flex;align-items:center;gap:10px}
+.portal-room-permission-note.warning{color:#b36a05;border-color:color-mix(in srgb,#f59e0b 34%,var(--portal-line));background:color-mix(in srgb,#f59e0b 8%,var(--portal-surface))}
+.portal-room-permission-note>span{display:grid;gap:2px}.portal-room-permission-note strong{font-size:.72rem}.portal-room-permission-note small{color:var(--portal-muted);font-size:.63rem}
+.portal-calendar-panel>header .portal-reserve-button:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.4)}
+.portal-calendar-grid>article.today{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--primary) 42%,transparent)}
+.portal-calendar-event{min-height:58px!important;padding:7px 8px!important;display:grid!important;gap:3px!important;white-space:normal!important}
+.portal-calendar-event>span{margin:0!important;padding:0!important;color:inherit!important;background:transparent!important;display:flex!important;align-items:center;justify-content:space-between;gap:6px}
+.portal-calendar-event>span time{color:var(--primary);font-size:.62rem;font-weight:900}
+.portal-calendar-event>span em{overflow:hidden;max-width:70%;padding:2px 5px;border-radius:999px;color:var(--portal-muted);background:color-mix(in srgb,var(--portal-ink) 6%,transparent);font-size:.48rem;font-style:normal;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.portal-calendar-event>strong{overflow:hidden;color:var(--portal-text);font-size:.66rem;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
+.portal-calendar-event>small{overflow:hidden;margin:0!important;color:var(--portal-muted)!important;font-size:.55rem!important;text-overflow:ellipsis;white-space:nowrap}
+.portal-schedule-grid>article.today>header{background:color-mix(in srgb,var(--primary) 9%,var(--portal-surface))}
+.portal-day-reservations>div>button.editable{cursor:pointer}.portal-day-reservations>div>button.editable:hover{border-color:var(--primary)}
+@media(max-width:980px){.portal-room-overview{grid-template-columns:repeat(3,1fr)}.portal-room-legend{grid-column:1/-1;min-height:54px}}
+@media(max-width:620px){.portal-room-overview{grid-template-columns:1fr 1fr}.portal-room-overview>article:nth-child(3){grid-column:1/-1}.portal-room-legend{grid-column:1/-1;flex-wrap:wrap}.portal-room-overview>article,.portal-room-legend{min-height:62px}.portal-calendar-event{min-height:42px!important}.portal-calendar-event>small,.portal-calendar-event>span em{display:none!important}}

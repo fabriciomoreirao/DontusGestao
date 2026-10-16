@@ -622,3 +622,25 @@ test("separa o acesso às agendas, preserva o rodapé dos modais e usa o ID púb
   assert.match(css, /proteção global contra corte no final dos modais/);
   assert.match(css, /scroll-padding-bottom:88px/);
 });
+
+test("organiza reservas da sala e restringe a criação aos coordenadores", async () => {
+  const [portal, agenda, service, css] = await Promise.all([
+    readFile(new URL("../app/PortalDontus.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/AgendaModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AgendaService.cs", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(portal, /const canReserveRoom=data\.user\.isCoordinator/);
+  assert.match(portal, /portal-room-overview/);
+  assert.match(portal, /Somente colaboradores marcados como coordenadores/);
+  assert.match(agenda, /showMeetingRoomCommitments/);
+  assert.match(agenda, /filtered\.filter\(\(entry\) => !isMeetingRoomCommitment/);
+  assert.match(agenda, /Sala de reunião/);
+  assert.match(agenda, /calendarCommitmentTitle/);
+  assert.match(agenda, /"🏢 "/);
+  assert.match(service, /EnsureMeetingRoomReservationAllowed/);
+  assert.match(service, /Somente colaboradores marcados como coordenadores podem reservar a sala de reunião/);
+  assert.match(css, /\.portal-room-overview/);
+  assert.match(css, /\.agenda-room-visibility/);
+  assert.match(css, /\.agenda-filter-controls/);
+});

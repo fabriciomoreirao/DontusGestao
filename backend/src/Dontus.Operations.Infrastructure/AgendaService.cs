@@ -200,6 +200,7 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         var status = await db.AgendaStatuses.SingleOrDefaultAsync(entry => entry.Id == command.AgendaStatusId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um status de agendamento ativo.");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        EnsureMeetingRoomReservationAllowed(calendar, actorUser);
         var allowedDepartments = await AccessibleAgendaDepartmentIdsAsync(actorUser.Id, cancellationToken);
         if (!CanManage(actor) && !allowedDepartments.Contains(calendar.DepartmentId))
             throw new DomainException("Você não possui acesso à agenda deste setor.", 403);
@@ -252,6 +253,7 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         var status = await db.AgendaStatuses.SingleOrDefaultAsync(entry => entry.Id == command.AgendaStatusId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um status ativo.");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        EnsureMeetingRoomReservationAllowed(calendar, actorUser);
         var actorDepartments = await AccessibleAgendaDepartmentIdsAsync(actorUser.Id, cancellationToken);
         if (!CanManage(actor) && !actorDepartments.Contains(calendar.DepartmentId))
             throw new DomainException("Você não possui acesso à agenda deste setor.", 403);
@@ -361,6 +363,23 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
     }
 
     private static bool CanManage(ActorContext actor) => actor.HasPermission("work", "manage") || actor.HasPermission("admin", "manage");
+    private static void EnsureMeetingRoomReservationAllowed(AgendaCalendar calendar, AppUser actorUser)
+    {
+        var calendarIdentity = RemoveDiacritics($"{calendar.Name} {calendar.Description}").ToLowerInvariant();
+        var isMeetingRoom = calendarIdentity.Contains("sala", StringComparison.Ordinal) &&
+            calendarIdentity.Contains("reuni", StringComparison.Ordinal);
+        if (isMeetingRoom && !actorUser.IsCoordinator)
+            throw new DomainException("Somente colaboradores marcados como coordenadores podem reservar a sala de reunião.", 403);
+    }
+
+    private static string RemoveDiacritics(string value)
+    {
+        var normalized = value.Normalize(System.Text.NormalizationForm.FormD);
+        var characters = normalized.Where(character =>
+            System.Globalization.CharUnicodeInfo.GetUnicodeCategory(character) != System.Globalization.UnicodeCategory.NonSpacingMark);
+        return new string(characters.ToArray()).Normalize(System.Text.NormalizationForm.FormC);
+    }
+
     private async Task EnsureAvailabilityAsync(Guid agendaId, Guid? ignoredId, Guid responsibleUserId, string title, DateTimeOffset startsAt, DateTimeOffset endsAt, CancellationToken cancellationToken)
     {
         var isCommercialBlock = title.StartsWith(CommercialBlockPrefix, StringComparison.OrdinalIgnoreCase);
