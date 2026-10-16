@@ -115,6 +115,7 @@ type Employee = {
   id: string; displayName: string; email: string; birthDate: string | null; startedAt: string | null;
   departmentId: string | null; departmentName: string; levelId: string | null; levelName: string;
   departmentIds: string[]; departmentNames: string[];
+  agendaDepartmentIds: string[];
   photoDataUrl: string; jobTitle: string; isCoordinator: boolean; subordinateUserIds: string[];
   groupIds: string[]; groupNames: string[];
   active: boolean; blockedAt: string | null;
@@ -3671,6 +3672,7 @@ function EmployeesAdmin({ access, roles, busy, onOperate, onSection }: { access:
   const toggleAccess = (employee: Employee) => onOperate({
     action: "updateEmployee", id: employee.id, displayName: employee.displayName, email: employee.email,
     birthDate: employee.birthDate, startedAt: employee.startedAt, departmentIds: employee.departmentIds,
+    agendaDepartmentIds: employee.agendaDepartmentIds,
     employeeLevelId: employee.levelId, photoDataUrl: employee.photoDataUrl, jobTitle: employee.jobTitle,
     isCoordinator: employee.isCoordinator, subordinateUserIds: employee.subordinateUserIds, groupIds: employee.groupIds, active: !employee.active,
   }, employee.active ? "Colaborador bloqueado com sucesso." : "Acesso do colaborador reativado com sucesso.");
@@ -3737,6 +3739,9 @@ function EmployeeModal({ employee, employees, departments, levels, roles, groups
   const [isCoordinator, setIsCoordinator] = useState(employee?.isCoordinator ?? false);
   const [active, setActive] = useState(employee?.active ?? true);
   const [subordinateUserIds, setSubordinateUserIds] = useState<string[]>(employee?.subordinateUserIds ?? []);
+  const [departmentIds, setDepartmentIds] = useState<string[]>(employee?.departmentIds ?? (employee?.departmentId ? [employee.departmentId] : []));
+  const [agendaDepartmentIds, setAgendaDepartmentIds] = useState<string[]>(employee?.agendaDepartmentIds ?? []);
+  const [departmentError, setDepartmentError] = useState("");
   const [groupError, setGroupError] = useState("");
   const choosePhoto = (file?: File) => {
     setPhotoError("");
@@ -3750,7 +3755,9 @@ function EmployeeModal({ employee, employees, departments, levels, roles, groups
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const groupIds=form.getAll("groupIds"); if(groupIds.length===0){setGroupError("Selecione ao menos um grupo de permissões.");return} setGroupError("");
-    onSave({ displayName: form.get("displayName"), email: form.get("email"), birthDate: form.get("birthDate") || null, startedAt: form.get("startedAt") || null, departmentIds: form.getAll("departmentIds"), employeeLevelId: form.get("employeeLevelId"), photoDataUrl, jobTitle: form.get("jobTitle"), isCoordinator, subordinateUserIds: isCoordinator ? subordinateUserIds : [], groupIds, active });
+    if (departmentIds.length === 0) { setDepartmentError("Selecione ao menos um setor para o colaborador."); return; }
+    setDepartmentError("");
+    onSave({ displayName: form.get("displayName"), email: form.get("email"), birthDate: form.get("birthDate") || null, startedAt: form.get("startedAt") || null, departmentIds, agendaDepartmentIds: agendaDepartmentIds.filter((id) => id !== departmentIds[0]), employeeLevelId: form.get("employeeLevelId"), photoDataUrl, jobTitle: form.get("jobTitle"), isCoordinator, subordinateUserIds: isCoordinator ? subordinateUserIds : [], groupIds, active });
   };
   return <ModalShell className="employee-modal" title={employee ? "Editar colaborador" : "Novo colaborador"} subtitle={employee ? "Atualize os dados cadastrais e o vínculo do colaborador." : "A senha temporária será gerada para o teste do login local."} onClose={onClose}><form className="form-grid employee-form" onSubmit={submit}>
     <MediaUploadField className="wide" label="Foto do usuário" accept="image/*" selectedText={photoDataUrl ? "Foto selecionada" : undefined} previewUrl={photoDataUrl} previewLabel="Abrir foto do colaborador" hint="Selecione uma imagem para o perfil do colaborador, com no máximo 2 MB." onChange={(event) => choosePhoto(event.target.files?.[0])} />
@@ -3759,7 +3766,9 @@ function EmployeeModal({ employee, employees, departments, levels, roles, groups
     <label className="wide">Função na empresa<select name="jobTitle" required defaultValue={employee?.jobTitle ?? ""}><option value="">Selecione a função cadastrada</option>{[...new Set([...(employee?.jobTitle ? [employee.jobTitle] : []), ...roles])].map(role => <option key={role}>{role}</option>)}</select><small>A função permanece vinculada diretamente ao cadastro do colaborador.</small></label>
     <label>Data de nascimento<input name="birthDate" type="date" required defaultValue={employee?.birthDate ?? ""} /></label><label>Início na empresa<input name="startedAt" type="date" required defaultValue={employee?.startedAt ?? ""} /></label>
     <label>Nível<select name="employeeLevelId" required defaultValue={levels.some((level) => level.active && level.id === employee?.levelId) ? (employee?.levelId ?? "") : ""}><option value="">Selecione</option>{levels.filter((level) => level.active).map((level) => <option value={level.id} key={level.id}>{level.name}</option>)}</select></label>
-    <fieldset className="wide group-selector employee-departments"><legend>Setores de acesso</legend><p>Selecione todos os setores aos quais o colaborador poderá acessar. O primeiro marcado será o setor principal.</p>{departments.filter((department) => department.active).map((department) => <label key={department.id}><input name="departmentIds" type="checkbox" value={department.id} defaultChecked={(employee?.departmentIds ?? (employee?.departmentId ? [employee.departmentId] : [])).includes(department.id)} /><span><strong>{department.name}</strong><small>{department.description || "Setor operacional"}</small></span></label>)}</fieldset>
+    <fieldset className="wide group-selector employee-departments"><legend>Setores de acesso</legend><p>Selecione todos os setores aos quais o colaborador poderá acessar. O primeiro marcado será o setor principal.</p>{departments.filter((department) => department.active).map((department) => <label key={department.id}><input name="departmentIds" type="checkbox" value={department.id} checked={departmentIds.includes(department.id)} onChange={(event) => setDepartmentIds((current) => event.target.checked ? [...current, department.id] : current.filter((id) => id !== department.id))} /><span><strong>{department.name}</strong><small>{department.description || "Setor operacional"}</small></span></label>)}</fieldset>
+    {departmentError && <p className="form-error wide">{departmentError}</p>}
+    <fieldset className="wide group-selector employee-agenda-departments"><legend>Acesso a agendas de outros setores</legend><p>O setor principal já é liberado automaticamente. Marque somente os outros setores cujas agendas este colaborador poderá consultar e utilizar.</p>{departments.filter((department) => department.active).map((department) => { const primary = department.id === departmentIds[0]; return <label className={primary ? "automatic" : ""} key={department.id}><input type="checkbox" value={department.id} disabled={primary} checked={primary || agendaDepartmentIds.includes(department.id)} onChange={(event) => setAgendaDepartmentIds((current) => event.target.checked ? [...new Set([...current, department.id])] : current.filter((id) => id !== department.id))} /><span><strong>{department.name}{primary && <em>Automático</em>}</strong><small>{primary ? "Agenda liberada pelo setor principal do colaborador." : "Permite acessar a agenda deste setor sem alterar o vínculo funcional."}</small></span></label>; })}</fieldset>
     <fieldset className="wide group-selector employee-access-groups"><legend>Grupo de permissões *</legend><p>O colaborador verá e poderá editar somente as funcionalidades habilitadas nos grupos selecionados.</p>{groups.filter(group=>group.active||(employee?.groupIds??[]).includes(group.id)).map(group=><label key={group.id}><input name="groupIds" type="checkbox" value={group.id} defaultChecked={(employee?.groupIds??[]).includes(group.id)}/><span><strong>{group.name}</strong><small>{group.permissions.filter(permission=>permission.canView).length} funcionalidade(s) liberada(s)</small></span></label>)}</fieldset>
     {groupError&&<p className="form-error wide">{groupError}</p>}
     <label className="check-row wide"><input type="checkbox" checked={isCoordinator} onChange={(event) => { setIsCoordinator(event.target.checked); if (!event.target.checked) setSubordinateUserIds([]); }} /><span><strong>Este colaborador é coordenador</strong><small>Exibe o selo de coordenação e permite vincular subordinados.</small></span></label>

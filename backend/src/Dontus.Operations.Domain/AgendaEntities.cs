@@ -8,6 +8,15 @@ public sealed class AgendaCalendar : Entity
     public bool Active { get; set; } = true;
 }
 
+public sealed class UserAgendaDepartmentAccess
+{
+    public Guid UserId { get; set; }
+    public AppUser User { get; set; } = null!;
+    public Guid DepartmentId { get; set; }
+    public TaskDepartment Department { get; set; } = null!;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
 public sealed class AgendaType : Entity
 {
     public required string Name { get; set; }

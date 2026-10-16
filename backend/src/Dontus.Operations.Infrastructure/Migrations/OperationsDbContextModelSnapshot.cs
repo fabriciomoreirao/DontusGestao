@@ -2980,6 +2980,24 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("user_access_groups", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.UserAgendaDepartmentAccess", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "DepartmentId");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.ToTable("user_agenda_department_accesses", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.UserDepartment", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -3757,6 +3775,25 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Group");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.UserAgendaDepartmentAccess", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.TaskDepartment", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dontus.Operations.Domain.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Department");
 
                     b.Navigation("User");
                 });

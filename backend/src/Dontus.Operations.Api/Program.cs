@@ -1330,7 +1330,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } employeeDepartmentId ? [employeeDepartmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.GroupIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds), actor, cancellationToken);
             id = createdEmployee.Id;
             temporaryPassword = createdEmployee.TemporaryPassword;
             break;
@@ -1342,7 +1342,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } departmentId ? [departmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.Active ?? true, request.GroupIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds), actor, cancellationToken);
             break;
 
         case "deleteEmployee":
@@ -2210,6 +2210,7 @@ public sealed class OperationsRequest
     public Guid? DefaultSlaPolicyId { get; init; }
     public Guid? InitialStatusId { get; init; }
     public IReadOnlyCollection<Guid>? DepartmentIds { get; init; }
+    public IReadOnlyCollection<Guid>? AgendaDepartmentIds { get; init; }
     public IReadOnlyCollection<Guid>? AllowedStatusIds { get; init; }
     public Guid? UserId { get; init; }
     public string? Phone { get; init; }

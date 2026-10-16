@@ -15,6 +15,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<AgendaStatus> AgendaStatuses => Set<AgendaStatus>();
     public DbSet<AgendaCommitment> AgendaCommitments => Set<AgendaCommitment>();
     public DbSet<AgendaCommitmentParticipant> AgendaCommitmentParticipants => Set<AgendaCommitmentParticipant>();
+    public DbSet<UserAgendaDepartmentAccess> UserAgendaDepartmentAccesses => Set<UserAgendaDepartmentAccess>();
     public DbSet<Approval> Approvals => Set<Approval>();
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
@@ -222,6 +223,15 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.HasIndex(x => x.UserId);
             entity.HasOne<AgendaCommitment>().WithMany().HasForeignKey(x => x.CommitmentId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<UserAgendaDepartmentAccess>(entity =>
+        {
+            entity.ToTable("user_agenda_department_accesses");
+            entity.HasKey(x => new { x.UserId, x.DepartmentId });
+            entity.HasIndex(x => x.DepartmentId);
+            entity.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Cascade);
         });
 
         ConfigureEntity(modelBuilder.Entity<EmployeeLevel>(), "employee_levels");

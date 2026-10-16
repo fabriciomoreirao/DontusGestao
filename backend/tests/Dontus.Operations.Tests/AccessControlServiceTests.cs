@@ -169,6 +169,45 @@ public sealed class AccessControlServiceTests
                 .LoginAsync("coordenador@dontus.local", coordinator.TemporaryPassword));
     }
 
+    [Fact]
+    public async Task Grants_only_the_primary_and_explicitly_selected_department_agendas()
+    {
+        await using var db = CreateContext();
+        var access = CreateService(db);
+        await access.InitializeAsync();
+        var admin = await access.ResolveActorAsync(new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
+        var primaryId = await access.SaveEmployeeDepartmentAsync(
+            new SaveEmployeeDepartmentCommand(null, "Suporte", "Setor principal.", true), admin);
+        var additionalId = await access.SaveEmployeeDepartmentAsync(
+            new SaveEmployeeDepartmentCommand(null, "Comercial", "Agenda adicional.", true), admin);
+        var hiddenId = await access.SaveEmployeeDepartmentAsync(
+            new SaveEmployeeDepartmentCommand(null, "Financeiro", "Agenda sem acesso.", true), admin);
+        var levelId = await access.SaveEmployeeLevelAsync(
+            new SaveEmployeeLevelCommand(null, "Nível 1", "Nível de teste.", true), admin);
+        var employee = await access.CreateEmployeeAsync(new CreateEmployeeCommand(
+            "Agenda Teste", "agenda@dontus.local", new DateOnly(1992, 4, 15), new DateOnly(2025, 2, 1),
+            [primaryId], levelId, null, "Analista", false, [], null, [additionalId]), admin);
+
+        db.AgendaCalendars.AddRange(
+            new AgendaCalendar { Name = "Agenda Suporte", DepartmentId = primaryId },
+            new AgendaCalendar { Name = "Agenda Comercial", DepartmentId = additionalId },
+            new AgendaCalendar { Name = "Agenda Financeiro", DepartmentId = hiddenId });
+        await db.SaveChangesAsync();
+
+        var actor = new ActorContext(
+            "agenda@dontus.local", "Agenda Teste", "Colaborador", "Suporte",
+            [new EffectivePermission("work", true, true, true, false, false)]);
+        var module = await new AgendaService(db).GetModuleAsync(actor);
+        var management = await access.GetManagementAsync(admin);
+        var saved = management.Employees.Single(entry => entry.Id == employee.Id);
+
+        Assert.Equal(primaryId, saved.DepartmentIds.First());
+        Assert.Equal([additionalId], saved.AgendaDepartmentIds);
+        Assert.Contains(module.Calendars, entry => entry.DepartmentId == primaryId);
+        Assert.Contains(module.Calendars, entry => entry.DepartmentId == additionalId);
+        Assert.DoesNotContain(module.Calendars, entry => entry.DepartmentId == hiddenId);
+    }
+
     private static AccessControlService CreateService(OperationsDbContext db)
     {
         var configuration = new ConfigurationBuilder()

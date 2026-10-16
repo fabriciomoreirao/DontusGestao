@@ -598,3 +598,27 @@ test("configura a IA dos chamados com segredo criptografado e contingência loca
   assert.match(route, /api\/service-request-ai-settings/);
   assert.match(css, /\.service-request-ai-modal/);
 });
+
+test("separa o acesso às agendas, preserva o rodapé dos modais e usa o ID público nos atendimentos", async () => {
+  const [app, services, access, agenda, entities, context, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ServiceRecordsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AccessControlService.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AgendaService.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Domain/AgendaEntities.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/OperationsDbContext.cs", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /agendaDepartmentIds/);
+  assert.match(app, /Acesso a agendas de outros setores/);
+  assert.match(app, /Agenda liberada pelo setor principal/);
+  assert.match(services, /publicCustomerCode\(customer\)/);
+  assert.match(services, /pattern="\\d\{6\}"/);
+  assert.doesNotMatch(services, /clientCode: customer\.id\.slice/);
+  assert.match(access, /ValidateAgendaDepartmentAccessesAsync/);
+  assert.match(agenda, /AccessibleAgendaDepartmentIdsAsync/);
+  assert.match(entities, /class UserAgendaDepartmentAccess/);
+  assert.match(context, /UserAgendaDepartmentAccesses/);
+  assert.match(css, /proteção global contra corte no final dos modais/);
+  assert.match(css, /scroll-padding-bottom:88px/);
+});

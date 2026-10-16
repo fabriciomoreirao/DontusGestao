@@ -455,6 +455,8 @@ public sealed class AccessControlService(
             .ToListAsync(cancellationToken);
         var userDepartments = await db.UserDepartments.AsNoTracking()
             .ToListAsync(cancellationToken);
+        var agendaDepartmentAccesses = await db.UserAgendaDepartmentAccesses.AsNoTracking()
+            .ToListAsync(cancellationToken);
         var supervisions = await db.EmployeeSupervisions.AsNoTracking()
             .ToListAsync(cancellationToken);
         var departmentNames = departments.ToDictionary(department => department.Id, department => department.Name);
@@ -499,8 +501,18 @@ public sealed class AccessControlService(
             users.Select(user =>
             {
                 var departmentId = primaryDepartments.GetValueOrDefault(user.Id);
-                var employeeDepartmentIds = userDepartments.Where(entry => entry.UserId == user.Id).Select(entry => entry.DepartmentId).Distinct().ToArray();
+                var employeeDepartmentIds = userDepartments
+                    .Where(entry => entry.UserId == user.Id)
+                    .OrderByDescending(entry => entry.IsPrimary)
+                    .Select(entry => entry.DepartmentId)
+                    .Distinct()
+                    .ToArray();
                 var employeeDepartmentNames = employeeDepartmentIds.Select(id => departmentNames.GetValueOrDefault(id, "Setor não informado")).ToArray();
+                var employeeAgendaDepartmentIds = agendaDepartmentAccesses
+                    .Where(entry => entry.UserId == user.Id)
+                    .Select(entry => entry.DepartmentId)
+                    .Distinct()
+                    .ToArray();
                 return new EmployeeDto(
                     user.Id,
                     user.DisplayName,
@@ -511,6 +523,7 @@ public sealed class AccessControlService(
                     departmentId == Guid.Empty ? user.Department : departmentNames.GetValueOrDefault(departmentId, user.Department),
                     employeeDepartmentIds,
                     employeeDepartmentNames,
+                    employeeAgendaDepartmentIds,
                     user.EmployeeLevelId,
                     user.EmployeeLevelId is { } levelId ? levelNames.GetValueOrDefault(levelId, "Não informado") : "Não informado",
                     user.PhotoDataUrl,
@@ -658,6 +671,7 @@ public sealed class AccessControlService(
         var departmentIds = await ValidateEmployeeDepartmentsAsync(command.DepartmentIds, cancellationToken);
         var departments = await db.TaskDepartments.Where(entry => departmentIds.Contains(entry.Id)).ToListAsync(cancellationToken);
         var primaryDepartment = departments.Single(entry => entry.Id == departmentIds[0]);
+        var agendaDepartmentIds = await ValidateAgendaDepartmentAccessesAsync(command.AgendaDepartmentIds, primaryDepartment.Id, cancellationToken);
         var level = await db.EmployeeLevels.SingleOrDefaultAsync(
             entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um nível ativo.");
@@ -687,12 +701,17 @@ public sealed class AccessControlService(
         db.WorkItems.Add(CreateHrWorkItem(user, actor.Email));
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
+        db.UserAgendaDepartmentAccesses.AddRange(agendaDepartmentIds.Select(departmentId => new UserAgendaDepartmentAccess
+        {
+            UserId = user.Id,
+            DepartmentId = departmentId,
+        }));
         db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
         {
             CoordinatorUserId = user.Id,
             SubordinateUserId = subordinateId,
         }));
-        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), Level = level.Name });
+        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaDepartmentIds = agendaDepartmentIds, Level = level.Name });
         await db.SaveChangesAsync(cancellationToken);
         return new CreateEmployeeResult(user.Id, temporaryPassword);
     }
@@ -714,6 +733,7 @@ public sealed class AccessControlService(
         var departmentIds = await ValidateEmployeeDepartmentsAsync(command.DepartmentIds, cancellationToken);
         var departments = await db.TaskDepartments.Where(entry => departmentIds.Contains(entry.Id)).ToListAsync(cancellationToken);
         var primaryDepartment = departments.Single(entry => entry.Id == departmentIds[0]);
+        var agendaDepartmentIds = await ValidateAgendaDepartmentAccessesAsync(command.AgendaDepartmentIds, primaryDepartment.Id, cancellationToken);
         var level = await db.EmployeeLevels.SingleOrDefaultAsync(entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um nível ativo.");
         var subordinateIds = await ValidateSubordinatesAsync(command.IsCoordinator, command.SubordinateUserIds, user.Id, cancellationToken);
@@ -760,6 +780,12 @@ public sealed class AccessControlService(
         db.UserDepartments.RemoveRange(await db.UserDepartments.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
+        db.UserAgendaDepartmentAccesses.RemoveRange(await db.UserAgendaDepartmentAccesses.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
+        db.UserAgendaDepartmentAccesses.AddRange(agendaDepartmentIds.Select(departmentId => new UserAgendaDepartmentAccess
+        {
+            UserId = user.Id,
+            DepartmentId = departmentId,
+        }));
         db.EmployeeSupervisions.RemoveRange(await db.EmployeeSupervisions.Where(entry => entry.CoordinatorUserId == user.Id).ToListAsync(cancellationToken));
         db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
         {
@@ -771,7 +797,7 @@ public sealed class AccessControlService(
             var sessions = await db.LocalAuthSessions.Where(entry => entry.UserId == user.Id && entry.RevokedAt == null).ToListAsync(cancellationToken);
             foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
         }
-        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), Level = level.Name });
+        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaDepartmentIds = agendaDepartmentIds, Level = level.Name });
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -1009,6 +1035,27 @@ public sealed class AccessControlService(
             .ToArrayAsync(cancellationToken);
         if (activeIds.Length != selected.Length)
             throw new DomainException("Um ou mais setores selecionados estão inativos ou não existem.");
+
+        return selected;
+    }
+
+    private async Task<Guid[]> ValidateAgendaDepartmentAccessesAsync(
+        IReadOnlyCollection<Guid>? requestedIds,
+        Guid primaryDepartmentId,
+        CancellationToken cancellationToken)
+    {
+        var selected = (requestedIds ?? [])
+            .Where(id => id != Guid.Empty && id != primaryDepartmentId)
+            .Distinct()
+            .ToArray();
+        if (selected.Length == 0) return [];
+
+        var activeIds = await db.TaskDepartments.AsNoTracking()
+            .Where(entry => entry.Active && selected.Contains(entry.Id))
+            .Select(entry => entry.Id)
+            .ToArrayAsync(cancellationToken);
+        if (activeIds.Length != selected.Length)
+            throw new DomainException("Uma ou mais agendas adicionais pertencem a setores inativos ou inexistentes.");
 
         return selected;
     }
