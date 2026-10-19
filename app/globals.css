@@ -7573,3 +7573,19 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 .portal-day-reservations>div>button.editable{cursor:pointer}.portal-day-reservations>div>button.editable:hover{border-color:var(--primary)}
 @media(max-width:980px){.portal-room-overview{grid-template-columns:repeat(3,1fr)}.portal-room-legend{grid-column:1/-1;min-height:54px}}
 @media(max-width:620px){.portal-room-overview{grid-template-columns:1fr 1fr}.portal-room-overview>article:nth-child(3){grid-column:1/-1}.portal-room-legend{grid-column:1/-1;flex-wrap:wrap}.portal-room-overview>article,.portal-room-legend{min-height:62px}.portal-calendar-event{min-height:42px!important}.portal-calendar-event>small,.portal-calendar-event>span em{display:none!important}}
+
+.main:has(.internal-chat-page){height:100dvh;display:flex;flex-direction:column;overflow:hidden}.main:has(.internal-chat-page)>.topbar{flex-shrink:0}
+.content:has(.internal-chat-page){height:auto;flex:1;width:100%;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.internal-chat-page{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.internal-chat-page-header{flex-shrink:0}
+.internal-chat-shell{flex:1;height:auto;min-height:0;max-height:100%;grid-template-rows:minmax(0,1fr)}
+.internal-chat-sidebar{min-height:0;overflow:hidden}.internal-chat-conversation{height:100%;min-height:0}
+.internal-chat-conversation-head,.internal-chat-composer{flex-shrink:0}
+@media(max-width:700px){.internal-chat-shell{grid-template-rows:minmax(110px,25%) minmax(0,1fr)}}
+.card-copy-link{align-self:flex-start;font-size:11px;border:1px solid #d5e2ee;border-radius:7px;padding:5px 8px;background:var(--card-bg,#fff);color:#1470a0;cursor:pointer}
+.shared-card-highlight{outline:3px solid #0789d5;outline-offset:4px}
+
+[data-shared-card-id]:has(>.card-copy-link){position:relative}
+:is(.task-table-row,.development-list-row,.direct-sales-row,.waiting-queue-row,.service-list>article)[data-shared-card-id]:has(>.card-copy-link){padding-top:30px}
+:is(.task-table-row,.development-list-row,.direct-sales-row,.waiting-queue-row,.service-list>article)>.card-copy-link{position:absolute;top:3px;right:10px;z-index:1}
+.suggestion-table td>.card-copy-link{display:block;margin-bottom:5px}

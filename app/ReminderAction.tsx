@@ -1,5 +1,6 @@
 "use client";
 
+import { cardShareUrl } from "@/app/CardLinkEnhancer";
 import { BellRing } from "lucide-react";
 import { useEffect, useRef } from "react";
 
@@ -54,10 +55,10 @@ export default function ReminderAction({ context, compact = true, className = ""
 const CARD_SELECTORS = [
   ".task-card", ".task-table-row:not(.head)", ".suggestion-kanban-cards > article", ".commercial-lead-card", ".retention-lead-card",
   ".cs-client-card", ".enterprise-card", ".cancellation-card", ".marketing-card", ".service-list > article",
-  ".development-card-shell", ".journey-card", ".hr-employee-card", ".recruitment-candidate",
+  ".service-request-column>div>article", ".waiting-queue-row", ".development-card-shell", ".journey-card", ".hr-employee-card", ".recruitment-candidate",
   "article.commission-row", ".goal-card", ".referral-card-shell",
 ];
-const ENABLED_MODULES = new Set(["internalChat","tasks","suggestions","support","commercial","cs","cancellations","marketing","ti","lia","hr","admin","commissions","goals","referrals"]);
+const ENABLED_MODULES = new Set(["serviceRequests","serviceFollowup","waitingQueue","internalChat","tasks","suggestions","support","commercial","cs","cancellations","marketing","ti","lia","hr","admin","commissions","goals","referrals"]);
 const DETAIL_SURFACES = ".task-modal,.suggestion-detail-modal,.drawer-backdrop>aside,.goal-detail-modal,.commission-decision-modal,.retention-detail-page,.enterprise-detail-page,.service-entry-modal";
 const CLIENT_ACTION_MODULES = new Set(["support", "commercial", "cs", "cancellations", "lia"]);
 
@@ -167,6 +168,11 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
         if (closeButton?.parentElement === actionHost) actionHost.insertBefore(button, closeButton);
         else actionHost.appendChild(button);
       };
+      if (context.entityId && !header.querySelector(".copy-task-link,.card-copy-link")) {
+        const copy = document.createElement("button"); copy.type = "button"; copy.className = "card-copy-link"; copy.textContent = "Copiar link";
+        copy.addEventListener("click", async event => { event.preventDefault(); event.stopPropagation(); try { await navigator.clipboard.writeText(cardShareUrl(context.module, context.entityId!)); copy.textContent = "Link copiado"; } catch { copy.textContent = "Não foi possível copiar"; } });
+        insertAction(copy);
+      }
       if (!header.querySelector<HTMLElement>(".reminder-action-button,.reminder-detail-action")) {
         const button = document.createElement("button");
         button.type = "button";
@@ -229,7 +235,7 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
     enhance();
     const observer = new MutationObserver(enhance);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.agenda-detail-action,.client-alert-detail-action,.client-checklist-detail-action,.client-record-detail-action,.reminder-linked-open").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
+    return () => { observer.disconnect(); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.agenda-detail-action,.client-alert-detail-action,.client-checklist-detail-action,.client-record-detail-action,.reminder-linked-open,.drawer-head .card-copy-link,.modal-head .card-copy-link").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
   }, [module]);
   useEffect(()=>{document.querySelectorAll<HTMLElement>(DETAIL_SURFACES).forEach(surface=>{if(surface.dataset.reminderSourceModule)updateLinkedHistory(surface,reminders)})},[reminders]);
   return null;

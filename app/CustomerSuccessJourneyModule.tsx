@@ -337,7 +337,7 @@ function JourneyList({ records, sourceItems, featureUniverse, canDelete, onOpen,
   return <section className="cs-client-table"><header><span>ID</span><span>CLIENTE</span><span>RESPONSÁVEL</span><span>STATUS</span><span>DIAS</span><span>HEALTH</span><span>AÇÕES</span></header>{records.map(({ item, journey }) => {
     const lead = parseCommercial(sourceItems.find((entry) => entry.id === journey.sourceLeadId)?.description || "");
     const score = healthScore(journey, featureUniverse);
-    return <article key={item.id}><span>{journey.clientId || item.id.slice(0, 8)}</span><span><strong>{item.title}</strong><small>{lead?.phone || item.customer_name}</small></span><span data-collaborator-name={item.owner}>{item.owner}</span><span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{journey.status || PHASES.find((entry) => entry.id === journey.phase)?.label}</b></span><span>{journey.phase === "tracking" ? `${Math.min(trackedDays(journey, item), journey.track === "retention" ? 30 : 90)} / ${journey.track === "retention" ? 30 : 90}` : "—"}</span><span className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>{score}%</span><span><button onClick={() => onOpen(item)} aria-label="Abrir cliente"><ExternalLink size={14} /></button>{canDelete && <button className="delete" onClick={() => onDelete(item)} aria-label="Excluir cliente"><Trash2 size={14} /></button>}</span></article>;
+    return <article data-reminder-entity-id={item.id} key={item.id}><span>{journey.clientId || item.id.slice(0, 8)}</span><span><strong>{item.title}</strong><small>{lead?.phone || item.customer_name}</small></span><span data-collaborator-name={item.owner}>{item.owner}</span><span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{journey.status || PHASES.find((entry) => entry.id === journey.phase)?.label}</b></span><span>{journey.phase === "tracking" ? `${Math.min(trackedDays(journey, item), journey.track === "retention" ? 30 : 90)} / ${journey.track === "retention" ? 30 : 90}` : "—"}</span><span className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>{score}%</span><span><button onClick={() => onOpen(item)} aria-label="Abrir cliente"><ExternalLink size={14} /></button>{canDelete && <button className="delete" onClick={() => onDelete(item)} aria-label="Excluir cliente"><Trash2 size={14} /></button>}</span></article>;
   })}</section>;
 }
 
@@ -558,7 +558,7 @@ function CancellationTaskModal({ item, journey, commercial, customers, module, e
   const collaborators = module.collaborators.filter((entry) => entry.active && (!departmentId || entry.departmentIds.includes(departmentId)));
   const [assigneeUserId, setAssigneeUserId] = useState(collaborators.find((entry) => entry.name === item.owner)?.id || "");
   const [customerId, setCustomerId] = useState(initialCustomer?.id || item.customer_id || "");
-  const [customerCode, setCustomerCode] = useState(/^\d{6}$/.test(journey.clientId||"") ? journey.clientId : publicCustomerId(initialCustomer));
+  const [customerCode, setCustomerCode] = useState(/^\d{6}$/.test(journey.clientId||"") ? journey.clientId! : publicCustomerId(initialCustomer));
   const [clientWhatsApp, setClientWhatsApp] = useState(commercial?.phone || initialCustomer?.phone || "");
   useEffect(() => { if (!availableTypes.some((entry) => entry.id === typeId)) setTypeId(availableTypes[0]?.id || ""); }, [departmentId, availableTypes, typeId]);
   const selectCustomer = (id: string) => {

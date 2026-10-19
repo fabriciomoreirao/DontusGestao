@@ -17,6 +17,25 @@ public sealed class OperationsServiceTests
                 new EffectivePermission(screen.Code, true, true, true, true, true)).ToArray());
 
     [Fact]
+    public async Task Creates_a_strategic_clinic_inside_the_selected_network_with_its_registration()
+    {
+        await using var db = CreateContext();
+        var network = new WorkItem { Module = "cs", RecordType = "Conta estratégica", Title = "Rede ativa", Status = "Em acompanhamento", CreatedBy = Actor.Email, Description = "{\"kind\":\"enterpriseNetwork\",\"units\":[],\"history\":[]}" };
+        db.WorkItems.Add(network);
+        await db.SaveChangesAsync();
+        var service = new OperationsService(db);
+        var customerId = await service.CreateCustomerAsync(new CreateCustomerCommand(
+            "Clínica Ltda", "Unidade Centro", "123456", "Clínica", "Comercial", "CS", 1, 15000, true, network.Id,
+            "Cliente", "Dontus", "Essencial", null, null, null, null, null, null, null, "teste@example.com", "11999999999", null, "Observação", "Rua Central", "São Paulo", "SP"), Actor);
+        using var data = System.Text.Json.JsonDocument.Parse(network.Description);
+        var unit = Assert.Single(data.RootElement.GetProperty("units").EnumerateArray());
+        Assert.Equal(customerId.ToString(), unit.GetProperty("customerId").GetString());
+        Assert.Equal("123456", unit.GetProperty("externalId").GetString());
+        Assert.Equal("São Paulo", unit.GetProperty("city").GetString());
+        Assert.Contains("Essencial", unit.GetProperty("notes").GetString());
+    }
+
+    [Fact]
     public async Task Creates_customer_and_audit_in_the_same_unit_of_work()
     {
         await using var db = CreateContext();

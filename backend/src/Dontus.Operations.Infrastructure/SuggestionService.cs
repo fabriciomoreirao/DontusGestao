@@ -272,11 +272,23 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
             throw new DomainException("A sugestão foi atualizada por outra pessoa. Recarregue e tente novamente.", 409);
         var status = await db.SuggestionStatuses.SingleOrDefaultAsync(entry => entry.Id == command.StatusId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um status ativo.");
+        var requestedStatus = status.Name;
+        if (new[] { "em desenvolvimento", "enviada ao ti", "enviada ao /ti", "enviada ao setor de ti", "em produção" }.Contains(status.Name.Trim().ToLowerInvariant()))
+        {
+            var completed = await db.SuggestionStatuses.Where(entry => entry.Active)
+                .FirstOrDefaultAsync(entry => entry.Name == "Concluída" || entry.Name == "Concluída automaticamente", cancellationToken);
+            if (completed is null)
+            {
+                completed = new SuggestionStatus { Name = "Concluída", Description = "Sugestão concluída após encaminhamento ao desenvolvimento ou publicação.", KanbanColumn = "Concluída", Active = true, Color = "#16a34a", DisplayOrder = 999 };
+                db.SuggestionStatuses.Add(completed);
+            }
+            status = completed;
+        }
         var previousStatusId = suggestion.StatusId;
         suggestion.StatusId = status.Id;
         suggestion.Version++;
         suggestion.UpdatedAt = DateTimeOffset.UtcNow;
-        AddAudit(actor, "StatusChange", "suggestion", suggestion.Id, new { From = previousStatusId, To = status.Id, status.Name });
+        AddAudit(actor, "StatusChange", "suggestion", suggestion.Id, new { From = previousStatusId, To = status.Id, status.Name, RequestedStatus = requestedStatus });
         await db.SaveChangesAsync(cancellationToken);
     }
 

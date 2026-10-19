@@ -644,3 +644,17 @@ test("organiza reservas da sala e restringe a criação aos coordenadores", asyn
   assert.match(css, /\.agenda-room-visibility/);
   assert.match(css, /\.agenda-filter-controls/);
 });
+
+test("sincroniza etapas das versões e reaproveita a versão do cliente nos atendimentos", async () => {
+  const [development, services] = await Promise.all([
+    readFile(new URL("../app/DevelopmentModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ServiceRecordsModule.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(development, /const versionKanbanStage = \(detail: DevelopmentData\) => detail\.processStage/);
+  assert.match(development, /onClick=\{openEditor\}/);
+  assert.match(development, /ref=\{editSectionRef\} className="development-actions"/);
+  assert.match(development, /processStage:"Em validação", versionName:selectedVersion/);
+  assert.match(services, /const lastVersionByClientCode = useMemo/);
+  assert.match(services, /customer\.product_version\?\.trim\(\) \|\| lastVersionByClientCode\[clientCode\]/);
+  assert.match(services, /changeClientCode\(event\.target\.value\)/);
+});

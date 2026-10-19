@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const localSession = request.headers.get("cookie")?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
   if (localSession) headers.set("x-local-session", decodeURIComponent(localSession));
   try {
-    const response = await fetch(`${apiBase()}/api/internal-chats`, {
+    const response = await fetch(`${apiBase()}/api/internal-chats?historyDays=${Math.max(30, Math.min(36500, Number(new URL(request.url).searchParams.get("historyDays")) || 30))}`, {
       headers,
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),

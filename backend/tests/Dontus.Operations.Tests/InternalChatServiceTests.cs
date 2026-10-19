@@ -104,6 +104,25 @@ public sealed class InternalChatServiceTests
         Assert.Equal(secondPhoto, updated.PhotoDataUrl);
     }
 
+    [Fact]
+    public async Task Loads_thirty_days_and_can_load_older_history_without_disclosing_other_rooms()
+    {
+        await using var db = CreateContext();
+        var user = AddUser(db, "criador@dontus.local", "Criador");
+        var peer = AddUser(db, "colega@dontus.local", "Colega");
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var actor = Actor(user);
+        var roomId = await service.CreateRoomAsync(new CreateInternalChatRoomCommand(null, null, false, [peer.Id]), actor);
+        foreach (var member in await db.InternalChatRoomMembers.ToListAsync()) member.JoinedAt = DateTimeOffset.UtcNow.AddDays(-90);
+        var oldId = await service.SendMessageAsync(new SendInternalChatMessageCommand(roomId, "Mensagem antiga", "text"), actor);
+        (await db.InternalChatMessages.SingleAsync(message => message.Id == oldId)).CreatedAt = DateTimeOffset.UtcNow.AddDays(-45);
+        await db.SaveChangesAsync();
+        await service.SendMessageAsync(new SendInternalChatMessageCommand(roomId, "Mensagem atual", "text"), actor);
+        Assert.Single((await service.GetModuleAsync(actor)).Rooms.Single().Messages);
+        Assert.Equal(2, (await service.GetModuleAsync(actor, historyDays: 60)).Rooms.Single().Messages.Count);
+    }
+
     private static InternalChatService CreateService(OperationsDbContext db)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

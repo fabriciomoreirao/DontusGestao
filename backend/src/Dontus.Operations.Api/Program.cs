@@ -855,13 +855,14 @@ var internalChatFiles = app.MapGroup("/api/internal-chats")
     .RequireRateLimiting("operations");
 
 internalChatFiles.MapGet("", async (
+    int? historyDays,
     ClaimsPrincipal principal,
     IInternalChatService internalChatService,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
-    return Results.Ok(await internalChatService.GetModuleAsync(actor, cancellationToken));
+    return Results.Ok(await internalChatService.GetModuleAsync(actor, cancellationToken, historyDays ?? 30));
 });
 
 internalChatFiles.MapPost("/{roomId:guid}/attachments", async (

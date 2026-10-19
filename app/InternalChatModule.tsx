@@ -61,6 +61,11 @@ const brasiliaMonthDay = () => {
 export default function InternalChatModule({ module, employees = [], busy, canCreate, operate, markRead, uploadAttachments, onOpenProfile, initialRoomId }: Props) {
   const [selectedKey, setSelectedKey] = useState(initialRoomId ?? "");
   const [search, setSearch] = useState("");
+  const [olderMessages, setOlderMessages] = useState<Record<string, InternalChatMessage[]>>({});
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyExhausted, setHistoryExhausted] = useState<Record<string, boolean>>({});
+  const [historyDays, setHistoryDays] = useState<Record<string, number>>({});
   const [message, setMessage] = useState("");
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
@@ -83,6 +88,27 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const effectiveSelectedKey = conversations.some((entry) => entry.key === selectedKey) ? selectedKey : conversations[0]?.key ?? "";
   const selectedConversation = conversations.find((entry) => entry.key === effectiveSelectedKey);
   const selectedRoom = selectedConversation?.room;
+  const visibleMessages = [...new Map([...(olderMessages[selectedRoom?.id || ""] || []), ...(selectedRoom?.messages || [])].map(message => [message.id, message])).values()].sort((a,b) => a.createdAt.localeCompare(b.createdAt));
+  const loadOlderMessages = async () => {
+    if (!selectedRoom || historyLoading) return;
+    const roomId = selectedRoom.id;
+    const days = (historyDays[roomId] || 30) + 30;
+    setHistoryLoading(true); setHistoryError("");
+    const container = messagesRef.current;
+    const previousHeight = container?.scrollHeight || 0;
+    const previousTop = container?.scrollTop || 0;
+    try {
+      const response = await fetch(`/api/internal-chat?historyDays=${days}`, {cache:"no-store"});
+      if (!response.ok) throw new Error("Não foi possível carregar mensagens antigas.");
+      const data = await response.json() as InternalChatModuleData;
+      const messages = data.rooms.find(room => room.id === roomId)?.messages || [];
+      setOlderMessages(current => ({...current, [roomId]:messages}));
+      setHistoryDays(current => ({...current, [roomId]:days}));
+      if (days >= 36500) setHistoryExhausted(current => ({...current,[roomId]:true}));
+      window.requestAnimationFrame(() => { if(container) container.scrollTop = previousTop + container.scrollHeight - previousHeight; });
+    } catch(error) { setHistoryError(error instanceof Error ? error.message : "Erro ao carregar mensagens."); }
+    finally { setHistoryLoading(false); }
+  };
   const archivedCount = module.rooms.filter((room) => room.isArchived).length;
   const pinnedMessages = selectedRoom?.messages.filter((entry) => entry.isPinned) ?? [];
   const employeeBirthdays = useMemo(() => {
@@ -241,8 +267,9 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
           {selectedRoom?.isGroup && pinnedOpen && <div className="internal-chat-pinned-panel"><header><span><Pin size={14} /> Mensagens fixadas</span><button type="button" onClick={() => setPinnedOpen(false)}><X size={14} /></button></header>{pinnedMessages.length ? pinnedMessages.map((entry) => <article key={entry.id}><b>{entry.senderName}</b><span>{messagePreview(entry)}</span><time>{roomTime.format(new Date(entry.createdAt))}</time></article>) : <p>Nenhuma mensagem foi fixada neste grupo.</p>}</div>}
           {selectedRoom?.isGroup && participantsOpen && <div className="internal-chat-participants-panel"><header><span><UsersRound size={15}/> Participantes ({selectedRoom.memberUserIds.length})</span><button type="button" onClick={() => setParticipantsOpen(false)} aria-label="Fechar participantes"><X size={14}/></button></header><div>{selectedRoom.memberUserIds.map((userId) => { const participant=module.users.find(user=>user.id===userId); return <button type="button" key={userId} onClick={()=>participant&&onOpenProfile(participant.id)}><Avatar name={participant?.name||"Colaborador"} photo={participant?.photoDataUrl} coordinator={participant?.isCoordinator}/><span><strong>{userHasBirthdayToday(participant) && <BirthdayGift name={participant?.name || "Colaborador"} />}{participant?.name||"Colaborador removido"}</strong><small>{participant?.jobTitle||participant?.departmentName||"Participante"}</small></span></button>; })}</div><small>Novos participantes visualizam somente mensagens enviadas após a entrada no grupo.</small></div>}
           <div className="internal-chat-messages" ref={messagesRef}>
+            {selectedRoom && !historyExhausted[selectedRoom.id] && <button type="button" className="secondary-button" disabled={historyLoading} onClick={() => void loadOlderMessages()}>{historyLoading ? "Carregando..." : "Carregar mais conversas (30 dias anteriores)"}</button>}{historyError && <p role="alert">{historyError}</p>}
             {!selectedRoom?.messages.length && <div className="internal-chat-first-message"><SmilePlus size={23} /><strong>Diga olá!</strong><span>Envie a primeira mensagem para iniciar esta conversa privada.</span></div>}
-            {selectedRoom?.messages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={selectedRoom.isGroup} busy={busy} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
+            {visibleMessages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={Boolean(selectedRoom?.isGroup)} busy={busy} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
             <div aria-hidden="true" />
           </div>
           <form className="internal-chat-composer" onSubmit={sendMessage}>

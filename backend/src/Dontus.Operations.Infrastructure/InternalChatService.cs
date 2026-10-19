@@ -18,7 +18,7 @@ public sealed class InternalChatService(
     private readonly string filesRoot = Path.GetFullPath(configuration["InternalChat:FilesPath"]
         ?? Path.Combine(AppContext.BaseDirectory, "internal-chat-files"));
 
-    public async Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30)
     {
         actor.RequirePermission("internalChat", "view");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
@@ -37,10 +37,10 @@ public sealed class InternalChatService(
         var members = await db.InternalChatRoomMembers.AsNoTracking()
             .Where(member => roomIds.Contains(member.RoomId))
             .ToListAsync(cancellationToken);
+        var historySince = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(historyDays, 30, 36500));
         var messages = await db.InternalChatMessages.AsNoTracking()
-            .Where(message => roomIds.Contains(message.RoomId))
+            .Where(message => roomIds.Contains(message.RoomId) && (message.CreatedAt >= historySince || message.Type == "pin"))
             .OrderByDescending(message => message.CreatedAt)
-            .Take(2000)
             .ToListAsync(cancellationToken);
 
         var roomDtos = rooms.Select(room =>

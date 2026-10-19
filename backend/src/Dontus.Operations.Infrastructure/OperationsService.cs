@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -582,6 +583,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         };
 
         db.Customers.Add(customer);
+        await LinkStrategicUnitAsync(customer, actor, cancellationToken);
         AddAudit(actor, "Create", "customer", customer.Id.ToString(), "customers", new { customer.TradeName });
         await db.SaveChangesAsync(cancellationToken);
         return customer.Id;
@@ -644,8 +646,44 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         customer.UpdatedAt = DateTimeOffset.UtcNow;
         customer.Version++;
 
+        await LinkStrategicUnitAsync(customer, actor, cancellationToken);
         AddAudit(actor, "Update", "customer", customer.Id.ToString(), "customers", new { customer.TradeName, customer.Status });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task LinkStrategicUnitAsync(Customer customer, ActorContext actor, CancellationToken cancellationToken)
+    {
+        if (!customer.Strategic || !customer.StrategicNetworkId.HasValue) return;
+        var network = await db.WorkItems.SingleAsync(item => item.Id == customer.StrategicNetworkId.Value, cancellationToken);
+        var detail = JsonNode.Parse(network.Description) as JsonObject
+            ?? throw new DomainException("Os dados da rede estratégica são inválidos.");
+        var units = detail["units"] as JsonArray ?? new JsonArray();
+        if (detail["units"] is null) detail["units"] = units;
+        var code = new string(customer.DocumentMasked.Where(char.IsDigit).ToArray());
+        var existing = units.OfType<JsonObject>().FirstOrDefault(unit => unit["customerId"]?.ToString() == customer.Id.ToString()
+            || (code.Length == 6 && unit["externalId"]?.ToString() == code));
+        if (existing is not null)
+        {
+            if (existing["customerId"]?.ToString() == customer.Id.ToString()) return;
+            existing["customerId"] = customer.Id.ToString();
+            network.Description = detail.ToJsonString(); network.Version++; network.UpdatedAt = DateTimeOffset.UtcNow; return;
+        }
+        var unitId = Guid.NewGuid().ToString();
+        units.Add(new JsonObject {
+            ["id"] = unitId, ["customerId"] = customer.Id.ToString(), ["name"] = customer.TradeName,
+            ["externalId"] = code.Length == 6 ? code : "", ["city"] = customer.City, ["state"] = customer.State,
+            ["contact"] = customer.TradeName, ["phone"] = customer.Phone, ["email"] = customer.Email,
+            ["usageStatus"] = "Não iniciada", ["usagePercent"] = 0, ["lastAnalysis"] = "",
+            ["implementationAt"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"), ["status"] = "Não iniciada",
+            ["active"] = true, ["features"] = new JsonArray(),
+            ["notes"] = string.Join("\n", new[] { $"Razão social: {customer.LegalName}", $"Nome: {customer.TradeName}", $"ID: {customer.DocumentMasked}", $"Comercial: {customer.Owner} · CS: {customer.CsOwner}", $"Produto: {customer.Project} · Versão: {customer.ProductVersion}", $"Receita mensal (centavos): {customer.MonthlyRevenueCents}", $"Contato: {customer.Phone} · {customer.Email}", $"Endereço: {customer.Address} · {customer.City}/{customer.State}", customer.Notes })
+        });
+        var history = detail["history"] as JsonArray ?? new JsonArray();
+        if (detail["history"] is null) detail["history"] = history;
+        history.Add(new JsonObject { ["id"] = Guid.NewGuid().ToString(), ["unitId"] = unitId, ["createdAt"] = DateTimeOffset.UtcNow.ToString("O"), ["user"] = actor.DisplayName, ["type"] = "Cadastro de cliente", ["text"] = $"Clínica {customer.TradeName} vinculada à rede pelo cadastro de clientes." });
+        network.Description = detail.ToJsonString();
+        network.Version++;
+        network.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     public async Task<CustomerModuleDto> GetCustomerModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
