@@ -168,7 +168,7 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
         if (closeButton?.parentElement === actionHost) actionHost.insertBefore(button, closeButton);
         else actionHost.appendChild(button);
       };
-      if (context.entityId && !header.querySelector(".copy-task-link,.card-copy-link")) {
+      if (module !== "tasks" && context.entityId && !header.querySelector(".copy-task-link,.card-copy-link")) {
         const copy = document.createElement("button"); copy.type = "button"; copy.className = "card-copy-link"; copy.textContent = "Copiar link";
         copy.addEventListener("click", async event => { event.preventDefault(); event.stopPropagation(); try { await navigator.clipboard.writeText(cardShareUrl(context.module, context.entityId!)); copy.textContent = "Link copiado"; } catch { copy.textContent = "Não foi possível copiar"; } });
         insertAction(copy);

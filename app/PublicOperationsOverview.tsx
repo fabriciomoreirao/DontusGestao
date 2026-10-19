@@ -2,7 +2,7 @@
 
 import {
   Activity, BadgeCheck, BarChart3, BriefcaseBusiness, CalendarDays, CheckCircle2,
-  Database, Headphones, Home, ListTodo, Pause, Play, Radio, RefreshCw, Sparkles, Star, Target, TrendingUp, Trophy, UsersRound, WalletCards,
+  Database, Headphones, Home, Moon, Sun, ListTodo, Pause, Play, Radio, RefreshCw, Sparkles, Star, Target, TrendingUp, Trophy, UsersRound, WalletCards,
 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -48,6 +48,12 @@ const ROTATION_SECONDS = 5 * 60;
 const ROTATION_LABEL = "5 min";
 
 export default function PublicOperationsOverview() {
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  useEffect(() => {
+    const saved = window.localStorage.getItem("dontus.public-bi-theme");
+    if (saved === "light" || saved === "dark") setTheme(saved);
+  }, []);
+  const chooseTheme = (value: "light" | "dark") => { setTheme(value); window.localStorage.setItem("dontus.public-bi-theme", value); };
   const [data, setData] = useState<PublicOverviewData | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("overview");
@@ -108,11 +114,12 @@ export default function PublicOperationsOverview() {
 
   const completionRate = percentage(data.overview.completedTasks, data.overview.tasks);
   const solutionRate = percentage(data.overview.solvedAttendances, data.overview.attendances);
-  return <main className="public-ops-page public-bi-page">
+  return <main className={`public-ops-page public-bi-page public-bi-${theme}`}>
     <header className="public-ops-header public-bi-header">
       <Image src="/dontus-logo.png" alt="Dontus Gestão Odontológica" width={158} height={46} unoptimized />
       <span><small>COMMAND CENTER – OPERAÇÕES</small><h1>Dontus BI em tempo real</h1><p>Dados que impulsionam o crescimento da sua clínica</p></span>
       <div className="public-bi-controls">
+        <div className="public-bi-theme-switch" role="group" aria-label="Tema do BI público"><button type="button" aria-pressed={theme === "light"} onClick={() => chooseTheme("light")}><Sun size={16}/>Claro</button><button type="button" aria-pressed={theme === "dark"} onClick={() => chooseTheme("dark")}><Moon size={16}/>Escuro</button></div>
         <label><CalendarDays /><span>Competência</span><input type="month" value={month} onChange={(event) => { setMonth(event.target.value); setTab("overview"); }} /></label>
         <button className={autoRotate ? "active" : ""} onClick={() => setAutoRotate((current) => !current)}>{autoRotate ? <Pause /> : <Play />}<span>{autoRotate ? "Pausar rotação" : "Retomar rotação"}</span></button>
         <button onClick={() => void load()} disabled={refreshing}><RefreshCw className={refreshing ? "spin" : ""} /><span>Atualizar</span></button>

@@ -80,6 +80,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const groupPhotoInput = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
 
+  const canCreateGroup = canCreate && Boolean(module.users.find(user => user.id === module.currentUserId)?.isCoordinator);
   const conversations = useMemo(() => buildConversations(module, archivedView).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, pinnedConversationKeys]);
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
@@ -228,7 +229,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   return <div className="internal-chat-page">
     <header className="page-header internal-chat-page-header module-page-header">
       <div className="module-page-title"><span className="module-page-title-icon"><MessageCircleMore size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · COMUNICAÇÃO</span><h1>Chat interno</h1><p>Todos os colaboradores disponíveis, conversas privadas e grupos da sua equipe.</p></span></div>
-      <div className="module-page-actions"><button className="primary-button" disabled={!canCreate} onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button></div>
+      <div className="module-page-actions">{canCreateGroup && <button className="primary-button" onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button>}</div>
     </header>
 
     <section className="internal-chat-shell">
@@ -283,7 +284,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
         </>}
       </main>
     </section>
-    {creatingGroup && <CreateGroupModal module={module} busy={busy} onClose={() => setCreatingGroup(false)} onCreate={async (payload) => { const result = await operate({ action: "createInternalChatRoom", isGroup: true, ...payload }, "Grupo criado com sucesso."); if (result) { setCreatingGroup(false); if (result.id) setSelectedKey(result.id); } }} />}
+    {creatingGroup && canCreateGroup && <CreateGroupModal module={module} busy={busy} onClose={() => setCreatingGroup(false)} onCreate={async (payload) => { const result = await operate({ action: "createInternalChatRoom", isGroup: true, ...payload }, "Grupo criado com sucesso."); if (result) { setCreatingGroup(false); if (result.id) setSelectedKey(result.id); } }} />}
     {pollOpen && selectedRoom?.isGroup && <CreatePollModal busy={busy} onClose={() => setPollOpen(false)} onCreate={createPoll} />}
     {mediaPreview && <div className="internal-chat-media-backdrop" onMouseDown={(event)=>event.currentTarget===event.target&&setMediaPreview(null)}><section className="internal-chat-media-preview" role="dialog" aria-modal="true"><header><strong>{mediaPreview.name}</strong><button type="button" onClick={()=>setMediaPreview(null)} aria-label="Fechar"><X size={18}/></button></header>{mediaPreview.video?<video controls autoPlay><source src={mediaPreview.url}/></video>:<img src={mediaPreview.url} alt={mediaPreview.name}/>}<a href={mediaPreview.url} target="_blank" rel="noreferrer">Abrir em nova guia</a></section></div>}
   </div>;

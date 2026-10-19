@@ -105,6 +105,8 @@ public sealed class InternalChatService(
     {
         actor.RequirePermission("internalChat", "create");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        if (command.IsGroup && !actorUser.IsCoordinator)
+            throw new DomainException("Somente coordenadores podem criar grupos no chat interno.", 403);
         var selectedIds = (command.MemberUserIds ?? [])
             .Where(id => id != actorUser.Id)
             .Distinct()

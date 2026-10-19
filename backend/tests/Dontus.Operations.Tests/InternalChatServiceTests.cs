@@ -88,6 +88,7 @@ public sealed class InternalChatServiceTests
         await using var db = CreateContext();
         var creator = AddUser(db, "criador@dontus.local", "Criador");
         var participant = AddUser(db, "participante@dontus.local", "Participante");
+        creator.IsCoordinator = true;
         await db.SaveChangesAsync();
         var service = CreateService(db);
         var actor = Actor(creator);
@@ -121,6 +122,30 @@ public sealed class InternalChatServiceTests
         await service.SendMessageAsync(new SendInternalChatMessageCommand(roomId, "Mensagem atual", "text"), actor);
         Assert.Single((await service.GetModuleAsync(actor)).Rooms.Single().Messages);
         Assert.Equal(2, (await service.GetModuleAsync(actor, historyDays: 60)).Rooms.Single().Messages.Count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Only_coordinators_can_create_groups_while_private_chat_remains_available(bool coordinator)
+    {
+        await using var db = CreateContext();
+        var creator = AddUser(db, "creator@dontus.local", "Criador");
+        creator.IsCoordinator = coordinator;
+        var peer = AddUser(db, "peer@dontus.local", "Colega");
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var actor = Actor(creator);
+        var command = new CreateInternalChatRoomCommand("Grupo", null, true, [peer.Id]);
+        if (coordinator)
+            Assert.NotEqual(Guid.Empty, await service.CreateRoomAsync(command, actor));
+        else
+        {
+            var error = await Assert.ThrowsAsync<DomainException>(() => service.CreateRoomAsync(command, actor));
+            Assert.Equal(403, error.StatusCode);
+            Assert.Empty(db.InternalChatRooms);
+        }
+        Assert.NotEqual(Guid.Empty, await service.CreateRoomAsync(new CreateInternalChatRoomCommand(null, null, false, [peer.Id]), actor));
     }
 
     private static InternalChatService CreateService(OperationsDbContext db)

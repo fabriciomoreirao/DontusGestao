@@ -528,17 +528,19 @@ test("qualifica vendas diretas, acompanha metas e retorna das configurações", 
   assert.match(css, /\.goals-bi-tracking/);
 });
 
-test("mantém o painel público em tempo real escuro e sem cartões internos brancos", async () => {
+test("permite temas claro e escuro no painel público em tempo real", async () => {
   const [overview, css] = await Promise.all([
     readFile(new URL("../app/PublicOperationsOverview.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
   assert.match(overview, /Dontus BI em tempo real/);
+  assert.match(overview, /Tema do BI público/);
+  assert.match(css, /public-bi-light\{color-scheme:light/);
   assert.match(overview, /public-talent-radar/);
   assert.match(css, /Painel público em tempo real: command center escuro e uniforme/);
-  assert.match(css, /\.public-ops-page\.public-bi-page\{/);
+  assert.match(css, /\.public-ops-page\.public-bi-page:not\(\.public-bi-light\)\{/);
   assert.match(css, /--public-surface:#0d1a28/);
-  assert.match(css, /\.public-ops-page\.public-bi-page \.public-talent-radar section/);
+  assert.match(css, /\.public-ops-page\.public-bi-page:not\(\.public-bi-light\) \.public-talent-radar section/);
   assert.match(css, /background:linear-gradient\(145deg,#142a3f,#0d1c2b\)/);
 });
 

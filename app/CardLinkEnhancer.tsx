@@ -22,6 +22,7 @@ export function cardShareUrl(module: string, id: string) {
 export default function CardLinkEnhancer({ module, records }: { module: string; records: RecordLink[] }) {
   const signature = JSON.stringify(records.map(({id,title,protocol,module}) => [id,title,protocol,module]));
   useEffect(() => {
+    if (module === "tasks") return;
     const currentRecords: RecordLink[] = (JSON.parse(signature) as Array<[string,string,string?,string?]>).map(([id,title,protocol,module]) => ({id,title,protocol,module}));
     let frame = 0;
     let openedId = new URLSearchParams(window.location.search).get("card");
@@ -33,7 +34,6 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
     const enhance = () => {
       const cards = document.querySelectorAll<HTMLElement>(selectors.join(","));
       cards.forEach(card => {
-        if (card.querySelector(".card-copy-link")) return;
         const text = card.innerText;
         const directId = card.dataset.reminderEntityId;
         let record = currentRecords.find(record => record.id === directId);
@@ -44,22 +44,10 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
         if (!record) return;
         card.dataset.sharedCardId = record.id;
         card.dataset.reminderEntityId = record.id;
-        const id = record.id;
-        const destinationModule = record.module || module;
-        const button = document.createElement("button");
-        button.type = "button"; button.className = "card-copy-link";
-        button.textContent = "Copiar link"; button.title = "Copiar link deste card";
-        button.addEventListener("click", async event => {
-          event.preventDefault(); event.stopPropagation();
-          try { await navigator.clipboard.writeText(cardShareUrl(destinationModule, id)); button.textContent = "Link copiado"; }
-          catch { button.textContent = "Não foi possível copiar"; }
-        });
-        // Table rows need a cell host to keep their table semantics intact.
-        const host = card.tagName === "TR" ? card.querySelector("td") : card;
-        host?.prepend(button);
+
       });
       const opened = currentRecords.find(record => record.id === openedId && (!record.module || record.module === module));
-      if (opened) document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.task-overlay-header-actions,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
+      if (opened) document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.journey-drawer>header,.goal-detail-modal .modal-head,.commission-decision-modal .modal-head,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
         if (header.querySelector(".copy-task-link,.card-copy-link")) return;
         const button = document.createElement("button");
         button.type = "button"; button.className = "card-copy-link card-detail-copy"; button.textContent = "Copiar link";
