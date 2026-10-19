@@ -47,7 +47,7 @@ export default function ServiceRequestsModule({mode,items,customers,currentUser,
   const moduleName=mode==="triage"?"serviceRequests":"serviceFollowup";
   const stages=mode==="triage"?TRIAGE_STAGES:FOLLOWUP_STAGES;
   const records=useMemo(()=>items.filter(item=>item.module===moduleName&&parse(item.description)),[items,moduleName]);
-  const [selected,setSelected]=useState<WorkItem|null>(() => typeof window === "undefined" ? null : items.find(item => item.id === new URLSearchParams(window.location.search).get("card")) || null);
+  const [selected,setSelected]=useState<WorkItem|null>(() => typeof window === "undefined" ? null : items.find(item => item.id === new URLSearchParams(window.location.search).get("card") && parse(item.description)?.kind === (mode === "triage" ? "serviceRequest" : "serviceRequestFollowup")) || null);
   const [taskRequest,setTaskRequest]=useState<{item:WorkItem;detail:ServiceRequestDetail}|null>(null);
   const [query,setQuery]=useState("");
   const [dragging,setDragging]=useState("");

@@ -24,6 +24,12 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
   useEffect(() => {
     const currentRecords: RecordLink[] = (JSON.parse(signature) as Array<[string,string,string?,string?]>).map(([id,title,protocol,module]) => ({id,title,protocol,module}));
     let frame = 0;
+    let openedId = new URLSearchParams(window.location.search).get("card");
+    const remember = (event: Event) => {
+      const card = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-shared-card-id]");
+      if (card?.dataset.sharedCardId) openedId = card.dataset.sharedCardId;
+    };
+    document.addEventListener("click", remember, true);
     const enhance = () => {
       const cards = document.querySelectorAll<HTMLElement>(selectors.join(","));
       cards.forEach(card => {
@@ -52,6 +58,18 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
         const host = card.tagName === "TR" ? card.querySelector("td") : card;
         host?.prepend(button);
       });
+      const opened = currentRecords.find(record => record.id === openedId && (!record.module || record.module === module));
+      if (opened) document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.task-overlay-header-actions,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
+        if (header.querySelector(".copy-task-link,.card-copy-link")) return;
+        const button = document.createElement("button");
+        button.type = "button"; button.className = "card-copy-link card-detail-copy"; button.textContent = "Copiar link";
+        button.addEventListener("click", async event => {
+          event.preventDefault(); event.stopPropagation();
+          try { await navigator.clipboard.writeText(cardShareUrl(opened.module || module, opened.id)); button.textContent = "Link copiado"; }
+          catch { button.textContent = "Não foi possível copiar"; }
+        });
+        header.appendChild(button);
+      });
       const requested = new URLSearchParams(window.location.search).get("card");
       if (requested) {
         const card = Array.from(cards).find(card => card.dataset.sharedCardId === requested);
@@ -64,7 +82,7 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, {childList:true, subtree:true});
     enhance();
-    return () => { observer.disconnect(); cancelAnimationFrame(frame); document.querySelectorAll("[data-shared-card-id] .card-copy-link").forEach(button => button.remove()); };
+    return () => { observer.disconnect(); document.removeEventListener("click", remember, true); cancelAnimationFrame(frame); document.querySelectorAll("[data-shared-card-id] .card-copy-link,.card-detail-copy").forEach(button => button.remove()); };
   }, [module, signature]);
   return null;
 }

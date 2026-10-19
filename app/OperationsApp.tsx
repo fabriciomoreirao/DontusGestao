@@ -654,6 +654,8 @@ export default function OperationsApp() {
     setHistoryClientId("");
     const url = new URL(window.location.href);
     url.searchParams.delete("view");
+    url.searchParams.delete("card");
+    url.searchParams.delete("subtask");
     url.searchParams.delete("clientId");
     if (module === "dashboard") url.searchParams.delete("mod");
     else url.searchParams.set("mod", module);
@@ -1397,7 +1399,7 @@ export default function OperationsApp() {
           {active === "reminders" && <RemindersModule items={reminderItems} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} operate={operate} onCreate={setReminderContext} />}
           {active === "notices" && data.noticesModule && <NoticesModule module={data.noticesModule} busy={busy} operate={operate} />}
           {active === "suggestions" && monthSuggestionModule && <SuggestionsModule module={monthSuggestionModule} customers={data.customers} canCreate={userCan(data.user, "suggestions", "create")} canEdit={userCan(data.user, "suggestions", "edit")} canDelete={userCan(data.user, "suggestions", "edit")} busy={busy} operate={operate} uploadAttachments={uploadSuggestionAttachments} onOpenSettings={userCan(data.user, "suggestions", "manage") ? () => openFunctionSettings("suggestions") : undefined} />}
-          {(active === "serviceRequests" || active === "serviceFollowup") && <ServiceRequestsModule onForward={(detail, sourceId) => setForwardRequest({ clientName: detail.fullName, whatsapp: detail.whatsapp, clientCode: detail.clientId, summary: `${detail.protocol}: ${detail.summary}`, sourceId })} mode={active === "serviceRequests" ? "triage" : "followup"} items={kanbanItems} customers={data.customers} currentUser={data.user} taskModule={data.taskModule} suggestionModule={data.suggestionModule} canEdit={userCan(data.user, active, "edit")} busy={busy} operate={operate} uploadTaskAttachments={uploadTaskAttachments}/>}
+          {(active === "serviceRequests" || active === "serviceFollowup") && <ServiceRequestsModule key={active} onForward={(detail, sourceId) => setForwardRequest({ clientName: detail.fullName, whatsapp: detail.whatsapp, clientCode: detail.clientId, summary: `${detail.protocol}: ${detail.summary}`, sourceId })} mode={active === "serviceRequests" ? "triage" : "followup"} items={kanbanItems} customers={data.customers} currentUser={data.user} taskModule={data.taskModule} suggestionModule={data.suggestionModule} canEdit={userCan(data.user, active, "edit")} busy={busy} operate={operate} uploadTaskAttachments={uploadTaskAttachments}/>}
           {active === "internalChat" && data.internalChatModule && (
             <InternalChatModule
               module={data.internalChatModule}
