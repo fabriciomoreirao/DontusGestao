@@ -95,7 +95,7 @@ public sealed class SuggestionServiceTests
         var suggestion = await db.Suggestions.SingleAsync(entry => entry.Id == created.Id);
         await service.ChangeStatusAsync(new ChangeSuggestionStatusCommand(suggestion.Id, status.Id, suggestion.Version), Actor(user));
         var completed = await db.SuggestionStatuses.SingleAsync(entry => entry.Id == suggestion.StatusId);
-        Assert.Equal("Concluída", completed.KanbanColumn);
+        Assert.Equal("Concluída", completed.Name);
         Assert.Equal("Contexto", suggestion.Description);
     }
 
