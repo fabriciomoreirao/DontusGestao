@@ -1331,7 +1331,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } employeeDepartmentId ? [employeeDepartmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false), actor, cancellationToken);
             id = createdEmployee.Id;
             temporaryPassword = createdEmployee.TemporaryPassword;
             break;
@@ -1343,7 +1343,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } departmentId ? [departmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false), actor, cancellationToken);
             break;
 
         case "deleteEmployee":
@@ -2147,6 +2147,7 @@ public sealed class OperationsRequest
     public string? Department { get; init; }
     public bool? Active { get; init; }
     public bool? IsCoordinator { get; init; }
+    public bool? FullAccess { get; init; }
     public IReadOnlyCollection<Guid>? SubordinateUserIds { get; init; }
     public IReadOnlyCollection<Guid>? GroupIds { get; init; }
     public string? Name { get; init; }

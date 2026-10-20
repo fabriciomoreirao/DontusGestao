@@ -48,7 +48,7 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
       });
       const opened = currentRecords.find(record => record.id === openedId && (!record.module || record.module === module));
       if (opened) document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.journey-drawer>header,.goal-detail-modal .modal-head,.commission-decision-modal .modal-head,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
-        if (header.querySelector(".copy-task-link,.card-copy-link")) return;
+        if (header.querySelector(".copy-task-link,.card-copy-link,.commercial-copy-link")) return;
         const button = document.createElement("button");
         button.type = "button"; button.className = "card-copy-link card-detail-copy"; button.textContent = "Copiar link";
         button.addEventListener("click", async event => {

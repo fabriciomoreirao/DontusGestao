@@ -83,7 +83,8 @@ public sealed record CreateEmployeeCommand(
     bool IsCoordinator,
     IReadOnlyCollection<Guid>? SubordinateUserIds,
     IReadOnlyCollection<Guid>? GroupIds = null,
-    IReadOnlyCollection<Guid>? AgendaDepartmentIds = null);
+    IReadOnlyCollection<Guid>? AgendaDepartmentIds = null,
+    bool FullAccess = false);
 
 public sealed record UpdateEmployeeCommand(
     Guid Id,
@@ -99,7 +100,8 @@ public sealed record UpdateEmployeeCommand(
     IReadOnlyCollection<Guid>? SubordinateUserIds,
     bool Active,
     IReadOnlyCollection<Guid>? GroupIds = null,
-    IReadOnlyCollection<Guid>? AgendaDepartmentIds = null);
+    IReadOnlyCollection<Guid>? AgendaDepartmentIds = null,
+    bool FullAccess = false);
 
 public sealed record CreateEmployeeResult(Guid Id, string TemporaryPassword);
 public sealed record SaveEmployeeDepartmentCommand(Guid? Id, string Name, string? Description, bool Active);

@@ -41,12 +41,14 @@ const durationDays = (item: Item) => Math.max(0, Math.round((new Date(item.updat
 
 function scoreOf(detail: Detail) {
   const explicit = numberOf(detail.healthScore, detail.health_score, detail.usageScore, detail.usagePercent, detail.percentage, detail.score);
-  if (explicit > 0) return Math.min(100, explicit <= 1 ? explicit * 100 : explicit);
+  if (explicit > 0) return explicit <= 1 ? explicit * 100 : explicit;
   const base = arrayOf(detail.featuresBase ?? detail.baseFeatures ?? detail.features);
   const active = arrayOf(detail.featuresActive ?? detail.activeFeatures ?? detail.featuresInUse);
   if (!base.length) return 0;
   const names = new Set(active.map((entry) => clean(typeof entry === "object" && entry ? (entry as Detail).name : entry)));
-  return Math.round(base.filter((entry) => names.has(clean(typeof entry === "object" && entry ? (entry as Detail).name : entry))).length / base.length * 100);
+  const baseKeys = new Set(base.map((entry) => clean(typeof entry === "object" && entry ? (entry as Detail).name : entry)));
+  const plus = arrayOf(detail.featuresPlus ?? detail.plusFeatures).map((entry) => clean(typeof entry === "object" && entry ? (entry as Detail).name : entry)).filter((entry) => entry && !baseKeys.has(entry));
+  return Math.round((base.filter((entry) => names.has(clean(typeof entry === "object" && entry ? (entry as Detail).name : entry))).length + new Set(plus).size) / base.length * 100);
 }
 
 function scopeItems(items: Item[], module: string, contextKey: string) {

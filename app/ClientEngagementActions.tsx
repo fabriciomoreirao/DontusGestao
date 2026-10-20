@@ -48,7 +48,7 @@ export function parseLinkedChecklist(value: string): LinkedChecklistDetail | nul
   try { const detail = JSON.parse(value) as Partial<LinkedChecklistDetail>; return detail.kind === "linkedChecklist" && Array.isArray(detail.items) ? { ...detail, history: Array.isArray(detail.history) ? detail.history : [] } as LinkedChecklistDetail : null; } catch { return null; }
 }
 
-function publicId(customer: Customer) { const digits = customer.document_masked.replace(/\D/g, ""); return digits.length === 6 ? digits : ""; }
+function publicId(customer: Customer) { const documentDigits = customer.document_masked.replace(/\D/g, ""); const idDigits = customer.id.replace(/\D/g, ""); return documentDigits.length === 6 ? documentDigits : idDigits.length === 6 ? idDigits : ""; }
 function resolveCustomer(context: ReminderContext, customers: Customer[]) {
   const clientId = String(context.clientId || "").trim().toLocaleLowerCase("pt-BR");
   const customerName = String(context.customerName || context.title || "").trim().toLocaleLowerCase("pt-BR");
@@ -100,12 +100,14 @@ function modalTitle(context: ReminderContext) { return context.customerName || c
 
 export function ClientAlertModal({ context, customers, user, busy, operate, onClose }: { context: ReminderContext; customers: Customer[]; user: User; busy: boolean; operate: Operate; onClose: () => void }) {
   const initialCustomer = resolveCustomer(context, customers);
-  const [customerId, setCustomerId] = useState(initialCustomer?.id || "");
+  const [clientCode, setClientCode] = useState(initialCustomer ? publicId(initialCustomer) : String(context.clientId || "").replace(/\D/g, "").slice(0, 6));
   const [error, setError] = useState("");
+  const normalizedCode = clientCode.replace(/\D/g, "");
+  const selectedCustomer = customers.find((entry) => publicId(entry) === normalizedCode || entry.id === clientCode.trim());
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const customer = customers.find((entry) => entry.id === customerId);
-    if (!customer) { setError("Selecione o cliente que receberá este alerta."); return; }
+    const customer = selectedCustomer;
+    if (!customer) { setError("Informe um ID de cliente válido com 6 números."); return; }
     const form = new FormData(event.currentTarget);
     const subject = String(form.get("subject") || "").trim();
     const text = String(form.get("text") || "").trim();
@@ -114,7 +116,7 @@ export function ClientAlertModal({ context, customers, user, busy, operate, onCl
     const saved = await operate({ action: "createWorkItem", module: "customers", recordType: "Alerta do cliente", title: `Alerta · ${subject}`, customerId: customer.id, customerName: customer.trade_name || customer.legal_name, owner: user.displayName, team: "Customer 360", status: "Ativo", priority: detail.severity === "Crítico" ? "P1" : detail.severity === "Atenção" ? "P2" : "P3", amountCents: 0, originType: context.module, originId: context.entityId, description: JSON.stringify(detail) }, "Alerta registrado na ficha do cliente.");
     if (saved) onClose();
   };
-  return <div className="modal-backdrop client-engagement-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal client-alert-modal"><header className="modal-head"><div><span className="eyebrow">ALERTA DO CLIENTE</span><h2>Registrar alerta</h2><p>O registro ficará visível diretamente na aba Alerta da ficha do cliente.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X /></button></header><form className="form-grid" onSubmit={(event) => void submit(event)}><div className="client-action-source wide"><AlertTriangle /><span><small>ORIGEM · {context.module.toLocaleUpperCase("pt-BR")}</small><strong>{modalTitle(context)}</strong></span></div><label className="wide">Cliente *<select required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setError(""); }}><option value="">Selecionar cliente</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.trade_name || customer.legal_name}{publicId(customer) ? ` · ID ${publicId(customer)}` : ""}</option>)}</select></label><label>Classificação<select name="severity" defaultValue="Atenção"><option>Informativo</option><option>Atenção</option><option>Crítico</option></select></label><label>Assunto *<input name="subject" required placeholder="Ex.: Atenção no próximo contato" /></label><label className="wide">Informação específica *<textarea name="text" rows={5} required placeholder="Descreva o alerta, contexto e orientação para a equipe..." /></label>{error && <p className="form-error wide">{error}</p>}<div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><Save size={15} /> Registrar alerta</button></div></form></section></div>;
+  return <div className="modal-backdrop client-engagement-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal client-alert-modal"><header className="modal-head"><div><span className="eyebrow">ALERTA DO CLIENTE</span><h2>Registrar alerta</h2><p>Informe o ID de 6 números. O nome será localizado automaticamente no sistema.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X /></button></header><form className="form-grid" onSubmit={(event) => void submit(event)}><div className="client-action-source wide"><AlertTriangle /><span><small>ORIGEM · {context.module.toLocaleUpperCase("pt-BR")}</small><strong>{modalTitle(context)}</strong></span></div><label>ID do cliente *<input value={clientCode} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required placeholder="000000" onChange={(event) => { setClientCode(event.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}/><small>Sequência de 6 números cadastrada na ficha.</small></label><label>Nome do cliente<input readOnly value={selectedCustomer?.trade_name || selectedCustomer?.legal_name || ""} placeholder={normalizedCode.length === 6 ? "Cliente não localizado" : "Preenchido automaticamente"}/></label><label>Classificação<select name="severity" defaultValue="Atenção"><option>Informativo</option><option>Atenção</option><option>Crítico</option></select></label><label>Assunto *<input name="subject" required placeholder="Ex.: Atenção no próximo contato" /></label><label className="wide">Informação específica *<textarea name="text" rows={5} required placeholder="Descreva o alerta, contexto e orientação para a equipe..." /></label>{error && <p className="form-error wide">{error}</p>}<div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !selectedCustomer}><Save size={15} /> Registrar alerta</button></div></form></section></div>;
 }
 
 function templateChecks(catalog: Catalog) {

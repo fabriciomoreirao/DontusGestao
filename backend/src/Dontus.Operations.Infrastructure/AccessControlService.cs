@@ -692,9 +692,11 @@ public sealed class AccessControlService(
             PasswordHash = PasswordSecurity.Hash(temporaryPassword),
             CreatedBy = actor.Email,
         };
-        var groupIds = command.GroupIds is { Count: > 0 }
-            ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
-            : [await db.AccessGroups.Where(group => group.Name == CollaboratorsGroup).Select(group => group.Id).SingleAsync(cancellationToken)];
+        Guid[] groupIds = command.FullAccess
+            ? [await db.AccessGroups.Where(group => group.Name == AdministratorsGroup && group.Active).Select(group => group.Id).SingleAsync(cancellationToken)]
+            : command.GroupIds is { Count: > 0 }
+                ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
+                : [await db.AccessGroups.Where(group => group.Name == CollaboratorsGroup).Select(group => group.Id).SingleAsync(cancellationToken)];
         foreach (var groupId in groupIds)
             user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = groupId });
         db.Users.Add(user);
@@ -737,9 +739,11 @@ public sealed class AccessControlService(
         var level = await db.EmployeeLevels.SingleOrDefaultAsync(entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um nível ativo.");
         var subordinateIds = await ValidateSubordinatesAsync(command.IsCoordinator, command.SubordinateUserIds, user.Id, cancellationToken);
-        var groupIds = command.GroupIds is { Count: > 0 }
-            ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
-            : user.Groups.Select(membership => membership.GroupId).ToArray();
+        Guid[] groupIds = command.FullAccess
+            ? [await db.AccessGroups.Where(group => group.Name == AdministratorsGroup && group.Active).Select(group => group.Id).SingleAsync(cancellationToken)]
+            : command.GroupIds is { Count: > 0 }
+                ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
+                : user.Groups.Select(membership => membership.GroupId).ToArray();
         await EnsureAdministrationRemainsAsync(user, command.Active, groupIds, cancellationToken);
 
         user.DisplayName = command.DisplayName.Trim();

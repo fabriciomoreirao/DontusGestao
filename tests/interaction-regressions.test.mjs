@@ -366,7 +366,7 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(app, /label: "Checklists"/);
   assert.match(app, /commercialChecklist/);
   assert.match(app, /retentionChecklist/);
-  assert.match(app, /csActivationChecklist/);
+  assert.match(app, /\["csFeatureActive", "Configuração de features"\]/);
   assert.match(app, /enterpriseChecklist/);
   assert.match(app, /serviceChecklist/);
   assert.match(app, /cancellationChecklist/);
@@ -659,4 +659,51 @@ test("sincroniza etapas das versões e reaproveita a versão do cliente nos aten
   assert.match(services, /const lastVersionByClientCode = useMemo/);
   assert.match(services, /customer\.product_version\?\.trim\(\) \|\| lastVersionByClientCode\[clientCode\]/);
   assert.match(services, /changeClientCode\(event\.target\.value\)/);
+});
+
+test("calcula score por features e vincula clientes a redes", async () => {
+  const [journey, app, enhancer] = await Promise.all([
+    readFile(new URL("../app/CustomerSuccessJourneyModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CardLinkEnhancer.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(journey, /catalogFeatureIsBase/);
+  assert.match(journey, /Math\.round\(\(matched \+ plus\) \/ contracted\.length \* 100\)/);
+  assert.match(journey, /scoreEvolution/);
+  assert.match(journey, /As seleções são salvas automaticamente/);
+  assert.doesNotMatch(journey, /> Salvar evolução<\/button>/);
+  assert.match(app, /saveStrategicNetwork/);
+  assert.match(app, /strategicNetworkId/);
+  assert.match(app, /title="Visualizar dados da unidade"/);
+  assert.match(app, /const openUnitJourney = async/);
+  assert.match(app, /Abrir acompanhamento sem sair de Contas estratégicas/);
+  assert.match(app, /openedJourney && openedJourneyDetail && unit && <JourneyDrawer/);
+  assert.doesNotMatch(app, /window\.location\.assign\(url\.toString\(\)\)/);
+  assert.match(enhancer, /commercial-copy-link/);
+});
+
+test("integra redes, acesso total, alertas por ID e notificações persistentes", async () => {
+  const [app, actions, notices, contracts, access] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ClientEngagementActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/NoticesModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Application/AccessContracts.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AccessControlService.cs", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /Redes e franquias/);
+  assert.match(app, /function NetworkCustomerRecord/);
+  assert.match(app, /Cadastro sincronizado automaticamente com Contas Estratégicas/);
+  assert.match(app, /Acesso total ao sistema/);
+  assert.match(app, /fullAccess/);
+  assert.match(app, /dontus:snoozed-notices/);
+  assert.match(app, /Date\.now\(\) \+ 30 \* 60_000/);
+  assert.match(app, /targetUrl: `\/\?mod=tasks&task=/);
+  assert.match(app, /targetUrl: `\/\?mod=cancellations&cancellation=/);
+  assert.match(app, /setActive\("dashboard"\); setDashboardPage\("home"\)/);
+  assert.match(actions, /ID do cliente \*/);
+  assert.match(actions, /pattern="\[0-9\]\{6\}"/);
+  assert.match(actions, /Nome do cliente/);
+  assert.match(notices, /Ver depois/);
+  assert.match(contracts, /bool FullAccess = false/);
+  assert.match(access, /group\.Name == AdministratorsGroup && group\.Active/);
 });

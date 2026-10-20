@@ -25,6 +25,7 @@ type Customer = { id: string; trade_name: string; legal_name: string; document_m
 type Employee = { id: string; displayName: string; email: string; departmentId: string | null; departmentName: string; departmentNames: string[]; photoDataUrl?: string; active: boolean; isCoordinator?: boolean };
 type CurrentUser = { email: string; displayName: string; role: string; department: string; isCoordinator: boolean };
 type HistoryEntry = { text: string; createdAt: string; actor?: string; kind?: string };
+type ScoreEvolutionEntry = { id: string; createdAt: string; actor: string; period: string; score: number; previousScore: number; featuresBase: string[]; featuresActive: string[]; featuresPlus: string[]; summary: string; kind: "Evolução de score" };
 type CsJourney = {
   kind: "csJourney";
   track: CsTrack;
@@ -64,7 +65,13 @@ type CsJourney = {
   featuresBase: string[];
   featuresActive: string[];
   featuresPlus: string[];
+  scoreEvolution?: ScoreEvolutionEntry[];
   labels: string[];
+  strategicAccount?: boolean;
+  strategicNetworkId?: string;
+  strategicNetworkName?: string;
+  strategicUnitId?: string;
+  strategicUnitName?: string;
   cancellationRequestedAt?: string;
   cancellationRequestedBy?: string;
   cancellationTaskId?: string;
@@ -101,12 +108,19 @@ const dateOnly = (value?: string) => value ? new Intl.DateTimeFormat("pt-BR", { 
 const trackedDays = (journey: CsJourney, item: WorkItem) => Math.max(0, Math.floor((Date.now() - new Date(journey.trackingStartedAt || journey.onboardingStartedAt || item.updated_at).getTime()) / 86_400_000));
 const interactionDays = (journey: CsJourney, item: WorkItem) => Math.max(0, Math.floor((Date.now() - new Date(journey.follows.at(-1)?.createdAt || journey.trackingStartedAt || journey.onboardingStartedAt || item.updated_at).getTime()) / 86_400_000));
 const featureTokens = (values: string[]) => [...new Set(values.flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean))];
-const healthScore = (journey: CsJourney, featureUniverse: string[] = []) => {
-  const contracted = featureTokens(featureUniverse.length ? featureUniverse : journey.featuresBase);
+const catalogFeatureIsBase = (entry: CatalogOption) => {
+  if (entry.catalog === "csFeatureBase") return true;
+  try { return (JSON.parse(entry.description || "{}") as { featureBase?: boolean }).featureBase === true; }
+  catch { return false; }
+};
+const healthScore = (journey: CsJourney, defaultBaseFeatures: string[] = []) => {
+  const contracted = featureTokens(journey.featuresBase.length ? journey.featuresBase : defaultBaseFeatures);
   if (!contracted.length) return 0;
-  const inUse = normalize(featureTokens(journey.featuresActive).join(","));
-  const matched = contracted.filter((feature) => inUse.includes(normalize(feature))).length;
-  return Math.round(Math.max(0, Math.min(1, matched / contracted.length)) * 100);
+  const inUse = new Set(featureTokens(journey.featuresActive).map(normalize));
+  const contractedKeys = new Set(contracted.map(normalize));
+  const matched = contracted.filter((feature) => inUse.has(normalize(feature))).length;
+  const plus = featureTokens(journey.featuresPlus).filter((feature) => !contractedKeys.has(normalize(feature))).length;
+  return Math.max(0, Math.round((matched + plus) / contracted.length * 100));
 };
 const trackingMilestones = (track: CsTrack) => track === "retention" ? [1, 2, 3, 4, 7, 14, 21, 30] : [1, 2, 3, 4, 7, 14, 21, 30, 60, 90];
 const usagePercent = (value?: string) => /nao|não|sem uso/i.test(value || "") ? 0 : /parcial/i.test(value || "") ? 50 : value ? 100 : 0;
@@ -144,7 +158,7 @@ function UsageLineChart({ milestones, usageByDay }: { milestones: number[]; usag
   </div>;
 }
 
-function parseJourney(value: string): CsJourney | null {
+export function parseJourney(value: string): CsJourney | null {
   try {
     const raw = JSON.parse(value) as Partial<CsJourney> & { phase?: string; features?: string[] };
     if (raw.kind !== "csJourney") return null;
@@ -165,6 +179,7 @@ function parseJourney(value: string): CsJourney | null {
       featuresBase: Array.isArray(raw.featuresBase) ? raw.featuresBase : [],
       featuresActive: Array.isArray(raw.featuresActive) ? raw.featuresActive : Array.isArray(raw.features) ? raw.features : [],
       featuresPlus: Array.isArray(raw.featuresPlus) ? raw.featuresPlus : [],
+      scoreEvolution: Array.isArray(raw.scoreEvolution) ? raw.scoreEvolution : [],
       labels: Array.isArray(raw.labels) ? raw.labels : [],
       usageByDay: raw.usageByDay && typeof raw.usageByDay === "object" ? raw.usageByDay : {},
       status: /kick off.*agendado.*comercial/i.test(raw.status || "") ? "Pendente" : raw.status,
@@ -207,7 +222,7 @@ export default function CustomerSuccessJourneyModule({
   const isCoordinator = currentUser.isCoordinator || /admin|gestor|coordenador/i.test(currentUser.role);
   const track: CsTrack = flow === "evolution" ? "retention" : "activation";
   const featureUniverse = useMemo(() => featureTokens(catalogs
-    .filter((entry) => entry.active && ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog))
+    .filter((entry) => entry.active && ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog) && catalogFeatureIsBase(entry))
     .map((entry) => entry.name)), [catalogs]);
 
   useEffect(() => setTab(flow === "evolution" ? "tracking" : "validation"), [flow]);
@@ -216,6 +231,13 @@ export default function CustomerSuccessJourneyModule({
     .filter((item) => item.module === "cs")
     .map((item) => ({ item, journey: parseJourney(item.description) }))
     .filter((entry): entry is { item: WorkItem; journey: CsJourney } => Boolean(entry.journey && entry.journey.track === track)), [items, track]);
+  useEffect(() => {
+    if (selected || typeof window === "undefined") return;
+    const requestedClient = new URLSearchParams(window.location.search).get("client");
+    if (!requestedClient) return;
+    const requested = records.find(({ item, journey }) => item.customer_id === requestedClient || journey.clientId === requestedClient);
+    if (requested) setSelected(requested.item);
+  }, [records, selected]);
   const counts = useMemo(() => Object.fromEntries(PHASES.map((phase) => [phase.id, records.filter((entry) => entry.journey.phase === phase.id).length])) as Record<CsPhase, number>, [records]);
   const statuses = useMemo(() => {
     const configured = catalogs.filter((entry) => entry.active && ["csWorkflowStatus", "csFinalStatus"].includes(entry.catalog)).map((entry) => entry.name);
@@ -241,10 +263,58 @@ export default function CustomerSuccessJourneyModule({
   const singleAlignmentCount = records.filter((entry) => Boolean(entry.journey.singleAlignmentAt || entry.journey.singleAlignmentCompletedAt)).length;
   const title = flow === "evolution" ? "Acompanhamento — Retenção" : "Acompanhamento — Ativação";
 
+  const syncFinishedStrategicUnit = async (journey: CsJourney) => {
+    if (journey.phase !== "finished" || !journey.strategicNetworkId || !journey.strategicUnitId) return;
+    const networkItem = items.find((entry) => entry.id === journey.strategicNetworkId);
+    if (!networkItem) return;
+    try {
+      const network = JSON.parse(networkItem.description || "{}") as {
+        kind?: string;
+        units?: Array<Record<string, unknown> & { id?: string; name?: string; status?: string }>;
+        history?: Array<Record<string, unknown>>;
+        [key: string]: unknown;
+      };
+      const units = Array.isArray(network.units) ? network.units : [];
+      const targetUnit = units.find((entry) => entry.id === journey.strategicUnitId);
+      if (network.kind !== "enterpriseNetwork" || !targetUnit || targetUnit.status === "Finalizado") return;
+      const updatedAt = now();
+      const unitName = journey.strategicUnitName || targetUnit.name || networkItem.title;
+      await operate({
+        action: "updateWorkItem",
+        id: networkItem.id,
+        title: networkItem.title,
+        owner: networkItem.owner,
+        customerName: networkItem.customer_name,
+        amountCents: networkItem.amount_cents,
+        version: networkItem.version,
+        description: JSON.stringify({
+          ...network,
+          units: units.map((entry) => entry.id === journey.strategicUnitId
+            ? { ...entry, status: "Finalizado", lastAnalysis: updatedAt.slice(0, 10) }
+            : entry),
+          history: [...(Array.isArray(network.history) ? network.history : []), {
+            id: crypto.randomUUID(),
+            createdAt: updatedAt,
+            user: currentUser.displayName,
+            type: "Acompanhamento finalizado",
+            text: `Unidade ${unitName} finalizada após aprovação da conferência.`,
+            unitId: journey.strategicUnitId,
+          }],
+        }),
+      }, `Unidade estratégica ${unitName} atualizada como Finalizado.`);
+    } catch {
+      // A conclusão do acompanhamento permanece salva mesmo se o vínculo legado estiver inválido.
+    }
+  };
+
   const saveSelected = async (payload: Record<string, unknown>, success = "Jornada atualizada com sucesso.") => {
     if (!selected) return false;
     const result = await operate({ action: "updateWorkItem", id: selected.id, title: selected.title, owner: selected.owner, customerName: selected.customer_name, amountCents: selected.amount_cents, version: selected.version, ...payload }, success);
-    if (result) setSelected((current) => current ? { ...current, ...(payload.owner ? { owner: String(payload.owner) } : {}), ...(payload.description ? { description: String(payload.description) } : {}), version: current.version + 1, updated_at: now() } : current);
+    if (result) {
+      setSelected((current) => current ? { ...current, ...(payload.owner ? { owner: String(payload.owner) } : {}), ...(payload.description ? { description: String(payload.description) } : {}), version: current.version + 1, updated_at: now() } : current);
+      const savedJourney = payload.description ? parseJourney(String(payload.description)) : null;
+      if (savedJourney) await syncFinishedStrategicUnit(savedJourney);
+    }
     return result;
   };
 
@@ -279,12 +349,12 @@ export default function CustomerSuccessJourneyModule({
 
     {visible.length === 0 ? <div className="cs-pipeline-empty"><ClipboardCheckIcon /><h2>Nenhum cliente nesta etapa</h2><p>Os clientes aparecem automaticamente conforme avançam na jornada.</p></div> : view === "grid" ? <div className="cs-pipeline-grid">{visible.map(({ item, journey }) => <JourneyCard key={item.id} item={item} journey={journey} featureUniverse={featureUniverse} commercial={items.find((entry) => entry.id === journey.sourceLeadId)} employee={employees.find(employee => employee.displayName === item.owner)} canEdit={canEdit} canDelete={canDelete} onOpen={() => setSelected(item)} onDelete={() => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />)}</div> : <JourneyList records={visible} sourceItems={items} featureUniverse={featureUniverse} canDelete={canDelete} onOpen={setSelected} onDelete={(item) => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />}
 
-    {selected && <JourneyDrawer item={selected} journey={parseJourney(selected.description)!} commercialSource={items.find((entry) => entry.id === parseJourney(selected.description)?.sourceLeadId)} catalogs={catalogs.filter((entry) => entry.active)} customers={customers} agendaModule={agendaModule} taskModule={taskModule} employees={employees.filter((entry) => entry.active)} currentUser={currentUser} busy={busy} canEdit={canEdit} canCreateTask={canCreateTask} onClose={() => setSelected(null)} operate={operate} onSave={saveSelected} />}
-    {creating && <ManualJourneyModal track={track} customers={customers} existingRecords={records} employees={employees.filter((entry) => entry.active)} statuses={statuses} currentUser={currentUser} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => { const result = await operate(payload, `Cliente inserido manualmente no acompanhamento de ${track === "activation" ? "ativação" : "retenção"}.`); if (result) setCreating(false); }} />}
+    {selected && <JourneyDrawer item={selected} journey={parseJourney(selected.description)!} commercialSource={items.find((entry) => entry.id === parseJourney(selected.description)?.sourceLeadId)} catalogs={catalogs.filter((entry) => entry.active)} customers={customers} agendaModule={agendaModule} taskModule={taskModule} employees={employees.filter((entry) => entry.active)} currentUser={currentUser} busy={busy} canEdit={canEdit} canCreateTask={canCreateTask} onClose={() => { setSelected(null); const url = new URL(window.location.href); url.searchParams.delete("client"); window.history.replaceState({}, "", url); }} operate={operate} onSave={saveSelected} />}
+    {creating && <ManualJourneyModal track={track} customers={customers} existingRecords={records} employees={employees.filter((entry) => entry.active)} statuses={statuses} defaultBaseFeatures={featureUniverse} currentUser={currentUser} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => { const result = await operate(payload, `Cliente inserido manualmente no acompanhamento de ${track === "activation" ? "ativação" : "retenção"}.`); if (result) setCreating(false); }} />}
   </section>;
 }
 
-function ManualJourneyModal({ track, customers, existingRecords, employees, statuses, currentUser, busy, onClose, onSave }: { track: CsTrack; customers: Customer[]; existingRecords:Array<{item:WorkItem;journey:CsJourney}>; employees: Employee[]; statuses: string[]; currentUser: CurrentUser; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => Promise<void> }) {
+function ManualJourneyModal({ track, customers, existingRecords, employees, statuses, defaultBaseFeatures, currentUser, busy, onClose, onSave }: { track: CsTrack; customers: Customer[]; existingRecords:Array<{item:WorkItem;journey:CsJourney}>; employees: Employee[]; statuses: string[]; defaultBaseFeatures: string[]; currentUser: CurrentUser; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => Promise<void> }) {
   const [customerId, setCustomerId] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -304,7 +374,7 @@ function ManualJourneyModal({ track, customers, existingRecords, employees, stat
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if(duplicate)return;
-    const journey: CsJourney = { kind: "csJourney", track, phase, clientId: customerId || undefined, commerciallyApproved: true, status, onboardingStartedAt: phase === "onboarding" ? now() : undefined, trackingStartedAt: phase === "tracking" ? now() : undefined, featuresBase: [], featuresActive: [], featuresPlus: [], labels: [], follows: [{ kind: "Inserção manual", text: `Cliente inserido manualmente em ${PHASES.find((entry) => entry.id === phase)?.label}. Telefone: ${phone || "não informado"}.`, createdAt: now(), actor: currentUser.displayName }] };
+    const journey: CsJourney = { kind: "csJourney", track, phase, clientId: customerId || undefined, commerciallyApproved: true, status, onboardingStartedAt: phase === "onboarding" ? now() : undefined, trackingStartedAt: phase === "tracking" ? now() : undefined, featuresBase: defaultBaseFeatures, featuresActive: [], featuresPlus: [], scoreEvolution: [], labels: [], follows: [{ kind: "Inserção manual", text: `Cliente inserido manualmente em ${PHASES.find((entry) => entry.id === phase)?.label}. Telefone: ${phone || "não informado"}.`, createdAt: now(), actor: currentUser.displayName }] };
     void onSave({ action: "createWorkItem", module: "cs", recordType: track === "activation" ? "Acompanhamento de ativação" : "Acompanhamento de retenção", title: name.trim(), customerId: customers.some((entry) => entry.id === customerId) ? customerId : null, customerName: name.trim(), owner, team: track === "activation" ? "Sucesso do Cliente · Ativação" : "Sucesso do Cliente · Retenção", priority: "P3", amountCents: 0, description: JSON.stringify(journey) });
   };
   return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal cs-manual-modal" role="dialog" aria-modal="true"><header className="modal-head"><div><span className="eyebrow">INSERÇÃO MANUAL</span><h2>Novo cliente em {track === "activation" ? "Ativação" : "Retenção"}</h2><p>Cadastre um cliente existente ou informe os dados manualmente.</p></div><button className="icon-button" type="button" onClick={onClose}><X size={18} /></button></header><form className="form-grid" onSubmit={submit}><label className="wide">Cliente cadastrado<select value={customers.some((entry) => entry.id === customerId) ? customerId : ""} onChange={(event) => chooseCustomer(event.target.value)}><option value="">Inserir dados manualmente</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.trade_name} · {customer.id.slice(0, 8)}</option>)}</select></label><label>ID do cliente<input className={duplicate?"field-invalid":""} value={customerId} onChange={(event) => setCustomerId(event.target.value)} placeholder="ID interno ou código do cliente" />{duplicate&&<small className="duplicate-id-warning"><AlertTriangle size={13}/> ID já inserido na funcionalidade.</small>}</label><label>Cliente / empresa *<input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>Telefone<input value={phone} onChange={(event) => setPhone(event.target.value)} /></label><label>Responsável<select required value={owner} onChange={(event) => setOwner(event.target.value)}><option value={currentUser.displayName}>{currentUser.displayName}</option>{employees.filter((entry) => entry.displayName !== currentUser.displayName).map((employee) => <option key={employee.id}>{employee.displayName}</option>)}</select></label><label>Etapa inicial<select value={phase} onChange={(event) => setPhase(event.target.value as CsPhase)}><option value="validation">Validação</option><option value="onboarding">Onboarding</option><option value="tracking">Acompanhamento</option></select></label><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}>{statuses.map((entry) => <option key={entry}>{entry}</option>)}</select></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !name.trim() || duplicate}><Plus size={15} /> Inserir cliente</button></div></form></section></div>;
@@ -325,6 +395,7 @@ function JourneyCard({ item, journey, featureUniverse, commercial, employee, can
       <div className="cs-card-progress"><span><small>Status</small><strong>{journey.status || "Pendente"}</strong></span>{journey.phase === "tracking" && <span><small>Dias</small><strong>{Math.min(trackedDays(journey, item), journey.track === "retention" ? 30 : 90)} / {journey.track === "retention" ? 30 : 90}</strong></span>}<span><small>Health</small><strong className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>{score}%</strong></span></div>
       {!['finished','cancelled','cancelledWithoutTraining'].includes(journey.phase) && <div className={`cs-card-inactivity ${interactionDays(journey,item)>=5?"alert":""}`}><Clock3 size={13}/><strong>{interactionDays(journey,item)} dia(s)</strong> sem interação</div>}
       {journey.phase === "tracking" && <div className="cs-card-usage-chart" aria-label="Evolução de utilização">{trackingMilestones(journey.track).map(day => <span key={day} title={`D+${day}: ${journey.usageByDay?.[String(day)] || "Não informado"}`}><i style={{ height: `${Math.max(5, usagePercent(journey.usageByDay?.[String(day)]))}%` }} /><small>{day}</small></span>)}</div>}
+      {journey.strategicAccount && <div className="cs-strategic-chip"><ShieldCheck size={13} /> Cliente estratégico</div>}
       {journey.cancellationPendingApproval && <div className="cs-cancellation-chip"><AlertTriangle size={13} /> Não convertido · em conferência</div>}
       {!journey.cancellationPendingApproval && journey.cancellationOutcome === "requested" && <div className="cs-cancellation-chip"><AlertTriangle size={13} /> Cliente solicitou cancelamento</div>}
       {journey.cancellationOutcome === "reverted" && <div className="cs-reverted-chip"><RotateCcw size={13} /> Cancelamento revertido</div>}
@@ -341,12 +412,15 @@ function JourneyList({ records, sourceItems, featureUniverse, canDelete, onOpen,
   })}</section>;
 }
 
-function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, agendaModule, taskModule, employees, currentUser, busy, canEdit, canCreateTask, onClose, operate, onSave }: {
+export function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, agendaModule, taskModule, employees, currentUser, busy, canEdit, canCreateTask, strategicContext, onConferenceResolved, onClose, operate, onSave }: {
   item: WorkItem; journey: CsJourney; commercialSource?: WorkItem; catalogs: CatalogOption[]; customers: Customer[]; agendaModule: AgendaModuleData | null; taskModule: TaskModuleData | null;
   employees: Employee[]; currentUser: CurrentUser; busy: boolean; canEdit: boolean; canCreateTask: boolean; onClose: () => void;
+  strategicContext?: { networkId: string; networkName: string; unitId: string; unitName: string };
+  onConferenceResolved?: (phase: Extract<CsPhase, "tracking" | "finished" | "cancelled" | "cancelledWithoutTraining">, status: string) => Promise<void>;
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onSave: (payload: Record<string, unknown>, success?: string) => Promise<OperationResult>;
 }) {
   const commercial = commercialSource ? parseCommercial(commercialSource.description) : null;
+  const isStrategic = journey.strategicAccount || Boolean(strategicContext);
   const [responsible, setResponsible] = useState(item.owner || "");
   const [status, setStatus] = useState(journey.status || "Pendente");
   const [usage, setUsage] = useState(journey.usage || "");
@@ -359,7 +433,9 @@ function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, a
   const [singleAlignment, setSingleAlignment] = useState((journey.singleAlignmentAt || "").slice(0, 10));
   const [singleAlignmentTime, setSingleAlignmentTime] = useState(journey.singleAlignmentTime || "09:30");
   const [meetingLink, setMeetingLink] = useState(journey.meetingLink || "");
-  const [featuresBase, setFeaturesBase] = useState(journey.featuresBase);
+  const allFeatureOptions = catalogs.filter((entry, index, entries) => ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog) && entries.findIndex((candidate) => normalize(candidate.name) === normalize(entry.name)) === index);
+  const defaultBaseFeatures = featureTokens(catalogs.filter((entry) => ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog) && catalogFeatureIsBase(entry)).map((entry) => entry.name));
+  const [featuresBase, setFeaturesBase] = useState(journey.featuresBase.length ? journey.featuresBase : defaultBaseFeatures);
   const [featuresActive, setFeaturesActive] = useState(journey.featuresActive);
   const [featuresPlus, setFeaturesPlus] = useState(journey.featuresPlus);
   const [labels, setLabels] = useState(journey.labels);
@@ -368,13 +444,17 @@ function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, a
   const [decisionReason, setDecisionReason] = useState("");
   const [taskEditor, setTaskEditor] = useState(false);
 
-  const options = (catalog: string) => catalogs.filter((entry) => entry.catalog === catalog);
-  const activeFeatureOptions = [...options("csFeatureBase"), ...options("csFeatureActive")].filter((entry, index, entries) => entries.findIndex((candidate) => normalize(candidate.name) === normalize(entry.name)) === index);
+  const options = (catalog: string) => catalog === "csFeatureBase"
+    ? allFeatureOptions.filter(catalogFeatureIsBase)
+    : catalog === "csFeaturePlus"
+      ? plusFeatureOptions
+      : catalogs.filter((entry) => entry.catalog === catalog);
+  const activeFeatureOptions = allFeatureOptions;
+  const plusFeatureOptions = allFeatureOptions.filter((entry) => !featuresBase.some((feature) => normalize(feature) === normalize(entry.name)));
   const workflowStatuses = [...new Set([...options("csWorkflowStatus").map((entry) => entry.name), ...options("csFinalStatus").map((entry) => entry.name), ...DEFAULT_STATUSES])];
   const phaseName = PHASES.find((entry) => entry.id === journey.phase)?.label || "Jornada";
   const commercialKickoffAt = journey.sourceLeadId && journey.scheduledAt ? journey.scheduledAt : "";
-  const featureUniverse = featureTokens(catalogs.filter((entry) => ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog)).map((entry) => entry.name));
-  const score = healthScore({ ...journey, featuresBase, featuresActive, featuresPlus }, featureUniverse);
+  const score = healthScore({ ...journey, featuresBase, featuresActive, featuresPlus }, defaultBaseFeatures);
   const milestones = trackingMilestones(journey.track);
   const append = (next: CsJourney, message: string, kind = "Atualização") => ({ ...next, follows: [...next.follows, { text: message, createdAt: now(), actor: currentUser.displayName, kind }] });
   const save = (next: CsJourney, message: string, owner = item.owner) => onSave({ owner, description: JSON.stringify(append(next, message)) }, message);
@@ -393,7 +473,15 @@ function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, a
     setSavingEvolution(true);
     setEvolutionSaveState("idle");
     try {
-      const result = await save({ ...journey, ...next }, "Evolução salva automaticamente.");
+      const previousScore = healthScore({ ...journey, ...previous }, defaultBaseFeatures);
+      const nextScore = healthScore({ ...journey, ...next }, defaultBaseFeatures);
+      const featureChanged = ["featuresBase", "featuresActive", "featuresPlus"].some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+      const createdAt = now();
+      const summary = featureChanged
+        ? `Score atualizado de ${previousScore}% para ${nextScore}%. Base: ${next.featuresBase.length}; em uso: ${next.featuresActive.length}; Plus: ${next.featuresPlus.length}.`
+        : "Evolução operacional atualizada automaticamente.";
+      const scoreEvolution = featureChanged ? [...(journey.scoreEvolution ?? []), { id: crypto.randomUUID(), createdAt, actor: currentUser.displayName, period: createdAt.slice(0, 7), score: nextScore, previousScore, featuresBase: next.featuresBase, featuresActive: next.featuresActive, featuresPlus: next.featuresPlus, summary, kind: "Evolução de score" as const }] : journey.scoreEvolution;
+      const result = await save({ ...journey, ...next, scoreEvolution }, summary, item.owner);
       if (!result) { display(previous); setEvolutionSaveState("error"); }
       else setEvolutionSaveState("saved");
     } catch {
@@ -475,6 +563,7 @@ function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, a
     };
     const saved = await save(next, `Conferência finalizada. Cliente movido para ${statusLabel}: ${decisionReason.trim()}`);
     if (!saved) return;
+    await onConferenceResolved?.(phase, statusLabel);
     if (journeyCustomer) await operate({ action: "updateCustomer", id: journeyCustomer.id, status: cancelled ? "Cancelado" : "Cliente" }, cancelled ? "Cliente marcado como CANCELADO." : "Cadastro do cliente mantido ativo.");
     await notifyConferenceResult(statusLabel);
   };
@@ -524,6 +613,7 @@ function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, a
       <CancellationPanel journey={journey} canEdit={canEdit} canCreateTask={canCreateTask} busy={busy} onRequest={() => setTaskEditor(true)} />
 
       <JourneyTimeline current={journey.phase} />
+      {journey.phase === "conference" && isStrategic && <div className="cs-strategic-conference-notice"><ShieldCheck size={17} /><span><strong>Cliente estratégico</strong><small>{journey.strategicNetworkName || strategicContext?.networkName || "Conta estratégica"} · {journey.strategicUnitName || strategicContext?.unitName || item.title}</small></span></div>}
 
       {commercial && <section className="cs-drawer-panel"><header><span className="eyebrow">ORIGEM COMERCIAL</span><h3>Informações e interações preservadas</h3></header><div className="cs-info-grid"><span><small>Origem</small><strong>{commercial.source || "Não informada"}</strong></span><span><small>Vendedor</small><strong>{commercial.seller || commercialSource?.owner || "Não informado"}</strong></span><span><small>Temperatura</small><strong>{commercial.temperature || "Não definida"}</strong></span><span><small>Produtos</small><strong>{commercial.products?.length || 0}</strong></span></div></section>}
 
@@ -537,13 +627,14 @@ function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, a
         <div className="cs-stage-forward"><span>{onboardingReady ? "Pré-requisitos concluídos. Cliente pronto para acompanhamento." : "Conclua Kick off e Treinamento ou o Alinhamento único para liberar o encaminhamento."}</span><button className="primary-button" disabled={!canEdit || busy || !onboardingReady} onClick={() => void save({ ...journey, phase: "tracking", status: "Em acompanhamento", trackingStartedAt: now() }, "Cliente encaminhado para acompanhamento.")}><ArrowRight size={16} /> Encaminhar para acompanhamento</button></div>
       </section>}
 
-      {journey.phase === "tracking" && <section className="cs-drawer-panel"><header><span className="eyebrow">ACOMPANHAMENTO</span><h3>Utilização, features e evolução</h3><p>{trackedDays(journey, item)} dias em acompanhamento · Health Score {score}%.</p></header><div className="cs-info-grid cs-edit-grid"><label>Status<select value={status} disabled={!canEdit || busy || savingEvolution} onChange={(event) => void persistEvolution({ status: event.target.value })}>{workflowStatuses.map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Status de uso<select value={usage} disabled={!canEdit || busy || savingEvolution} onChange={(event) => void persistEvolution({ usage: event.target.value })}><option value="">Selecione</option>{options("csUsage").map((entry) => <option key={entry.id}>{entry.name}</option>)}</select></label><label>Status de ligação<select value={callStatus} disabled={!canEdit || busy || savingEvolution} onChange={(event) => void persistEvolution({ callStatus: event.target.value })}><option value="">Selecione</option>{options("csCallStatus").map((entry) => <option key={entry.id}>{entry.name}</option>)}</select></label></div><section className="cs-feature-board"><header><div><span className="eyebrow">FEATURES</span><h3>Aderência do cliente</h3><p>Selecione várias opções. O score compara a base contratada com as funcionalidades efetivamente em uso.</p></div><strong className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>Health Score: {score}%</strong></header><FeaturePicker label="BASE CONTRATADA" options={options("csFeatureBase")} selected={featuresBase} onChange={value => void persistEvolution({ featuresBase: value })} disabled={!canEdit || busy || savingEvolution} /><FeaturePicker label="EM USO" options={activeFeatureOptions} selected={featuresActive} onChange={value => void persistEvolution({ featuresActive: value })} disabled={!canEdit || busy || savingEvolution} /><FeaturePicker label="PLUS" options={options("csFeaturePlus")} selected={featuresPlus} onChange={value => void persistEvolution({ featuresPlus: value })} disabled={!canEdit || busy || savingEvolution} /></section><FeaturePicker label="ETIQUETAS" options={options("csLabel")} selected={labels} onChange={value => void persistEvolution({ labels: value })} disabled={!canEdit || busy || savingEvolution} /><div className="cs-growth"><header><span>Evolução da utilização · {milestones.at(-1)} dias</span><strong>{score}% health</strong></header><UsageLineChart milestones={milestones} usageByDay={usageByDay} /></div><section className="cs-usage-routine"><header><div><span className="eyebrow">ROTINA DE ACOMPANHAMENTO</span><h3>Status de utilização por dia</h3></div><small>Cada seleção atualiza o gráfico imediatamente e fica registrada na evolução.</small></header><div>{milestones.map(day=><label key={day}><span>D+{day}</span><select value={usageByDay[String(day)]||""} disabled={!canEdit || busy || savingEvolution} onChange={event=>void persistEvolution({ usageByDay: {...usageByDay, [String(day)]:event.target.value} })}><option value="">Selecione</option>{(options("csUsage").length?options("csUsage").map(entry=>entry.name):["Utilizando","Parcialmente","Não utilizando"]).map(entry=><option key={entry}>{entry}</option>)}</select></label>)}</div></section><p className={`cs-autosave-status ${evolutionSaveState}`} role="status">{savingEvolution ? "Salvando evolução..." : evolutionSaveState === "saved" ? "Alterações salvas automaticamente." : evolutionSaveState === "error" ? "Não foi possível salvar. Tente selecionar novamente." : "As seleções são salvas automaticamente."}</p><div className="cs-stage-forward"><button className="secondary-button" disabled={!canEdit || busy || savingEvolution} onClick={() => void save({ ...journey, status, usage, callStatus, featuresBase, featuresActive, featuresPlus, labels, usageByDay }, "Acompanhamento atualizado.")}><Save size={16} /> Salvar evolução</button><button className="primary-button" disabled={!canEdit || busy || savingEvolution} onClick={() => void save({ ...journey, phase: "conference", status: "Conferência", conferenceRequestedAt: now(), featuresBase, featuresActive, featuresPlus, labels, usage, callStatus, usageByDay }, "Cliente enviado para conferência.")}><Send size={16} /> Enviar para conferência</button></div></section>}
+      {journey.phase === "tracking" && <section className="cs-drawer-panel"><header><span className="eyebrow">ACOMPANHAMENTO</span><h3>Utilização, features e evolução</h3><p>{trackedDays(journey, item)} dias em acompanhamento · Health Score {score}%.</p></header><div className="cs-info-grid cs-edit-grid"><label>Status<select value={status} disabled={!canEdit || busy || savingEvolution} onChange={(event) => void persistEvolution({ status: event.target.value })}>{workflowStatuses.map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Status de uso<select value={usage} disabled={!canEdit || busy || savingEvolution} onChange={(event) => void persistEvolution({ usage: event.target.value })}><option value="">Selecione</option>{options("csUsage").map((entry) => <option key={entry.id}>{entry.name}</option>)}</select></label><label>Status de ligação<select value={callStatus} disabled={!canEdit || busy || savingEvolution} onChange={(event) => void persistEvolution({ callStatus: event.target.value })}><option value="">Selecione</option>{options("csCallStatus").map((entry) => <option key={entry.id}>{entry.name}</option>)}</select></label></div><section className="cs-feature-board"><header><div><span className="eyebrow">FEATURES</span><h3>Aderência do cliente</h3><p>Selecione várias opções. O score compara a base contratada com as funcionalidades efetivamente em uso.</p></div><strong className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>Health Score: {score}%</strong></header><FeaturePicker label="BASE CONTRATADA" options={options("csFeatureBase")} selected={featuresBase} onChange={value => void persistEvolution({ featuresBase: value })} disabled={!canEdit || busy || savingEvolution} /><FeaturePicker label="EM USO" options={activeFeatureOptions} selected={featuresActive} onChange={value => void persistEvolution({ featuresActive: value })} disabled={!canEdit || busy || savingEvolution} /><FeaturePicker label="PLUS" options={options("csFeaturePlus")} selected={featuresPlus} onChange={value => void persistEvolution({ featuresPlus: value })} disabled={!canEdit || busy || savingEvolution} /></section><FeaturePicker label="ETIQUETAS" options={options("csLabel")} selected={labels} onChange={value => void persistEvolution({ labels: value })} disabled={!canEdit || busy || savingEvolution} /><div className="cs-growth"><header><span>Evolução da utilização · {milestones.at(-1)} dias</span><strong>{score}% health</strong></header><UsageLineChart milestones={milestones} usageByDay={usageByDay} /></div><section className="cs-usage-routine"><header><div><span className="eyebrow">ROTINA DE ACOMPANHAMENTO</span><h3>Status de utilização por dia</h3></div><small>Cada seleção atualiza o gráfico imediatamente e fica registrada na evolução.</small></header><div>{milestones.map(day=><label key={day}><span>D+{day}</span><select value={usageByDay[String(day)]||""} disabled={!canEdit || busy || savingEvolution} onChange={event=>void persistEvolution({ usageByDay: {...usageByDay, [String(day)]:event.target.value} })}><option value="">Selecione</option>{(options("csUsage").length?options("csUsage").map(entry=>entry.name):["Utilizando","Parcialmente","Não utilizando"]).map(entry=><option key={entry}>{entry}</option>)}</select></label>)}</div></section><p className={`cs-autosave-status ${evolutionSaveState}`} role="status">{savingEvolution ? "Salvando evolução..." : evolutionSaveState === "saved" ? "Alterações salvas automaticamente." : evolutionSaveState === "error" ? "Não foi possível salvar. Tente selecionar novamente." : "As seleções são salvas automaticamente."}</p><div className="cs-stage-forward"><button className="primary-button" disabled={!canEdit || busy || savingEvolution} onClick={() => { const nextLabels = isStrategic ? [...new Set([...labels, "Cliente estratégico"])] : labels; void save({ ...journey, phase: "conference", status: "Conferência", conferenceRequestedAt: now(), featuresBase, featuresActive, featuresPlus, labels: nextLabels, usage, callStatus, usageByDay, ...(strategicContext ? { strategicAccount: true, strategicNetworkId: strategicContext.networkId, strategicNetworkName: strategicContext.networkName, strategicUnitId: strategicContext.unitId, strategicUnitName: strategicContext.unitName } : {}) }, "Cliente enviado para conferência."); }}><Send size={16} /> Enviar para conferência</button></div></section>}
 
       {journey.phase === "conference" && <section className="cs-drawer-panel cs-conference-panel"><header><span className="eyebrow">CONFERÊNCIA</span><h3>{journey.cancellationPendingApproval ? "Validar não conversão comercial" : "Análise completa da jornada"}</h3><p>{journey.cancellationPendingApproval ? "O Comercial não converteu a reversão. Confira o motivo antes de mover o cliente para Cancelados." : "Confira o histórico, Health Score e evidências antes da decisão."}</p></header><div className="cs-decision-summary"><span><small>Kick off</small><strong>{journey.firstMeetingCompletedAt ? `Realizado ${dateOnly(journey.firstMeetingCompletedAt)}` : journey.singleAlignmentCompletedAt ? "Substituído pelo alinhamento" : "Pendente"}</strong></span><span><small>Treinamento</small><strong>{journey.trainingCompletedAt ? `Realizado ${dateOnly(journey.trainingCompletedAt)}` : journey.singleAlignmentCompletedAt ? "Substituído pelo alinhamento" : "Pendente"}</strong></span><span><small>Alinhamento único</small><strong>{journey.singleAlignmentCompletedAt ? `Realizado ${dateOnly(journey.singleAlignmentCompletedAt)}` : "Não utilizado"}</strong></span><span><small>Health Score</small><strong>{score}%</strong></span><span><small>Interações</small><strong>{history.length}</strong></span></div><label>Motivo da decisão<textarea value={decisionReason} disabled={!canEdit} onChange={(event) => setDecisionReason(event.target.value)} rows={4} placeholder="Descreva obrigatoriamente o motivo da decisão." /></label>{journey.cancellationPendingApproval ? <div className="cs-conference-actions compact"><button className="secondary-button danger-action" disabled={!canEdit || busy || !decisionReason.trim()} onClick={() => void resolveCommercialCancellation(false)}><RotateCcw size={16} /> Manter em acompanhamento</button><button className="danger-button" disabled={!canEdit || busy || !decisionReason.trim()} onClick={() => void resolveCommercialCancellation(true)}><Ban size={16} /> Aprovar cancelamento</button></div> : <div className="cs-conference-actions"><button className="secondary-button danger-action" disabled={!canEdit || busy || !decisionReason.trim()} onClick={() => void moveFromConference("tracking", "Em acompanhamento")}><XCircle size={16} /> Reprovado</button><button className="primary-button" disabled={!canEdit || busy || !decisionReason.trim()} onClick={() => void moveFromConference("finished", "Finalizado")}><BadgeCheck size={16} /> Aprovado com sucesso</button><button className="danger-button" disabled={!canEdit || busy || !decisionReason.trim()} onClick={() => void moveFromConference("cancelled", "Cancelado")}><Ban size={16} /> Cancelado</button><button className="warning-button" disabled={!canEdit || busy || !decisionReason.trim()} onClick={() => void moveFromConference("cancelledWithoutTraining", "Cancelado sem treinamento")}><AlertTriangle size={16} /> Cancelado sem treinamento</button></div>}</section>}
 
       {["finished", "cancelled", "cancelledWithoutTraining"].includes(journey.phase) && <section className="cs-drawer-panel cs-final-panel"><header><span className="eyebrow">{phaseName.toUpperCase()}</span><h3>{journey.phase === "finished" ? "Jornada concluída" : "Cliente cancelado"}</h3><p>{journey.approvalReason || journey.cancellationReason || journey.finalReason || "Todas as informações permanecem disponíveis para consulta."}</p></header><div className="cs-decision-summary"><span><small>Status</small><strong>{journey.status || phaseName}</strong></span><span><small>Responsável</small><strong>{item.owner}</strong></span><span><small>Health Score</small><strong>{score}%</strong></span><span><small>Última atualização</small><strong>{dateTime(item.updated_at)}</strong></span></div>{journey.track === "retention" && journey.phase === "finished" && <div className="cs-retention-resume"><div><RotateCcw /><span><strong>Retomar tratativa</strong><small>Cria uma cópia na primeira coluna do CRM Retenção e preserva todo o histórico desta jornada.</small></span></div><button className="primary-button" disabled={!canEdit || busy || journey.status === "Cliente no CRM Retenção"} onClick={() => void resumeInRetention()}><RotateCcw size={15} /> {journey.status === "Cliente no CRM Retenção" ? "Cliente no CRM Retenção" : "Retomar card no CRM Retenção"}</button></div>}</section>}
 
       <section className="cs-drawer-panel"><header><span className="eyebrow">HISTÓRICO DE INTERAÇÕES</span><h3>Jornada completa do cliente</h3></header>{canEdit && !["finished", "cancelled", "cancelledWithoutTraining"].includes(journey.phase) && <div className="cs-comment-form"><textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={3} placeholder="Adicionar comentário de evolução..." /><button className="primary-button" disabled={busy || !comment.trim()} onClick={() => void save({ ...journey }, comment.trim()).then((result) => { if (result) setComment(""); })}><MessageSquareText size={15} /> Registrar</button></div>}<div className="cs-history">{history.length === 0 ? <p>Nenhuma interação registrada.</p> : history.map((entry, index) => <article key={`${entry.createdAt}-${index}`}><i /><div><strong>{entry.kind || "Atualização"}</strong><small>{entry.actor || "Sistema"} · {dateTime(entry.createdAt)}</small><p>{entry.text}</p></div></article>)}</div></section>
+      {journey.phase === "tracking" && <ScoreEvolutionPanel entries={journey.scoreEvolution ?? []} />}
     </div>
     {taskEditor && <CancellationEntryModal customers={customers} catalogs={catalogs} employees={employees} currentUser={currentUser} busy={busy} onClose={() => setTaskEditor(false)} prefill={{ clientId: journey.clientId || item.customer_id || "", customerName: item.customer_name || item.title, adhesionDate: item.created_at.slice(0, 10), plan: commercial?.products?.[0]?.plan || "", monthlyValueCents: item.amount_cents, seller: commercial?.seller || commercialSource?.owner || "", csOwner: item.owner, notes: `Cliente ${item.title} solicitou cancelamento durante ${phaseName}. Registre tratativas, motivo e tentativa de reversão.`, sourceModule: "cs", sourceItemId: item.id, linkedCsItemId: item.id }} onSave={async (detail) => { await requestCancellation(detail); }} />}
   </aside></div>;
@@ -567,6 +658,16 @@ function FeaturePicker({ label, options, selected, disabled, onChange }: { label
   const toggle = (name: string) => onChange(selected.includes(name) ? selected.filter((entry) => entry !== name) : [...selected, name]);
   const names=[...new Set(options.map(option=>option.name))];
   return <fieldset className="cs-feature-picker"><legend>{label} ({selected.filter(name=>names.includes(name)).length})</legend><div>{names.length === 0 ? <small>Nenhuma opção cadastrada. Use a engrenagem da funcionalidade para configurar.</small> : names.map((name) => <button type="button" disabled={disabled} className={selected.includes(name) ? "selected" : ""} key={name} onClick={() => toggle(name)}><Check size={12} /> {name}</button>)}</div></fieldset>;
+}
+
+function ScoreEvolutionPanel({ entries }: { entries: ScoreEvolutionEntry[] }) {
+  const months = [...new Set(entries.map((entry) => entry.period || entry.createdAt.slice(0, 7)))].sort().reverse();
+  const [period, setPeriod] = useState(months[0] || new Date().toISOString().slice(0, 7));
+  const visible = entries.filter((entry) => (entry.period || entry.createdAt.slice(0, 7)) === period).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return <section className="cs-drawer-panel cs-score-evolution-panel">
+    <header><span><span className="eyebrow">EVOLUÇÃO DO CLIENTE</span><h3>Score e features por período</h3><p>Histórico automático das alterações realizadas no acompanhamento.</p></span><label>Período<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label></header>
+    {visible.length === 0 ? <p className="cs-score-evolution-empty">Nenhuma alteração de score ou feature registrada neste período.</p> : <div className="cs-score-evolution-list">{visible.map((entry) => <article key={entry.id}><strong>{entry.previousScore}% <ArrowRight size={13} /> {entry.score}%</strong><span><b>Base</b> {entry.featuresBase.join(", ") || "Nenhuma"}</span><span><b>Em uso</b> {entry.featuresActive.join(", ") || "Nenhuma"}</span><span><b>Plus</b> {entry.featuresPlus.join(", ") || "Nenhuma"}</span><footer>{entry.actor} · {dateTime(entry.createdAt)}</footer></article>)}</div>}
+  </section>;
 }
 
 function CancellationTaskModal({ item, journey, commercial, customers, module, employees, busy, onClose, onSubmit }: { item: WorkItem; journey: CsJourney; commercial: CommercialLead | null; customers: Customer[]; module: TaskModuleData; employees: Employee[]; busy: boolean; onClose: () => void; onSubmit: (payload: Record<string, unknown>) => Promise<OperationResult> }) {
