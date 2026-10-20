@@ -317,7 +317,7 @@ test("configura clientes, vincula redes e consolida comentários por ID", async 
   assert.match(app, /const CUSTOMER_CATALOGS/);
   assert.match(app, /scope="customers"/);
   assert.match(app, /name="strategicNetworkId"/);
-  assert.match(app, /Rede: \{linkedNetwork\.title\}/);
+  assert.match(app, /Cliente estratégico vinculado à rede \{linkedNetwork\.title\}/);
   assert.match(app, /label: "Comentários"/);
   assert.match(app, /label: "Alerta"/);
   assert.match(app, /structuredClientEvolutions/);
