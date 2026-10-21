@@ -147,11 +147,13 @@ export function ClientChecklistModal({ context, customers, catalogs, items, user
     const surfaces = Array.from(document.querySelectorAll<HTMLElement>(`[data-reminder-source-module="${context.module}"]`));
     const source = surfaces.at(-1);
     if (!source) return;
-    const contentHost = source.querySelector<HTMLElement>(".cs-drawer-content,.task-modal-body,.drawer-body,.retention-detail-body,.enterprise-detail-body,.service-entry-body,.suggestion-detail-body,.development-drawer-body,.lead-detail-body,.cs-pipeline-body") || source;
+    const contentHost = source.querySelector<HTMLElement>(".retention-detail-grid>main,.cs-drawer-content,.commercial-lead-drawer-content,.journey-drawer-body,.task-detail-layout,.task-modal-body,.drawer-body,.enterprise-detail-body,.service-entry-body,.suggestion-detail-body,.development-drawer-body,.lead-detail-body,.cs-pipeline-body") || source;
     const portalHost = document.createElement("div");
     portalHost.className = "client-checklist-native-host";
-    const historyAnchor = contentHost.querySelector<HTMLElement>(".cs-drawer-panel:last-of-type,.task-history,.retention-history-list,.lead-comments-history,.enterprise-timeline,.journey-comments");
-    if (historyAnchor?.parentElement === contentHost) contentHost.insertBefore(portalHost, historyAnchor); else contentHost.appendChild(portalHost);
+    const historyAnchor = contentHost.querySelector<HTMLElement>(".retention-comment-form,.cs-comments-section,.cancellation-history,.cs-drawer-panel:last-of-type,.task-history,.lead-comments-history,.enterprise-timeline,.journey-comments");
+    const directAnchor = historyAnchor ? Array.from(contentHost.children).find((child) => child === historyAnchor || child.contains(historyAnchor)) : undefined;
+    const fallbackAnchor = contentHost.lastElementChild;
+    contentHost.insertBefore(portalHost, directAnchor || fallbackAnchor || null);
     source.classList.add("checklist-inline-open");
     setHost(portalHost);
     const observer = new MutationObserver(() => { if (!source.isConnected) onCloseRef.current(); });

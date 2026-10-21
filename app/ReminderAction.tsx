@@ -169,8 +169,9 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
         else actionHost.appendChild(button);
       };
       if (module !== "tasks" && context.entityId && !header.querySelector(".copy-task-link,.card-copy-link")) {
-        const copy = document.createElement("button"); copy.type = "button"; copy.className = "card-copy-link"; copy.textContent = "Copiar link";
-        copy.addEventListener("click", async event => { event.preventDefault(); event.stopPropagation(); try { await navigator.clipboard.writeText(cardShareUrl(context.module, context.entityId!)); copy.textContent = "Link copiado"; } catch { copy.textContent = "Não foi possível copiar"; } });
+        const copy = document.createElement("button"); copy.type = "button"; copy.className = "card-copy-link";
+        copy.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><b>Copiar link</b>';
+        copy.addEventListener("click", async event => { event.preventDefault(); event.stopPropagation(); const label = copy.querySelector("b"); try { await navigator.clipboard.writeText(cardShareUrl(context.module, context.entityId!)); if (label) label.textContent = "Link copiado"; } catch { if (label) label.textContent = "Não foi possível copiar"; } });
         insertAction(copy);
       }
       if (!header.querySelector<HTMLElement>(".reminder-action-button,.reminder-detail-action")) {

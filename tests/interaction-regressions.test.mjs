@@ -753,3 +753,47 @@ test("arquiva versões liberadas por competência e unifica kanbans, portal e co
   assert.match(css, /\.app-shell \.sidebar \.brand/);
   assert.match(css, /system-accent-fuchsia/);
 });
+
+test("padroniza copiar link, posiciona checklist no corpo e prioriza modais de ação", async () => {
+  const [links, enhancer, actions, agenda, tasks, css] = await Promise.all([
+    readFile(new URL("../app/CardLinkEnhancer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ReminderAction.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ClientEngagementActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/AgendaModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(links, /card-copy-link card-detail-copy/);
+  assert.match(links, /<svg aria-hidden="true"/);
+  assert.match(links, /insertBefore\(button, closeButton\)/);
+  assert.match(enhancer, /copy\.innerHTML = '<svg/);
+  assert.match(tasks, /copy-task-link card-copy-link/);
+  assert.match(actions, /\.retention-detail-grid>main/);
+  assert.match(actions, /\.commercial-lead-drawer-content/);
+  assert.match(actions, /\.journey-drawer-body/);
+  assert.match(actions, /\.cancellation-history/);
+  assert.match(actions, /contentHost\.insertBefore\(portalHost, directAnchor \|\| fallbackAnchor \|\| null\)/);
+  assert.match(agenda, /action-modal-backdrop agenda-action-backdrop/);
+  assert.match(css, /\.card-copy-link\{position:static!important/);
+  assert.match(css, /\.action-modal-backdrop,.agenda-action-backdrop\{z-index:42000!important/);
+  assert.match(css, /\.reminder-alert-backdrop,.notice-attention-backdrop,.confirmation-backdrop\{z-index:50000!important/);
+});
+
+test("alinha ações dos cards e conta somente tarefas abertas do responsável", async () => {
+  const [app, tasks, links, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CardLinkEnhancer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /const assignedOpenTaskCount = data\.taskModule\?\.tasks\.filter/);
+  assert.match(app, /assignedToCurrentUser && !task\.completedAt && !task\.cancelled && !finalTaskStatusIds\.has\(task\.statusId\)/);
+  assert.match(app, /module === "tasks" && assignedOpenTaskCount > 0/);
+  assert.match(app, /const taskNotificationUnread =/);
+  assert.match(app, /totalUnread = internalChatUnread \+ taskNotificationUnread/);
+  assert.match(tasks, /!onlyMine \|\| \(currentCollaborator \? task\.assigneeUserId === currentCollaborator\.id : task\.assigneeName === user\.displayName\)/);
+  assert.match(links, /const actionHost = header\.querySelector/);
+  assert.match(links, /actionHost\.insertBefore\(button, closeButton\)/);
+  assert.match(css, /\.card-copy-link\{position:static!important;display:inline-flex!important;flex:0 0 auto;align-self:center/);
+  assert.match(css, /\.task-detail-overlay \.task-overlay-header-actions>:is\(button,\.task-header-status,\.task-client-state\)/);
+});

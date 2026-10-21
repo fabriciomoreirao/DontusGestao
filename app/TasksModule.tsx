@@ -115,9 +115,9 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
         && (!priorityFilter || task.priorityId === priorityFilter)
         && (!assigneeFilter || task.assigneeUserId === assigneeFilter)
         && (clientNotice === "Todos" || task.clientNotificationState === clientNotice)
-        && (!onlyMine || task.assigneeName === user.displayName || task.creatorName === user.displayName);
+        && (!onlyMine || (currentCollaborator ? task.assigneeUserId === currentCollaborator.id : task.assigneeName === user.displayName));
     });
-  }, [module.tasks, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, user.displayName]);
+  }, [module.tasks, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, currentCollaborator, user.displayName]);
 
   useEffect(() => {
     const taskId = new URLSearchParams(window.location.search).get("task");
@@ -408,7 +408,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
     <span className="task-header-status"><CircleDot size={14} /> {task.statusName}</span>
     <TaskClientStateBadge state={task.clientNotificationState}/>
     <span className="task-header-subtitle">{task.departmentName} · Atualizada em {dt(task.updatedAt)}</span>
-    <button className="copy-task-link" onClick={async () => { const url = new URL(window.location.href); url.searchParams.set("mod", "tasks"); url.searchParams.set("task", task.id); await navigator.clipboard.writeText(url.toString()); }}><Clipboard size={14} /> Copiar link</button>
+    <button className="copy-task-link card-copy-link" onClick={async () => { const url = new URL(window.location.href); url.searchParams.set("mod", "tasks"); url.searchParams.set("task", task.id); await navigator.clipboard.writeText(url.toString()); }}><Clipboard size={14} /> Copiar link</button>
     {developmentSubtaskId ? <button className="task-dev-detail-action" type="button" onClick={() => { window.location.href = `/?mod=ti&subtask=${developmentSubtaskId}`; }}><Code2 size={15} /> Acessar subtarefa de TI</button> : canEdit && <button className="task-dev-detail-action" type="button" disabled={busy || sentToDevelopment} title="Enviar esta tarefa para a triagem de desenvolvimento" onClick={() => { void onSendToDevelopment(task).then((result) => { if (result) { setSentToDevelopment(true); setDevelopmentSubtaskId(result.id ?? ""); } }); }}><Code2 size={15} /> {sentToDevelopment ? "Enviada para Desenvolvimento" : "Enviar para Desenvolvimento"}</button>}
   </>}>
     <div className="task-detail-layout">

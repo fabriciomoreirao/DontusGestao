@@ -48,15 +48,19 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
       });
       const opened = currentRecords.find(record => record.id === openedId && (!record.module || record.module === module));
       if (opened) document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.journey-drawer>header,.goal-detail-modal .modal-head,.commission-decision-modal .modal-head,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
-        if (header.querySelector(".copy-task-link,.card-copy-link,.commercial-copy-link")) return;
+        const actionHost = header.querySelector<HTMLElement>(".customer-drawer-actions,.lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions,.marketing-drawer-head-actions") ?? header;
+        if (actionHost.querySelector(".copy-task-link,.card-copy-link,.commercial-copy-link")) return;
         const button = document.createElement("button");
-        button.type = "button"; button.className = "card-copy-link card-detail-copy"; button.textContent = "Copiar link";
+        button.type = "button"; button.className = "card-copy-link card-detail-copy";
+        button.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><b>Copiar link</b>';
         button.addEventListener("click", async event => {
           event.preventDefault(); event.stopPropagation();
-          try { await navigator.clipboard.writeText(cardShareUrl(opened.module || module, opened.id)); button.textContent = "Link copiado"; }
-          catch { button.textContent = "Não foi possível copiar"; }
+          const label = button.querySelector("b");
+          try { await navigator.clipboard.writeText(cardShareUrl(opened.module || module, opened.id)); if (label) label.textContent = "Link copiado"; }
+          catch { if (label) label.textContent = "Não foi possível copiar"; }
         });
-        header.appendChild(button);
+        const closeButton = actionHost.querySelector<HTMLElement>('button[aria-label="Fechar"],.icon-button');
+        if (closeButton?.parentElement === actionHost) actionHost.insertBefore(button, closeButton); else actionHost.appendChild(button);
       });
       const requested = new URLSearchParams(window.location.search).get("card");
       if (requested) {

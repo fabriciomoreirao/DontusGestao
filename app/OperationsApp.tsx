@@ -1119,14 +1119,22 @@ export default function OperationsApp() {
   if (routeParams.get("application") === "processo-seletivo" && publicProcessId)
     return <PublicRecruitmentApplication data={data} processId={publicProcessId} busy={busy} onOperate={operate} />;
   const internalChatUnread = data.internalChatModule?.rooms.reduce((sum, room) => sum + room.unreadCount, 0) ?? 0;
-  const taskUnread = data.taskModule?.notifications.filter((notification) => !notification.read && !data.taskModule?.tasks.some((task) => task.id === notification.taskId && Boolean(task.completedAt))).length ?? 0;
+  const taskNotificationUnread = data.taskModule?.notifications.filter((notification) => !notification.read && !data.taskModule?.tasks.some((task) => task.id === notification.taskId && Boolean(task.completedAt))).length ?? 0;
+  const currentTaskCollaborator = data.taskModule?.collaborators.find((collaborator) => collaborator.email.toLocaleLowerCase("pt-BR") === data.user.email.toLocaleLowerCase("pt-BR"));
+  const finalTaskStatusIds = new Set(data.taskModule?.statuses.filter((status) => status.isFinal).map((status) => status.id) ?? []);
+  const assignedOpenTaskCount = data.taskModule?.tasks.filter((task) => {
+    const assignedToCurrentUser = currentTaskCollaborator
+      ? task.assigneeUserId === currentTaskCollaborator.id
+      : task.assigneeName.trim().toLocaleLowerCase("pt-BR") === data.user.displayName.trim().toLocaleLowerCase("pt-BR");
+    return assignedToCurrentUser && !task.completedAt && !task.cancelled && !finalTaskStatusIds.has(task.statusId);
+  }).length ?? 0;
   const noticeUnread = data.noticesModule?.notices.filter((notice) => notice.active && notice.visibleToCurrentUser && !notice.isRead).length ?? 0;
   const waitingQueueCount = data.items.filter((item) => item.module === "waitingQueue" && parseWaitingQueue(item.description)?.state === "waiting").length;
   const reminderItems = data.items.filter((item) => item.module === "reminders");
   const pendingReminders = reminderItems.map(item => ({ item, detail: parseReminder(item.description) })).filter((entry): entry is { item: WorkItem; detail: NonNullable<ReturnType<typeof parseReminder>> } => entry.detail !== null && entry.detail.recipientEmail === data.user.email && !entry.detail.seenAt);
   const dueReminder = pendingReminders.filter(({detail}) => new Date(detail.nextAlertAt || detail.remindAt).getTime() <= reminderClock).sort((a,b) => new Date(a.detail.nextAlertAt).getTime() - new Date(b.detail.nextAlertAt).getTime())[0];
   const reminderUnread = pendingReminders.length;
-  const totalUnread = internalChatUnread + taskUnread + noticeUnread + reminderUnread;
+  const totalUnread = internalChatUnread + taskNotificationUnread + noticeUnread + reminderUnread;
   const latestUnreadRoom = [...(data.internalChatModule?.rooms ?? [])]
     .filter((room) => room.unreadCount > 0)
     .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())[0];
@@ -1259,7 +1267,7 @@ export default function OperationsApp() {
       </button>
     ) : module ? (
       <button className={itemClassName} onClick={() => navigate(module, itemAdminSection, itemCommercialFlow, itemCsFlow, itemReportingSection)}>
-        <Icon size={iconSize} /><span>{label}</span>{module === "internalChat" && internalChatUnread > 0 && <b className="nav-unread-badge">{internalChatUnread > 99 ? "99+" : internalChatUnread}</b>}{module === "tasks" && taskUnread > 0 && <b className="nav-unread-badge">{taskUnread > 99 ? "99+" : taskUnread}</b>}{module === "notices" && noticeUnread > 0 && <b className="nav-unread-badge">{noticeUnread > 99 ? "99+" : noticeUnread}</b>}{module === "reminders" && reminderUnread > 0 && <b className="nav-unread-badge reminder">{reminderUnread > 99 ? "99+" : reminderUnread}</b>}{module === "waitingQueue" && waitingQueueCount > 0 && <b className="nav-unread-badge waiting">{waitingQueueCount > 99 ? "99+" : waitingQueueCount}</b>}
+        <Icon size={iconSize} /><span>{label}</span>{module === "internalChat" && internalChatUnread > 0 && <b className="nav-unread-badge">{internalChatUnread > 99 ? "99+" : internalChatUnread}</b>}{module === "tasks" && assignedOpenTaskCount > 0 && <b className="nav-unread-badge">{assignedOpenTaskCount > 99 ? "99+" : assignedOpenTaskCount}</b>}{module === "notices" && noticeUnread > 0 && <b className="nav-unread-badge">{noticeUnread > 99 ? "99+" : noticeUnread}</b>}{module === "reminders" && reminderUnread > 0 && <b className="nav-unread-badge reminder">{reminderUnread > 99 ? "99+" : reminderUnread}</b>}{module === "waitingQueue" && waitingQueueCount > 0 && <b className="nav-unread-badge waiting">{waitingQueueCount > 99 ? "99+" : waitingQueueCount}</b>}
       </button>
     ) : (
       <div className={`${itemClassName} ${nested ? "nav-subitem-static" : "nav-item-static"}`} aria-disabled="true"><Icon size={iconSize} /><span>{label}</span></div>
@@ -1896,7 +1904,14 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
     .filter((item) => new Date(item.endsAt).getTime() >= now.getTime() && (item.responsibleName === userName || Boolean(agendaUser && item.participantUserIds.includes(agendaUser.id))))
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
     .slice(0, 3);
-  const openTasks = (data.taskModule?.tasks ?? []).filter((task) => !task.completedAt && !task.cancelled && (!task.assigneeName || task.assigneeName === userName));
+  const dashboardTaskCollaborator = data.taskModule?.collaborators.find((collaborator) => collaborator.email.toLocaleLowerCase("pt-BR") === data.user.email.toLocaleLowerCase("pt-BR"));
+  const dashboardFinalTaskStatusIds = new Set(data.taskModule?.statuses.filter((status) => status.isFinal).map((status) => status.id) ?? []);
+  const openTasks = (data.taskModule?.tasks ?? []).filter((task) => {
+    const assignedToCurrentUser = dashboardTaskCollaborator
+      ? task.assigneeUserId === dashboardTaskCollaborator.id
+      : task.assigneeName.trim().toLocaleLowerCase("pt-BR") === userName.trim().toLocaleLowerCase("pt-BR");
+    return assignedToCurrentUser && !task.completedAt && !task.cancelled && !dashboardFinalTaskStatusIds.has(task.statusId);
+  });
   const pendingTasks = [...openTasks].sort((a, b) => {
     const aDue = a.dueAt ? new Date(a.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
     const bDue = b.dueAt ? new Date(b.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
