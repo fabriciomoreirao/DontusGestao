@@ -101,6 +101,14 @@ public sealed class AccessControlServiceTests
             Screen = "finance",
             CanView = true,
         });
+        foreach (var permission in adminGroup.Permissions.Where(permission => permission.Screen is "commissions" or "referrals"))
+        {
+            permission.CanView = false;
+            permission.CanCreate = false;
+            permission.CanEdit = false;
+            permission.CanApprove = false;
+            permission.CanManage = false;
+        }
         await db.SaveChangesAsync();
 
         await service.InitializeAsync();
@@ -108,6 +116,8 @@ public sealed class AccessControlServiceTests
         Assert.DoesNotContain(ScreenCatalog.All, screen => screen.Code is "finance" or "procurement" or "approvals" or "reporting" or "catalogs");
         Assert.False(await db.GroupPermissions.AnyAsync(permission => permission.Screen == "finance"));
         var admin = await service.ResolveActorAsync(new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
+        Assert.True(admin.HasPermission("commissions", "manage"));
+        Assert.True(admin.HasPermission("referrals", "manage"));
         var management = await service.GetManagementAsync(admin);
         Assert.All(management.Screens.Where(screen => screen.SupportsIndicators), screen =>
             Assert.True(admin.HasCapability(screen.Code, ScreenCatalog.ViewIndicatorsCapability)));

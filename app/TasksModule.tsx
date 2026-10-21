@@ -80,7 +80,7 @@ const dt = (value?: string | null) => value
   : "—";
 
 export default function TasksModule({ module, customers, user, canCreate, canEdit, canManage, capabilities, busy, operate, onSendToDevelopment, uploadAttachments, deleteAttachment, onOpenSettings }: Props) {
-  const [view, setView] = useState<"kanban" | "list">("list");
+  const [view, setView] = useState<"kanban" | "list">("kanban");
   const [query, setQuery] = useState("");
   const [department, setDepartment] = useState("");
   const [priority, setPriority] = useState("");

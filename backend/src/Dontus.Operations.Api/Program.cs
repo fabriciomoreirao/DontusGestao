@@ -481,10 +481,10 @@ app.MapGet("/api/public-service-requests", (HttpContext context, IConfiguration 
         endpoint = "/api/public-service-requests",
         method = "POST",
         contentType = "multipart/form-data",
-        requiredFields = new[] { "clientId", "companyName", "whatsapp", "type", "summary", "files" },
+        requiredFields = new[] { "clientId", "companyName", "whatsapp", "type", "summary" },
         aliases = new { companyName = new[] { "fullName" } },
         types = serviceRequestTypes,
-        files = new { field = "files", required = true, maximum = 5, maximumSizeMb = 25 },
+        files = new { field = "files", required = false, maximum = 5, maximumSizeMb = 25 },
     });
 }).RequireRateLimiting("public-service-requests");
 
@@ -614,8 +614,8 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
         return Results.Problem(statusCode: 400, title: "Tipo inválido", detail: "Selecione um dos tipos disponíveis.");
     if (summary.Length < 10 || summary.Length > 1000)
         return Results.Problem(statusCode: 400, title: "Descrição inválida", detail: "Descreva a solicitação com 10 a 1000 caracteres.");
-    if (form.Files.Count is < 1 or > 5 || form.Files.Any(file => file.Length <= 0 || file.Length > 25 * 1024 * 1024))
-        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie de 1 a 5 arquivos, com no máximo 25 MB cada.");
+    if (form.Files.Count > 5 || form.Files.Any(file => file.Length <= 0 || file.Length > 25 * 1024 * 1024))
+        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie no máximo 5 arquivos, com até 25 MB cada.");
 
     var customers = await db.Customers.AsNoTracking().ToListAsync(cancellationToken);
     var customer = customers.FirstOrDefault(entry => PublicCustomerCode(entry.DocumentMasked) == clientId);

@@ -51,7 +51,7 @@ function FlagBadges({ suggestion, compact = false }: { suggestion: Suggestion; c
 export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate, uploadAttachments, onOpenSettings }: {
   module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; uploadAttachments: (suggestionId: string, files: File[]) => Promise<boolean>; onOpenSettings?: () => void;
 }) {
-  const [view, setView] = useState<"list" | "kanban">("list");
+  const [view, setView] = useState<"list" | "kanban">("kanban");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");

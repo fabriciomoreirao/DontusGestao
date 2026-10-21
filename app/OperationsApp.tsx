@@ -195,7 +195,7 @@ type NavigationItem = {
 
 type CommercialFlow = "qualification" | "crm" | "retention";
 type CsFlow = "onboarding" | "evolution" | "enterprise";
-type SystemVisual = "azure" | "emerald" | "violet" | "amber" | "rose" | "teal" | "graphite";
+type SystemVisual = "azure" | "emerald" | "violet" | "amber" | "rose" | "teal" | "graphite" | "navy" | "cyan" | "orange" | "fuchsia" | "lime";
 
 const NAV_GROUPS: Array<{ label: string; items: NavigationItem[] }> = [
   {
@@ -365,7 +365,7 @@ export default function OperationsApp() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
-  const [view, setView] = useState<"board" | "list">("list");
+  const [view, setView] = useState<"board" | "list">("board");
   const [catalogSection, setCatalogSection] = useState<CatalogSection>("departments");
   const [adminSection, setAdminSection] = useState<AdminSection>("collaborators");
   const [commercialFlow, setCommercialFlow] = useState<CommercialFlow>("qualification");
@@ -473,14 +473,17 @@ export default function OperationsApp() {
     const openChecklist = (event: Event) => setClientChecklistContext((event as CustomEvent<ReminderContext>).detail ?? { module: active });
     const openRecord = (event: Event) => {
       const context = (event as CustomEvent<ReminderContext>).detail ?? { module: active };
-      const query = context.clientId || context.customerName || context.title || "";
+      const network = context.module === "cs" && context.entityId
+        ? data?.items.find((item) => item.id === context.entityId && item.module === "cs" && Boolean(parseEnterpriseNetwork(item.description)))
+        : undefined;
+      const query = network?.id || context.clientId || context.customerName || context.title || "";
       if (query) openClientHistoryPage(query);
     };
     window.addEventListener(CLIENT_ALERT_EVENT, openAlert);
     window.addEventListener(CLIENT_CHECKLIST_EVENT, openChecklist);
     window.addEventListener(CLIENT_RECORD_EVENT, openRecord);
     return () => { window.removeEventListener(CLIENT_ALERT_EVENT, openAlert); window.removeEventListener(CLIENT_CHECKLIST_EVENT, openChecklist); window.removeEventListener(CLIENT_RECORD_EVENT, openRecord); };
-  }, [active]);
+  }, [active, data?.items]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setReminderClock(Date.now()), 30_000);
@@ -506,7 +509,7 @@ export default function OperationsApp() {
     if (storedTheme === "dark" || storedTheme === "light") setTheme(storedTheme);
     if (storedBackground) setBackgroundImage(storedBackground);
     if (storedSidebar === "true") setSidebarCollapsed(true);
-    if (["azure", "emerald", "violet", "amber", "rose", "teal", "graphite"].includes(storedAgendaVisual ?? "")) setAgendaVisual(storedAgendaVisual as SystemVisual);
+    if (["azure", "emerald", "violet", "amber", "rose", "teal", "graphite", "navy", "cyan", "orange", "fuchsia", "lime"].includes(storedAgendaVisual ?? "")) setAgendaVisual(storedAgendaVisual as SystemVisual);
   }, []);
 
   const load = async (background = false) => {
@@ -894,7 +897,13 @@ export default function OperationsApp() {
     if (!data || !kanbanModules.has(active)) return data?.items ?? [];
     const currentMonth = brasiliaMonthKey();
     const visible = (item: WorkItem) => {
-      if (item.id === new URLSearchParams(window.location.search).get("card") || (item.module === "ti" && ["Configuração de Kanban", "Versão"].includes(item.record_type))) return true;
+      if (item.id === new URLSearchParams(window.location.search).get("card") || (item.module === "ti" && item.record_type === "Configuração de Kanban")) return true;
+      if (item.module === "ti" && item.record_type === "Versão") {
+        try {
+          const release = JSON.parse(item.description) as { kind?: string; status?: string };
+          if (release.kind === "developmentRelease" && release.status !== "Liberada") return true;
+        } catch { /* versões legadas seguem a competência normal */ }
+      }
       const matchesMonth = brasiliaMonthKey(item.created_at) === kanbanMonth || brasiliaMonthKey(item.updated_at) === kanbanMonth;
       if (active === "commercial" && commercialFlow === "crm") {
         const terminal = /(ganh|perdid|cancel|finaliz|conclu)/i.test(`${item.status} ${item.description}`);
@@ -904,6 +913,10 @@ export default function OperationsApp() {
     };
     return data.items.filter((item) => item.module !== active || visible(item));
   }, [active, commercialFlow, data, kanbanMonth]);
+
+  useEffect(() => {
+    if (kanbanModules.has(active)) setView("board");
+  }, [active]);
   const moduleItems = useMemo(() => kanbanItems.filter((item) => item.module === active), [active, kanbanItems]);
   const monthTaskModule = useMemo(() => data?.taskModule ? ({ ...data.taskModule, tasks: data.taskModule.tasks.filter((task) => brasiliaMonthKey(task.createdAt) === kanbanMonth || brasiliaMonthKey(task.updatedAt) === kanbanMonth) }) : null, [data?.taskModule, kanbanMonth]);
   const monthSuggestionModule = useMemo(() => data?.suggestionModule ? ({ ...data.suggestionModule, suggestions: data.suggestionModule.suggestions.filter((entry) => brasiliaMonthKey(entry.createdAt) === kanbanMonth || brasiliaMonthKey(entry.updatedAt) === kanbanMonth) }) : null, [data?.suggestionModule, kanbanMonth]);
@@ -1584,6 +1597,9 @@ function ClientHistoryPage({ query, data, canEdit, busy, operate, onClose, onNav
   const [resumeOpen, setResumeOpen] = useState(false);
   const [comment, setComment] = useState("");
   const key = query.trim().toLocaleLowerCase("pt-BR");
+  const networkRecord = data.items.find((entry) => entry.id.toLocaleLowerCase("pt-BR") === key && entry.module === "cs" && Boolean(parseEnterpriseNetwork(entry.description)));
+  const networkDetail = networkRecord ? parseEnterpriseNetwork(networkRecord.description) : null;
+  if (networkRecord && networkDetail) return <NetworkCustomerRecord item={networkRecord} network={networkDetail} onClose={onClose} page />;
   const contains = (...values: unknown[]) => values.some((value) => String(value ?? "").toLocaleLowerCase("pt-BR").includes(key));
   const customer = data.customers.find((entry) => contains(entry.id, entry.trade_name, entry.legal_name, entry.document_masked));
   const belongs = (...values: unknown[]) => contains(...values) || Boolean(customer && values.some((value) => {
@@ -2133,12 +2149,19 @@ function CustomerDrawer({ customer, items, canEdit, onEdit, onClose }: { custome
   </aside></div>;
 }
 
-function NetworkCustomerRecord({ item, network, onClose }: { item: WorkItem; network: EnterpriseNetwork; onClose: () => void }) {
+function NetworkCustomerRecord({ item, network, onClose, page = false }: { item: WorkItem; network: EnterpriseNetwork; onClose: () => void; page?: boolean }) {
   const total = network.units.length;
   const finalized = network.units.filter((unit) => /finaliz|conclu/i.test(unit.status)).length;
   const inProgress = network.units.filter((unit) => unit.active && !/finaliz|conclu|cancel|inativ/i.test(unit.status)).length;
   const utilization = enterpriseHealthScore(network.units);
   const completion = total ? Math.round(finalized / total * 100) : 0;
+  if (page) return <section className="network-customer-record network-customer-record-page">
+    <header className="drawer-head simple"><button className="icon-button" onClick={onClose} aria-label="Voltar"><ArrowLeft size={20}/></button><div><span className="eyebrow">FICHA · REDE E FRANQUIA</span><h2>{item.title}</h2><p>{network.status} · Responsável {item.owner || "não informado"}</p></div></header>
+    <div className="network-customer-record-body"><section className="network-record-kpis"><article><small>Total de unidades</small><strong>{total}</strong><span>{network.units.filter((unit) => unit.active).length} ativas</span></article><article><small>Em acompanhamento</small><strong>{inProgress}</strong><span>processos em andamento</span></article><article><small>Finalizadas</small><strong>{finalized}</strong><span>{completion}% da rede</span></article><article><small>Utilização média</small><strong>{utilization}%</strong><span>features em uso</span></article></section>
+      <section className="network-record-progress"><header><span><strong>Processo de acompanhamento</strong><small>{finalized} de {total} unidade(s) finalizada(s)</small></span><b>{completion}%</b></header><div><i style={{ width: `${completion}%` }}/></div></section>
+      <section className="network-record-units"><header><span><strong>Unidades da rede</strong><small>Status, utilização e evolução de cada unidade.</small></span></header><div>{total === 0 ? <EmptyState compact text="Nenhuma unidade cadastrada nesta rede."/> : network.units.map((unit) => { const score = enterpriseUnitScore(unit); return <article key={unit.id}><span className={`network-unit-state ${enterpriseTone(score, unit.active)}`}/><span><strong>{unit.name}</strong><small>{[unit.city, unit.state].filter(Boolean).join(" · ") || `ID ${unit.externalId || "não informado"}`}</small></span><span><small>Status</small><b className={`status-pill ${statusTone(unit.status)}`}>{unit.status}</b></span><span><small>Utilização</small><strong>{score}% · {unit.usageStatus}</strong></span><span><small>Última análise</small><time>{unit.lastAnalysis || "Não realizada"}</time></span></article>; })}</div></section>
+    </div>
+  </section>;
   return <div className="drawer-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><aside className="drawer network-customer-record"><header className="drawer-head simple"><div><span className="eyebrow">FICHA · REDE E FRANQUIA</span><h2>{item.title}</h2><p>{network.status} · Responsável {item.owner || "não informado"}</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar ficha"><X size={20}/></button></header><div className="network-customer-record-body"><section className="network-record-kpis"><article><small>Total de unidades</small><strong>{total}</strong><span>{network.units.filter((unit) => unit.active).length} ativas</span></article><article><small>Em acompanhamento</small><strong>{inProgress}</strong><span>processos em andamento</span></article><article><small>Finalizadas</small><strong>{finalized}</strong><span>{completion}% da rede</span></article><article><small>Utilização média</small><strong>{utilization}%</strong><span>features em uso</span></article></section><section className="network-record-progress"><header><span><strong>Processo de acompanhamento</strong><small>{finalized} de {total} unidade(s) finalizada(s)</small></span><b>{completion}%</b></header><div><i style={{ width: `${completion}%` }}/></div></section><section className="network-record-units"><header><span><strong>Unidades da rede</strong><small>Status, utilização e evolução de cada unidade.</small></span></header><div>{total === 0 ? <EmptyState compact text="Nenhuma unidade cadastrada nesta rede."/> : network.units.map((unit) => { const score = enterpriseUnitScore(unit); return <article key={unit.id}><span className={`network-unit-state ${enterpriseTone(score, unit.active)}`}/><span><strong>{unit.name}</strong><small>{[unit.city, unit.state].filter(Boolean).join(" · ") || `ID ${unit.externalId || "não informado"}`}</small></span><span><small>Status</small><b className={`status-pill ${statusTone(unit.status)}`}>{unit.status}</b></span><span><small>Utilização</small><strong>{score}% · {unit.usageStatus}</strong></span><span><small>Última análise</small><time>{unit.lastAnalysis || "Não realizada"}</time></span></article>; })}</div></section></div></aside></div>;
 }
 
@@ -2217,7 +2240,10 @@ const COMMERCIAL_RETENTION_CATALOGS = [
   ["retentionStatus", "Status da retenção"], ["retentionFlag", "Marcações da retenção"], ["retentionCommentType", "Comentários da retenção"], ["retentionVersion", "Versões da retenção"], ["retentionChecklist", "Tipos de checklist"],
 ] as const;
 const CS_CATALOGS = [
+  ["csWorkflowStatus", "Status da jornada"], ["csUsage", "Status de Uso"], ["csCallStatus", "Status de Ligação"], ["csFinalStatus", "Status Final"],
   ["csFeatureActive", "Configuração de features"],
+  ["csRejectionReason", "Motivos de Reprova"], ["csApprovalReason", "Motivos de Aprovação"],
+  ["csLabel", "Etiquetas"], ["csFollowUp", "Tipos de follow"], ["csActivationChecklist", "Checklist · Ativação"], ["csRetentionChecklist", "Checklist · Retenção"],
 ] as const;
 
 const ENTERPRISE_CATALOGS = [
@@ -2273,7 +2299,8 @@ function CommercialCatalogsView({ catalogs, busy, onOperate, scope = "commercial
   const [editing, setEditing] = useState<CustomerCatalogOption | null | undefined>(undefined);
   const [showInactive, setShowInactive] = useState(false);
   const current = catalogs.filter((item) => {
-    if (item.catalog !== catalog || (!showInactive && !item.active)) return false;
+    const sameCatalog = item.catalog === catalog || (scope === "cs" && catalog === "csFeatureActive" && ["csFeature", "csFeatureBase", "csFeaturePlus"].includes(item.catalog));
+    if (!sameCatalog || (!showInactive && !item.active)) return false;
     if (scope !== "commercial" || catalog !== "funnelStage") return true;
     const functionality = commercialDetails(item.description).functionality;
     return commercialArea === "retention" ? functionality === "CRM Retenção" : functionality !== "CRM Retenção";
@@ -2481,7 +2508,7 @@ const commercialLabelColor = (label: string) => {
 };
 
 function CommercialLeadsModule({ flow, catalogs, customers, items, marketingCampaigns, employees, agendaModule, currentUser, busy, canCreate, canEdit, canDelete, operate, onOpenSettings }: { flow: CommercialFlow; catalogs: CustomerCatalogOption[]; customers: Customer[]; items: WorkItem[]; marketingCampaigns: WorkItem[]; employees: Employee[]; agendaModule: AgendaModuleData | null; currentUser: AppData["user"]; busy: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onOpenSettings?: () => void }) {
-  const [view, setView] = useState<"list" | "kanban">(flow === "retention" ? "kanban" : "list");
+  const [view, setView] = useState<"list" | "kanban">("kanban");
   const [query, setQuery] = useState("");
   const [owner, setOwner] = useState("all");
   const [temperature, setTemperature] = useState("all");
@@ -2591,7 +2618,7 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, marketingCamp
       <label>Temperatura<select value={temperature} onChange={(event) => setTemperature(event.target.value)}><option value="all">Todas</option>{temperatures.map((entry) => <option value={entry.name} key={entry.id}>{entry.name}</option>)}</select></label>
     </section>
     {activeFunnel && stages.length > 0 && flow !== "retention" && <><div className="commercial-view-switch segmented" role="tablist" aria-label="Visualização dos leads"><button className={view === "list" ? "active" : ""} onClick={() => setView("list")}><List size={15} /> Lista</button><button className={view === "kanban" ? "active" : ""} onClick={() => setView("kanban")}><Columns3 size={15} /> Kanban</button></div>{view === "list" && <CommercialLeadList leads={leads} canEdit={canEdit} onOpen={setSelected} onEdit={(item) => { setEditRequested(true); setSelected(item); }} onDelete={(item) => { void operate({ action: "deleteWorkItem", id: item.id }, "Lead excluído com sucesso."); }} />}</>}
-    {!activeFunnel || stages.length === 0 ? <section className="commercial-empty panel"><BadgeCheck size={23} /><h2>Configure o funil de {commercialFlowLabel(flow)}</h2><p>Crie um funil em Administração › Cadastros › Comercial › Configuração para visualizar os cards nesta funcionalidade.</p></section> : <section className="commercial-board" aria-label={`Funil ${activeFunnel.entry.name}`}>
+    {!activeFunnel || stages.length === 0 ? <section className="commercial-empty panel"><BadgeCheck size={23} /><h2>Configure o funil de {commercialFlowLabel(flow)}</h2><p>Crie um funil em Administração › Cadastros › Comercial › Configuração para visualizar os cards nesta funcionalidade.</p></section> : view === "kanban" ? <section className="commercial-board" aria-label={`Funil ${activeFunnel.entry.name}`}>
       {boardStages.map((stage) => {
         const stageLeads = leads.filter((item) => { const detail = parseCommercialLead(item.description); if (flow === "retention" && stage.name === boardStages[0]?.name && !boardStages.some((entry) => entry.name === detail?.stage)) return true; return stage.name === "Desqualificado" ? detail?.qualification === "disqualified" || detail?.stage === "Desqualificado" : detail?.stage === stage.name; });
         const stageValue = stageLeads.reduce((total, lead) => total + lead.amount_cents, 0);
@@ -2599,7 +2626,7 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, marketingCamp
         const visibleLeads = stageLeads.slice(0, limit);
         return <article className="commercial-column" key={stage.name} style={{ "--stage-color": stage.color } as CSSProperties} onDragOver={(event) => { if (canEdit) { event.preventDefault(); event.currentTarget.classList.add("drag-over"); } }} onDragLeave={(event) => event.currentTarget.classList.remove("drag-over")} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove("drag-over"); const dragged = leads.find((entry) => entry.id === event.dataTransfer.getData("workItemId")) ?? draggedLead; if (dragged) void moveLeadToStage(dragged, stage.name); setDraggedLead(null); }}><header><span><i />{stage.name}</span><span className="commercial-column-totals">{flow !== "retention" && <small>{formatMoney(stageValue)}</small>}<b>{stageLeads.length}</b></span></header><div>{stageLeads.length === 0 ? <p className="commercial-column-empty">Arraste um card para esta etapa.</p> : visibleLeads.map((lead) => flow === "retention" ? <RetentionLeadCard item={lead} key={lead.id} statuses={activeCatalogs.filter((entry) => entry.catalog === "retentionStatus")} canEdit={canEdit} canDelete={canDelete} onOpen={() => setSelected(lead)} onEdit={() => { setEditRequested(true); setSelected(lead); }} onDelete={() => { void operate({ action: "deleteWorkItem", id: lead.id }, "Cliente excluído com sucesso."); }} onStatusChange={(status) => { const detail = parseCommercialLead(lead.description); if (detail) void operate({ action: "updateWorkItem", id: lead.id, title: lead.title, owner: lead.owner, amountCents: lead.amount_cents, version: lead.version, description: JSON.stringify({ ...detail, retentionStatus: status }) }, "Status atualizado."); }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("workItemId", lead.id); setDraggedLead(lead); }} onDragEnd={() => setDraggedLead(null)} /> : <CommercialLeadCard item={lead} key={lead.id} canEdit={canEdit} canDelete={canDelete} onOpen={() => setSelected(lead)} onEdit={() => { setEditRequested(true); setSelected(lead); }} onDelete={() => { void operate({ action: "deleteWorkItem", id: lead.id }, "Lead excluído com sucesso."); }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("workItemId", lead.id); setDraggedLead(lead); }} onDragEnd={() => setDraggedLead(null)} />)}{stageLeads.length > visibleLeads.length && <button type="button" className="commercial-column-more" onClick={() => setStageLimits((current) => ({ ...current, [stage.name]: limit + 10 }))}>Ver mais ({stageLeads.length - visibleLeads.length})</button>}</div></article>;
       })}
-    </section>}
+    </section> : null}
     {creating && activeFunnel && (flow === "retention" ? <RetentionLeadModal funnel={activeFunnel.entry} details={activeFunnel.details} catalogs={activeCatalogs} employees={employees} currentUser={currentUser} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => { const result = await operate({ action: "createWorkItem", module: "commercial", recordType: commercialRecordType(flow), ...payload }, "Cliente cadastrado no CRM de retenção."); if (result) setCreating(false); }} /> : <CommercialLeadModal flow={flow} catalogs={activeCatalogs} funnel={activeFunnel.entry} details={activeFunnel.details} employees={employees} existingCustomerNames={existingCustomerNames} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => {
       const detail = parseCommercialLead(String(payload.description ?? ""));
       const customerName = detail?.customer || String(payload.customerName || payload.title || "Lead");
@@ -4057,7 +4084,7 @@ function BackgroundImageModal({ image, agendaVisual, onAgendaVisual, onClose, on
   return <div className="modal-backdrop background-image-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal background-image-modal" role="dialog" aria-modal="true" aria-labelledby="background-image-title">
     <div className="modal-head"><div><span className="eyebrow">PERSONALIZAÇÃO</span><h2 id="background-image-title">Imagem de fundo</h2><p>Escolha a imagem usada na área de trabalho. O contraste é ajustado automaticamente nos temas claro e escuro.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
     <div className={`background-modal-preview ${image ? "has-image" : ""}`} style={image ? { backgroundImage: `linear-gradient(rgba(8,18,31,.35), rgba(8,18,31,.62)), url("${image}")` } : undefined}>{!image && <><ImageIcon size={34} /><strong>Nenhuma imagem configurada</strong><span>PNG, JPG, WEBP ou GIF de até 2 MB.</span></>}</div>
-    <section className="agenda-visual-picker"><header><strong>Cor do sistema</strong><small>A paleta escolhida será aplicada à agenda, botões, seleções, gráficos e modais.</small></header><div>{([['azure','Azul Dontus'],['emerald','Verde produtividade'],['violet','Roxo executivo'],['amber','Âmbar'],['rose','Rosa'],['teal','Turquesa'],['graphite','Grafite']] as const).map(([value,label])=><button type="button" className={`${value} ${agendaVisual===value?'active':''}`} onClick={()=>onAgendaVisual(value)} key={value}><i/><span>{label}</span>{agendaVisual===value&&<Check size={14}/>}</button>)}</div></section>
+    <section className="agenda-visual-picker"><header><strong>Cor do sistema</strong><small>A paleta escolhida será aplicada à marca Dontus, agenda, botões, seleções, gráficos e modais.</small></header><div>{([['azure','Azul Dontus'],['navy','Azul-marinho'],['cyan','Ciano'],['teal','Turquesa'],['emerald','Verde produtividade'],['lime','Verde-lima'],['violet','Roxo executivo'],['fuchsia','Magenta'],['rose','Rosa'],['orange','Laranja'],['amber','Âmbar'],['graphite','Grafite']] as const).map(([value,label])=><button type="button" className={`${value} ${agendaVisual===value?'active':''}`} onClick={()=>onAgendaVisual(value)} key={value}><i/><span>{label}</span>{agendaVisual===value&&<Check size={14}/>}</button>)}</div></section>
     <input ref={input} className="quick-background-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) onUpload(file); }} />
     <div className="background-modal-actions">{image && <button type="button" className="background-remove-button" onClick={onRemove}><Trash2 size={16} /> Remover imagem</button>}<span /><button type="button" onClick={onClose}>Cancelar</button><button type="button" className="primary-button" onClick={() => input.current?.click()}><Upload size={16} /> {image ? "Trocar imagem" : "Selecionar imagem"}</button></div>
   </section></div>;

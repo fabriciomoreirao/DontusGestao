@@ -54,7 +54,7 @@ export default function ReminderAction({ context, compact = true, className = ""
 
 const CARD_SELECTORS = [
   ".task-card", ".task-table-row:not(.head)", ".suggestion-kanban-cards > article", ".commercial-lead-card", ".retention-lead-card",
-  ".cs-client-card", ".enterprise-card", ".cancellation-card", ".marketing-card", ".service-list > article",
+  ".cs-client-card", ".enterprise-card", ".enterprise-list > article", ".cancellation-card", ".marketing-card", ".service-list > article",
   ".service-request-column>div>article", ".waiting-queue-row", ".development-card-shell", ".journey-card", ".hr-employee-card", ".recruitment-candidate",
   "article.commission-row", ".goal-card", ".referral-card-shell",
 ];
@@ -217,12 +217,13 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
         if (alertAction) alertAction.insertAdjacentElement("afterend", checklistButton); else insertAction(checklistButton);
       }
       if (CLIENT_ACTION_MODULES.has(module) && !header.querySelector<HTMLElement>(".client-record-detail-action")) {
+        const isNetworkRecord = module === "cs" && surface.matches(".enterprise-detail-page");
         const recordButton = document.createElement("button");
         recordButton.type = "button";
         recordButton.className = "client-record-detail-action";
-        recordButton.title = "Acessar ficha do cliente";
-        recordButton.setAttribute("aria-label", `Acessar ficha de ${context.customerName || context.title || "cliente"}`);
-        recordButton.innerHTML = `<span aria-hidden="true">↗</span><b>Ficha do cliente</b>`;
+        recordButton.title = isNetworkRecord ? "Acessar ficha da rede" : "Acessar ficha do cliente";
+        recordButton.setAttribute("aria-label", `Acessar ficha ${isNetworkRecord ? "da rede" : "do cliente"} ${context.customerName || context.title || ""}`.trim());
+        recordButton.innerHTML = `<span aria-hidden="true">↗</span><b>${isNetworkRecord ? "Ficha da rede" : "Ficha do cliente"}</b>`;
         recordButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openClientRecord(context); });
         const checklistAction = header.querySelector<HTMLElement>(".client-checklist-detail-action");
         if (checklistAction) checklistAction.insertAdjacentElement("afterend", recordButton); else insertAction(recordButton);

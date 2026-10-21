@@ -115,7 +115,7 @@ test("mantém cartões compactos e status completos no desenvolvimento", async (
   assert.match(css, /\.app-shell \.main \.recruitment-process-list h2/);
   assert.match(css, /\.app-shell \.main \.survey-grid h2/);
   assert.match(development, /\{ name: "Em validação", tone: "cyan" \}/);
-  assert.match(development, /<option>Em validação<\/option><option>Em produção<\/option>/);
+  assert.match(development, /<option>Em validação<\/option><option>Liberada<\/option><option>Em produção<\/option>/);
 });
 
 test("controla indicadores por grupo e exibe somente ferramentas do menu", async () => {
@@ -367,6 +367,11 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(app, /commercialChecklist/);
   assert.match(app, /retentionChecklist/);
   assert.match(app, /\["csFeatureActive", "Configuração de features"\]/);
+  assert.match(app, /\["csWorkflowStatus", "Status da jornada"\]/);
+  assert.match(app, /\["csActivationChecklist", "Checklist · Ativação"\]/);
+  const csCatalogs = app.match(/const CS_CATALOGS = \[([\s\S]*?)\] as const;/)?.[1] ?? "";
+  assert.doesNotMatch(csCatalogs, /csFeatureBase|csFeaturePlus/);
+  assert.match(app, /catalog === "csFeatureActive" && \["csFeature", "csFeatureBase", "csFeaturePlus"\]\.includes\(item\.catalog\)/);
   assert.match(app, /enterpriseChecklist/);
   assert.match(app, /serviceChecklist/);
   assert.match(app, /cancellationChecklist/);
@@ -421,6 +426,7 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   ]);
   assert.match(enhancer, /CLIENT_RECORD_EVENT/);
   assert.match(enhancer, /Ficha do cliente/);
+  assert.match(enhancer, /Ficha da rede/);
   assert.match(app, /Retomar cliente/);
   assert.match(app, /label: "Acompanhamentos"/);
   assert.match(app, /EmployeeIndicatorsAdmin/);
@@ -465,12 +471,18 @@ test("integra chamados públicos, competência mensal e rolagem do chat", async 
   assert.match(requests, /TRIAGE_STAGES/);
   assert.match(requests, /Dúvida sobre o sistema.*Tarefa.*Reclamação.*Sugestão.*Bug.*Cancelamento.*Nova contratação/s);
   assert.match(requests, /PublicServiceRequestPage/);
-  assert.match(requests, /required=\{files\.length===0\} multiple/);
+  assert.match(requests, /Imagens ou arquivos <small>\(opcional\)<\/small>/);
+  assert.match(requests, /<input type="file" multiple/);
+  assert.doesNotMatch(requests, /required=\{files\.length===0\}/);
   assert.match(api, /MapPost\("\/api\/public-service-requests"/);
   assert.match(api, /X-API-Key/);
   assert.match(api, /customerMatched = customer is not null/);
   assert.match(api, /maximum = 5/);
   assert.match(api, /form\["companyName"\]/);
+  assert.match(api, /form\.Files\.Count > 5/);
+  assert.doesNotMatch(api, /form\.Files\.Count is < 1 or > 5/);
+  assert.match(api, /files = new \{ field = "files", required = false/);
+  assert.doesNotMatch(api, /requiredFields = new\[\] \{[^}]*"files"/);
   assert.match(screens, /serviceRequests/);
   assert.match(screens, /serviceFollowup/);
   assert.match(compose, /PUBLIC_SERVICE_REQUESTS_API_KEY/);
@@ -692,6 +704,9 @@ test("integra redes, acesso total, alertas por ID e notificações persistentes"
   ]);
   assert.match(app, /Redes e franquias/);
   assert.match(app, /function NetworkCustomerRecord/);
+  assert.match(app, /network\?\.id \|\| context\.clientId/);
+  assert.match(app, /networkRecord && networkDetail/);
+  assert.match(app, /network-customer-record-page/);
   assert.match(app, /Cadastro sincronizado automaticamente com Contas Estratégicas/);
   assert.match(app, /Acesso total ao sistema/);
   assert.match(app, /fullAccess/);
@@ -706,4 +721,35 @@ test("integra redes, acesso total, alertas por ID e notificações persistentes"
   assert.match(notices, /Ver depois/);
   assert.match(contracts, /bool FullAccess = false/);
   assert.match(access, /group\.Name == AdministratorsGroup && group\.Active/);
+  assert.match(access, /existing\.CanManage = true/);
+});
+
+test("arquiva versões liberadas por competência e unifica kanbans, portal e cores persistentes", async () => {
+  const [app, development, portal, tasks, suggestions, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/DevelopmentModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/PortalDontus.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/SuggestionsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /release\.kind === "developmentRelease" && release\.status !== "Liberada"/);
+  assert.match(app, /item\.record_type === "Configuração de Kanban"/);
+  assert.match(app, /useState<"board" \| "list">\("board"\)/);
+  assert.match(app, /useState<"list" \| "kanban">\("kanban"\)/);
+  assert.match(app, /dontus\.agenda-visual/);
+  assert.match(app, /Azul-marinho/);
+  assert.match(app, /Verde-lima/);
+  assert.match(development, /useState<"list" \| "kanban">\("kanban"\)/);
+  assert.match(development, /<option>Liberada<\/option>/);
+  assert.match(tasks, /useState<"kanban" \| "list">\("kanban"\)/);
+  assert.match(suggestions, /useState<"list" \| "kanban">\("kanban"\)/);
+  assert.match(portal, /portal-version-feature/);
+  assert.match(portal, /portal-feature-summary-modal/);
+  assert.match(portal, /\["Liberada","Em produção"\]/);
+  assert.match(css, /Kanbans: colunas translúcidas/);
+  assert.match(css, /\.service-request-column/);
+  assert.match(css, /\.standard-kanban-column/);
+  assert.match(css, /\.app-shell \.sidebar \.brand/);
+  assert.match(css, /system-accent-fuchsia/);
 });

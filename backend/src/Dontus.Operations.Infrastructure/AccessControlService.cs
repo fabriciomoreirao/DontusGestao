@@ -30,12 +30,21 @@ public sealed class AccessControlService(
             };
             db.AccessGroups.Add(adminGroup);
         }
+        else
+        {
+            adminGroup.Active = true;
+        }
 
         foreach (var screen in ScreenCatalog.All)
         {
             var existing = adminGroup.Permissions.FirstOrDefault(permission => permission.Screen == screen.Code);
             if (existing is not null)
             {
+                existing.CanView = true;
+                existing.CanCreate = true;
+                existing.CanEdit = true;
+                existing.CanApprove = true;
+                existing.CanManage = true;
                 existing.CapabilitiesJson = JsonSerializer.Serialize(AdministratorCapabilities(screen));
                 continue;
             }
