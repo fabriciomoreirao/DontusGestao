@@ -107,7 +107,7 @@ const now = () => new Date().toISOString();
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 const dateTime = (value?: string) => value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "—";
 const dateOnly = (value?: string) => value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(value)) : "—";
-const trackedDays = (journey: CsJourney, item: WorkItem) => Math.max(0, Math.floor((Date.now() - new Date(journey.trackingStartedAt || journey.onboardingStartedAt || item.updated_at).getTime()) / 86_400_000));
+const trackedDays = (journey: CsJourney, item: WorkItem) => Math.max(0, Math.floor(((isClosedCsJourney(journey.phase) ? new Date(journey.conferenceConfirmedAt || journey.cancellationResolvedAt || item.updated_at).getTime() : Date.now()) - new Date(journey.trackingStartedAt || journey.onboardingStartedAt || item.updated_at).getTime()) / 86_400_000));
 const interactionDays = (journey: CsJourney, item: WorkItem) => Math.max(0, Math.floor((Date.now() - new Date(journey.follows.at(-1)?.createdAt || journey.trackingStartedAt || journey.onboardingStartedAt || item.updated_at).getTime()) / 86_400_000));
 const featureTokens = (values: string[]) => [...new Set(values.flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean))];
 const catalogFeatureIsBase = (entry: CatalogOption) => {
@@ -650,9 +650,11 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
 }
 
 function JourneyTimeline({ current }: { current: CsPhase }) {
-  const activeIndex = PHASES.findIndex((entry) => entry.id === current);
-  const standard = PHASES.slice(0, 5);
-  return <div className="cs-journey-timeline">{standard.map((phase, index) => <span key={phase.id} className={`${index < activeIndex ? "done" : ""} ${phase.id === current ? "active" : ""}`}><i>{index < activeIndex ? <Check size={12} /> : index + 1}</i><b>{phase.label}</b></span>)}</div>;
+  const unsuccessful = canResumeCsJourney(current);
+  const terminal = PHASES.find(entry => entry.id === (unsuccessful ? current : "finished"))!;
+  const standard = [...PHASES.slice(0, 4), terminal];
+  const activeIndex = standard.findIndex(entry => entry.id === current);
+  return <div className="cs-journey-timeline">{standard.map((phase, index) => <span key={phase.id} className={`${!unsuccessful && index < activeIndex ? "done" : ""} ${phase.id === current ? "active" : ""} ${unsuccessful && phase.id === current ? "negative" : ""}`}><i>{!unsuccessful && index < activeIndex ? <Check size={12} /> : index + 1}</i><b>{phase.label}</b></span>)}</div>;
 }
 
 function CancellationPanel({ journey, canEdit, canCreateTask, busy, onRequest }: { journey: CsJourney; canEdit: boolean; canCreateTask: boolean; busy: boolean; onRequest: () => void }) {

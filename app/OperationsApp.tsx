@@ -47,6 +47,7 @@ const GoalsModule = lazy(() => import("@/app/GoalsModule"));
 import { PortalLinksAdmin } from "@/app/PortalLinksModule";
 import SatisfactionSurveysModule, { PublicSurveyResponsePage } from "@/app/SatisfactionSurveysModule";
 import IndicatorTabs from "@/app/IndicatorTabs";
+import { enterpriseUnitScore, enterpriseHealthScore } from "@/lib/enterprise-score";
 const OperationIndicatorsBoard = lazy(() => import("@/app/OperationIndicatorsBoard"));
 const PublicOperationsOverview = lazy(() => import("@/app/PublicOperationsOverview"));
 import ServiceRequestsModule, { PublicServiceRequestPage } from "@/app/ServiceRequestsModule";
@@ -3377,16 +3378,6 @@ const enterpriseUnitStatuses = ["Não iniciada", "Em implantação", "Em acompan
 const enterpriseFeatureStatuses = ["Não contratada", "Contratada", "Aguardando configuração", "Em configuração", "Configurada", "Em utilização", "Com baixa utilização", "Com problema", "Inativa"];
 const enterpriseTone = (percent: number, active = true) => !active ? "neutral" : percent >= 75 ? "positive" : percent >= 40 ? "warning" : "negative";
 const normalizeEnterprise = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-const enterpriseUnitScore = (unit: EnterpriseUnit, featureUniverse: string[] = []) => {
-  const universe = [...new Set((featureUniverse.length ? featureUniverse : unit.features.map(feature => feature.name)).map(normalizeEnterprise).filter(Boolean))];
-  if (!universe.length) return 0;
-  const inUse = new Set(unit.features.filter(feature => /em utilização|configurada/i.test(feature.status) || /ativa/i.test(feature.category)).map(feature => normalizeEnterprise(feature.name)));
-  return Math.round(Math.max(0, Math.min(1, inUse.size / universe.length)) * 100);
-};
-const enterpriseHealthScore = (units: EnterpriseUnit[], featureUniverse: string[] = []) => {
-  const activeUnits = units.filter(unit => unit.active);
-  return activeUnits.length ? Math.round(activeUnits.reduce((sum, unit) => sum + enterpriseUnitScore(unit, featureUniverse), 0) / activeUnits.length) : 0;
-};
 
 function EnterpriseNetworksModule({ items, customers, employees, catalogs, agendaModule, taskModule, currentUser, busy, canEdit, canDelete, canCreateTask, operate, onOpenSettings }: { items: WorkItem[]; customers: Customer[]; employees: Employee[]; catalogs: CustomerCatalogOption[]; agendaModule: AgendaModuleData | null; taskModule: TaskModuleData | null; currentUser: AppData["user"]; busy: boolean; canEdit: boolean; canDelete: boolean; canCreateTask: boolean; operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onOpenSettings?: () => void }) {
   const [query, setQuery] = useState(""); const [owner, setOwner] = useState("all"); const [status, setStatus] = useState("all");

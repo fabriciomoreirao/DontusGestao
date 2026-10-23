@@ -4,6 +4,7 @@ import { Activity, ArrowLeft, BarChart3, CheckCircle2, Clock3, Filter, Gauge, Li
 import { useMemo, useState } from "react";
 import IndicatorTabs from "@/app/IndicatorTabs";
 import { csOutcome } from "@/lib/cs-journey";
+import { enterpriseUnitScore } from "@/lib/enterprise-score";
 
 type Item = {
   id: string; module: string; record_type: string; title: string; customer_name?: string; owner: string; team: string;
@@ -33,7 +34,7 @@ const percent = (part: number, total: number) => total ? `${Math.round(part / to
 const finished = (status: unknown) => !/sem sucesso|sem retorno|falta de retorno|reprov|cancel/.test(clean(status)) && /conclu|finaliz|aprov|ganho|feito|resolvid|contrat|liberad|sucesso/i.test(clean(status));
 const rejected = (status: unknown) => /reprov|cancel|perdid|descart|sem retorno|falta de retorno|sem sucesso/i.test(clean(status));
 const parse = (raw?: string): Detail => { try { const value: unknown = JSON.parse(raw || "{}"); return value && typeof value === "object" && !Array.isArray(value) ? value as Detail : {}; } catch { return {}; } };
-const numberOf = (...values: unknown[]) => { const value = values.find((entry) => Number.isFinite(Number(entry))); return value === undefined ? 0 : Number(value); };
+const numberOf = (...values: unknown[]) => { const value = values.find((entry) => entry !== null && entry !== undefined && entry !== "" && Number.isFinite(Number(entry))); return value === undefined ? 0 : Number(value); };
 const stringOf = (...values: unknown[]) => String(values.find((entry) => typeof entry === "string" && entry.trim()) ?? "");
 const arrayOf = (value: unknown) => Array.isArray(value) ? value : [];
 const dateKey = (value: string) => value.slice(0, 10);
@@ -42,6 +43,9 @@ const monthLabel = (key: string) => { const [year, month] = key.split("-"); retu
 const durationDays = (item: Item) => Math.max(0, Math.round((new Date(item.updated_at).getTime() - new Date(item.created_at).getTime()) / 86_400_000));
 
 function scoreOf(detail: Detail) {
+  if (Array.isArray(detail.features) && !detail.featuresBase && !detail.featuresActive && detail.features.every(feature => feature && typeof feature === "object" && "name" in feature)) {
+    return enterpriseUnitScore({ features: detail.features.map(feature => ({ name: String(feature.name || ""), status: String(feature.status || ""), category: String(feature.category || "") })) });
+  }
   const explicit = numberOf(detail.healthScore, detail.health_score, detail.usageScore, detail.usagePercent, detail.percentage, detail.score);
   if (explicit > 0) return explicit <= 1 ? explicit * 100 : explicit;
   const base = arrayOf(detail.featuresBase ?? detail.baseFeatures ?? detail.features);
@@ -281,7 +285,7 @@ function metricsFor(module: string, contextKey: string, rows: Item[]): Metric[] 
     if (module === "cs" && contextKey.includes("enterprise")) {
       const networks = details.filter(({ detail, item }) => /enterprise/.test(clean(detail.kind)) || /rede/.test(clean(item.record_type)));
       const units = networks.flatMap(({ detail }) => arrayOf(detail.units));
-      const unitScores = units.map((unit) => scoreOf((typeof unit === "object" && unit ? unit : {}) as Detail));
+      const unitScores = units.filter(unit => (unit as Detail).active !== false).map((unit) => scoreOf((typeof unit === "object" && unit ? unit : {}) as Detail));
       const interactions = networks.reduce((sum, { detail }) => sum + arrayOf(detail.history).length, 0) + units.reduce((sum, unit) => sum + arrayOf(typeof unit === "object" && unit ? (unit as Detail).interactions : []).length, 0);
       const avg = unitScores.length ? Math.round(unitScores.reduce((sum, score) => sum + score, 0) / unitScores.length) : 0;
       return [
@@ -433,7 +437,7 @@ function supplementaryMetricsFor(module: string, contextKey: string, rows: Item[
   if (module === "cs" && contextKey.includes("enterprise")) {
     const units = details.flatMap(({ detail }) => arrayOf(detail.units).map((unit) => (typeof unit === "object" && unit ? unit : {}) as Detail));
     const scores = units.map(scoreOf);
-    return [{ label: "Unidades ativas", value: units.filter((unit) => !/inativ|cancel/.test(clean(unit.status))).length, note: "em operação" }, { label: "Unidades inativas", value: units.filter((unit) => /inativ|cancel/.test(clean(unit.status))).length, note: "fora de operação" }, { label: "Score alto", value: scores.filter((score) => score >= 75).length, note: "unidades ≥ 75%" }, { label: "Score crítico", value: scores.filter((score) => score < 50).length, note: "unidades abaixo de 50%" }];
+    return [{ label: "Unidades ativas", value: units.filter((unit) => unit.active !== false && !/inativ|cancel/.test(clean(unit.status))).length, note: "em operação" }, { label: "Unidades inativas", value: units.filter((unit) => unit.active === false || /inativ|cancel/.test(clean(unit.status))).length, note: "fora de operação" }, { label: "Score alto", value: scores.filter((score) => score >= 75).length, note: "unidades ≥ 75%" }, { label: "Score crítico", value: scores.filter((score) => score < 50).length, note: "unidades abaixo de 50%" }];
   }
   if (module === "cs" || module === "lia") {
     const phases = details.map(({ item, detail }) => clean(detail.phase ?? detail.stage ?? item.status));

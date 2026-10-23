@@ -27,6 +27,7 @@
 .task-catalog-modal:has(input[name="acceptsNewTasks"]) form{grid-template-columns:repeat(2,minmax(0,1fr))}
 .task-catalog-modal .catalog-form form .catalog-field{background:transparent!important}
 .cs-conference-actions{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.cs-journey-timeline span.active.negative{color:#e26170}.cs-journey-timeline span.active.negative i{background:#a63040;color:#fff;border-color:#a63040}
 .cs-pipeline-tabs{flex-wrap:wrap}.cs-final-panel .cs-retention-resume{display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--primary-soft)}
 .cs-retention-resume>div{flex:1 1 260px;min-width:0}.cs-retention-resume>button{flex:0 1 auto;min-height:42px;white-space:normal}
 @media(max-width:760px){.indicator-tabs{flex-wrap:nowrap;overflow-x:auto}.indicator-tabs button{flex-shrink:0;padding:9px 12px}.indicator-panel>.operation-bi-grid{grid-template-columns:1fr}.indicator-panel .operation-bi-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.indicator-record-list article{grid-template-columns:minmax(0,1fr) minmax(100px,.5fr)}.indicator-record-list time{display:none}.catalog-records-heading>span{flex-wrap:wrap;gap:10px}}
