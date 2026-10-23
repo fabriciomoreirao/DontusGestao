@@ -4514,6 +4514,39 @@ button:not(:disabled):active {
   grid-column: 1;
   grid-row: 1 / span 8;
 }
+.commercial-lead-drawer-content > .commercial-interactions {
+  align-self: start;
+  align-content: start;
+  grid-auto-rows: max-content;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+.commercial-interactions > label,
+.commercial-interactions .lead-control-grid > label {
+  min-width: 0;
+  align-content: start;
+}
+.commercial-interactions :is(select, textarea) {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.commercial-interactions select { height: 42px; }
+.commercial-interactions textarea { height: 96px; resize: vertical; }
+.commercial-interactions .drawer-actions {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.commercial-interactions .drawer-actions > button {
+  align-self: center;
+  min-height: 40px;
+  height: auto;
+  padding: 10px 14px;
+  line-height: 1.25;
+}
 .commercial-lead-drawer .lead-drawer-section {
   gap: 9px;
   padding: 13px;
@@ -4671,6 +4704,7 @@ button:not(:disabled):active {
   .commercial-lead-drawer { width: 100%; border-radius: 0; }
   .commercial-lead-drawer-content { display: flex; flex-direction: column; overflow-y: auto; }
   .commercial-lead-drawer-content > .lead-drawer-section:last-of-type { order: 5; }
+  .commercial-lead-drawer-content > .commercial-interactions { flex-shrink: 0; }
   .commercial-drawer-management { grid-template-columns: 1fr; }
   .commercial-transfer-controls { grid-template-columns: 1fr; }
   .commercial-active-funnel { align-items: flex-start; flex-direction: column; }
