@@ -6,6 +6,8 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> options) : DbContext(options)
 {
+    public DbSet<LiaForm> LiaForms => Set<LiaForm>();
+    public DbSet<LiaFormRequest> LiaFormRequests => Set<LiaFormRequest>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<CustomerCatalogOption> CustomerCatalogOptions => Set<CustomerCatalogOption>();
     public DbSet<WorkItem> WorkItems => Set<WorkItem>();
@@ -69,6 +71,19 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<LiaForm>(entity => {
+            entity.ToTable("lia_forms");
+            entity.Property(x => x.Name).HasMaxLength(160);
+            entity.Property(x => x.Description).HasMaxLength(2000);
+        });
+        modelBuilder.Entity<LiaFormRequest>(entity => {
+            entity.ToTable("lia_form_requests");
+            entity.Property(x => x.TokenHash).HasMaxLength(64);
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => x.WorkItemId);
+            entity.HasOne<WorkItem>().WithMany().HasForeignKey(x => x.WorkItemId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LiaForm>().WithMany().HasForeignKey(x => x.FormId).OnDelete(DeleteBehavior.Restrict);
+        });
         ConfigureEntity(modelBuilder.Entity<Customer>(), "customers");
         modelBuilder.Entity<Customer>(entity =>
         {

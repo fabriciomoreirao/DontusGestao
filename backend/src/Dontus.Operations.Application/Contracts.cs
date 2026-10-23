@@ -229,7 +229,10 @@ public sealed record WorkItemDto(
     string Description,
     long Version,
     [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt,
-    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+    [property: JsonPropertyName("created_by")] string CreatedBy = "",
+    [property: JsonPropertyName("assigned_at")] DateTimeOffset? AssignedAt = null,
+    [property: JsonPropertyName("assigned_by")] string AssignedBy = "");
 
 public sealed record AppointmentDto(
     Guid Id,

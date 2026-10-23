@@ -80,7 +80,17 @@ Agenda e Tarefas são módulos separados. Em **Tarefas** estão disponíveis:
 
 O envio externo por e-mail, WhatsApp ou SMS permanece desativado até a configuração de um provedor. A ação “Notificar cliente” registra a tentativa e informa que a integração está pendente.
 
-O sistema não mantém senhas próprias: no Docker local a identidade é encaminhada pelo frontend; em ambiente autenticado, o e-mail vem do provedor da plataforma. A autorização sempre é resolvida no PostgreSQL.
+Com a autenticação local habilitada, as senhas são armazenadas como hash e não podem ser consultadas. Em **Administração → Colaboradores → Editar**, a ação **Gerar nova senha e enviar por e-mail** exige permissão administrativa, envia os dados ao e-mail salvo, substitui a senha e encerra as sessões anteriores. Colaboradores inativos precisam ser reativados antes da redefinição. A ação fica registrada na auditoria sem a senha.
+
+Configure no arquivo .env as variáveis SMTP_HOST, SMTP_PORT, SMTP_USE_SSL, SMTP_USERNAME, SMTP_PASSWORD e SMTP_FROM e recrie o serviço api para habilitar o envio. Se o envio falhar ou não estiver configurado, a senha atual é preservada. O e-mail contém o endereço de acesso e a nova senha temporária; o colaborador pode alterá-la no menu da conta. A autorização é resolvida no PostgreSQL.
+
+## Formulários do acompanhamento LIA
+
+Em **Configurações da LIA → Formulários do cliente**, crie modelos com perguntas obrigatórias ou opcionais de texto curto, texto longo, seleção, e-mail, data e número. A manutenção exige a permissão de administrar a LIA.
+
+No detalhe do cliente, use **Gerar link de formulário**, escolha um modelo ativo e copie o link. O cliente preenche a página pública sem login. Cada envio registra a data e hora no servidor e aceita uma única resposta. Links já gerados preservam as perguntas originais mesmo após a edição do modelo.
+
+O card indica se os formulários foram respondidos; **Ver respostas** abre uma nova página autenticada com todos os formulários desse acompanhamento e seus horários em Brasília. A lista atualiza ao voltar à janela, a cada 30 segundos ou pelo botão de atualização. Gerar links exige editar a LIA; consultar respostas exige visualizar a LIA. Tokens são aleatórios e armazenados com hash e uma cópia protegida pela chave persistente de Data Protection. As tabelas são criadas pela migration LiaClientForms.
 
 ## Atendimento omnichannel
 

@@ -113,12 +113,12 @@ function parseDevelopment(raw:string){try{const parsed=JSON.parse(raw) as {kind?
 function Versions({items,onBack}:{items:WorkItem[];onBack:()=>void}){
   const [selected,setSelected]=useState<{item:WorkItem;detail:NonNullable<ReturnType<typeof parseDevelopment>>}|null>(null);
   const releases=items.map(item=>({item,detail:parseRelease(item.description)}))
-    .filter((entry):entry is {item:WorkItem;detail:NonNullable<ReturnType<typeof parseRelease>>}=>Boolean(entry.detail)&&["Liberada","Em produção"].includes(entry.detail.status??""))
+    .filter((entry):entry is {item:WorkItem;detail:NonNullable<ReturnType<typeof parseRelease>>}=>entry.detail!==null&&["Liberada","Em produção"].includes(entry.detail.status??""))
     .sort((a,b)=>new Date(b.item.updated_at).getTime()-new Date(a.item.updated_at).getTime());
   const latest=releases[0];
   const versionName=latest?.item.title||"Última versão";
   const features=items.map(item=>({item,detail:parseDevelopment(item.description)}))
-    .filter((entry):entry is {item:WorkItem;detail:NonNullable<ReturnType<typeof parseDevelopment>>}=>Boolean(entry.detail)&&(entry.detail.versionName===versionName||(!latest&&Boolean(entry.detail.versionName))))
+    .filter((entry):entry is {item:WorkItem;detail:NonNullable<ReturnType<typeof parseDevelopment>>}=>entry.detail!==null&&(entry.detail.versionName===versionName||(!latest&&Boolean(entry.detail.versionName))))
     .sort((a,b)=>new Date(b.item.updated_at).getTime()-new Date(a.item.updated_at).getTime());
   return <section className="portal-subpage">
     <PortalSubHeader kicker="VERSÕES" title="Funcionalidades & Novidades" description="Acompanhe a versão mais recente e as entregas registradas pelo time de Desenvolvimento." onBack={onBack} icon={<MonitorUp size={25}/>}/>

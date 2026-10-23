@@ -28,6 +28,7 @@ public sealed class SmtpPasswordRecoveryEmailSender(IConfiguration configuration
             Body = $"""
                 <p>Olá, {WebUtility.HtmlEncode(recipientName)}.</p>
                 <p>Recebemos uma solicitação para redefinir a sua senha de acesso à Dontus.</p>
+                <p>E-mail de acesso: {WebUtility.HtmlEncode(recipientEmail)}</p>
                 <p>Use a senha temporária abaixo para entrar:</p>
                 <p style="font-size:18px;font-weight:700;letter-spacing:1px">{WebUtility.HtmlEncode(temporaryPassword)}</p>
                 <p>Após acessar, altere essa senha pelo menu da sua conta.</p>

@@ -8,6 +8,7 @@ public interface ILocalAuthenticationService
     Task<AuthenticatedIdentity?> ResolveSessionAsync(string token, CancellationToken cancellationToken = default);
     Task ChangePasswordAsync(string email, string currentPassword, string newPassword, CancellationToken cancellationToken = default);
     Task RequestPasswordRecoveryAsync(string email, CancellationToken cancellationToken = default);
+    Task ResetEmployeePasswordAsync(Guid userId, ActorContext actor, CancellationToken cancellationToken = default);
     Task SignOutAsync(string token, CancellationToken cancellationToken = default);
 }
 

@@ -9,6 +9,40 @@ namespace Dontus.Operations.Tests;
 public sealed class InternalChatServiceTests
 {
     [Fact]
+    public async Task Text_emoji_and_document_messages_are_sent_and_remain_unread_until_seen()
+    {
+        await using var db = CreateContext();
+        var sender = AddUser(db, "sender@dontus.local", "Remetente");
+        var recipient = AddUser(db, "recipient@dontus.local", "Destinatário");
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var roomId = await service.CreateRoomAsync(new CreateInternalChatRoomCommand(null, null, false, [recipient.Id]), Actor(sender));
+        await service.SendMessageAsync(new SendInternalChatMessageCommand(roomId, "Olá!", "text"), Actor(sender));
+        await service.SendMessageAsync(new SendInternalChatMessageCommand(roomId, "😀", "sticker"), Actor(sender));
+        await using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("documento de teste"));
+        var attachmentId = await service.UploadAttachmentAsync(new UploadInternalChatAttachmentCommand(
+            roomId, "teste.txt", "text/plain", content.Length, content), Actor(sender));
+        var room = (await service.GetModuleAsync(Actor(recipient))).Rooms.Single();
+        Assert.Equal(3, room.UnreadCount);
+        Assert.Contains(room.Messages, message => message.Type == "sticker" && message.Body == "😀");
+        Assert.Contains(room.Messages, message => message.Id == attachmentId && message.HasAttachment);
+        var attachment = await service.GetAttachmentAsync(attachmentId, Actor(recipient));
+        Assert.NotNull(attachment);
+        foreach (var member in db.InternalChatRoomMembers)
+        {
+            member.JoinedAt = DateTimeOffset.UtcNow.AddDays(-60);
+            member.LastReadAt = null;
+        }
+        foreach (var message in db.InternalChatMessages) message.CreatedAt = DateTimeOffset.UtcNow.AddDays(-45);
+        await db.SaveChangesAsync();
+        var olderUnread = (await service.GetModuleAsync(Actor(recipient))).Rooms.Single();
+        Assert.Empty(olderUnread.Messages);
+        Assert.Equal(3, olderUnread.UnreadCount);
+        await service.MarkReadAsync(new MarkInternalChatRoomReadCommand(roomId), Actor(recipient));
+        Assert.Equal(0, (await service.GetModuleAsync(Actor(recipient))).Rooms.Single().UnreadCount);
+    }
+
+    [Fact]
     public async Task Keeps_direct_conversations_private_to_their_members()
     {
         await using var db = CreateContext();
@@ -96,13 +130,15 @@ public sealed class InternalChatServiceTests
         var roomId = await service.CreateRoomAsync(
             new CreateInternalChatRoomCommand("Equipe", firstPhoto, true, [participant.Id]), actor);
 
-        Assert.Equal(firstPhoto, (await service.GetModuleAsync(actor)).Rooms.Single().PhotoDataUrl);
+        Assert.StartsWith($"/api/internal-chat-photos/room/{roomId}?v=", (await service.GetModuleAsync(actor)).Rooms.Single().PhotoDataUrl);
+        Assert.Equal(firstPhoto, (await db.InternalChatRooms.SingleAsync()).PhotoDataUrl);
 
         var secondPhoto = "data:image/webp;base64,AA==";
         await service.UpdateGroupAsync(new UpdateInternalChatGroupCommand(roomId, "Equipe atualizada", secondPhoto), actor);
         var updated = (await service.GetModuleAsync(actor)).Rooms.Single();
         Assert.Equal("Equipe atualizada", updated.Name);
-        Assert.Equal(secondPhoto, updated.PhotoDataUrl);
+        Assert.StartsWith($"/api/internal-chat-photos/room/{roomId}?v=", updated.PhotoDataUrl);
+        Assert.Equal(secondPhoto, (await db.InternalChatRooms.SingleAsync()).PhotoDataUrl);
     }
 
     [Fact]

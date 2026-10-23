@@ -1,0 +1,33 @@
+.indicator-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.indicator-tabs button{min-height:38px;padding:9px 16px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:.78rem;font-weight:750;cursor:pointer;transition:background .16s,color .16s}
+.indicator-tabs button:hover{background:var(--surface-soft,var(--canvas));color:var(--ink)}
+.indicator-tabs button.active{border-color:color-mix(in srgb,var(--primary) 24%,var(--line));background:var(--primary-soft);color:var(--primary)}
+.indicator-tabs button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.indicator-panel{display:grid;gap:16px;min-width:0;align-content:start}
+.operation-bi-board:has(>.indicator-tabs){height:auto;min-height:0;grid-template-rows:none;overflow:visible}
+.indicator-panel>.operation-bi-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto;gap:16px;min-height:0}
+.indicator-panel .operation-bi-panel{min-height:235px;grid-column:auto;grid-row:auto;overflow:auto}
+.indicator-panel .team-panel,.indicator-panel .category-panel{grid-column:1/-1}
+.indicator-panel .operation-bi-kpis{gap:12px}
+.indicator-panel .operation-bi-kpis article{padding:16px;min-height:90px}
+.indicator-panel>.operation-bi-grid:empty{display:none}
+.indicator-panel .cancellation-bi-grid:has(>article:only-child),.indicator-panel .campaign-indicator-grid:has(>article:only-child){grid-template-columns:1fr}
+.indicator-panel .operation-bi-kpis small,.indicator-panel .operation-bi-kpis em{white-space:normal;overflow-wrap:anywhere}
+.indicator-panel .operation-bi-insights{display:flex;flex-wrap:wrap;gap:10px 18px;padding:14px;line-height:1.5}
+.indicator-panel .operation-bi-insights span{flex:1 1 230px}
+.indicator-records{padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--surface);min-width:0}
+.indicator-records header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.indicator-records h2{margin:0;font-size:1rem}.indicator-records small{color:var(--muted);font-size:.75rem}
+.indicator-record-list{max-height:440px;overflow:auto}.indicator-record-list article{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,.4fr) 88px;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--line);font-size:.8rem}
+.indicator-record-list article span{display:grid;gap:4px;min-width:0}.indicator-record-list article strong,.indicator-record-list article b{overflow-wrap:anywhere}.indicator-record-list time{color:var(--muted);font-size:.75rem}
+.catalog-show-inactive{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.78rem;white-space:nowrap}.catalog-show-inactive input{accent-color:var(--primary);width:16px;height:16px}
+.task-catalog-modal .catalog-field{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:0;background:transparent;border:0;min-width:0}
+.task-catalog-modal .catalog-field>span{color:var(--muted);font-size:.76rem;font-weight:650}.task-catalog-modal .catalog-field:first-child{grid-column:1/-1}
+.task-catalog-modal .catalog-field input,.task-catalog-modal .catalog-field select{width:100%;min-width:0;min-height:42px;box-sizing:border-box}
+.task-catalog-modal:has(input[name="acceptsNewTasks"]) form{grid-template-columns:repeat(2,minmax(0,1fr))}
+.task-catalog-modal .catalog-form form .catalog-field{background:transparent!important}
+.cs-conference-actions{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.cs-pipeline-tabs{flex-wrap:wrap}.cs-final-panel .cs-retention-resume{display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--primary-soft)}
+.cs-retention-resume>div{flex:1 1 260px;min-width:0}.cs-retention-resume>button{flex:0 1 auto;min-height:42px;white-space:normal}
+@media(max-width:760px){.indicator-tabs{flex-wrap:nowrap;overflow-x:auto}.indicator-tabs button{flex-shrink:0;padding:9px 12px}.indicator-panel>.operation-bi-grid{grid-template-columns:1fr}.indicator-panel .operation-bi-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.indicator-record-list article{grid-template-columns:minmax(0,1fr) minmax(100px,.5fr)}.indicator-record-list time{display:none}.catalog-records-heading>span{flex-wrap:wrap;gap:10px}}
+@media(max-width:480px){.indicator-panel .operation-bi-kpis{grid-template-columns:1fr}.cs-conference-actions,.cs-conference-actions.compact{grid-template-columns:1fr}}

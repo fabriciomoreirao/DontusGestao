@@ -13,3 +13,4 @@ outputs
 work
 *.log
 coverage
+.openai/outputs

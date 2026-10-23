@@ -9,6 +9,35 @@ namespace Dontus.Operations.Tests;
 public sealed class TaskServiceTests
 {
     [Fact]
+    public async Task Only_the_assignee_receives_arrivals_and_comments_and_ordinary_updates_stay_silent()
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        var support = await db.TaskDepartments.SingleAsync(entry => entry.Name == "Suporte");
+        var type = await db.TaskTypes.SingleAsync();
+        var responsible = new AppUser { Email = "responsavel@dontus.local", DisplayName = "Responsável", CreatedBy = actor.Email };
+        var mentioned = new AppUser { Email = "participante@dontus.local", DisplayName = "Participante", CreatedBy = actor.Email };
+        db.Users.AddRange(responsible, mentioned);
+        db.UserDepartments.Add(new UserDepartment { UserId = responsible.Id, DepartmentId = support.Id });
+        await db.SaveChangesAsync();
+        var created = await service.CreateAsync(new CreateCorporateTaskCommand("Tarefa recebida", "Contexto", type.Id, null, null,
+            support.Id, support.Id, responsible.Id, null, "1001", null, "5511999990000", null, null, null, null, false, [], []), actor);
+        var arrival = Assert.Single(db.TaskNotifications);
+        Assert.Equal(responsible.Id, arrival.RecipientUserId);
+        Assert.Equal("assigned", arrival.EventType);
+        var task = await db.CorporateTasks.SingleAsync();
+        await service.UpdateAsync(new UpdateCorporateTaskCommand(task.Id, "Título atualizado", task.Description, type.Id, null,
+            "1001", null, task.ClientWhatsApp, false, [], task.Version), actor);
+        Assert.Single(db.TaskNotifications);
+        await service.AddCommentAsync(new(task.Id, "Confira este comentário", [responsible.Id, mentioned.Id]), actor);
+        var commentNotice = Assert.Single(db.TaskNotifications.Where(entry => entry.EventType == "comment_added"));
+        Assert.Equal(responsible.Id, commentNotice.RecipientUserId);
+        Assert.DoesNotContain(db.TaskNotifications, entry => entry.RecipientUserId == mentioned.Id);
+        await service.AddCommentAsync(new(task.Id, "Resposta do responsável", []), actor with { Email = responsible.Email, DisplayName = responsible.DisplayName });
+        Assert.Equal(2, await db.TaskNotifications.CountAsync());
+    }
+
+    [Fact]
     public async Task Creates_task_with_catalog_sla_notification_and_immutable_history()
     {
         await using var db = CreateContext();
@@ -42,7 +71,7 @@ public sealed class TaskServiceTests
         Assert.Null(task.SlaDueAt);
         Assert.Matches(@"^T\d{6}$", task.Protocol);
         Assert.Single(await db.TaskHistory.Where(x => x.TaskId == taskId).ToListAsync());
-        Assert.Single(await db.TaskNotifications.Where(x => x.TaskId == taskId).ToListAsync());
+        Assert.Empty(await db.TaskNotifications.Where(x => x.TaskId == taskId).ToListAsync());
 
         var module = await service.GetModuleAsync(actor);
         Assert.Single(module.Tasks);

@@ -1,5 +1,6 @@
 "use client";
 
+import { COPY_LINK_SELECTOR, DETAIL_HEADER_SELECTOR, normalizeDetailHeader } from "@/app/detail-header";
 import { useEffect } from "react";
 
 type RecordLink = { id: string; title: string; protocol?: string; module?: string };
@@ -22,8 +23,10 @@ export function cardShareUrl(module: string, id: string) {
 export default function CardLinkEnhancer({ module, records }: { module: string; records: RecordLink[] }) {
   const signature = JSON.stringify(records.map(({id,title,protocol,module}) => [id,title,protocol,module]));
   useEffect(() => {
-    if (module === "tasks") return;
+
     const currentRecords: RecordLink[] = (JSON.parse(signature) as Array<[string,string,string?,string?]>).map(([id,title,protocol,module]) => ({id,title,protocol,module}));
+    const recordsById = new Map(currentRecords.map(record => [record.id, record]));
+    const moduleRecords = currentRecords.filter(record => record.module === module || !record.module);
     let frame = 0;
     let openedId = new URLSearchParams(window.location.search).get("card");
     const remember = (event: Event) => {
@@ -34,11 +37,12 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
     const enhance = () => {
       const cards = document.querySelectorAll<HTMLElement>(selectors.join(","));
       cards.forEach(card => {
-        const text = card.innerText;
         const directId = card.dataset.reminderEntityId;
-        let record = currentRecords.find(record => record.id === directId);
+        let record = directId ? recordsById.get(directId) : undefined;
         if (!record) {
-          const matches = currentRecords.filter(record => (record.module === module || !record.module) && ((record.protocol && text.includes(record.protocol)) || (record.title && Array.from(card.querySelectorAll("h2,h3,strong,b,.task-card-title")).some(element => element.textContent?.trim() === record.title))));
+          const text = card.textContent ?? "";
+          const titles = new Set(Array.from(card.querySelectorAll("h2,h3,strong,b,.task-card-title"), element => element.textContent?.trim()));
+          const matches = moduleRecords.filter(record => (record.protocol && text.includes(record.protocol)) || (record.title && titles.has(record.title)));
           if (matches.length === 1) record = matches[0];
         }
         if (!record) return;
@@ -47,9 +51,9 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
 
       });
       const opened = currentRecords.find(record => record.id === openedId && (!record.module || record.module === module));
-      if (opened) document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.journey-drawer>header,.goal-detail-modal .modal-head,.commission-decision-modal .modal-head,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
+      if (opened && module !== "tasks") document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.journey-drawer>header,.goal-detail-modal .modal-head,.commission-decision-modal .modal-head,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
         const actionHost = header.querySelector<HTMLElement>(".customer-drawer-actions,.lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions,.marketing-drawer-head-actions") ?? header;
-        if (actionHost.querySelector(".copy-task-link,.card-copy-link,.commercial-copy-link")) return;
+        if (header.querySelector(COPY_LINK_SELECTOR)) return;
         const button = document.createElement("button");
         button.type = "button"; button.className = "card-copy-link card-detail-copy";
         button.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><b>Copiar link</b>';
@@ -62,6 +66,7 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
         const closeButton = actionHost.querySelector<HTMLElement>('button[aria-label="Fechar"],.icon-button');
         if (closeButton?.parentElement === actionHost) actionHost.insertBefore(button, closeButton); else actionHost.appendChild(button);
       });
+      document.querySelectorAll<HTMLElement>(DETAIL_HEADER_SELECTOR).forEach(normalizeDetailHeader);
       const requested = new URLSearchParams(window.location.search).get("card");
       if (requested) {
         const card = Array.from(cards).find(card => card.dataset.sharedCardId === requested);

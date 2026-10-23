@@ -91,7 +91,7 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
     {
         RequireManagement(actor);
         var name = RequiredName(command.Name, "agenda");
-        var department = await db.TaskDepartments.SingleOrDefaultAsync(department => department.Id == command.DepartmentId && department.Active, cancellationToken)
+        var department = await db.TaskDepartments.SingleOrDefaultAsync(department => department.Id == command.DepartmentId && (!command.Active || department.Active), cancellationToken)
             ?? throw new DomainException("Selecione um setor ativo.");
         var calendar = command.Id.HasValue
             ? await db.AgendaCalendars.SingleOrDefaultAsync(entry => entry.Id == command.Id.Value, cancellationToken)
@@ -157,6 +157,8 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         RequireManagement(actor);
         var calendar = await db.AgendaCalendars.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
             ?? throw new DomainException("Agenda não encontrada.", 404);
+        if (await db.AgendaCommitments.AnyAsync(entry => entry.AgendaId == id, cancellationToken))
+            throw new DomainException("Esta agenda possui compromissos ou bloqueios. Desative-a para preservar o histórico.", 409);
         db.AgendaCalendars.Remove(calendar);
         AddAudit(actor, "Delete", "agenda_calendar", id.ToString(), new { calendar.Name });
         await db.SaveChangesAsync(cancellationToken);

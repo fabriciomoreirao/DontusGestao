@@ -161,8 +161,6 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (!canViewTasks)
             actor.RequirePermission("catalogs", "view");
         var user = await GetActorUserAsync(actor, cancellationToken);
-        if (canViewTasks)
-            await EnsureSlaNotificationsAsync(user.Id, cancellationToken);
         var memberDepartments = await db.UserDepartments
             .Where(x => x.UserId == user.Id)
             .Select(x => x.DepartmentId)
@@ -214,7 +212,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var userDepartments = await db.UserDepartments.AsNoTracking().ToListAsync(cancellationToken);
         var pauseStatuses = await db.TaskSlaPauseStatuses.AsNoTracking().ToListAsync(cancellationToken);
         var notifications = await db.TaskNotifications.AsNoTracking()
-            .Where(x => x.RecipientUserId == user.Id)
+            .Where(x => x.RecipientUserId == user.Id && x.ActorUserId != user.Id
+                && (x.EventType == "assigned" || x.EventType == "transferred" || x.EventType == "comment_added")
+                && db.CorporateTasks.Any(task => task.Id == x.TaskId && task.AssigneeUserId == user.Id))
             .OrderByDescending(x => x.CreatedAt).Take(100).ToListAsync(cancellationToken);
         var taskNumbers = tasks.ToDictionary(x => x.Id, x => x.Number);
 
@@ -269,7 +269,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 x.AlertBeforeMinutes, x.EscalationMinutes, x.RecalculateOnTransfer,
                 pauseStatuses.Where(m => m.SlaPolicyId == x.Id).Select(m => m.StatusId).ToList(), x.Active)).ToList(),
             users.Values.OrderBy(x => x.DisplayName).Select(x => new TaskCollaboratorDto(
-                x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, x.PhotoDataUrl, x.Active,
+                x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, ProfilePhotoUrls.For(x.Id, x.UpdatedAt, x.PhotoDataUrl), x.Active,
                 userDepartments.Where(m => m.UserId == x.Id).Select(m => m.DepartmentId).ToList(),
                 userDepartments.Where(m => m.UserId == x.Id && m.IsCoordinator).Select(m => m.DepartmentId).ToList())).ToList(),
             notifications.Select(x => new TaskNotificationDto(x.Id, x.TaskId,
@@ -552,12 +552,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             new { DepartmentId = previousDepartment, AssigneeUserId = previousAssignee, StatusId = previousStatus },
             new { DepartmentId = destination.Id, AssigneeUserId = task.AssigneeUserId, StatusId = task.StatusId, SlaRecalculated = recalculated },
             command.Reason);
-        var recipients = await db.UserDepartments.Where(x => x.DepartmentId == destination.Id)
-            .Select(x => x.UserId).ToListAsync(cancellationToken);
         if (task.AssigneeUserId.HasValue && task.AssigneeUserId.Value != user.Id)
             AddNotification(task.Id, task.AssigneeUserId.Value, user.Id, "assigned", $"A tarefa #{task.Number} foi atribuída a você no setor {destination.Name}.");
-        foreach (var recipient in recipients.Where(id => id != user.Id && id != task.AssigneeUserId).Distinct())
-            AddNotification(task.Id, recipient, user.Id, "transferred", $"A tarefa #{task.Number} foi encaminhada para {destination.Name}.");
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -675,10 +671,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         };
         db.TaskComments.Add(comment);
         AddHistory(task.Id, user.Id, "comment_added", "Comentário incluído", null, new { comment.Id });
-        await NotifyInterestedAsync(task, user.Id, "comment_added", $"Novo comentário na tarefa #{task.Number}.", cancellationToken, excludedRecipientIds: mentions);
-        foreach (var mentioned in mentions)
-            if (mentioned != user.Id)
-                AddNotification(task.Id, mentioned, user.Id, "mentioned", $"Você foi mencionado na tarefa #{task.Number}.");
+        if (task.AssigneeUserId is { } responsibleId)
+            AddNotification(task.Id, responsibleId, user.Id, "comment_added", $"Novo comentário na tarefa #{task.Number}.");
         await db.SaveChangesAsync(cancellationToken);
         return comment.Id;
     }
@@ -763,6 +757,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         RequireCatalogManagement(actor);
         if (string.IsNullOrWhiteSpace(command.Name)) throw new DomainException("Nome do setor é obrigatório.");
         var name = command.Name.Trim();
+        if (await db.Users.CountAsync(x => command.CoordinatorUserIds.Contains(x.Id) && x.Active, cancellationToken) != command.CoordinatorUserIds.Distinct().Count())
+            throw new DomainException("Selecione coordenadores ativos e válidos.");
         var normalizedName = name.ToUpperInvariant();
         TaskDepartment? entity = command.Id.HasValue
             ? await db.TaskDepartments.SingleOrDefaultAsync(x => x.Id == command.Id, cancellationToken)
@@ -804,11 +800,17 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     {
         RequireCatalogManagement(actor);
         if (string.IsNullOrWhiteSpace(command.Name)) throw new DomainException("Nome da prioridade é obrigatório.");
+        if (command.SeverityOrder < 0 || command.DefaultDueMinutes is <= 0)
+            throw new DomainException("A ordem não pode ser negativa e o prazo padrão deve ser positivo.");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(command.Color ?? "", "^#[0-9a-fA-F]{6}$"))
+            throw new DomainException("Informe uma cor válida para a prioridade.");
+        if (await db.TaskPriorities.AnyAsync(x => x.Id != command.Id && x.Name.ToUpper() == command.Name.Trim().ToUpper(), cancellationToken))
+            throw new DomainException("Já existe uma prioridade com este nome. Edite ou reative o cadastro existente.", 409);
         var entity = command.Id.HasValue
-            ? await db.TaskPriorities.SingleAsync(x => x.Id == command.Id, cancellationToken)
+            ? await db.TaskPriorities.SingleOrDefaultAsync(x => x.Id == command.Id, cancellationToken) ?? throw new DomainException("Prioridade não encontrada.", 404)
             : new TaskPriority { Name = command.Name.Trim() };
         entity.Name = command.Name.Trim(); entity.SeverityOrder = command.SeverityOrder;
-        entity.Color = command.Color; entity.DefaultDueMinutes = command.DefaultDueMinutes; entity.Active = command.Active;
+        entity.Color = command.Color!; entity.DefaultDueMinutes = command.DefaultDueMinutes; entity.Active = command.Active;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         if (!command.Id.HasValue) db.TaskPriorities.Add(entity);
         await db.SaveChangesAsync(cancellationToken);
@@ -820,16 +822,31 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         RequireCatalogManagement(actor);
         if (string.IsNullOrWhiteSpace(command.Name)) throw new DomainException("Nome do status é obrigatório.");
         if (command.IsInitial && command.IsFinal) throw new DomainException("Um status não pode ser inicial e final.");
+        if (command.DisplayOrder < 0) throw new DomainException("A posição da etapa não pode ser negativa.");
+        if (command.DepartmentId.HasValue && !await db.TaskDepartments.AnyAsync(x => x.Id == command.DepartmentId && (!command.Active || x.Active), cancellationToken))
+            throw new DomainException("Selecione um setor ativo e válido para a etapa.");
+        if (await db.TaskStatuses.AnyAsync(x => x.Id != command.Id && x.DepartmentId == command.DepartmentId && x.Name.ToUpper() == command.Name.Trim().ToUpper(), cancellationToken))
+            throw new DomainException("Já existe uma etapa com este nome neste setor. Edite ou reative o cadastro existente.", 409);
+        if (command.Id.HasValue && (!command.Active || !command.AcceptsNewTasks || command.IsFinal))
+            await RequireAvailableInitialStatusAsync(command.Id.Value, cancellationToken);
         var entity = command.Id.HasValue
-            ? await db.TaskStatuses.SingleAsync(x => x.Id == command.Id, cancellationToken)
+            ? await db.TaskStatuses.SingleOrDefaultAsync(x => x.Id == command.Id, cancellationToken) ?? throw new DomainException("Etapa não encontrada.", 404)
             : new TaskStatusEntity { Name = command.Name.Trim() };
         entity.Name = command.Name.Trim(); entity.DepartmentId = command.DepartmentId;
-        entity.DisplayOrder = command.DisplayOrder; entity.KanbanColumn = command.KanbanColumn.Trim();
+        entity.DisplayOrder = command.DisplayOrder; entity.KanbanColumn = command.Name.Trim();
         entity.IsInitial = command.IsInitial; entity.IsFinal = command.IsFinal;
         entity.AcceptsNewTasks = command.AcceptsNewTasks; entity.ManualMovement = command.ManualMovement;
         entity.RequiresJustification = command.RequiresJustification; entity.Active = command.Active;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
-        if (!command.Id.HasValue) db.TaskStatuses.Add(entity);
+        if (!command.Id.HasValue)
+        {
+            db.TaskStatuses.Add(entity);
+            // Uma coluna recém-criada participa dos fluxos do setor, sem exigir um segundo cadastro.
+            var typeIds = await db.TaskTypes.Where(x => x.Active && (!command.DepartmentId.HasValue
+                || db.TaskTypeDepartments.Any(link => link.TaskTypeId == x.Id && link.DepartmentId == command.DepartmentId)))
+                .Select(x => x.Id).ToListAsync(cancellationToken);
+            foreach (var typeId in typeIds) db.TaskTypeStatuses.Add(new() { TaskTypeId = typeId, StatusId = entity.Id });
+        }
         await db.SaveChangesAsync(cancellationToken);
         return entity.Id;
     }
@@ -837,12 +854,22 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     public async Task<Guid> SaveSlaPolicyAsync(SaveTaskSlaPolicyCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         RequireCatalogManagement(actor);
+        if (string.IsNullOrWhiteSpace(command.Name)) throw new DomainException("Nome da política de SLA é obrigatório.");
         if (command.CompletionMinutes <= 0) throw new DomainException("O prazo de conclusão do SLA deve ser positivo.");
-        if (command.BusinessDays.Count == 0) throw new DomainException("Selecione ao menos um dia útil para o SLA.");
+        if (command.BusinessDays.Count == 0 || command.BusinessDays.Any(day => day < 0 || day > 6)) throw new DomainException("Selecione dias úteis válidos para o SLA.");
+        if (command.FirstResponseMinutes < 0 || command.ServiceStartMinutes < 0 || command.AlertBeforeMinutes < 0 || command.EscalationMinutes < 0)
+            throw new DomainException("Os prazos e alertas do SLA não podem ser negativos.");
+        if (!await db.TaskDepartments.AnyAsync(x => x.Id == command.DepartmentId && (!command.Active || x.Active), cancellationToken))
+            throw new DomainException("Selecione um setor ativo e válido para o SLA.");
+        if (command.TaskTypeId.HasValue && !await db.TaskTypes.AnyAsync(x => x.Id == command.TaskTypeId && (!command.Active || x.Active), cancellationToken)
+            || command.PriorityId.HasValue && !await db.TaskPriorities.AnyAsync(x => x.Id == command.PriorityId && (!command.Active || x.Active), cancellationToken))
+            throw new DomainException("O tipo ou a prioridade do SLA não está disponível.");
+        if (await db.TaskStatuses.CountAsync(x => command.PauseStatusIds.Contains(x.Id), cancellationToken) != command.PauseStatusIds.Distinct().Count())
+            throw new DomainException("Uma das etapas de pausa do SLA não existe.");
         if (!TimeOnly.TryParse(command.BusinessStart, out var start) || !TimeOnly.TryParse(command.BusinessEnd, out var end) || start >= end)
             throw new DomainException("Horário útil inválido.");
         var entity = command.Id.HasValue
-            ? await db.TaskSlaPolicies.SingleAsync(x => x.Id == command.Id, cancellationToken)
+            ? await db.TaskSlaPolicies.SingleOrDefaultAsync(x => x.Id == command.Id, cancellationToken) ?? throw new DomainException("Política de SLA não encontrada.", 404)
             : new TaskSlaPolicy { Name = command.Name.Trim() };
         entity.Name = command.Name.Trim(); entity.DepartmentId = command.DepartmentId;
         entity.TaskTypeId = command.TaskTypeId; entity.PriorityId = command.PriorityId;
@@ -868,8 +895,20 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("Informe o nome e ao menos um setor para o tipo.");
         if (!command.AllowedStatusIds.Contains(command.InitialStatusId))
             throw new DomainException("O status inicial deve pertencer aos status permitidos.");
+        if (await db.TaskDepartments.CountAsync(x => command.DepartmentIds.Contains(x.Id) && (!command.Active || x.Active), cancellationToken) != command.DepartmentIds.Distinct().Count())
+            throw new DomainException("Selecione setores ativos e válidos para o tipo.");
+        var allowedStatuses = await db.TaskStatuses.Where(x => command.AllowedStatusIds.Contains(x.Id) && (!command.Active || x.Active)).ToListAsync(cancellationToken);
+        if (allowedStatuses.Count != command.AllowedStatusIds.Distinct().Count())
+            throw new DomainException("Uma das etapas selecionadas não está disponível.");
+        if (command.Active && !allowedStatuses.Any(x => x.Id == command.InitialStatusId && x.AcceptsNewTasks && !x.IsFinal))
+            throw new DomainException("A etapa inicial deve estar ativa, receber novas tarefas e não ser final.");
+        if (allowedStatuses.Any(x => x.DepartmentId.HasValue && !command.DepartmentIds.Contains(x.DepartmentId.Value)))
+            throw new DomainException("As etapas devem pertencer aos setores selecionados ou a todos os setores.");
+        if (command.DefaultPriorityId.HasValue && !await db.TaskPriorities.AnyAsync(x => x.Id == command.DefaultPriorityId && (!command.Active || x.Active), cancellationToken)
+            || command.DefaultSlaPolicyId.HasValue && !await db.TaskSlaPolicies.AnyAsync(x => x.Id == command.DefaultSlaPolicyId && (!command.Active || x.Active), cancellationToken))
+            throw new DomainException("A prioridade ou o SLA padrão não está disponível.");
         var entity = command.Id.HasValue
-            ? await db.TaskTypes.SingleAsync(x => x.Id == command.Id, cancellationToken)
+            ? await db.TaskTypes.SingleOrDefaultAsync(x => x.Id == command.Id, cancellationToken) ?? throw new DomainException("Tipo de tarefa não encontrado.", 404)
             : new TaskType { Name = command.Name.Trim(), InitialStatusId = command.InitialStatusId };
         entity.Name = command.Name.Trim(); entity.Description = command.Description?.Trim() ?? "";
         entity.DefaultPriorityId = command.DefaultPriorityId; entity.DefaultSlaPolicyId = command.DefaultSlaPolicyId;
@@ -890,6 +929,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         RequireCatalogManagement(actor);
         var user = await db.Users.SingleOrDefaultAsync(x => x.Id == command.UserId, cancellationToken)
             ?? throw new DomainException("Colaborador não encontrado.", 404);
+        if (!command.Active && string.Equals(user.Email, actor.Email, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("Você não pode bloquear o próprio acesso.", 409);
         await ValidateCollaboratorDepartmentsAsync(
             command.DepartmentIds, command.CoordinatorDepartmentIds, cancellationToken);
         user.Phone = command.Phone?.Trim() ?? ""; user.JobTitle = command.JobTitle?.Trim() ?? "";
@@ -925,6 +966,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 priority.UpdatedAt = DateTimeOffset.UtcNow;
                 break;
             case "statuses":
+                await RequireAvailableInitialStatusAsync(id, cancellationToken);
                 var status = await db.TaskStatuses.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
                     ?? throw new DomainException("Status não encontrado.", 404);
                 status.Active = false;
@@ -1269,12 +1311,16 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             AddNotification(task.Id, recipient, actorUserId, eventType, message);
     }
 
-    private void AddNotification(Guid taskId, Guid recipientId, Guid actorId, string type, string message) =>
+    private void AddNotification(Guid taskId, Guid recipientId, Guid actorId, string type, string message)
+    {
+        if (recipientId == actorId || type is not ("assigned" or "transferred" or "comment_added")) return;
         db.TaskNotifications.Add(new()
         {
             TaskId = taskId, RecipientUserId = recipientId, ActorUserId = actorId,
             EventType = type, Message = message,
         });
+
+    }
 
     private void AddHistory(Guid taskId, Guid actorId, string type, string summary,
         object? previous, object? current, string? justification = null) =>
@@ -1297,6 +1343,12 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (!actor.HasPermission("catalogs", "manage")
             && !actor.HasPermission("tasks", "manage"))
             actor.RequireCapability("tasks", "manageCatalogs");
+    }
+
+    private async Task RequireAvailableInitialStatusAsync(Guid statusId, CancellationToken cancellationToken)
+    {
+        if (await db.TaskTypes.AnyAsync(x => x.Active && x.InitialStatusId == statusId, cancellationToken))
+            throw new DomainException("Esta é a etapa inicial de um tipo ativo. Altere a etapa inicial do tipo antes de bloquear ou impedir novas tarefas.", 409);
     }
 
     private static DateTimeOffset AddBusinessMinutes(DateTimeOffset start, int minutes, TaskSlaPolicy policy)

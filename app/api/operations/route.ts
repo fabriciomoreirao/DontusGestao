@@ -1,3 +1,5 @@
+import { apiResponse } from "@/lib/api-response";
+
 export const dynamic = "force-dynamic";
 
 const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
@@ -26,13 +28,7 @@ async function proxy(request: Request) {
       signal: controller.signal,
     });
 
-    return new Response(response.body, {
-      status: response.status,
-      headers: {
-        "content-type": response.headers.get("content-type") ?? "application/json; charset=utf-8",
-        "x-dontus-api": "aspnet-core",
-      },
-    });
+    return apiResponse(request, response, { "x-dontus-api": "aspnet-core" });
   } catch (error) {
     const detail = error instanceof Error && error.name === "AbortError"
       ? "A API C# não respondeu dentro do tempo esperado."

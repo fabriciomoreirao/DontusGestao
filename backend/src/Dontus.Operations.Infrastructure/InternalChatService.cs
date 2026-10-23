@@ -26,6 +26,8 @@ public sealed class InternalChatService(
             .Where(user => user.Active)
             .OrderBy(user => user.DisplayName)
             .ToDictionaryAsync(user => user.Id, cancellationToken);
+        var userPhotos = users.ToDictionary(entry => entry.Key, entry => string.IsNullOrEmpty(entry.Value.PhotoDataUrl)
+            ? "" : $"/api/internal-chat-photos/user/{entry.Key}?v={entry.Value.UpdatedAt.ToUnixTimeMilliseconds()}");
         var roomIds = await db.InternalChatRoomMembers.AsNoTracking()
             .Where(member => member.UserId == actorUser.Id)
             .Select(member => member.RoomId)
@@ -43,9 +45,21 @@ public sealed class InternalChatService(
             .OrderByDescending(message => message.CreatedAt)
             .ToListAsync(cancellationToken);
 
+        // Unread state must include messages older than the loaded history window.
+        var unreadByRoom = await (from message in db.InternalChatMessages.AsNoTracking()
+            join member in db.InternalChatRoomMembers.AsNoTracking() on message.RoomId equals member.RoomId
+            where member.UserId == actorUser.Id && message.SenderUserId != actorUser.Id
+                && message.Type != "pin" && message.CreatedAt >= member.JoinedAt
+                && message.CreatedAt > (member.LastReadAt ?? member.JoinedAt)
+            group message by message.RoomId into roomMessages
+            select new { RoomId = roomMessages.Key, Count = roomMessages.Count() })
+            .ToDictionaryAsync(entry => entry.RoomId, entry => entry.Count, cancellationToken);
+        var membersByRoom = members.ToLookup(member => member.RoomId);
+        var messagesByRoom = messages.ToLookup(message => message.RoomId);
+
         var roomDtos = rooms.Select(room =>
         {
-            var roomMembers = members.Where(member => member.RoomId == room.Id).ToArray();
+            var roomMembers = membersByRoom[room.Id].ToArray();
             var actorMembership = roomMembers.Single(member => member.UserId == actorUser.Id);
             var directPartner = roomMembers
                 .Where(member => member.UserId != actorUser.Id)
@@ -54,8 +68,10 @@ public sealed class InternalChatService(
             var displayName = room.IsGroup
                 ? room.Name
                 : directPartner?.DisplayName ?? "Conversa privada";
-            var displayPhoto = room.IsGroup ? room.PhotoDataUrl : directPartner?.PhotoDataUrl ?? "";
-            var allRoomMessages = messages.Where(message => message.RoomId == room.Id)
+            var displayPhoto = room.IsGroup
+                ? (string.IsNullOrEmpty(room.PhotoDataUrl) ? "" : $"/api/internal-chat-photos/room/{room.Id}?v={room.UpdatedAt.ToUnixTimeMilliseconds()}")
+                : (directPartner is null ? "" : userPhotos.GetValueOrDefault(directPartner.Id, ""));
+            var allRoomMessages = messagesByRoom[room.Id]
                 .OrderBy(message => message.CreatedAt)
                 .ToArray();
             var pinned = new Dictionary<Guid, bool>();
@@ -79,7 +95,7 @@ public sealed class InternalChatService(
                         : "delivered";
                     return new InternalChatMessageDto(
                         message.Id, message.RoomId, message.SenderUserId,
-                        sender?.DisplayName ?? "Colaborador removido", sender?.PhotoDataUrl ?? "",
+                        sender?.DisplayName ?? "Colaborador removido", userPhotos.GetValueOrDefault(message.SenderUserId, ""),
                         sender?.IsCoordinator ?? false,
                         message.Type, message.Body, message.FileName, message.ContentType,
                         !string.IsNullOrWhiteSpace(message.StorageKey), pinned.GetValueOrDefault(message.Id), receiptState, message.CreatedAt);
@@ -88,15 +104,14 @@ public sealed class InternalChatService(
                 room.Id, displayName, displayPhoto, room.IsGroup, room.CreatedByUserId,
                 room.CreatedByUserId == actorUser.Id || roomMembers.Any(member => member.UserId == actorUser.Id && member.IsAdmin),
                 actorMembership.ArchivedAt.HasValue,
-                roomMessages.Count(message => message.SenderUserId != actorUser.Id &&
-                    message.CreatedAt > (actorMembership.LastReadAt ?? actorMembership.JoinedAt)),
+                unreadByRoom.GetValueOrDefault(room.Id),
                 room.LastMessageAt, roomMembers.Select(member => member.UserId).ToArray(), roomMessages);
         }).ToArray();
 
         return new InternalChatModuleDto(
             actorUser.Id,
             users.Values.Select(user => new InternalChatUserDto(
-                user.Id, user.DisplayName, user.Email, user.Department, user.PhotoDataUrl,
+                user.Id, user.DisplayName, user.Email, user.Department, userPhotos.GetValueOrDefault(user.Id, ""),
                 user.JobTitle, user.IsCoordinator)).ToArray(),
             roomDtos);
     }

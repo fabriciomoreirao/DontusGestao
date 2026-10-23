@@ -11,7 +11,7 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
     {
         var normalizedEmail = NormalizeEmail(email);
         var user = await db.Users.SingleOrDefaultAsync(entry => entry.Email == normalizedEmail, cancellationToken);
-        if (user is null || !user.Active || !PasswordSecurity.Verify(password, user.PasswordHash))
+        if (user is null || !user.Active || user.BlockedAt.HasValue || !PasswordSecurity.Verify(password, user.PasswordHash))
             throw new DomainException("E-mail ou senha inválidos.", 401);
 
         var token = PasswordSecurity.GenerateToken();
@@ -33,9 +33,9 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
         var tokenHash = PasswordSecurity.HashToken(token);
         var session = await db.LocalAuthSessions.AsNoTracking()
             .Where(entry => entry.TokenHash == tokenHash && entry.RevokedAt == null && entry.ExpiresAt > DateTimeOffset.UtcNow)
-            .Join(db.Users.AsNoTracking(), entry => entry.UserId, user => user.Id, (entry, user) => new { user.Email, user.DisplayName, user.Active })
+            .Join(db.Users.AsNoTracking(), entry => entry.UserId, user => user.Id, (entry, user) => new { user.Email, user.DisplayName, user.Active, user.BlockedAt })
             .SingleOrDefaultAsync(cancellationToken);
-        return session is null || !session.Active ? null : new AuthenticatedIdentity(session.Email, session.DisplayName);
+        return session is null || !session.Active || session.BlockedAt.HasValue ? null : new AuthenticatedIdentity(session.Email, session.DisplayName);
     }
 
     public async Task ChangePasswordAsync(string email, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
@@ -54,7 +54,7 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
     public async Task RequestPasswordRecoveryAsync(string email, CancellationToken cancellationToken = default)
     {
         var user = await db.Users.SingleOrDefaultAsync(entry => entry.Email == NormalizeEmail(email), cancellationToken);
-        if (user is null || !user.Active) return;
+        if (user is null || !user.Active || user.BlockedAt.HasValue) return;
 
         var temporaryPassword = PasswordSecurity.GenerateTemporaryPassword();
         await passwordRecoveryEmailSender.SendAsync(user.Email, user.DisplayName, temporaryPassword, cancellationToken);
@@ -68,6 +68,21 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
             .ToListAsync(cancellationToken);
         foreach (var session in activeSessions) session.RevokedAt = DateTimeOffset.UtcNow;
 
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task ResetEmployeePasswordAsync(Guid userId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("admin", "manage");
+        var user = await db.Users.SingleOrDefaultAsync(entry => entry.Id == userId, cancellationToken)
+            ?? throw new DomainException("Colaborador não encontrado.", 404);
+        if (!user.Active || user.BlockedAt.HasValue) throw new DomainException("Reative o colaborador antes de gerar uma nova senha.");
+        await RequestPasswordRecoveryAsync(user.Email, cancellationToken);
+        db.AuditEvents.Add(new AuditEvent
+        {
+            ActorEmail = actor.Email, Action = "ResetPassword", Resource = "employee",
+            ResourceId = user.Id.ToString(), Module = "admin",
+        });
         await db.SaveChangesAsync(cancellationToken);
     }
 

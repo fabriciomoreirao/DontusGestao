@@ -7,6 +7,34 @@ namespace Dontus.Operations.Tests;
 
 public sealed class OperationsServiceTests
 {
+    [Fact]
+    public async Task New_users_do_not_receive_notices_or_reminders_created_before_registration()
+    {
+        await using var db = CreateContext();
+        var registeredAt = DateTimeOffset.UtcNow.AddHours(-1);
+        var user = new AppUser { Email = Actor.Email, DisplayName = Actor.DisplayName,
+            CreatedBy = Actor.Email, CreatedAt = registeredAt };
+        db.Users.Add(user);
+        var oldNotice = new CompanyNotice { Title = "Antigo", AuthorUserId = user.Id,
+            CreatedAt = registeredAt.AddDays(-1), PublishedAt = registeredAt.AddDays(-1) };
+        var newNotice = new CompanyNotice { Title = "Novo", AuthorUserId = user.Id };
+        db.CompanyNotices.AddRange(oldNotice, newNotice);
+        db.WorkItems.AddRange(
+            new WorkItem { Module = "reminders", RecordType = "Lembrete", Title = "Antigo", Status = "Pendente",
+                CustomerName = user.Email, Owner = user.DisplayName, CreatedBy = user.Email, CreatedAt = registeredAt.AddDays(-1) },
+            new WorkItem { Module = "reminders", RecordType = "Lembrete", Title = "Novo", Status = "Pendente",
+                CustomerName = user.Email, Owner = user.DisplayName, CreatedBy = user.Email });
+        await db.SaveChangesAsync();
+        var service = new OperationsService(db);
+        var recipient = Actor with { Permissions = [new EffectivePermission("notices", true, false, false, false, false),
+            new EffectivePermission("reminders", true, false, false, false, false)] };
+        var notices = await service.GetNoticesModuleAsync(recipient);
+        Assert.Equal(newNotice.Id, Assert.Single(notices.Notices).Id);
+        Assert.False((await service.GetNoticesModuleAsync(Actor)).Notices.Single(n => n.Id == oldNotice.Id).VisibleToCurrentUser);
+        Assert.Equal("Novo", Assert.Single((await service.GetSnapshotAsync(recipient)).Items).Title);
+        await Assert.ThrowsAsync<DomainException>(() => service.MarkNoticeReadAsync(oldNotice.Id, recipient));
+    }
+
     private static readonly ActorContext Actor =
         new(
             "gestor@dontus.local",

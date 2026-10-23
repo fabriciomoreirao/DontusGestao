@@ -435,7 +435,7 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   assert.match(app, /className="form-grid employee-form"/);
   assert.match(app, /userCan\(data\.user, "catalogs", "manage"\) \|\| userCan\(data\.user, "tasks", "manage"\)/);
   assert.match(reminders, /confirmedAt/);
-  assert.match(reminders, /30 minutos/);
+  assert.match(reminders, /60 minutos/);
   assert.match(reminders, /ReminderDetailModal/);
   assert.match(development, /DevelopmentTriageCompletePortal/);
   assert.match(development, /searchParams\.delete\("subtask"\)/);
@@ -691,7 +691,7 @@ test("calcula score por features e vincula clientes a redes", async () => {
   assert.match(app, /Abrir acompanhamento sem sair de Contas estratégicas/);
   assert.match(app, /openedJourney && openedJourneyDetail && unit && <JourneyDrawer/);
   assert.doesNotMatch(app, /window\.location\.assign\(url\.toString\(\)\)/);
-  assert.match(enhancer, /commercial-copy-link/);
+  assert.match(await readFile(new URL("../app/detail-header.ts", import.meta.url), "utf8"), /commercial-copy-link/);
 });
 
 test("integra redes, acesso total, alertas por ID e notificações persistentes", async () => {
@@ -711,10 +711,10 @@ test("integra redes, acesso total, alertas por ID e notificações persistentes"
   assert.match(app, /Acesso total ao sistema/);
   assert.match(app, /fullAccess/);
   assert.match(app, /dontus:snoozed-notices/);
-  assert.match(app, /Date\.now\(\) \+ 30 \* 60_000/);
-  assert.match(app, /targetUrl: `\/\?mod=tasks&task=/);
-  assert.match(app, /targetUrl: `\/\?mod=cancellations&cancellation=/);
-  assert.match(app, /setActive\("dashboard"\); setDashboardPage\("home"\)/);
+  assert.match(app, /Date\.now\(\) \+ 60 \* 60_000/);
+  assert.match(app, /buildNotifications/);
+  assert.match(app, /entry\.targetUrl/);
+  assert.match(app, /onAuthenticated=\{\(\) => window\.location\.replace\("\/"\)\}/);
   assert.match(actions, /ID do cliente \*/);
   assert.match(actions, /pattern="\[0-9\]\{6\}"/);
   assert.match(actions, /Nome do cliente/);

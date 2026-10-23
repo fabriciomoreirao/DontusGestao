@@ -1,3 +1,5 @@
+import { apiResponse } from "@/lib/api-response";
+
 export const dynamic = "force-dynamic";
 
 const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
@@ -18,10 +20,7 @@ export async function GET(request: Request) {
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });
-    return new Response(response.body, {
-      status: response.status,
-      headers: { "content-type": response.headers.get("content-type") ?? "application/json; charset=utf-8" },
-    });
+    return apiResponse(request, response);
   } catch {
     return Response.json({ detail: "O Chat interno está temporariamente indisponível." }, { status: 503 });
   }

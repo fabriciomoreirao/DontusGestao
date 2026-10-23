@@ -73,228 +73,23 @@ public sealed class AccessControlService(
                 Description = "Acesso inicial dos colaboradores cadastrados.",
                 CreatedBy = "system@dontus.local",
             };
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "dashboard",
-                CanView = true,
-            });
+            // Defaults apply only when the group is first created. Later startup
+            // must preserve the administrator's explicit grants and restrictions.
+            (string Screen, bool Create, bool Edit)[] defaults =
+            [
+                ("dashboard", false, false), ("work", true, false), ("diary", true, true),
+                ("notes", true, true), ("reminders", true, true), ("internalChat", true, true),
+                ("suggestions", true, true), ("notices", false, false), ("waitingQueue", true, true),
+                ("referrals", true, true), ("commissions", false, true), ("goals", false, false),
+                ("cancellations", true, true),
+            ];
+            foreach (var permission in defaults)
+                collaboratorsGroup.Permissions.Add(new GroupPermission
+                {
+                    GroupId = collaboratorsGroup.Id, Screen = permission.Screen,
+                    CanView = true, CanCreate = permission.Create, CanEdit = permission.Edit,
+                });
             db.AccessGroups.Add(collaboratorsGroup);
-        }
-        var collaboratorAgendaPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "work");
-        if (collaboratorAgendaPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "work",
-                CanView = true,
-                CanCreate = true,
-            });
-        }
-        else
-        {
-            collaboratorAgendaPermission.CanView = true;
-            collaboratorAgendaPermission.CanCreate = true;
-        }
-
-        var collaboratorDiaryPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "diary");
-        if (collaboratorDiaryPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "diary",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorDiaryPermission.CanView = true;
-            collaboratorDiaryPermission.CanCreate = true;
-            collaboratorDiaryPermission.CanEdit = true;
-        }
-
-        var collaboratorNotesPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "notes");
-        if (collaboratorNotesPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "notes",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorNotesPermission.CanView = true;
-            collaboratorNotesPermission.CanCreate = true;
-            collaboratorNotesPermission.CanEdit = true;
-        }
-
-        var collaboratorChatPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "internalChat");
-        var collaboratorReminderPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "reminders");
-        if (collaboratorReminderPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "reminders",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorReminderPermission.CanView = true;
-            collaboratorReminderPermission.CanCreate = true;
-            collaboratorReminderPermission.CanEdit = true;
-        }
-
-        if (collaboratorChatPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "internalChat",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorChatPermission.CanView = true;
-            collaboratorChatPermission.CanCreate = true;
-            collaboratorChatPermission.CanEdit = true;
-        }
-
-        var collaboratorSuggestionPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "suggestions");
-        if (collaboratorSuggestionPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "suggestions",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorSuggestionPermission.CanView = true;
-            collaboratorSuggestionPermission.CanCreate = true;
-            collaboratorSuggestionPermission.CanEdit = true;
-        }
-
-        var collaboratorNoticePermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "notices");
-        if (collaboratorNoticePermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "notices",
-                CanView = true,
-            });
-        }
-        else
-        {
-            collaboratorNoticePermission.CanView = true;
-        }
-
-        var collaboratorWaitingQueuePermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "waitingQueue");
-        if (collaboratorWaitingQueuePermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "waitingQueue",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorWaitingQueuePermission.CanView = true;
-            collaboratorWaitingQueuePermission.CanCreate = true;
-            collaboratorWaitingQueuePermission.CanEdit = true;
-        }
-
-        var collaboratorReferralPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "referrals");
-        if (collaboratorReferralPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "referrals",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorReferralPermission.CanView = true;
-            collaboratorReferralPermission.CanCreate = true;
-            collaboratorReferralPermission.CanEdit = true;
-        }
-
-        var collaboratorCommissionPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "commissions");
-        if (collaboratorCommissionPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "commissions",
-                CanView = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorCommissionPermission.CanView = true;
-            collaboratorCommissionPermission.CanEdit = true;
-        }
-
-        var collaboratorGoalsPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "goals");
-        if (collaboratorGoalsPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "goals",
-                CanView = true,
-            });
-        }
-        else
-        {
-            collaboratorGoalsPermission.CanView = true;
-        }
-
-        var collaboratorCancellationPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "cancellations");
-        if (collaboratorCancellationPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "cancellations",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorCancellationPermission.CanView = true;
-            collaboratorCancellationPermission.CanCreate = true;
-            collaboratorCancellationPermission.CanEdit = true;
         }
 
         var bootstrapEmail = NormalizeEmail(
@@ -403,7 +198,7 @@ public sealed class AccessControlService(
                 "Seu usuário ainda não foi cadastrado. Solicite acesso a um administrador.",
                 403);
 
-        if (!user.Active)
+        if (!user.Active || user.BlockedAt.HasValue)
             throw new DomainException("Seu usuário está inativo. Solicite a reativação a um administrador.", 403);
 
         var groups = await db.UserAccessGroups.AsNoTracking()
@@ -486,7 +281,7 @@ public sealed class AccessControlService(
                 user.Email,
                 user.DisplayName,
                 user.Department,
-                user.PhotoDataUrl,
+                ProfilePhotoUrls.For(user),
                 user.JobTitle,
                 user.IsCoordinator,
                 user.Active,
@@ -535,7 +330,7 @@ public sealed class AccessControlService(
                     employeeAgendaDepartmentIds,
                     user.EmployeeLevelId,
                     user.EmployeeLevelId is { } levelId ? levelNames.GetValueOrDefault(levelId, "Não informado") : "Não informado",
-                    user.PhotoDataUrl,
+                    ProfilePhotoUrls.For(user),
                     user.JobTitle,
                     user.IsCoordinator,
                     supervisions.Where(entry => entry.CoordinatorUserId == user.Id).Select(entry => entry.SubordinateUserId).ToArray(),
@@ -765,7 +560,8 @@ public sealed class AccessControlService(
         user.IsCoordinator = command.IsCoordinator;
         user.Active = command.Active;
         user.BlockedAt = command.Active ? null : user.BlockedAt ?? DateTimeOffset.UtcNow;
-        if (command.PhotoDataUrl is not null) user.PhotoDataUrl = ValidatePhoto(command.PhotoDataUrl);
+        if (command.PhotoDataUrl is not null && !ProfilePhotoUrls.IsCurrentUserReference(command.PhotoDataUrl, user.Id))
+            user.PhotoDataUrl = ValidatePhoto(command.PhotoDataUrl);
         user.UpdatedAt = DateTimeOffset.UtcNow;
         user.Version++;
         var hrCard = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Module == "hr" && entry.OriginType == "employee" && entry.OriginId == user.Id, cancellationToken);

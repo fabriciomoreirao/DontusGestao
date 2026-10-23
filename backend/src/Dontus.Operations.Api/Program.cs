@@ -88,11 +88,12 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     });
 }));
 
-app.UseRateLimiter();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapOpenApi();
+app.MapLiaForms();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken cancellationToken) =>
     await db.Database.CanConnectAsync(cancellationToken)
@@ -865,6 +866,38 @@ internalChatFiles.MapGet("", async (
     return Results.Ok(await internalChatService.GetModuleAsync(actor, cancellationToken, historyDays ?? 30));
 });
 
+internalChatFiles.MapGet("/photos/{kind}/{id:guid}", async (
+    string kind, Guid id, ClaimsPrincipal principal, OperationsDbContext db,
+    IAccessControlService accessControl, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    string? photo = null;
+    if (kind == "user")
+    {
+        var canSeeProfiles = new[] { "internalChat", "tasks", "catalogs", "notices", "suggestions", "admin", "hr" }
+            .Any(screen => actor.HasPermission(screen, "view"));
+        photo = await db.Users.AsNoTracking().Where(user => user.Id == id && (user.Active || actor.HasPermission("admin", "manage"))
+                && (canSeeProfiles || user.Email == actor.Email))
+            .Select(user => user.PhotoDataUrl).SingleOrDefaultAsync(cancellationToken);
+    }
+    else if (kind == "room")
+    {
+        actor.RequirePermission("internalChat", "view");
+        photo = await db.InternalChatRooms.AsNoTracking().Where(room => room.Id == id
+            && db.InternalChatRoomMembers.Any(member => member.RoomId == room.Id
+                && db.Users.Any(user => user.Id == member.UserId && user.Email == actor.Email)))
+            .Select(room => room.PhotoDataUrl).SingleOrDefaultAsync(cancellationToken);
+    }
+    if (string.IsNullOrEmpty(photo) || !photo.StartsWith("data:image/", StringComparison.Ordinal)) return Results.NotFound();
+    var separator = photo.IndexOf(";base64,", StringComparison.Ordinal);
+    if (separator < 0) return Results.NotFound();
+    var contentType = photo[5..separator];
+    if (contentType is not ("image/png" or "image/jpeg" or "image/webp" or "image/gif")) return Results.NotFound();
+    context.Response.Headers.CacheControl = "private, max-age=300";
+    try { return Results.File(Convert.FromBase64String(photo[(separator + 8)..]), contentType); }
+    catch (FormatException) { return Results.NotFound(); }
+});
+
 internalChatFiles.MapPost("/{roomId:guid}/attachments", async (
     Guid roomId,
     HttpRequest request,
@@ -1039,6 +1072,7 @@ operations.MapPost("", async (
     ITaskService taskService,
     IChatService chatService,
     IInternalChatService internalChatService,
+    ILocalAuthenticationService authentication,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
@@ -1334,6 +1368,11 @@ operations.MapPost("", async (
                 request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false), actor, cancellationToken);
             id = createdEmployee.Id;
             temporaryPassword = createdEmployee.TemporaryPassword;
+            break;
+
+        case "resetEmployeePassword":
+            await authentication.ResetEmployeePasswordAsync(
+                request.Id ?? throw new DomainException("Colaborador obrigatório."), actor, cancellationToken);
             break;
 
         case "updateEmployee":
@@ -1721,6 +1760,15 @@ operations.MapPost("", async (
         default:
             throw new DomainException("A operação solicitada não é suportada.");
     }
+
+    // Chat commands only need the chat projection; rebuilding every module here
+    // can time out after a message has already been persisted.
+    if (request.Action?.Contains("InternalChat", StringComparison.Ordinal) == true)
+        return Results.Ok(new { ok = true, id, internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) });
+    if (request.Action is "markNoticeViewed" or "markNoticeRead")
+        return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
+    if (request.Action == "markTaskNotificationRead")
+        return Results.Ok(new { ok = true, taskModule = await taskService.GetModuleAsync(actor, cancellationToken) });
 
     actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);
