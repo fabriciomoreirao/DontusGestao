@@ -750,7 +750,8 @@ test("arquiva versões liberadas por competência e unifica kanbans, portal e co
   assert.match(css, /Kanbans: colunas translúcidas/);
   assert.match(css, /\.service-request-column/);
   assert.match(css, /\.standard-kanban-column/);
-  assert.match(css, /\.app-shell \.sidebar \.brand/);
+  assert.match(css, /\.app-shell\.theme-light \.sidebar \.brand/);
+  assert.match(css, /\.app-shell\.theme-dark \.sidebar \.brand img\{filter:brightness\(0\) invert\(1\)\}/);
   assert.match(css, /system-accent-fuchsia/);
 });
 

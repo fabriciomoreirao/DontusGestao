@@ -171,7 +171,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
           <button className={view === "list" ? "active" : ""} onClick={() => setView("list")}><List size={16} /> Lista</button>
         </div>
       </header>
-      <nav className="task-department-tabs" aria-label="Selecionar setor"><button className={!departmentFilter ? "active" : ""} onClick={() => setDepartment("")}>Todos os setores</button>{availableDepartments.map((item) => <button className={departmentFilter === item.id ? "active" : ""} onClick={() => setDepartment(item.id)} key={item.id}>{item.name}</button>)}</nav>
+      <div className="module-sector-filter"><label><span>Setor</span><select aria-label="Filtrar tarefas por setor" value={departmentFilter} onChange={(event) => setDepartment(event.target.value)}><option value="">Todos os setores</option>{availableDepartments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
       <div className="tasks-toolbar">
         <div className="task-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por protocolo, título ou cliente" /></div>
         <select value={priorityFilter} onChange={(e) => setPriority(e.target.value)} aria-label="Filtrar prioridade"><option value="">Todas as prioridades</option>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select>

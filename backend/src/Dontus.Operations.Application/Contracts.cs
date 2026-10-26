@@ -289,7 +289,14 @@ public sealed record DiaryEntryDto(
 
 public sealed record DiaryModuleDto(
     IReadOnlyCollection<DiaryEntryDto> Entries,
-    IReadOnlyCollection<AgendaStatusDto> AgendaStatuses);
+    IReadOnlyCollection<AgendaStatusDto> AgendaStatuses,
+    IReadOnlyCollection<DiaryCollaboratorDto> Collaborators);
+
+public sealed record DiaryCollaboratorDto(
+    Guid UserId,
+    string DisplayName,
+    string Department,
+    IReadOnlyCollection<DiaryEntryDto> Entries);
 
 public sealed record NoteDto(
     Guid Id,

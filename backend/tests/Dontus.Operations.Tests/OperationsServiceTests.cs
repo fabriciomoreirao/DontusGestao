@@ -307,6 +307,59 @@ public sealed class OperationsServiceTests
         Assert.DoesNotContain(diary.Entries, item => item.Id == otherCommitment.Id);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Diary_supervision_is_limited_to_active_direct_reports_and_requires_coordinator_flag(bool isCoordinator)
+    {
+        await using var db = CreateContext();
+        var coordinator = new AppUser { Email = Actor.Email, DisplayName = Actor.DisplayName, CreatedBy = Actor.Email, IsCoordinator = isCoordinator };
+        var subordinate = new AppUser { Email = "equipe@dontus.local", DisplayName = "Colaborador vinculado", CreatedBy = Actor.Email };
+        var unrelated = new AppUser { Email = "outro@dontus.local", DisplayName = "Mesmo setor sem vínculo", CreatedBy = Actor.Email };
+        var inactive = new AppUser { Email = "inativo@dontus.local", DisplayName = "Inativo", Active = false, CreatedBy = Actor.Email };
+        var blocked = new AppUser { Email = "bloqueado@dontus.local", DisplayName = "Bloqueado", BlockedAt = DateTimeOffset.UtcNow, CreatedBy = Actor.Email };
+        var indirect = new AppUser { Email = "indireto@dontus.local", DisplayName = "Subordinado indireto", CreatedBy = Actor.Email };
+        db.Users.AddRange(coordinator, subordinate, unrelated, inactive, blocked, indirect);
+        db.EmployeeSupervisions.AddRange(
+            new EmployeeSupervision { CoordinatorUserId = coordinator.Id, SubordinateUserId = subordinate.Id },
+            new EmployeeSupervision { CoordinatorUserId = coordinator.Id, SubordinateUserId = inactive.Id },
+            new EmployeeSupervision { CoordinatorUserId = coordinator.Id, SubordinateUserId = blocked.Id },
+            new EmployeeSupervision { CoordinatorUserId = subordinate.Id, SubordinateUserId = indirect.Id });
+        var status = new AgendaStatus { Name = "Reservada", Color = "#2563eb" };
+        db.AgendaStatuses.Add(status);
+        var now = DateTimeOffset.UtcNow;
+        var own = new WorkItem { Module = "diary", RecordType = "Tarefa", Title = "Minha atividade", Status = "Pendente", CreatedBy = coordinator.Email };
+        var manual = new WorkItem { Module = "diary", RecordType = "Tarefa", Title = "Atividade da equipe", Status = "Pendente", CreatedBy = subordinate.Email,
+            CreatedAt = now.AddMonths(-2), DueAt = now };
+        db.WorkItems.AddRange(own, manual,
+            new WorkItem { Module = "diary", RecordType = "Tarefa", Title = "Atividade sem vínculo", Status = "Pendente", CreatedBy = unrelated.Email });
+        var commitment = new AgendaCommitment { AgendaStatusId = status.Id, ResponsibleUserId = subordinate.Id, Title = "Agenda da equipe", StartsAt = now, EndsAt = now.AddHours(1), CreatedBy = unrelated.Email };
+        db.AgendaCommitments.AddRange(commitment,
+            new AgendaCommitment { AgendaStatusId = status.Id, ResponsibleUserId = unrelated.Id, Title = "Agenda sem vínculo", StartsAt = now, EndsAt = now.AddHours(1), CreatedBy = coordinator.Email });
+        await db.SaveChangesAsync();
+        var service = new OperationsService(db);
+        // A consulta exige apenas visualizar o diário, sem acesso administrativo ou à Agenda.
+        var readOnlyActor = Actor with { Permissions = [new EffectivePermission("diary", true, false, false, false, false)] };
+        var diary = await service.GetDiaryModuleAsync(readOnlyActor);
+        Assert.Equal(own.Id, Assert.Single(diary.Entries).Id);
+        if (!isCoordinator) { Assert.Empty(diary.Collaborators); return; }
+        var report = Assert.Single(diary.Collaborators);
+        Assert.Equal(subordinate.Id, report.UserId);
+        Assert.Equal(2, report.Entries.Count);
+        Assert.Contains(report.Entries, entry => entry.Id == manual.Id && entry.Source == "manual");
+        Assert.Contains(report.Entries, entry => entry.Id == commitment.Id && entry.Source == "agenda");
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateWorkItemAsync(
+            new UpdateWorkItemCommand(manual.Id, "Alteração indevida", "", 0, "", null, null, manual.Version), Actor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.TransitionWorkItemAsync(
+            new TransitionWorkItemCommand(manual.Id, "Concluída", manual.Version, true), Actor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteWorkItemAsync(manual.Id, Actor))).StatusCode);
+        db.EmployeeSupervisions.RemoveRange(db.EmployeeSupervisions.Where(link => link.CoordinatorUserId == coordinator.Id));
+        await db.SaveChangesAsync();
+        Assert.Empty((await service.GetDiaryModuleAsync(readOnlyActor)).Collaborators);
+        var deniedActor = Actor with { Permissions = [] };
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetDiaryModuleAsync(deniedActor))).StatusCode);
+    }
+
     private static OperationsDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<OperationsDbContext>()

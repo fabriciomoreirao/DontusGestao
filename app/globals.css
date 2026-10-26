@@ -601,6 +601,20 @@ button.table-row:hover { background: #f8fbfd; }
 .agenda-catalog-card { border: 1px solid var(--line); border-radius: 15px; background: white; box-shadow: 0 5px 16px rgba(30,45,68,.035); }.agenda-catalog-head { padding: 18px; border-bottom: 1px solid #edf0f4; display: flex; align-items: center; justify-content: space-between; gap: 15px; }.agenda-catalog-head h2 { margin: 4px 0; font: 800 16px var(--font-manrope); }.agenda-catalog-head p { margin: 0; color: var(--muted); font-size: 10px; }.agenda-catalog-list { padding: 10px; }.agenda-catalog-list article { min-height: 56px; margin-top: 7px; border: 1px solid #e9edf2; border-radius: 9px; padding: 9px 11px; display: flex; align-items: center; gap: 10px; }.agenda-list-data { flex: 1; }.agenda-catalog-list strong, .agenda-catalog-list small { display: block; }.agenda-catalog-list strong { font-size: 10px; }.agenda-catalog-list small { margin-top: 3px; color: var(--muted); font-size: 8px; }.agenda-list-icon { width: 30px; height: 30px; border-radius: 8px; color: #1682ba; background: #eaf7fd; display: grid; place-items: center; }.agenda-type-dot { width: 12px; height: 12px; border-radius: 50%; }.catalog-icon-button { width: 29px; height: 29px; border: 1px solid #dfe6ee; border-radius: 7px; color: #5b6a7d; background: white; display: grid; place-items: center; cursor: pointer; }.catalog-icon-button:hover { border-color: #9cccea; color: #087fea; background: #f2faff; }.catalog-icon-button.delete:hover { border-color: #f3b3bb; color: #b6374d; background: #fff5f6; }.agenda-empty { min-height: 135px; color: #8794a6; display: grid; place-items: center; align-content: center; gap: 7px; }.agenda-empty p { margin: 0; font-size: 10px; }
 .agenda-modal { width: min(620px, 100%); }.agenda-quick-status { width: 150px; margin: 0 12px 0 8px; display: grid; gap: 4px; color: #536176; font-size: 8px; font-weight: 800; }.agenda-quick-status select { height: 30px; min-width: 0; border: 1px solid #9acbea; border-radius: 7px; padding: 0 8px; color: #176c9a; background: #f2faff; font-size: 9px; font-weight: 800; }.agenda-quick-status select:disabled { opacity: .65; cursor: wait; }.agenda-form select[multiple] { padding: 7px 10px; }.agenda-recurrence { margin: 6px 0 0; border: 1px solid #e1e7ed; border-radius: 8px; padding: 8px 10px; }.agenda-recurrence legend { padding: 0 4px; color: #465469; font-size: 9px; font-weight: 800; }.agenda-recurrence > small { color: var(--muted); font-size: 8px; }.agenda-recurrence > div { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 6px; }.agenda-recurrence label { min-height: 25px; border: 1px solid #e6eaf0; border-radius: 6px; padding: 0 6px; color: #536176; background: #fafbfd; display: flex; align-items: center; gap: 5px; font-size: 8px; font-weight: 700; }.agenda-recurrence input { accent-color: #087fea; }
 .diary-header { align-items: center; }
+.diary-collaborator-filter, .module-sector-filter label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: .7rem; font-weight: 750; }
+.diary-collaborator-filter select, .module-sector-filter select { width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--surface); font: inherit; font-size: .8rem; }
+.diary-collaborator-filter { width: clamp(190px, 20vw, 290px); }
+.diary-collaborator-filter select:focus-visible, .module-sector-filter select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.module-sector-filter { padding: 12px 0; }
+.module-sector-filter label { width: min(320px, 100%); }
+.task-workspace > .module-sector-filter { padding: 12px 16px; }
+.app-shell .content .diary-header .module-page-actions { min-width: 0; flex-shrink: 0; flex-wrap: nowrap; align-items: flex-end; }
+.app-shell .content .diary-header .module-page-actions > .primary-button { width: auto; flex: 0 0 auto; }
+@media (max-width: 600px) {
+  .diary-collaborator-filter { width: 0; flex: 1; }
+  .diary-collaborator-filter select { min-width: 0; }
+  .app-shell .content .diary-entry-status { width: 100%; grid-template-columns: minmax(0, 1fr) minmax(0, 150px); }
+}
 .diary-header h1 { display: flex; align-items: center; gap: 8px; }
 .diary-date-nav { min-height: 50px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; background: white; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; text-align: center; }
 .diary-date-nav strong { color: #2f4058; font: 800 11px var(--font-manrope); text-transform: capitalize; }
@@ -7723,7 +7737,7 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 
 @media(max-width:800px){.customer-network-grid{grid-template-columns:1fr}.network-record-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.network-record-units article{grid-template-columns:auto minmax(0,1fr)}.network-record-units article>span:nth-of-type(n+3){grid-column:2}.customer-network-grid>article>div{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* Preferência visual persistente: a cor escolhida também identifica a marca no topo. */
+/* Preferência visual persistente para os controles do sistema. */
 .app-shell.system-accent-navy{--primary:#2563eb;--primary-strong:#1e3a8a}
 .app-shell.system-accent-cyan{--primary:#0891b2;--primary-strong:#0e7490}
 .app-shell.system-accent-orange{--primary:#ea580c;--primary-strong:#c2410c}
@@ -7734,8 +7748,11 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 .agenda-visual-picker .orange i{background:linear-gradient(135deg,#fb923c,#c2410c)}
 .agenda-visual-picker .fuchsia i{background:linear-gradient(135deg,#e879f9,#86198f)}
 .agenda-visual-picker .lime i{background:linear-gradient(135deg,#a3e635,#3f6212)}
-.app-shell .sidebar .brand{border-color:color-mix(in srgb,var(--primary) 42%,transparent)!important;background:linear-gradient(135deg,color-mix(in srgb,var(--primary-strong) 72%,#06192b),color-mix(in srgb,var(--primary) 78%,#09253b))!important;box-shadow:0 10px 24px color-mix(in srgb,var(--primary) 22%,transparent)!important;transition:background .22s ease,border-color .22s ease,box-shadow .22s ease}
-.app-shell.sidebar-collapsed .brand:before{color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-strong));box-shadow:0 6px 15px color-mix(in srgb,var(--primary) 28%,transparent)}
+.app-shell.theme-light .sidebar .brand{border-color:rgba(37,130,192,.22);background:linear-gradient(135deg,#0b2b48,#0a5e92);box-shadow:0 10px 20px rgba(19,82,127,.15)}
+.app-shell.theme-dark .sidebar .brand{border-color:transparent;background:transparent;box-shadow:none}
+.app-shell.theme-dark .sidebar .brand img{filter:brightness(0) invert(1)}
+.app-shell.sidebar-collapsed .brand:before{color:#fff;background:#0b2b48;box-shadow:0 6px 15px rgba(19,82,127,.15)}
+.app-shell.theme-dark.sidebar-collapsed .brand:before{background:transparent;box-shadow:none}
 .app-shell .sidebar-collapse-button:hover{border-color:color-mix(in srgb,var(--primary) 38%,var(--line));color:var(--primary)}
 
 /* Kanbans: colunas translúcidas para manter o fundo da área de trabalho visível. */

@@ -8,7 +8,11 @@ export type DiaryEntry = {
   id: string; source: "agenda" | "manual"; title: string; description: string; type: string;
   occursAt: string; status: string; statusColor: string; agendaStatusId: string | null; version: number | null;
 };
-export type DiaryModuleData = { entries: DiaryEntry[]; agendaStatuses: DiaryAgendaStatus[] };
+export type DiaryModuleData = {
+  entries: DiaryEntry[];
+  agendaStatuses: DiaryAgendaStatus[];
+  collaborators: Array<{ userId: string; displayName: string; department: string; entries: DiaryEntry[] }>;
+};
 type OperationResult = { id?: string } | false;
 type Operate = (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
 
@@ -24,11 +28,16 @@ export default function DiaryModule({ module, busy, canCreate, canEdit, operate 
   const [date, setDate] = useState(() => new Date());
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<DiaryEntry | null>(null);
-  const dayEntries = useMemo(() => module.entries.filter((entry) => entryDateKey(entry.occursAt) === localDateKey(date)).sort((a, b) => a.occursAt.localeCompare(b.occursAt)), [module.entries, date]);
+  const [collaboratorId, setCollaboratorId] = useState("");
+  const collaborator = module.collaborators.find((entry) => entry.userId === collaboratorId);
+  const entries = collaborator?.entries ?? module.entries;
+  const canEditEntries = canEdit && !collaborator;
+  const dayEntries = useMemo(() => entries.filter((entry) => entryDateKey(entry.occursAt) === localDateKey(date)).sort((a, b) => a.occursAt.localeCompare(b.occursAt)), [entries, date]);
   const pending = dayEntries.filter((entry) => !isFinished(entry.status) && !isCancelled(entry.status));
   const finished = dayEntries.filter((entry) => isFinished(entry.status));
   const cancelled = dayEntries.filter((entry) => isCancelled(entry.status));
   const changeStatus = async (entry: DiaryEntry, value: string) => {
+    if (!canEditEntries) return;
     if (entry.source === "agenda") {
       await operate({ action: "changeAgendaCommitmentStatus", id: entry.id, agendaStatusId: value }, "Status do compromisso atualizado com sucesso.");
       return;
@@ -36,16 +45,16 @@ export default function DiaryModule({ module, busy, canCreate, canEdit, operate 
     await operate({ action: "transitionWorkItem", id: entry.id, nextStatus: value, version: entry.version ?? 0, confirmed: true }, "Status da atividade atualizado com sucesso.");
   };
   return <>
-    <header className="page-header diary-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><ClipboardList size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · ROTINA DIÁRIA</span><h1>Diário de Bordo</h1><p>Suas atividades manuais e compromissos da agenda sob sua responsabilidade, em um único lugar.</p></span></div><div className="module-page-actions">{canCreate&&<button className="primary-button" onClick={() => setCreating(true)}><Plus size={17} /> Nova atividade</button>}</div></header>
+    <header className="page-header diary-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><ClipboardList size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · ROTINA DIÁRIA</span><h1>Diário de Bordo</h1><p>{collaborator ? `Atividades e compromissos de ${collaborator.displayName}. Consulta em modo de leitura.` : "Suas atividades manuais e compromissos da agenda sob sua responsabilidade, em um único lugar."}</p></span></div><div className="module-page-actions">{module.collaborators.length > 0 && <label className="diary-collaborator-filter"><span>Diário do colaborador</span><select aria-label="Selecionar diário do colaborador" value={collaborator?.userId ?? ""} onChange={(event) => { setCollaboratorId(event.target.value); setEditing(null); setCreating(false); }}><option value="">Meu diário</option>{module.collaborators.map((entry) => <option key={entry.userId} value={entry.userId}>{entry.displayName}{entry.department ? ` · ${entry.department}` : ""}</option>)}</select></label>}{canCreate&&<button className="primary-button" onClick={() => { setCollaboratorId(""); setCreating(true); }}><Plus size={17} /> Nova atividade</button>}</div></header>
     <section className="diary-date-nav"><button className="icon-button" onClick={() => setDate((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() - 1))} aria-label="Dia anterior"><ChevronLeft size={18} /></button><strong>{dateLabel(date)}</strong><button className="icon-button" onClick={() => setDate((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1))} aria-label="Próximo dia"><ChevronRight size={18} /></button></section>
     <section className="diary-kpis"><div><b>{dayEntries.length}</b><span>Total</span></div><div><b className="pending">{pending.length}</b><span>Pendentes</span></div><div><b className="done">{finished.length}</b><span>Concluídos</span></div><div><b className="cancelled">{cancelled.length}</b><span>Cancelados</span></div></section>
     <div className="diary-columns">
-      <DiaryColumn title={`Pendentes (${pending.length})`} tone="pending" entries={pending} module={module} busy={busy} canEdit={canEdit} onEdit={setEditing} onDelete={entry=>{void operate({action:"deleteWorkItem",id:entry.id},"Atividade excluída.")}} onChangeStatus={changeStatus} empty="Tudo em dia! Nenhuma atividade pendente." />
-      <DiaryColumn title={`Finalizados (${finished.length})`} tone="done" entries={finished} module={module} busy={busy} canEdit={canEdit} onEdit={setEditing} onDelete={entry=>{void operate({action:"deleteWorkItem",id:entry.id},"Atividade excluída.")}} onChangeStatus={changeStatus} empty="Nenhuma atividade concluída neste dia." />
+      <DiaryColumn title={`Pendentes (${pending.length})`} tone="pending" entries={pending} module={module} busy={busy} canEdit={canEditEntries} onEdit={setEditing} onDelete={entry=>{void operate({action:"deleteWorkItem",id:entry.id},"Atividade excluída.")}} onChangeStatus={changeStatus} empty="Tudo em dia! Nenhuma atividade pendente." />
+      <DiaryColumn title={`Finalizados (${finished.length})`} tone="done" entries={finished} module={module} busy={busy} canEdit={canEditEntries} onEdit={setEditing} onDelete={entry=>{void operate({action:"deleteWorkItem",id:entry.id},"Atividade excluída.")}} onChangeStatus={changeStatus} empty="Nenhuma atividade concluída neste dia." />
     </div>
-    {cancelled.length > 0 && <section className="diary-cancelled"><h2>Cancelados ({cancelled.length})</h2>{cancelled.map((entry) => <DiaryEntryCard key={entry.id} entry={entry} module={module} busy={busy} canEdit={canEdit} onEdit={setEditing} onDelete={entry=>{void operate({action:"deleteWorkItem",id:entry.id},"Atividade excluída.")}} onChangeStatus={changeStatus} />)}</section>}
+    {cancelled.length > 0 && <section className="diary-cancelled"><h2>Cancelados ({cancelled.length})</h2>{cancelled.map((entry) => <DiaryEntryCard key={entry.id} entry={entry} module={module} busy={busy} canEdit={canEditEntries} onEdit={setEditing} onDelete={entry=>{void operate({action:"deleteWorkItem",id:entry.id},"Atividade excluída.")}} onChangeStatus={changeStatus} />)}</section>}
     {creating && <ManualActivityModal date={date} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => { const result = await operate({ action: "createWorkItem", module: "diary", recordType: payload.type, title: payload.title, description: payload.description, owner: "", team: "Diário de Bordo", priority: "P3", dueAt: payload.dueAt, slaDueAt: null, amountCents: 0, customerName: "" }, "Atividade adicionada com sucesso."); if (result) setCreating(false); }} />}
-    {editing&&canEdit&&<ManualActivityModal date={new Date(editing.occursAt)} initial={editing} busy={busy} onClose={()=>setEditing(null)} onSave={async(payload)=>{const result=await operate({action:"updateWorkItem",requireConfirmation:true,id:editing.id,title:payload.title,owner:"",amountCents:0,version:editing.version??0,description:payload.description,dueAt:payload.dueAt},"Atividade atualizada.");if(result)setEditing(null)}}/>}
+    {editing&&canEditEntries&&<ManualActivityModal date={new Date(editing.occursAt)} initial={editing} busy={busy} onClose={()=>setEditing(null)} onSave={async(payload)=>{const result=await operate({action:"updateWorkItem",requireConfirmation:true,id:editing.id,title:payload.title,owner:"",amountCents:0,version:editing.version??0,description:payload.description,dueAt:payload.dueAt},"Atividade atualizada.");if(result)setEditing(null)}}/>}
   </>;
 }
 

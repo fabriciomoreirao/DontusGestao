@@ -67,6 +67,10 @@ O menu expansível **Cadastros** reúne os submenus Setores, Tipos de tarefa, Pr
 
 ## Módulo de Tarefas
 
+Em **Diário de Bordo**, coordenadores podem escolher **Meu diário** ou um de seus coordenados no seletor ao lado de **Nova atividade**. A consulta inclui atividades manuais e compromissos sob responsabilidade do colaborador, em modo de leitura. Somente vínculos diretos de coordenação com colaboradores ativos e não bloqueados são disponibilizados; os vínculos são mantidos em **Administração → Colaboradores**.
+
+Em **Tarefas** e **Atendimentos**, escolha um setor na lista suspensa para filtrar os registros, ou selecione **Todos os setores** para a visão consolidada. A logo do menu acompanha o tema claro ou escuro independentemente da cor escolhida para os controles do sistema.
+
 Agenda e Tarefas são módulos separados. Em **Tarefas** estão disponíveis:
 
 - Kanban com movimentação por arrastar e soltar e visualização em lista;

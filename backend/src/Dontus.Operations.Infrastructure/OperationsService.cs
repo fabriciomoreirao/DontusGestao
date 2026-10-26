@@ -190,6 +190,15 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         actor.RequirePermission("diary", "view");
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(entry => entry.Email == actor.Email, cancellationToken)
             ?? throw new DomainException("Usuário autenticado não encontrado.", 403);
+        // A supervisão cadastrada define o escopo, independentemente das permissões administrativas.
+        var collaborators = await db.Users.AsNoTracking()
+            .Where(entry => user.IsCoordinator && entry.Id != user.Id && entry.Active && entry.BlockedAt == null
+                && db.EmployeeSupervisions.Any(link => link.CoordinatorUserId == user.Id && link.SubordinateUserId == entry.Id))
+            .OrderBy(entry => entry.DisplayName)
+            .Select(entry => new { entry.Id, entry.Email, entry.DisplayName, entry.Department })
+            .ToListAsync(cancellationToken);
+        var userIds = collaborators.Select(entry => entry.Id).Append(user.Id).ToArray();
+        var emails = collaborators.Select(entry => entry.Email).Append(user.Email).ToArray();
         var periodStart = DateTimeOffset.UtcNow.AddDays(-31);
         var periodEnd = DateTimeOffset.UtcNow.AddDays(121);
         var agendaStatuses = await db.AgendaStatuses.AsNoTracking()
@@ -197,34 +206,34 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .OrderBy(entry => entry.Name)
             .ToListAsync(cancellationToken);
         var statusesById = agendaStatuses.ToDictionary(entry => entry.Id);
-        // O Diário de Bordo é pessoal: compromissos aparecem somente para o
-        // colaborador definido como responsável, inclusive para gestores.
         var commitments = await db.AgendaCommitments.AsNoTracking()
-            .Where(entry => entry.ResponsibleUserId == user.Id
+            .Where(entry => userIds.Contains(entry.ResponsibleUserId)
                 && entry.StartsAt >= periodStart && entry.StartsAt <= periodEnd)
             .OrderBy(entry => entry.StartsAt)
-            .Take(500)
             .ToListAsync(cancellationToken);
         var manualActivities = await db.WorkItems.AsNoTracking()
-            .Where(entry => entry.Module == "diary" && entry.CreatedBy == actor.Email && entry.CreatedAt >= periodStart && entry.CreatedAt <= periodEnd)
+            .Where(entry => entry.Module == "diary" && emails.Contains(entry.CreatedBy)
+                && (entry.DueAt ?? entry.CreatedAt) >= periodStart && (entry.DueAt ?? entry.CreatedAt) <= periodEnd)
             .OrderBy(entry => entry.DueAt ?? entry.CreatedAt)
-            .Take(500)
             .ToListAsync(cancellationToken);
 
-        var entries = commitments.Select(entry =>
+        DiaryEntryDto[] EntriesFor(Guid userId, string email) => commitments
+            .Where(entry => entry.ResponsibleUserId == userId).Take(500).Select(entry =>
         {
             var status = statusesById.GetValueOrDefault(entry.AgendaStatusId);
             return new DiaryEntryDto(entry.Id, "agenda", entry.Title, entry.Description, "Compromisso da Agenda", entry.StartsAt,
                 status?.Name ?? "Sem status", status?.Color ?? "#64748b", entry.AgendaStatusId, null);
-        }).Concat(manualActivities.Select(entry => new DiaryEntryDto(
+        }).Concat(manualActivities.Where(entry => string.Equals(entry.CreatedBy, email, StringComparison.OrdinalIgnoreCase)).Take(500).Select(entry => new DiaryEntryDto(
             entry.Id, "manual", entry.Title, entry.Description, entry.RecordType, entry.DueAt ?? entry.CreatedAt,
             entry.Status, DiaryStatusColor(entry.Status), null, entry.Version)))
             .OrderBy(entry => entry.OccursAt)
             .ToArray();
 
         return new DiaryModuleDto(
-            entries,
-            agendaStatuses.Select(entry => new AgendaStatusDto(entry.Id, entry.Name, entry.Description, entry.Color, entry.Active)).ToArray());
+            EntriesFor(user.Id, user.Email),
+            agendaStatuses.Select(entry => new AgendaStatusDto(entry.Id, entry.Name, entry.Description, entry.Color, entry.Active)).ToArray(),
+            collaborators.Select(entry => new DiaryCollaboratorDto(entry.Id, entry.DisplayName, entry.Department,
+                EntriesFor(entry.Id, entry.Email))).ToArray());
     }
 
     public async Task<NotesModuleDto> GetNotesModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
