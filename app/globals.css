@@ -7997,7 +7997,42 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 }
 
 /* CRM: dias sem contato e sinalização dos lembretes vinculados ao card. */
-.commercial-leads-module .commercial-lead-filters { grid-template-columns: minmax(230px, 1.4fr) repeat(4, minmax(130px, 1fr)); }
+.content .commercial-leads-module .commercial-lead-filters.panel {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(160px, 1fr) minmax(170px, 1fr) minmax(130px, .8fr) minmax(220px, 1.2fr);
+  grid-template-rows: auto;
+  grid-auto-flow: column;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 10px;
+}
+.content .commercial-leads-module .commercial-lead-filters > label {
+  grid-column: auto;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 74px;
+  align-content: start;
+  grid-template-rows: 14px 38px;
+  padding: 8px 10px;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--line)) !important;
+  background: var(--input) !important;
+  font-size: .7rem;
+  letter-spacing: .035em;
+  line-height: 14px;
+}
+.content .commercial-leads-module .commercial-lead-filters :is(input, select) {
+  min-height: 38px !important;
+  height: 38px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--ink);
+  font-size: .82rem !important;
+  font-weight: 700;
+}
+.crm-search-control { position: relative; display: flex; align-items: center; min-width: 0; }
+.crm-search-control > svg { position: absolute; left: 0; color: var(--primary); pointer-events: none; }
+.content .commercial-leads-module .crm-search-control > input { min-width: 0; padding: 0 0 0 25px; }
 .crm-card-activity { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; min-width: 0; margin-top: 7px; }
 .crm-card-inactivity { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; color: var(--muted); font-size: .65rem; line-height: 1.5; }
 .crm-card-inactivity strong { font-size: inherit; font-weight: 800; }
@@ -8010,12 +8045,7 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 .reminder-toolbar > label:first-child { flex: 1; max-width: none; }
 .reminder-toolbar .reminder-date-filter { display: grid; gap: 5px; width: 230px; padding: 0; border: 0; color: var(--muted); background: transparent; font-size: .7rem; font-weight: 750; }
 .reminder-date-filter select { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--input); font: inherit; font-size: .8rem; }
-@media (max-width: 1100px) {
-  .commercial-leads-module .commercial-lead-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .commercial-leads-module .commercial-lead-filters .commercial-search { grid-column: 1 / -1; }
-}
 @media (max-width: 600px) {
-  .commercial-leads-module .commercial-lead-filters { grid-template-columns: minmax(0, 1fr); }
   .reminder-toolbar { flex-wrap: wrap; }
   .reminder-toolbar > label:first-child, .reminder-toolbar .reminder-date-filter { flex: 1 1 100%; width: 100%; }
 }
