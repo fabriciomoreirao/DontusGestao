@@ -1,5 +1,7 @@
 "use client";
 
+import { useReminderFilter } from "@/app/ReminderFilters";
+
 import { CheckCircle2, ChevronRight, ClipboardList, Code2, Columns3, FileText, GitBranch, List, MessageSquareText, Pencil, Plus, Rocket, Send, Tag, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
@@ -85,15 +87,23 @@ export default function DevelopmentModule({ items, employees, user, canEdit, can
   const triageStages = [...new Set(["Recebida", "Sugestões aprovadas", ...(configured.triage || ["Em análise"]), ...items.flatMap(item => { const detail = readDevelopment(item.description); return detail?.processStage === "Aguardando triagem" ? [detail.triageStage] : []; }), "Concluído"])];
   const stages = [...new Set([...(configured.process || processColumns.map(column => column.name)), ...items.flatMap(item => { const stage = readDevelopment(item.description)?.processStage; return stage && !["Aguardando triagem", "Finalizada"].includes(stage) ? [stage] : []; })])];
   const [editingRelease, setEditingRelease] = useState<WorkItem | "new" | null>(null);
+  const reminderFilter = useReminderFilter("ti");
+  const [query, setQuery] = useState("");
   const [processOwner, setProcessOwner] = useState("all");
   const handledSubtaskRef = useRef("");
   const records = useMemo(() => items.filter((item) => item.module === "ti" && readDevelopment(item.description)), [items]);
   const releases = useMemo(() => items.filter((item) => item.module === "ti" && readRelease(item.description)), [items]);
+  const filteredRecords = useMemo(() => records.filter((item) => {
+    const detail = readDevelopment(item.description)!;
+    const needle = query.trim().toLocaleLowerCase("pt-BR");
+    return reminderFilter.matches({entityId:item.id,title:item.title}) && (!needle || `${item.title} ${item.customer_name} ${item.owner} ${detail.sourceProtocol} ${detail.versionName || ""}`.toLocaleLowerCase("pt-BR").includes(needle));
+  }), [records, query, reminderFilter.matches]);
+  const visibleReleases = releases.filter((release) => (!query.trim() && reminderFilter.mode === "all") || filteredRecords.some((item) => readDevelopment(item.description)?.versionName === release.title));
   const processOwners = useMemo(() => [...new Set(records
     .filter((item) => { const stage = readDevelopment(item.description)?.processStage; return stage && !["Aguardando triagem", "Finalizada"].includes(stage); })
     .map((item) => readDevelopment(item.description)?.executor || item.owner)
     .filter(Boolean))].sort(), [records]);
-  const processRecords = useMemo(() => processOwner === "all" ? records : records.filter((item) => (readDevelopment(item.description)?.executor || item.owner) === processOwner), [processOwner, records]);
+  const processRecords = useMemo(() => processOwner === "all" ? filteredRecords : filteredRecords.filter((item) => (readDevelopment(item.description)?.executor || item.owner) === processOwner), [processOwner, filteredRecords]);
   const selectedDetail = selected ? readDevelopment(selected.description) : null;
   useEffect(() => {
     const subtaskId = new URLSearchParams(window.location.search).get("subtask");
@@ -151,10 +161,10 @@ export default function DevelopmentModule({ items, employees, user, canEdit, can
       <button className={tab === "version" ? "active" : ""} onClick={() => setTab("version")}><Rocket size={16} /> 3. Versão <b>{releases.length}</b></button>
       <span className="development-view-toggle"><button className={view === "list" ? "active" : ""} onClick={() => setView("list")}><List size={15} /> Lista</button><button className={view === "kanban" ? "active" : ""} onClick={() => setView("kanban")}><Columns3 size={15} /> Kanban</button></span>
     </nav>
-    {tab === "process" && <section className="development-process-filter panel"><label>Responsável pela demanda<select value={processOwner} onChange={(event) => setProcessOwner(event.target.value)}><option value="all">Todos os responsáveis</option>{processOwners.map((owner) => <option key={owner}>{owner}</option>)}</select></label><span>{processRecords.length} demanda(s)</span></section>}
-    {tab === "triage" && <TriageView stages={triageStages} items={records} view={view} canEdit={canEdit} canDelete={canDelete} onOpen={setSelected} onDelete={remove} onMove={(item, stage) => void moveCard(item, stage, "triage")} />}
+    <section className="development-process-filter panel reminder-filter-toolbar"><label className="development-search"><span>Buscar demanda</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Título, cliente, protocolo ou versão" /></label>{reminderFilter.control}{tab === "process" && <label>Responsável pela demanda<select value={processOwner} onChange={(event) => setProcessOwner(event.target.value)}><option value="all">Todos os responsáveis</option>{processOwners.map((owner) => <option key={owner}>{owner}</option>)}</select></label>}<span>{(tab === "process" ? processRecords : filteredRecords).length} demanda(s)</span></section>
+    {tab === "triage" && <TriageView stages={triageStages} items={filteredRecords} view={view} canEdit={canEdit} canDelete={canDelete} onOpen={setSelected} onDelete={remove} onMove={(item, stage) => void moveCard(item, stage, "triage")} />}
     {tab === "process" && <ProcessView columns={stages.map(name => ({name, tone:"blue"}))} items={processRecords} view={view} canEdit={canEdit} canDelete={canDelete} onOpen={setSelected} onDelete={remove} onMove={(item, stage) => void moveCard(item, stage, "process")} />}
-    {tab === "version" && <VersionView items={records} releases={releases} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} onCreate={() => setEditingRelease("new")} onEdit={setEditingRelease} onDelete={remove} onOpen={setSelected} />}
+    {tab === "version" && <VersionView items={filteredRecords} releases={visibleReleases} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} onCreate={() => setEditingRelease("new")} onEdit={setEditingRelease} onDelete={remove} onOpen={setSelected} />}
     {selected && selectedDetail && <DevelopmentDrawerV2 stages={stages} item={selected} detail={selectedDetail} releases={releases} employees={employees} canEdit={canEdit} canDelete={canDelete} busy={busy} user={user} onClose={() => setSelected(null)} onDelete={() => void remove(selected)} onSave={save} />}
     {selected && selectedDetail?.processStage === "Aguardando triagem" && canEdit && <DevelopmentTriageCompletePortal busy={busy} onComplete={() => void save(selected, stamp({ ...selectedDetail, processStage: "Finalizada" }, "Tarefa concluída diretamente na triagem.", user.displayName), "Tarefa concluída sem encaminhamento ao time de TI.")} />}
     {configuring && <div className="modal-backdrop"><section className="modal"><header className="modal-head"><h2>Etapas dos kanbans</h2><button className="icon-button" onClick={() => setConfiguring(false)}><X/></button></header><form className="form-grid" onSubmit={async event => { event.preventDefault(); const form = new FormData(event.currentTarget); const split = (key:string) => [...new Set(String(form.get(key) || "").split("\n").map(value => value.trim()).filter(Boolean))]; const description = JSON.stringify({kind:"developmentKanbanSettings",triage:split("triage"),process:split("process")}); const payload = settings ? {action:"updateWorkItem",id:settings.id,version:settings.version,title:settings.title,owner:settings.owner,customerName:settings.customer_name,amountCents:0,description} : {action:"createWorkItem",module:"ti",recordType:"Configuração de Kanban",title:"Etapas dos kanbans",owner:user.displayName,team:"TI",priority:"P3",amountCents:0,description}; if (await operate(payload,"Etapas atualizadas.")) setConfiguring(false); }}><label className="wide">Triagem (uma etapa por linha)<textarea name="triage" rows={5} defaultValue={triageStages.filter(stage => stage !== "Concluído").join("\n")}/><small>Recebida e Sugestões aprovadas são etapas padrão. Etapas com demandas são preservadas.</small></label><label className="wide">Processo (uma etapa por linha)<textarea name="process" required rows={6} defaultValue={stages.join("\n")}/></label><button className="primary-button" disabled={busy}>Salvar etapas</button></form></section></div>}
@@ -210,7 +220,7 @@ function VersionView({ items, releases, canCreate, canEdit, canDelete, onCreate,
 }
 
 function DevelopmentListRow({ item, secondary, stage, owner, canEdit, canDelete, onOpen, onDelete }: { item: WorkItem; secondary: string; stage: string; owner: string; canEdit: boolean; canDelete: boolean; onOpen: () => void; onDelete: () => void }) {
-  return <div className="development-list-row"><button className="development-list-main" onClick={onOpen}><span><b>{item.title}</b><small>{readDevelopment(item.description)?.sourceProtocol || "Demanda manual"}</small></span><span>{secondary}</span><span>{stage}</span><span>{owner}</span><ChevronRight size={17} /></button><span className="development-inline-actions">{canEdit && <button type="button" onClick={onOpen} title="Editar demanda"><Pencil size={14} /></button>}{canDelete && <button type="button" className="delete" onClick={onDelete} title="Excluir demanda"><Trash2 size={14} /></button>}</span></div>;
+  return <div className="development-list-row" data-reminder-entity-id={item.id}><button className="development-list-main" onClick={onOpen}><span><b>{item.title}</b><small>{readDevelopment(item.description)?.sourceProtocol || "Demanda manual"}</small></span><span>{secondary}</span><span>{stage}</span><span>{owner}</span><ChevronRight size={17} /></button><span className="development-inline-actions">{canEdit && <button type="button" onClick={onOpen} title="Editar demanda"><Pencil size={14} /></button>}{canDelete && <button type="button" className="delete" onClick={onDelete} title="Excluir demanda"><Trash2 size={14} /></button>}</span></div>;
 }
 
 function DevelopmentColumn({ title, items, tone, canEdit = false, canDelete = false, onOpen, onDelete = () => undefined, onDropItem }: { title: string; items: WorkItem[]; tone?: string; canEdit?: boolean; canDelete?: boolean; onOpen: (item: WorkItem) => void; onDelete?: (item: WorkItem) => void; onDropItem?: (id: string, stage: string) => void }) {

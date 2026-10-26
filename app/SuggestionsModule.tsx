@@ -1,5 +1,8 @@
 "use client";
 
+import { useReminderFilter } from "@/app/ReminderFilters";
+
+
 import {
   AlertTriangle, ArrowRight, BadgeCheck, Check, CheckCircle2, CircleDot, Columns3, Copy, Flag, Hash, List,
   FileText, MessageSquareText, Paperclip, Pencil, Plus, Search, Settings2, ShieldAlert, Sparkles,
@@ -51,6 +54,7 @@ function FlagBadges({ suggestion, compact = false }: { suggestion: Suggestion; c
 export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate, uploadAttachments, onOpenSettings }: {
   module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; uploadAttachments: (suggestionId: string, files: File[]) => Promise<boolean>; onOpenSettings?: () => void;
 }) {
+  const reminderFilter = useReminderFilter("suggestions");
   const [view, setView] = useState<"list" | "kanban">("kanban");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -68,9 +72,9 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
     const normalized = search.trim().toLocaleLowerCase("pt-BR");
     return module.suggestions.filter((entry) => {
       const matchesText = !normalized || `${entry.protocol} ${entry.name} ${entry.description} ${entry.customerName} ${entry.responsibleName}`.toLocaleLowerCase("pt-BR").includes(normalized);
-      return matchesText && (!effectiveStatusFilter || entry.statusId === effectiveStatusFilter) && (!effectivePriorityFilter || entry.priorityId === effectivePriorityFilter);
+      return reminderFilter.matches({ entityId: entry.id, title: entry.name }) && matchesText && (!effectiveStatusFilter || entry.statusId === effectiveStatusFilter) && (!effectivePriorityFilter || entry.priorityId === effectivePriorityFilter);
     });
-  }, [module.suggestions, search, effectiveStatusFilter, effectivePriorityFilter]);
+  }, [module.suggestions, search, effectiveStatusFilter, effectivePriorityFilter, reminderFilter.matches]);
 
   const changeStatus = async (suggestion: Suggestion, statusId: string) => {
     if (!canEdit || suggestion.statusId === statusId) return;
@@ -114,10 +118,11 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
 
     {!configured && <div className="suggestion-setup-warning"><Settings2 size={20} /><span><strong>Cadastros necessários</strong><small>Configure ao menos uma prioridade e um status ativo em Cadastros › Sugestões.</small></span></div>}
 
-    <div className="suggestion-toolbar panel">
-      <label className="suggestion-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar por protocolo, nome, cliente ou descrição..." /></label>
+    <div className="suggestion-toolbar panel reminder-filter-toolbar">
+      <label className="suggestion-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar por protocolo, nome, cliente ou descrição..." /></label>{reminderFilter.control}
       <select value={effectiveStatusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Todos os status</option>{activeStatuses.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select>
       <select value={effectivePriorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="">Todas as prioridades</option>{activePriorities.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select>
+
       <span className="suggestion-result-count">{filtered.length} resultado{filtered.length === 1 ? "" : "s"}</span>
     </div>
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useReminderFilter } from "@/app/ReminderFilters";
+
 import {
   Archive, ArchiveRestore, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
   Gift, MessageCircleMore, Palette, Paperclip, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
@@ -91,10 +93,11 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
 
   const canCreateGroup = canCreate && Boolean(module.users.find(user => user.id === module.currentUserId)?.isCoordinator);
   const conversations = useMemo(() => buildConversations(module, archivedView).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, pinnedConversationKeys]);
+  const reminderFilter = useReminderFilter("internalChat");
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
-    return query ? conversations.filter((entry) => `${entry.name} ${entry.user?.departmentName ?? ""}`.toLocaleLowerCase("pt-BR").includes(query)) : conversations;
-  }, [conversations, search]);
+    return conversations.filter((entry) => reminderFilter.matches({entityId:entry.user ? `user:${entry.user.id}` : entry.key,title:`Enviar mensagem: ${entry.name}`}) && (!query || `${entry.name} ${entry.user?.departmentName ?? ""}`.toLocaleLowerCase("pt-BR").includes(query)));
+  }, [conversations, search, reminderFilter.matches]);
   const effectiveSelectedKey = conversations.some((entry) => entry.key === selectedKey) ? selectedKey : conversations[0]?.key ?? "";
   const selectedConversation = conversations.find((entry) => entry.key === effectiveSelectedKey);
   const selectedRoom = selectedConversation?.room;
@@ -257,7 +260,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
 
     <section className="internal-chat-shell">
       <aside className="internal-chat-sidebar">
-        <div className="internal-chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar colaboradores ou grupos..." /></div>
+        <div className="internal-chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar colaboradores ou grupos..." /></div><div className="internal-chat-reminder-filter">{reminderFilter.control}</div>
         <div className="internal-chat-view-tabs">
           <button className={!archivedView ? "active" : ""} onClick={() => { setArchivedView(false); setSelectedKey(""); }}>Conversas</button>
           <button className={archivedView ? "active" : ""} onClick={() => { setArchivedView(true); setSelectedKey(""); }}>Arquivadas {archivedCount > 0 && <b>{archivedCount}</b>}</button>
@@ -278,7 +281,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
 
       <main className="internal-chat-conversation">
         {!selectedConversation ? <div className="internal-chat-welcome"><div><MessageCircleMore size={38} /></div><h2>Escolha um colaborador</h2><p>A conversa será criada automaticamente ao enviar a primeira mensagem.</p></div> : <>
-          <header className="internal-chat-conversation-head">
+          <header className="internal-chat-conversation-head" data-reminder-entity-id={selectedConversation.user ? `user:${selectedConversation.user.id}` : selectedConversation.key}>
             <span className="internal-chat-group-photo-wrap" role={selectedConversation.user?"button":undefined} tabIndex={selectedConversation.user?0:undefined} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)}><Avatar name={selectedConversation.name} photo={selectedConversation.photoDataUrl} group={selectedConversation.isGroup} coordinator={selectedConversation.user?.isCoordinator} />
               {selectedRoom?.isGroup && selectedRoom.canManage && canEdit && <><input ref={groupPhotoInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void updateGroupPhoto(event.target.files?.[0])} /><button type="button" onClick={() => groupPhotoInput.current?.click()} aria-label="Alterar foto do grupo" title="Alterar foto do grupo"><Camera size={11} /></button></>}
             </span>

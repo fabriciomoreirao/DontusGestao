@@ -1,5 +1,8 @@
 "use client";
 
+import { useReminderFilter } from "@/app/ReminderFilters";
+
+
 import { BadgeCheck, CheckCircle2, Clock3, Eye, Headphones, Link2, Pencil, Save, Search, Settings, Trash2, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
@@ -59,6 +62,7 @@ function destinationPayload(destinationId:string, detail:WaitingQueueDetail, own
 }
 
 export default function WaitingQueueModule({items,employees,departments,currentUser,busy,operate,onOpenSettings}:{items:WorkItem[];employees:Employee[];departments:Department[];currentUser:CurrentUser;busy:boolean;operate:(payload:Record<string,unknown>,success:string)=>Promise<OperationResult>;onOpenSettings?:()=>void}){
+  const reminderFilter = useReminderFilter("waitingQueue");
   const [query,setQuery]=useState("");
   const [selected,setSelected]=useState<WorkItem|null>(null);
   const [editing,setEditing]=useState<WorkItem|null>(null);
@@ -69,14 +73,14 @@ export default function WaitingQueueModule({items,employees,departments,currentU
   const canEdit=currentUser.permissions.some(permission=>permission.screen==="waitingQueue"&&permission.canEdit);
   const userDepartmentIds=new Set([...(userEmployee?.departmentIds??[]),userEmployee?.departmentId??""].filter(Boolean));
   const records=items.filter(item=>item.module==="waitingQueue").map(item=>({item,detail:parseWaitingQueue(item.description)})).filter((entry):entry is {item:WorkItem;detail:WaitingQueueDetail}=>Boolean(entry.detail)).filter(({detail})=>elevated||userDepartmentIds.has(detail.departmentId)||normalize(detail.departmentName)===normalize(currentUser.department));
-  const visible=records.filter(({item,detail})=>!query.trim()||normalize(`${item.title} ${detail.clientCode} ${detail.whatsapp} ${detail.summary} ${detail.requestType} ${detail.responsibleName}`).includes(normalize(query.trim())));
+  const visible=records.filter(({item,detail})=>reminderFilter.matches({entityId:item.id,clientId:detail.clientCode,title:detail.clientName})&&(!query.trim()||normalize(`${item.title} ${detail.clientCode} ${detail.whatsapp} ${detail.summary} ${detail.requestType} ${detail.responsibleName}`).includes(normalize(query.trim()))));
   const waiting=visible.filter(entry=>entry.detail.state==="waiting");
   const contacted=visible.filter(entry=>entry.detail.state==="contacted");
   return <section className="waiting-queue-module">
     <header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Clock3 size={21}/></span><span className="module-page-copy"><span className="eyebrow">OPERAÇÃO · ATENDIMENTO</span><h1>Fila de Espera</h1><p>Encaminhamentos recebidos pelo Portal Dontus, organizados por setor e responsável.</p></span></div><div className="module-page-actions">{onOpenSettings && <button className="icon-button" onClick={onOpenSettings} title="Configurar tipos de solicitação"><Settings size={18}/></button>}</div></header>
     <section className="waiting-queue-metrics"><article><Clock3/><span><strong>{waiting.length}</strong><small>Em espera</small></span></article><article><CheckCircle2/><span><strong>{contacted.length}</strong><small>Contato feito</small></span></article><article><Headphones/><span><strong>{visible.length}</strong><small>Total visível</small></span></article></section>
     <nav className="waiting-queue-tabs" aria-label="Situação da fila"><button className={tab==="waiting"?"active":""} onClick={()=>setTab("waiting")}><Clock3 size={15}/> Em espera <b>{waiting.length}</b></button><button className={tab==="contacted"?"active":""} onClick={()=>setTab("contacted")}><CheckCircle2 size={15}/> Contato feito <b>{contacted.length}</b></button></nav>
-    <label className="waiting-queue-search"><Search size={17}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar cliente, ID, WhatsApp, solicitação ou resumo"/></label>
+    <div className="reminder-filter-toolbar waiting-queue-filters"><label className="waiting-queue-search"><Search size={17}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar cliente, ID, WhatsApp, solicitação ou resumo"/></label>{reminderFilter.control}</div>
     <div className="waiting-queue-columns single">{tab==="waiting"?<QueueColumn title="Em espera" tone="waiting" records={waiting} canEdit={canEdit} onOpen={setSelected} onEdit={setEditing} onDelete={item=>{void operate({action:"deleteWorkItem",id:item.id},"Registro excluído da fila.")}} onContact={setContacting}/>:<QueueColumn title="Contato feito" tone="contacted" records={contacted} canEdit={canEdit} onOpen={setSelected} onEdit={setEditing} onDelete={item=>{void operate({action:"deleteWorkItem",id:item.id},"Registro excluído da fila.")}}/>}</div>
     {editing&&canEdit&&<QueueEditModal detail={parseWaitingQueue(editing.description)!} busy={busy} onClose={()=>setEditing(null)} onSave={async(detail)=>{const result=await operate({action:"updateWorkItem",requireConfirmation:true,id:editing.id,title:detail.clientName,customerName:detail.clientName,owner:editing.owner,amountCents:editing.amount_cents,version:editing.version,description:JSON.stringify(detail)},"Registro da fila atualizado.");if(result)setEditing(null)}}/>}
     {selected&&<QueueDetail item={selected} detail={parseWaitingQueue(selected.description)!} onClose={()=>setSelected(null)}/>} 

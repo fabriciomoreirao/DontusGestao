@@ -57,7 +57,7 @@ const CARD_SELECTORS = [
   ".task-card", ".task-table-row:not(.head)", ".suggestion-kanban-cards > article", ".commercial-lead-card", ".retention-lead-card",
   ".cs-client-card", ".enterprise-card", ".enterprise-list > article", ".cancellation-card", ".marketing-card", ".service-list > article",
   ".service-request-column>div>article", ".waiting-queue-row", ".development-card-shell", ".journey-card", ".hr-employee-card", ".recruitment-candidate",
-  "article.commission-row", ".goal-card", ".referral-card-shell",
+  "article.commission-row", ".goal-card", ".referral-card-shell", ".development-list-row", ".version-row-shell",
 ];
 const ENABLED_MODULES = new Set(["serviceRequests","serviceFollowup","waitingQueue","internalChat","tasks","suggestions","support","commercial","cs","cancellations","marketing","ti","lia","hr","admin","commissions","goals","referrals"]);
 const DETAIL_SURFACES = ".task-modal,.suggestion-detail-modal,.drawer-backdrop>aside,.goal-detail-modal,.commission-decision-modal,.retention-detail-page,.enterprise-detail-page,.service-entry-modal";
@@ -147,7 +147,7 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
         button.addEventListener("click", (event) => {
           event.preventDefault(); event.stopPropagation();
           const title = header.querySelector<HTMLElement>("h2,h3,strong")?.innerText?.trim() || "Conversa interna";
-          openReminderComposer({ module, title: `Enviar mensagem: ${title}` });
+          openReminderComposer({ module, entityId: header.dataset.reminderEntityId, title: `Enviar mensagem: ${title}` });
         });
         header.appendChild(button);
       });

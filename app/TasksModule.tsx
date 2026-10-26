@@ -1,5 +1,8 @@
 "use client";
 
+import { useReminderFilter } from "@/app/ReminderFilters";
+
+
 import {
   Bell, Check, CheckCircle2, ChevronRight, CircleDot, Clipboard, Clock3, Columns3,
   Code2, FileText, History, List, MessageSquareText, Paperclip, Pencil, Plus, Search, Upload,
@@ -91,6 +94,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   const [editRequested, setEditRequested] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createdProtocol, setCreatedProtocol] = useState("");
+  const reminderFilter = useReminderFilter("tasks");
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const currentCollaborator = module.collaborators.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
   const responsibleDepartmentIds = currentCollaborator?.coordinatorDepartmentIds.length
@@ -110,14 +114,14 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     return module.tasks.filter((task) => {
       const text = `#${task.number} ${task.protocol} ${task.title} ${task.description} ${task.customerName}`.toLocaleLowerCase("pt-BR");
-      return (!needle || text.includes(needle))
+      return reminderFilter.matches({ entityId: task.id, clientId: task.customerCode, title: task.title }) && (!needle || text.includes(needle))
         && (!departmentFilter || task.currentDepartmentId === departmentFilter)
         && (!priorityFilter || task.priorityId === priorityFilter)
         && (!assigneeFilter || task.assigneeUserId === assigneeFilter)
         && (clientNotice === "Todos" || task.clientNotificationState === clientNotice)
         && (!onlyMine || (currentCollaborator ? task.assigneeUserId === currentCollaborator.id : task.assigneeName === user.displayName));
     });
-  }, [module.tasks, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, currentCollaborator, user.displayName]);
+  }, [module.tasks, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, currentCollaborator, user.displayName, reminderFilter.matches]);
 
   useEffect(() => {
     const taskId = new URLSearchParams(window.location.search).get("task");
@@ -172,10 +176,11 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
         </div>
       </header>
       <div className="module-sector-filter"><label><span>Setor</span><select aria-label="Filtrar tarefas por setor" value={departmentFilter} onChange={(event) => setDepartment(event.target.value)}><option value="">Todos os setores</option>{availableDepartments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
-      <div className="tasks-toolbar">
-        <div className="task-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por protocolo, título ou cliente" /></div>
+      <div className="tasks-toolbar reminder-filter-toolbar">
+        <div className="task-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por protocolo, título ou cliente" /></div>{reminderFilter.control}
         <select value={priorityFilter} onChange={(e) => setPriority(e.target.value)} aria-label="Filtrar prioridade"><option value="">Todas as prioridades</option>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select>
         <select value={assigneeFilter} onChange={(e) => setAssignee(e.target.value)} aria-label="Filtrar responsável"><option value="">Todos os responsáveis</option>{module.collaborators.filter((c) => c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select>
+
         <label className="mine-filter"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Somente minhas</label>
       </div>
       <details className="task-secondary-filters">

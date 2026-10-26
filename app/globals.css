@@ -8041,6 +8041,68 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 .crm-card-reminder { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 25px; min-height: 25px; padding: 4px 5px; border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--line)); border-radius: 7px; color: var(--primary); background: var(--primary-soft); }
 .crm-card-reminder b { font-size: .58rem; }
 .commercial-lead-list .crm-card-activity { justify-content: flex-start; }
+.content .reminder-filter-toolbar {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  scrollbar-width: thin;
+}
+.content .reminder-filter-toolbar > * { order: 1; }
+.content .reminder-filter-toolbar > :first-child,
+.content .reminder-filter-toolbar > .reminder-filter-field { order: 0; }
+.content .reminder-filter-toolbar > label { position: relative; flex: 1 0 180px; min-width: 160px; }
+.content .reminder-filter-toolbar > :is(select, input) { flex: 0 0 175px; width: 175px; min-height: 42px; }
+.content .reminder-filter-toolbar > :is(strong, b, span) { flex: 0 0 auto; align-self: center; white-space: nowrap; }
+.content .reminder-filter-toolbar :is(input:not([type="checkbox"]), select) { min-height: 42px; color: var(--ink); background-color: var(--input); }
+.content .reminder-filter-toolbar > .reminder-filter-field,
+.internal-chat-reminder-filter > .reminder-filter-field {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 0 0 220px;
+  gap: 5px;
+  width: 220px;
+  min-width: 220px;
+  max-width: none;
+  height: auto;
+  margin: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0;
+  color: var(--ink);
+  background: transparent !important;
+  font-size: .72rem;
+  font-weight: 750;
+}
+.content .reminder-filter-field > span { position: static; width: auto; height: auto; overflow: visible; clip: auto; line-height: 16px; }
+.content .reminder-filter-field > select {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line));
+  border-radius: 9px;
+  color: var(--ink);
+  background: var(--input);
+  font: inherit;
+  font-size: .8rem;
+  cursor: pointer;
+}
+.reminder-filter-field > select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.content .reminder-filter-toolbar > .mine-filter { flex: 0 0 auto; min-width: 140px; align-self: center; }
+.content .waiting-queue-filters > .waiting-queue-search { margin: 0; }
+.content .service-records-module { grid-template-columns: minmax(0, 1fr); }
+.content .service-filter-panel { min-width: 0; }
+.content .service-filter-grid.reminder-filter-toolbar > label { flex: 1 0 160px; }
+.content .service-filter-grid.reminder-filter-toolbar > .reminder-filter-field { flex: 0 0 220px; }
+.internal-chat-reminder-filter { padding: 0 14px 12px; }
+.internal-chat-reminder-filter > .reminder-filter-field { width: 100%; min-width: 0; }
+.internal-chat-reminder-filter .reminder-filter-field > select { height: 38px; }
 .reminder-toolbar { display: flex; align-items: flex-end; gap: 12px; }
 .reminder-toolbar > label:first-child { flex: 1; max-width: none; }
 .reminder-toolbar .reminder-date-filter { display: grid; gap: 5px; width: 230px; padding: 0; border: 0; color: var(--muted); background: transparent; font-size: .7rem; font-weight: 750; }

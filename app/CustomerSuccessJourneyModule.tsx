@@ -1,5 +1,7 @@
 "use client";
 
+import { useReminderFilter } from "@/app/ReminderFilters";
+
 import {
   Activity, AlertTriangle, ArrowRight, BadgeCheck, Ban, CalendarDays, Check, CheckCircle2,
   Clock3, Columns3, ExternalLink, Link2, List, MessageSquareText, Pencil, Phone, Plus, RotateCcw, Save,
@@ -245,16 +247,17 @@ export default function CustomerSuccessJourneyModule({
     const configured = catalogs.filter((entry) => entry.active && ["csWorkflowStatus", "csFinalStatus"].includes(entry.catalog)).map((entry) => entry.name);
     return [...new Set([...configured, ...records.map((entry) => entry.journey.status).filter(Boolean) as string[], ...DEFAULT_STATUSES])];
   }, [catalogs, records]);
+  const reminderFilter = useReminderFilter("cs");
   const visible = useMemo(() => records.filter(({ item, journey }) => {
     const needle = normalize(query.trim());
     const commercial = items.find((entry) => entry.id === journey.sourceLeadId);
     const phone = commercial ? parseCommercial(commercial.description)?.phone : "";
     const permitted = isCoordinator || item.owner === currentUser.displayName || journey.phase === "validation";
-    return journey.phase === tab && permitted
+    return reminderFilter.matches({entityId:item.id,clientId:journey.clientId,title:item.title}) && journey.phase === tab && permitted
       && (!needle || normalize(`${item.id} ${journey.clientId} ${item.title} ${item.customer_name} ${item.owner} ${phone}`).includes(needle))
       && (ownerFilter === "all" || item.owner === ownerFilter)
       && (statusFilter === "all" || (journey.status || "Pendente") === statusFilter);
-  }), [records, tab, query, ownerFilter, statusFilter, isCoordinator, currentUser.displayName, items]);
+  }), [records, tab, query, ownerFilter, statusFilter, isCoordinator, currentUser.displayName, items, reminderFilter.matches]);
 
   const totalTrackingDays = records.filter((entry) => entry.journey.phase === "tracking").reduce((sum, entry) => sum + trackedDays(entry.journey, entry.item), 0);
   const averageHealth = records.filter((entry) => entry.journey.phase === "tracking").length
@@ -341,7 +344,7 @@ export default function CustomerSuccessJourneyModule({
       {PHASES.map((phase) => <button key={phase.id} className={tab === phase.id ? "active" : ""} onClick={() => setTab(phase.id)}>{phase.label}<b>{counts[phase.id]}</b></button>)}
     </nav>
 
-    <section className="cs-pipeline-toolbar">
+    <section className="cs-pipeline-toolbar reminder-filter-toolbar">{reminderFilter.control}
       <label className="cs-pipeline-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, ID, responsável ou telefone" /></label>
       <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Filtrar responsável"><option value="all">Todos os responsáveis</option>{[...new Set(records.map((entry) => entry.item.owner).filter(Boolean))].map((owner) => <option key={owner}>{owner}</option>)}</select>
       <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filtrar status"><option value="all">Todos os status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select>
