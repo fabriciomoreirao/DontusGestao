@@ -30,7 +30,7 @@ public sealed record SaveAgendaStatusCommand(Guid? Id, string Name, string? Desc
 public sealed record CreateAgendaCommitmentCommand(
     Guid AgendaId, Guid AgendaTypeId, Guid AgendaStatusId, Guid ResponsibleUserId, string Title, string? Description,
     DateTimeOffset StartsAt, DateTimeOffset EndsAt, IReadOnlyCollection<Guid>? ParticipantUserIds,
-    string? Recurrence);
+    string? Recurrence, IReadOnlyCollection<DateOnly>? RecurrenceDates = null);
 public sealed record UpdateAgendaCommitmentCommand(
     Guid Id, Guid AgendaId, Guid AgendaTypeId, Guid AgendaStatusId, Guid ResponsibleUserId,
     string Title, string? Description, DateTimeOffset StartsAt, DateTimeOffset EndsAt,

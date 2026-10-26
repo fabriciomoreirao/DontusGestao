@@ -7955,3 +7955,43 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
   .candidate-detail-identity > .candidate-avatar { width: 44px; height: 44px; border-radius: 12px; }
   .candidate-feedback-actions > button { width: 100%; }
 }
+
+/* Portal: agenda ampla e dias legíveis, com rolagem apenas na grade em telas menores. */
+.portal-dontus-content.portal-room-content { width: calc(100% - 48px); min-width: 0; max-width: none; grid-template-columns: minmax(0, 1fr); padding-top: 24px; }
+.portal-room-content .portal-room-agenda { width: 100%; min-width: 0; max-width: none; padding-top: 0; }
+.portal-room-agenda .portal-calendar-panel { min-width: 0; max-width: 100%; }
+.portal-room-agenda .portal-calendar-month-scroll, .portal-room-agenda .portal-schedule-scroll { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; }
+.portal-room-agenda .portal-calendar-month-scroll > :is(.portal-calendar-week, .portal-calendar-grid) { min-width: 1050px; grid-template-columns: repeat(7, minmax(150px, 1fr)); }
+.portal-room-agenda .portal-calendar-grid > :is(article, .empty) { min-height: clamp(170px, 18vh, 220px) !important; padding: 12px; }
+.portal-room-agenda .portal-calendar-grid article > b { color: var(--portal-text); font-size: 1rem; }
+.portal-room-agenda .portal-calendar-event { min-height: 72px !important; padding: 10px !important; }
+.portal-room-agenda .portal-calendar-event > span time { font-size: .78rem; }
+.portal-room-agenda .portal-calendar-event > strong { font-size: .82rem; line-height: 1.4; }
+.portal-room-agenda .portal-calendar-event > small { font-size: .72rem; }
+.portal-room-agenda .portal-schedule-grid { grid-template-columns: repeat(7, minmax(150px, 1fr)) !important; min-width: 1050px !important; min-height: 640px !important; }
+.portal-room-agenda .portal-calendar-day .portal-schedule-grid { grid-template-columns: 1fr !important; min-width: 0 !important; }
+
+/* Repetição: datas específicas compartilhadas entre Agenda, ações rápidas e Portal. */
+.agenda-recurrence .agenda-recurrence-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.agenda-recurrence .agenda-recurrence-modes > label { flex-direction: row; justify-content: flex-start; gap: 8px; }
+.agenda-recurrence-dates { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+.agenda-recurrence-dates > p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .75rem; line-height: 1.5; }
+.agenda-recurrence-calendar { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.agenda-recurrence-calendar > header { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: 6px; margin-bottom: 8px; }
+.agenda-recurrence-calendar > header > label { display: block; min-width: 0; padding: 0; border: 0; background: transparent; }
+.agenda-recurrence-calendar input[type="month"] { width: 100%; height: auto; min-height: 38px; }
+.agenda-recurrence-calendar > header > button { display: grid; place-items: center; width: 32px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface-alt); cursor: pointer; }
+.agenda-recurrence-weekdays, .agenda-recurrence-day-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.agenda-recurrence-weekdays > span { padding: 6px 0; text-align: center; color: var(--muted); font-size: .55rem; font-weight: 800; }
+.agenda-recurrence-day-grid > button { min-width: 0; min-height: 34px; padding: 3px; border: 1px solid transparent; border-radius: 7px; color: var(--ink); background: transparent; font-size: .76rem; font-weight: 750; cursor: pointer; }
+.agenda-recurrence-day-grid > button:hover { border-color: var(--primary); background: var(--primary-soft); }
+.agenda-recurrence-day-grid > button.selected { border-color: var(--primary); color: #fff; background: var(--primary); }
+.agenda-recurrence-day-grid > button:disabled { opacity: .4; cursor: default; }
+.agenda-recurrence-selected { min-width: 0; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 7px; }
+.agenda-recurrence-selected > strong { flex: 1 1 100%; margin-bottom: 4px; color: var(--muted); font-size: .72rem; line-height: 1.5; }
+.agenda-recurrence-selected > button { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--primary-soft); font-size: .72rem; cursor: pointer; }
+@media (max-width: 600px) {
+  .portal-dontus-content.portal-room-content { width: calc(100% - 24px); padding-top: 12px; }
+  .agenda-recurrence-dates { grid-template-columns: minmax(0, 1fr); }
+  .agenda-recurrence .agenda-recurrence-modes { grid-template-columns: minmax(0, 1fr); }
+}

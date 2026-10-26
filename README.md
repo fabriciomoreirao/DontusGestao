@@ -65,6 +65,10 @@ O módulo **Atendimento** possui capacidades próprias para enviar mensagens, re
 
 O menu expansível **Cadastros** reúne os submenus Setores, Tipos de tarefa, Prioridades, Status, Políticas de SLA e Colaboradores. A tela possui permissão própria de consulta e administração por grupo.
 
+## Agenda e reservas do Portal
+
+Em **Repetir compromisso → Escolher datas**, marque os dias no calendário; navegue entre meses para escolher datas não consecutivas. O compromisso é criado na data principal e nas datas marcadas, sem duplicações, mantendo horário de Brasília, duração, responsável e colaboradores. Se houver conflito em qualquer data, nenhum compromisso do lote é salvo. A opção está disponível na Agenda, nos agendamentos rápidos e nas novas reservas de sala pelo Portal. A agenda de sala utiliza a largura disponível e quadrados maiores, com rolagem horizontal da grade em telas pequenas.
+
 ## Módulo de Tarefas
 
 Em **Diário de Bordo**, coordenadores podem escolher **Meu diário** ou um de seus coordenados no seletor ao lado de **Nova atividade**. A consulta inclui atividades manuais e compromissos sob responsabilidade do colaborador, em modo de leitura. Somente vínculos diretos de coordenação com colaboradores ativos e não bloqueados são disponibilizados; os vínculos são mantidos em **Administração → Colaboradores**.

@@ -214,11 +214,21 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         if (validParticipantIds.Length != participantIds.Length)
             throw new DomainException("Responsável e colaboradores devem pertencer ao setor da agenda.");
 
-        var createdIds = new List<Guid>();
-        foreach (var startsAt in RecurringStarts(command.StartsAt, command.Recurrence))
+        var duration = command.EndsAt - command.StartsAt;
+        var occurrences = RecurringStarts(command.StartsAt, command.Recurrence, command.RecurrenceDates)
+            .Select(startsAt => startsAt.ToUniversalTime()).Order().ToArray();
+        for (var index = 0; index < occurrences.Length; index++)
         {
-            var endsAt = startsAt.Add(command.EndsAt - command.StartsAt);
-            await EnsureAvailabilityAsync(calendar.Id, null, command.ResponsibleUserId, command.Title.Trim(), startsAt, endsAt, cancellationToken);
+            if (index > 0 && occurrences[index] < occurrences[index - 1].Add(duration))
+                throw new DomainException("As datas selecionadas geram compromissos com horários sobrepostos.", 409);
+            await EnsureAvailabilityAsync(calendar.Id, null, command.ResponsibleUserId, command.Title.Trim(),
+                occurrences[index], occurrences[index].Add(duration), cancellationToken);
+        }
+
+        var createdIds = new List<Guid>();
+        foreach (var startsAt in occurrences)
+        {
+            var endsAt = startsAt.Add(duration);
             var commitment = new AgendaCommitment
             {
                 AgendaId = calendar.Id,
@@ -463,19 +473,32 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         if (description.Length > 600) throw new DomainException("A descrição deve ter no máximo 600 caracteres.");
         return description;
     }
-    private static IEnumerable<DateTimeOffset> RecurringStarts(DateTimeOffset startsAt, string? recurrence)
+    private static IEnumerable<DateTimeOffset> RecurringStarts(DateTimeOffset startsAt, string? recurrence, IReadOnlyCollection<DateOnly>? recurrenceDates)
     {
-        yield return startsAt;
         var mode = recurrence?.Trim().ToLowerInvariant() ?? "none";
-        var startDate = startsAt.Date;
-        DateTimeOffset? end = mode switch
+        // Datas escolhidas e limites de semana/mês seguem o dia de Brasília, inclusive perto da meia-noite UTC.
+        var localStart = startsAt.ToOffset(TimeSpan.FromHours(-3));
+        var startDate = DateOnly.FromDateTime(localStart.DateTime);
+        if (mode == "dates")
         {
-            "week" => startsAt.AddDays(6 - (int)startsAt.DayOfWeek),
-            "month" or "businessdays" => new DateTimeOffset(new DateTime(startDate.Year, startDate.Month, DateTime.DaysInMonth(startDate.Year, startDate.Month), startsAt.Hour, startsAt.Minute, startsAt.Second, DateTimeKind.Utc)),
-            _ => null,
+            if (recurrenceDates is null || recurrenceDates.Count == 0)
+                throw new DomainException("Selecione ao menos uma data para repetir o compromisso.");
+            if (recurrenceDates.Count > 100)
+                throw new DomainException("Selecione no máximo 100 datas de repetição.");
+            foreach (var date in recurrenceDates.Append(startDate).Distinct().Order())
+                yield return new DateTimeOffset(date.ToDateTime(TimeOnly.FromDateTime(localStart.DateTime)), localStart.Offset);
+            yield break;
+        }
+        if (mode is not ("none" or "week" or "month" or "businessdays"))
+            throw new DomainException("Selecione uma opção válida de repetição.");
+        yield return startsAt;
+        var endDate = mode switch
+        {
+            "week" => startDate.AddDays(6 - (int)startDate.DayOfWeek),
+            "month" or "businessdays" => new DateOnly(startDate.Year, startDate.Month, DateTime.DaysInMonth(startDate.Year, startDate.Month)),
+            _ => startDate,
         };
-        if (end is null) yield break;
-        for (var occurrence = startsAt.AddDays(1); occurrence.Date <= end.Value.Date; occurrence = occurrence.AddDays(1))
+        for (var occurrence = localStart.AddDays(1); DateOnly.FromDateTime(occurrence.DateTime) <= endDate; occurrence = occurrence.AddDays(1))
             if (mode != "businessdays" || occurrence.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday)
                 yield return occurrence;
     }

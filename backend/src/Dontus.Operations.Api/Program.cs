@@ -1263,7 +1263,7 @@ operations.MapPost("", async (
                 request.Title ?? "", request.Description,
                 request.StartsAt ?? throw new DomainException("Início obrigatório."),
                 request.EndsAt ?? throw new DomainException("Término obrigatório."),
-                request.ParticipantUserIds, request.Recurrence), actor, cancellationToken);
+                request.ParticipantUserIds, request.Recurrence, request.RecurrenceDates), actor, cancellationToken);
             id = commitments.FirstOrDefault();
             break;
 
@@ -2239,6 +2239,7 @@ public sealed class OperationsRequest
     public int? SeverityOrder { get; init; }
     public string? Color { get; init; }
     public string? Recurrence { get; init; }
+    public IReadOnlyCollection<DateOnly>? RecurrenceDates { get; init; }
     public int? DefaultDueMinutes { get; init; }
     public int? DisplayOrder { get; init; }
     public string? KanbanColumn { get; init; }
