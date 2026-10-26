@@ -92,6 +92,12 @@ Com a autenticação local habilitada, as senhas são armazenadas como hash e n�
 
 Configure no arquivo .env as variáveis SMTP_HOST, SMTP_PORT, SMTP_USE_SSL, SMTP_USERNAME, SMTP_PASSWORD e SMTP_FROM e recrie o serviço api para habilitar o envio. Se o envio falhar ou não estiver configurado, a senha atual é preservada. O e-mail contém o endereço de acesso e a nova senha temporária; o colaborador pode alterá-la no menu da conta. A autorização é resolvida no PostgreSQL.
 
+## CRM e lembretes de contato
+
+Os cards do CRM comercial e de retenção mostram os dias sem interação desde o cadastro ou o último comentário/follow-up de contato. Movimentações de etapa e alterações gerais não reiniciam a contagem. Etapas finais de ganho ou perda e status finalizados mostram zero e interrompem a contagem. Cada card com lembrete pendente exibe um sino; o indicador desaparece após a confirmação ou exclusão do lembrete.
+
+No filtro **Lembretes** do CRM, escolha **Lembretes para hoje**, **Com lembrete agendado** ou **Sem lembrete agendado**. A tela **Lembretes** também possui o filtro de período para hoje. As datas seguem Brasília e respeitam o horário atualizado de lembretes adiados.
+
 ## Formulários do acompanhamento LIA
 
 Em **Configurações da LIA → Formulários do cliente**, crie modelos com perguntas obrigatórias ou opcionais de texto curto, texto longo, seleção, e-mail, data e número. A manutenção exige a permissão de administrar a LIA.

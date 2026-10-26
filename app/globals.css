@@ -7995,3 +7995,27 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
   .agenda-recurrence-dates { grid-template-columns: minmax(0, 1fr); }
   .agenda-recurrence .agenda-recurrence-modes { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* CRM: dias sem contato e sinalização dos lembretes vinculados ao card. */
+.commercial-leads-module .commercial-lead-filters { grid-template-columns: minmax(230px, 1.4fr) repeat(4, minmax(130px, 1fr)); }
+.crm-card-activity { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; min-width: 0; margin-top: 7px; }
+.crm-card-inactivity { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; color: var(--muted); font-size: .65rem; line-height: 1.5; }
+.crm-card-inactivity strong { font-size: inherit; font-weight: 800; }
+.crm-card-inactivity.alert { color: #d97706; }
+.crm-card-inactivity.closed { color: #15966b; }
+.crm-card-reminder { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 25px; min-height: 25px; padding: 4px 5px; border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--line)); border-radius: 7px; color: var(--primary); background: var(--primary-soft); }
+.crm-card-reminder b { font-size: .58rem; }
+.commercial-lead-list .crm-card-activity { justify-content: flex-start; }
+.reminder-toolbar { display: flex; align-items: flex-end; gap: 12px; }
+.reminder-toolbar > label:first-child { flex: 1; max-width: none; }
+.reminder-toolbar .reminder-date-filter { display: grid; gap: 5px; width: 230px; padding: 0; border: 0; color: var(--muted); background: transparent; font-size: .7rem; font-weight: 750; }
+.reminder-date-filter select { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--input); font: inherit; font-size: .8rem; }
+@media (max-width: 1100px) {
+  .commercial-leads-module .commercial-lead-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .commercial-leads-module .commercial-lead-filters .commercial-search { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .commercial-leads-module .commercial-lead-filters { grid-template-columns: minmax(0, 1fr); }
+  .reminder-toolbar { flex-wrap: wrap; }
+  .reminder-toolbar > label:first-child, .reminder-toolbar .reminder-date-filter { flex: 1 1 100%; width: 100%; }
+}
