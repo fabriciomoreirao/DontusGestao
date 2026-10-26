@@ -151,13 +151,19 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
         });
         header.appendChild(button);
       });
-      if (!pendingContext) return;
       const surfaces = Array.from(document.querySelectorAll<HTMLElement>(DETAIL_SURFACES)).filter(surface => !surface.dataset.reminderEnhanced && !surface.closest(".reminder-modal-backdrop"));
       const surface = surfaces.at(-1);
       if (!surface) return;
       const header = surface.querySelector<HTMLElement>(".drawer-head,.modal-head,.modal-header,header");
       if (!header) return;
-      const context = pendingContext;
+      const context: ReminderContext | null = surface.dataset.reminderSourceEntityId ? {
+        module: surface.dataset.reminderSourceModule || module,
+        entityId: surface.dataset.reminderSourceEntityId,
+        clientId: surface.dataset.reminderSourceClientId,
+        customerName: surface.dataset.reminderSourceCustomerName,
+        title: surface.dataset.reminderSourceTitle,
+      } : pendingContext;
+      if (!context) return;
       pendingContext = null;
       surface.dataset.reminderEnhanced = "true";
       surface.dataset.reminderSourceModule=context.module;
@@ -165,7 +171,7 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
       if(context.clientId)surface.dataset.reminderSourceClientId=context.clientId;
       if(context.customerName)surface.dataset.reminderSourceCustomerName=context.customerName;
       if(context.title)surface.dataset.reminderSourceTitle=context.title;
-      const actionHost = header.querySelector<HTMLElement>(".lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions")
+      const actionHost = header.querySelector<HTMLElement>(".lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions,.cs-drawer-head-actions")
         || (surface.matches(".retention-detail-page") ? header.lastElementChild as HTMLElement : header);
       const closeButton = actionHost?.querySelector<HTMLElement>('button[aria-label="Fechar"]');
       const insertAction = (button: HTMLElement) => {

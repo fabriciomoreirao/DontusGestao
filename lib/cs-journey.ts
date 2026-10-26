@@ -3,6 +3,11 @@ export type CsPhase = "validation" | "onboarding" | "tracking" | "conference" | 
 export const canResumeCsJourney = (phase: string) => ["unsuccessful", "cancelled", "cancelledWithoutTraining"].includes(phase);
 export const isClosedCsJourney = (phase: string) => phase === "finished" || canResumeCsJourney(phase);
 
+export function requestCsConference<T extends { phase: string }>(journey: T, requestedAt: string) {
+  if (journey.phase !== "onboarding" && journey.phase !== "tracking") throw new Error("A conferência está disponível no onboarding e no acompanhamento.");
+  return { ...journey, phase: "conference" as const, status: "Conferência", conferenceFromPhase: journey.phase as "onboarding" | "tracking", conferenceRequestedAt: requestedAt };
+}
+
 // Preserve the previous cycle and its agenda references before starting validation again.
 // The agenda entries and the complete interaction history remain available for consultation.
 const cycleFields = [
@@ -11,7 +16,7 @@ const cycleFields = [
   "trainingAt", "trainingTime", "trainingCommitmentId", "trainingCompletedAt",
   "singleAlignmentAt", "singleAlignmentTime", "singleAlignmentCommitmentId", "singleAlignmentCompletedAt",
   "rescheduledAt", "rescheduledTime", "meetingLink", "finalReason", "approvalReason", "rejectionReason",
-  "conferenceRequestedAt", "conferenceConfirmedAt", "cancellationRequestedAt", "cancellationRequestedBy",
+  "conferenceRequestedAt", "conferenceConfirmedAt", "conferenceFromPhase", "cancellationRequestedAt", "cancellationRequestedBy",
   "cancellationTaskId", "cancellationTaskProtocol", "cancellationTaskLink", "cancellationOutcome",
   "cancellationPendingApproval", "cancellationReason", "cancellationResolvedAt", "usage", "callStatus", "usageByDay",
 ] as const;

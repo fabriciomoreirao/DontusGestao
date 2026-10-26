@@ -205,7 +205,7 @@ test("sincroniza responsáveis e suporta alinhamento único no acompanhamento", 
     readFile(new URL("../backend/src/Dontus.Operations.Api/Program.cs", import.meta.url), "utf8"),
   ]);
   assert.match(operations, /entry\.isCoordinator && destinationTerms/);
-  assert.match(journey, /assignAgendaCommitment/);
+  assert.match(journey, /responsibleUserId: employee\.id/);
   assert.match(journey, /Atualizar responsável e agenda/);
   assert.match(journey, /singleAlignmentCompletedAt/);
   assert.match(journey, /onboardingReady = Boolean\(journey\.singleAlignmentCompletedAt/);

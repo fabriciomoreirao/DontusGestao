@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canResumeCsJourney, isClosedCsJourney, resumeCsJourney, csOutcome } from "../lib/cs-journey.ts";
+import { canResumeCsJourney, isClosedCsJourney, resumeCsJourney, requestCsConference, csOutcome } from "../lib/cs-journey.ts";
 
 for (const phase of ["unsuccessful", "cancelled", "cancelledWithoutTraining"]) {
   test(`retoma ${phase} em validação e preserva o ciclo anterior`, () => {
@@ -39,4 +39,20 @@ test("retomadas sucessivas mantêm cada ciclo sem duplicar o histórico", () => 
   assert.equal(second.previousCycles.length, 2);
   assert.equal(second.previousCycles[1].firstMeetingCommitmentId, "novo");
   assert.equal(second.follows.length, 1);
+});
+
+test("onboarding e acompanhamento podem ir à conferência preservando a etapa, evidências e agenda", () => {
+  for (const phase of ["onboarding", "tracking"]) {
+    const before = { phase, firstMeetingCommitmentId: "kickoff-1", trainingCompletedAt: undefined, featuresActive: ["Agenda"], follows: [{ text: "Contato anterior" }] };
+    const next = requestCsConference(before, "2026-10-26T15:00:00Z");
+    assert.equal(next.phase, "conference");
+    assert.equal(next.status, "Conferência");
+    assert.equal(next.conferenceFromPhase, phase);
+    assert.equal(next.firstMeetingCommitmentId, "kickoff-1");
+    assert.equal(next.trainingCompletedAt, undefined);
+    assert.deepEqual(next.featuresActive, before.featuresActive);
+    assert.deepEqual(next.follows, before.follows);
+    assert.equal(before.phase, phase);
+  }
+  for (const phase of ["validation", "conference", "finished", "cancelled"]) assert.throws(() => requestCsConference({ phase }, "2026-10-26"));
 });

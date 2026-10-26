@@ -1096,6 +1096,21 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Informe o título do registro.");
 
+        if (command.ResponsibleUserId.HasValue)
+        {
+            if (item.Module != "cs" || !TryReadJourneyIdentity(item.Description, out var kind, out _, out _) || kind != "csJourney" ||
+                !TryReadJourneyIdentity(command.Description, out var nextKind, out _, out _) || nextKind != "csJourney")
+                throw new DomainException("O encaminhamento exige um acompanhamento de CS válido.");
+            using var previousJourney = JsonDocument.Parse(item.Description);
+            using var nextJourney = JsonDocument.Parse(command.Description ?? "{}");
+            if (previousJourney.RootElement.TryGetProperty("phase", out var previousPhase) && previousPhase.GetString() == "validation" &&
+                nextJourney.RootElement.TryGetProperty("phase", out var nextPhase) && nextPhase.GetString() == "onboarding" &&
+                (!previousJourney.RootElement.TryGetProperty("checkedAt", out var checkedAt) || string.IsNullOrWhiteSpace(checkedAt.GetString())))
+                throw new DomainException("Confira os dados comerciais antes de encaminhar para onboarding.", 409);
+            var owner = await new AgendaService(db).PrepareJourneyAssignmentAsync(item, command.ResponsibleUserId.Value, actor, cancellationToken);
+            command = command with { Owner = owner };
+        }
+
         if (!string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
             db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module,
                 Kind = "Responsável alterado", Summary = command.Owner.Trim(), Actor = actor.DisplayName });

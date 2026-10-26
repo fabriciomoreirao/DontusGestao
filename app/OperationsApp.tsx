@@ -26,6 +26,7 @@ import DiaryModule, { type DiaryModuleData } from "@/app/DiaryModule";
 import NotesModule, { type NotesModuleData } from "@/app/NotesModule";
 import RemindersModule, { ReminderComposerModal, ReminderDueModal, parseReminder } from "@/app/RemindersModule";
 import { ReminderFilterProvider, useReminderFilter } from "@/app/ReminderFilters";
+import { csCardFlow } from "@/lib/card-links";
 import { AGENDA_COMPOSER_EVENT, CLIENT_ALERT_EVENT, CLIENT_CHECKLIST_EVENT, CLIENT_RECORD_EVENT, REMINDER_COMPOSER_EVENT, ReminderCardEnhancer, type ReminderContext } from "@/app/ReminderAction";
 import { ClientAlertModal, ClientChecklistModal, parseCustomerAlert, parseLinkedChecklist } from "@/app/ClientEngagementActions";
 import type { InternalChatModuleData } from "@/app/InternalChatModule";
@@ -365,7 +366,7 @@ export default function OperationsApp() {
     const item = data.items.find(item => item.id === id);
     if (!item || item.module !== active) return;
     sharedOpened.current = id;
-    if (["ti", "serviceRequests", "serviceFollowup"].includes(active)) return;
+    if (["ti", "serviceRequests", "serviceFollowup"].includes(active) || (active === "cs" && csCardFlow(item.description))) return;
     const timer = window.setTimeout(() => {
       const card = Array.from(document.querySelectorAll<HTMLElement>("[data-shared-card-id]")).find(card => card.dataset.sharedCardId === id);
       if (card) {
@@ -384,6 +385,15 @@ export default function OperationsApp() {
   const [adminSection, setAdminSection] = useState<AdminSection>("collaborators");
   const [commercialFlow, setCommercialFlow] = useState<CommercialFlow>("qualification");
   const [csFlow, setCsFlow] = useState<CsFlow>("onboarding");
+  useEffect(() => {
+    if (active !== "cs" || !data) return;
+    const url = new URL(window.location.href);
+    const requested = data.items.find((item) => item.id === url.searchParams.get("card") && item.module === "cs");
+    const flow = requested ? csCardFlow(requested.description) : null;
+    if (!flow) return;
+    if (flow !== csFlow) setCsFlow(flow);
+    if (url.searchParams.get("csFlow") !== flow) { url.searchParams.set("csFlow", flow); window.history.replaceState({}, "", url); }
+  }, [active, data, csFlow]);
   const [settingsReturnTarget, setSettingsReturnTarget] = useState<{ module: ModuleKey; commercialFlow: CommercialFlow; csFlow: CsFlow } | null>(null);
   const [dashboardPage, setDashboardPage] = useState<"home" | "portal">("home");
   const [reportingSection, setReportingSection] = useState<ReportingSection>("bi");

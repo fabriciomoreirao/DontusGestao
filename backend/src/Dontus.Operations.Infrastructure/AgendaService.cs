@@ -339,6 +339,83 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    // Prepare every change before OperationsService saves the journey, agenda and customer together.
+    internal async Task<string> PrepareJourneyAssignmentAsync(WorkItem journey, Guid responsibleUserId, ActorContext actor, CancellationToken cancellationToken)
+    {
+        var responsible = await db.Users.SingleOrDefaultAsync(user => user.Id == responsibleUserId && user.Active, cancellationToken)
+            ?? throw new DomainException("Selecione um responsável ativo.");
+        using var json = JsonDocument.Parse(journey.Description);
+        var root = json.RootElement;
+        var ids = new HashSet<Guid>();
+        foreach (var key in new[] { "firstMeetingCommitmentId", "trainingCommitmentId", "singleAlignmentCommitmentId" })
+        {
+            if (!root.TryGetProperty(key, out var value) || value.ValueKind == JsonValueKind.Null || string.IsNullOrWhiteSpace(value.GetString())) continue;
+            if (!Guid.TryParse(value.GetString(), out var id)) throw new DomainException("A jornada possui um vínculo de agenda inválido.", 409);
+            ids.Add(id);
+        }
+        var commitments = await db.AgendaCommitments.Where(entry => ids.Contains(entry.Id)).ToArrayAsync(cancellationToken);
+        if (commitments.Length != ids.Count) throw new DomainException("Um compromisso vinculado não foi encontrado. Revise a agenda antes de encaminhar.", 409);
+
+        var departments = await (from link in db.UserDepartments
+                                 join department in db.TaskDepartments on link.DepartmentId equals department.Id
+                                 where link.UserId == responsibleUserId && department.Active
+                                 orderby link.IsPrimary descending, department.Name
+                                 select department).ToArrayAsync(cancellationToken);
+        if (commitments.Length > 0 && departments.Length == 0) throw new DomainException("O responsável precisa estar vinculado a um setor ativo para receber a agenda.");
+        var departmentIds = departments.Select(entry => entry.Id).ToArray();
+        var calendars = await db.AgendaCalendars.Where(entry => entry.Active && departmentIds.Contains(entry.DepartmentId)).OrderBy(entry => entry.Name).ToArrayAsync(cancellationToken);
+        AgendaCalendar? newCalendar = null;
+        var plans = new List<(AgendaCommitment Commitment, AgendaCalendar Calendar)>();
+        foreach (var commitment in commitments)
+        {
+            var destination = calendars.FirstOrDefault(entry => entry.Id == commitment.AgendaId)
+                ?? departments.SelectMany(department => calendars.Where(entry => entry.DepartmentId == department.Id && !IsMeetingRoom(entry))).FirstOrDefault();
+            if (destination is null)
+            {
+                newCalendar ??= new AgendaCalendar { Name = departments[0].Name, DepartmentId = departments[0].Id, Description = "Agenda de atendimentos do setor." };
+                destination = newCalendar;
+            }
+            // Kick offs allow several commercial reservations per slot, but a handoff must still respect the person's availability.
+            if (await db.AgendaCommitments.AnyAsync(entry => !ids.Contains(entry.Id) && entry.ResponsibleUserId == responsibleUserId &&
+                entry.StartsAt < commitment.EndsAt && entry.EndsAt > commitment.StartsAt && !entry.Title.StartsWith(CommercialBlockPrefix), cancellationToken))
+                throw new DomainException("O responsável já possui um compromisso neste horário.", 409);
+            if (plans.Any(entry => entry.Commitment.StartsAt < commitment.EndsAt && entry.Commitment.EndsAt > commitment.StartsAt))
+                throw new DomainException("Os compromissos desta jornada possuem horários sobrepostos. Revise a agenda antes de encaminhar.", 409);
+            await EnsureAvailabilityAsync(destination.Id, commitment.Id, responsibleUserId, commitment.Title, commitment.StartsAt, commitment.EndsAt, cancellationToken);
+            plans.Add((commitment, destination));
+        }
+
+        // No tracked changes occur until every commitment has passed validation.
+        if (newCalendar is not null)
+        {
+            db.AgendaCalendars.Add(newCalendar);
+            AddAudit(actor, "Create", "agenda_calendar", newCalendar.Id.ToString(), new { newCalendar.Name, JourneyId = journey.Id });
+        }
+        foreach (var (commitment, calendar) in plans)
+        {
+            var previousResponsibleId = commitment.ResponsibleUserId;
+            commitment.AgendaId = calendar.Id;
+            commitment.ResponsibleUserId = responsibleUserId;
+            commitment.UpdatedAt = DateTimeOffset.UtcNow;
+            if (previousResponsibleId != responsibleUserId)
+            {
+                var previousParticipant = await db.AgendaCommitmentParticipants.SingleOrDefaultAsync(entry => entry.CommitmentId == commitment.Id && entry.UserId == previousResponsibleId, cancellationToken);
+                if (previousParticipant is not null) db.AgendaCommitmentParticipants.Remove(previousParticipant);
+            }
+            if (!await db.AgendaCommitmentParticipants.AnyAsync(entry => entry.CommitmentId == commitment.Id && entry.UserId == responsibleUserId, cancellationToken))
+                db.AgendaCommitmentParticipants.Add(new AgendaCommitmentParticipant { CommitmentId = commitment.Id, UserId = responsibleUserId });
+            AddAudit(actor, "Assign", "agenda_commitment", commitment.Id.ToString(), new { PreviousResponsibleUserId = previousResponsibleId, ResponsibleUserId = responsibleUserId, JourneyId = journey.Id, AgendaId = calendar.Id });
+        }
+        var customerId = journey.CustomerId;
+        if (!customerId.HasValue && root.TryGetProperty("clientId", out var clientId) && Guid.TryParse(clientId.GetString(), out var parsedCustomerId)) customerId = parsedCustomerId;
+        if (customerId.HasValue && await db.Customers.SingleOrDefaultAsync(entry => entry.Id == customerId, cancellationToken) is { } customer)
+        {
+            customer.CsOwner = responsible.DisplayName;
+            customer.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        return responsible.DisplayName;
+    }
+
     public async Task DeleteCommitmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
     {
         var commitment = await db.AgendaCommitments.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
@@ -375,12 +452,15 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
     }
 
     private static bool CanManage(ActorContext actor) => actor.HasPermission("work", "manage") || actor.HasPermission("admin", "manage");
-    private static void EnsureMeetingRoomReservationAllowed(AgendaCalendar calendar, AppUser actorUser)
+    private static bool IsMeetingRoom(AgendaCalendar calendar)
     {
         var calendarIdentity = RemoveDiacritics($"{calendar.Name} {calendar.Description}").ToLowerInvariant();
-        var isMeetingRoom = calendarIdentity.Contains("sala", StringComparison.Ordinal) &&
+        return calendarIdentity.Contains("sala", StringComparison.Ordinal) &&
             calendarIdentity.Contains("reuni", StringComparison.Ordinal);
-        if (isMeetingRoom && !actorUser.IsCoordinator)
+    }
+    private static void EnsureMeetingRoomReservationAllowed(AgendaCalendar calendar, AppUser actorUser)
+    {
+        if (IsMeetingRoom(calendar) && !actorUser.IsCoordinator)
             throw new DomainException("Somente colaboradores marcados como coordenadores podem reservar a sala de reunião.", 403);
     }
 

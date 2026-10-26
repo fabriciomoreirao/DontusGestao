@@ -1166,7 +1166,8 @@ operations.MapPost("", async (
                 request.Description,
                 request.RecordType,
                 request.CustomerName,
-                request.Version ?? 0), actor, cancellationToken);
+                request.Version ?? 0,
+                request.ResponsibleUserId), actor, cancellationToken);
             break;
 
         case "deleteWorkItem":

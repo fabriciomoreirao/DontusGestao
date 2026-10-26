@@ -154,7 +154,8 @@ public sealed record UpdateWorkItemCommand(
     string? Description,
     string? RecordType,
     string? CustomerName,
-    long Version);
+    long Version,
+    Guid? ResponsibleUserId = null);
 
 public sealed record CreateAppointmentCommand(
     string Title,

@@ -2,22 +2,13 @@
 
 import { COPY_LINK_SELECTOR, DETAIL_HEADER_SELECTOR, normalizeDetailHeader } from "@/app/detail-header";
 import { useEffect } from "react";
+import { buildCardShareUrl } from "@/lib/card-links";
 
 type RecordLink = { id: string; title: string; protocol?: string; module?: string };
 const selectors = ["[data-reminder-entity-id]", ".task-card", ".task-table-row:not(.head)", ".suggestion-kanban-cards>article", ".suggestion-table tbody tr", ".commercial-lead-card", ".retention-lead-card", ".cs-client-card", ".enterprise-card", ".cancellation-card", ".marketing-card", ".service-list>article", ".development-card-shell", ".development-list-row", ".journey-card", ".goal-card", ".referral-card-shell", ".service-request-column>div>article", ".waiting-queue-row", ".direct-sales-row:not(.direct-sales-head)"];
 
-export function cardShareUrl(module: string, id: string) {
-  const url = new URL(window.location.origin);
-  const current = new URL(window.location.href);
-  url.searchParams.set("mod", module);
-  for (const key of ["commercialFlow", "csFlow"]) {
-    const value = current.searchParams.get(key);
-    if (value && ((key === "csFlow" && module === "cs") || (key === "commercialFlow" && module === "commercial"))) url.searchParams.set(key, value);
-  }
-  url.searchParams.set("card", id);
-  if (module === "tasks") url.searchParams.set("task", id);
-  if (module === "ti") url.searchParams.set("subtask", id);
-  return url.toString();
+export function cardShareUrl(module: string, id: string, options?: { csFlow?: string }) {
+  return buildCardShareUrl(window.location.origin, window.location.href, module, id, options);
 }
 
 export default function CardLinkEnhancer({ module, records }: { module: string; records: RecordLink[] }) {

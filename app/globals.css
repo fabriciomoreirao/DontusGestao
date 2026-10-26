@@ -8103,6 +8103,10 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 .internal-chat-reminder-filter { padding: 0 14px 12px; }
 .internal-chat-reminder-filter > .reminder-filter-field { width: 100%; min-width: 0; }
 .internal-chat-reminder-filter .reminder-filter-field > select { height: 38px; }
+.cs-stage-forward { flex-wrap: wrap; }
+.cs-stage-forward-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-left: auto; }
+.cs-drawer-head-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+.cs-handoff-error { padding: 12px; border: 1px solid #f5b4b4; border-radius: 9px; color: #c43636; background: var(--surface); font-size: .8rem; }
 .reminder-toolbar { display: flex; align-items: flex-end; gap: 12px; }
 .reminder-toolbar > label:first-child { flex: 1; max-width: none; }
 .reminder-toolbar .reminder-date-filter { display: grid; gap: 5px; width: 230px; padding: 0; border: 0; color: var(--muted); background: transparent; font-size: .7rem; font-weight: 750; }
