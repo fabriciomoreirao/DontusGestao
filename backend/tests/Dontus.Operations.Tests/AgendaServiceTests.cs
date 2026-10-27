@@ -176,6 +176,103 @@ public sealed class AgendaServiceTests
         Assert.Empty(await db.AgendaCommitments.ToListAsync());
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task Commercial_slots_allow_three_commitments_and_refuse_the_fourth(int count)
+    {
+        var (db, _, command, actor) = await RecurrenceContext();
+        await using var context = db;
+        var service = new AgendaService(db, new SchedulingClock());
+        command = command with { Title = "Kick off · Cliente" };
+        for (var index = 0; index < count; index++) db.AgendaCommitments.Add(ExistingSlot(command, actor));
+        await db.SaveChangesAsync();
+        if (count < 3) Assert.Single(await service.CreateCommitmentAsync(command, actor));
+        else Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.CreateCommitmentAsync(command, actor))).StatusCode);
+        Assert.Equal(count < 3 ? count + 1 : count, await db.AgendaCommitments.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("2026-10-26T17:00:00Z", false)]
+    [InlineData("2026-10-27T11:59:59Z", false)]
+    [InlineData("2026-10-27T12:00:00Z", false)]
+    [InlineData("2026-10-27T12:30:00Z", true)]
+    [InlineData("2026-10-28T12:30:00Z", true)]
+    [InlineData("2026-10-31T12:30:00Z", false)]
+    [InlineData("2026-11-02T12:30:00Z", false)]
+    public async Task New_commercial_bookings_allow_only_upcoming_business_slots(string date, bool allowed)
+    {
+        var (db, _, command, actor) = await RecurrenceContext();
+        await using var context = db;
+        var start = DateTimeOffset.Parse(date);
+        command = command with { Title = "Kick off · Cliente", StartsAt = start, EndsAt = start.AddHours(1) };
+        var service = new AgendaService(db, new SchedulingClock());
+        if (allowed) Assert.Single(await service.CreateCommitmentAsync(command, actor));
+        else
+        {
+            Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.CreateCommitmentAsync(command, actor))).StatusCode);
+            await db.SaveChangesAsync();
+            Assert.Empty(await db.AgendaCommitments.ToArrayAsync());
+            Assert.Empty(await db.AuditEvents.ToArrayAsync());
+        }
+    }
+
+    [Fact]
+    public async Task Cancelled_commitments_and_blocks_do_not_consume_the_slot_or_other_calendars_capacity()
+    {
+        var (db, _, command, actor) = await RecurrenceContext();
+        await using var context = db;
+        var cancelled = new AgendaStatus { Name = "Cancelado" };
+        var other = new AgendaCalendar { Name = "Outra agenda", DepartmentId = (await db.AgendaCalendars.SingleAsync()).DepartmentId };
+        db.AddRange(cancelled, other);
+        for (var index = 0; index < 2; index++) db.AgendaCommitments.Add(ExistingSlot(command, actor));
+        for (var index = 0; index < 3; index++)
+        {
+            var entry = ExistingSlot(command, actor); entry.AgendaStatusId = cancelled.Id; db.AgendaCommitments.Add(entry);
+            var elsewhere = ExistingSlot(command, actor); elsewhere.AgendaId = other.Id; db.AgendaCommitments.Add(elsewhere);
+        }
+        var block = ExistingSlot(command, actor); block.Title = "[BLOQUEIO COMERCIAL] Cancelado"; block.AgendaStatusId = cancelled.Id; db.AgendaCommitments.Add(block);
+        await db.SaveChangesAsync();
+        Assert.Single(await new AgendaService(db, new SchedulingClock()).CreateCommitmentAsync(command with { Title = "Kick off · Cliente" }, actor));
+    }
+
+    [Fact]
+    public async Task Capacity_counts_commitments_in_the_same_minute_including_nonzero_seconds()
+    {
+        var (db, _, command, actor) = await RecurrenceContext();
+        await using var context = db;
+        for (var index = 0; index < 3; index++) { var entry = ExistingSlot(command, actor); entry.StartsAt = entry.StartsAt.AddSeconds(index * 10); db.AgendaCommitments.Add(entry); }
+        await db.SaveChangesAsync();
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => new AgendaService(db, new SchedulingClock()).CreateCommitmentAsync(command with { Title = "Kick off · Cliente" }, actor))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Historical_kickoffs_can_be_edited_without_allowing_a_new_past_reservation()
+    {
+        var (db, _, command, actor) = await RecurrenceContext();
+        await using var context = db;
+        var past = ExistingSlot(command, actor); past.Title = "Kick off · Histórico"; past.StartsAt = past.StartsAt.AddDays(-1); past.EndsAt = past.EndsAt.AddDays(-1);
+        db.AgendaCommitments.Add(past); await db.SaveChangesAsync();
+        var service = new AgendaService(db, new SchedulingClock());
+        var update = new UpdateAgendaCommitmentCommand(past.Id, past.AgendaId, past.AgendaTypeId, past.AgendaStatusId, past.ResponsibleUserId, "Kick off · Histórico revisado", "Descrição atualizada", past.StartsAt, past.EndsAt, []);
+        await service.UpdateCommitmentAsync(update, actor);
+        Assert.Equal(update.Description, past.Description);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateCommitmentAsync(update with { StartsAt = update.StartsAt.AddMinutes(1) }, actor))).StatusCode);
+    }
+
+    private static AgendaCommitment ExistingSlot(CreateAgendaCommitmentCommand command, ActorContext actor) => new()
+    {
+        AgendaId = command.AgendaId, AgendaTypeId = command.AgendaTypeId, AgendaStatusId = command.AgendaStatusId,
+        ResponsibleUserId = command.ResponsibleUserId, Title = "Compromisso existente", StartsAt = command.StartsAt, EndsAt = command.EndsAt, CreatedBy = actor.Email,
+    };
+    private sealed class SchedulingClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.Parse("2026-10-27T12:00:00Z");
+    }
+
     private static async Task<(OperationsDbContext Db, AgendaService Service, CreateAgendaCommitmentCommand Command, ActorContext Actor)> RecurrenceContext()
     {
         var db = CreateContext();

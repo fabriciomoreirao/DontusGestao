@@ -176,14 +176,16 @@ test("mantém os novos fluxos de CRM, evolução, metas e animações", async ()
 });
 
 test("limita os horários comerciais e permite bloquear períodos na agenda", async () => {
-  const [operations, agenda, agendaService, css] = await Promise.all([
+  const [operations, agenda, agendaService, css, scheduling] = await Promise.all([
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/AgendaModule.tsx", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AgendaService.cs", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../lib/commercial-scheduling.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(operations, /slotCommitments\.length < 3/);
-  assert.match(operations, /commercialSlotIsBlocked/);
+  assert.match(operations, /availableCommercialSlots/);
+  assert.match(scheduling, /slotCommitments\.length < 3/);
+  assert.match(scheduling, /commercialSlotIsBlocked/);
   assert.match(operations, /isBrazilianHoliday/);
   assert.doesNotMatch(operations, /dayCommitments\.length\s*>=\s*3/);
   assert.match(agenda, /COMMERCIAL_AVAILABILITY_BLOCK_PREFIX/);

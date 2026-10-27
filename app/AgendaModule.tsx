@@ -2,6 +2,8 @@
 
 import { CalendarDays, ChevronLeft, ChevronRight, Edit3, Eye, EyeOff, Filter, Plus, Save, Settings, Tag, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, isCommercialAvailabilityBlock } from "@/lib/commercial-scheduling";
+export { COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, isCommercialAvailabilityBlock, commercialSlotIsBlocked } from "@/lib/commercial-scheduling";
 import AgendaRecurrenceField, { type AgendaRecurrenceSelection } from "@/app/AgendaRecurrenceField";
 
 export type AgendaCalendar = { id: string; name: string; description: string; departmentId: string; departmentName: string; active: boolean };
@@ -19,8 +21,8 @@ export type AgendaModuleData = { calendars: AgendaCalendar[]; departments: Agend
 export type QuickAgendaPreset = { title?: string; description?: string; responsibleName?: string };
 type Operate = (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>;
 
-export const COMMERCIAL_AVAILABILITY_BLOCK_PREFIX = "[BLOQUEIO COMERCIAL]";
-export const isCommercialAvailabilityBlock = (entry: Pick<AgendaCommitment, "title">) => entry.title.trim().toLocaleUpperCase("pt-BR").startsWith(COMMERCIAL_AVAILABILITY_BLOCK_PREFIX);
+
+
 const PORTAL_ROOM_MARKER = "[PORTAL_ROOM:";
 const normalizedAgendaText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 const isMeetingRoomCalendar = (calendar?: Pick<AgendaCalendar, "name" | "description">) => {
@@ -107,12 +109,6 @@ export function brazilianHolidayName(date: string) {
 }
 
 export const isBrazilianHoliday = (date: string) => Boolean(brazilianHolidayName(date));
-
-export function commercialSlotIsBlocked(commitments: AgendaCommitment[], agendaId: string, date: string, slot: string, durationMinutes = 60) {
-  const slotStart = new Date(`${date}T${slot}:00`);
-  const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
-  return commitments.some((entry) => entry.agendaId === agendaId && isCommercialAvailabilityBlock(entry) && new Date(entry.startsAt) < slotEnd && new Date(entry.endsAt) > slotStart);
-}
 
 function recurringDate(year: number, source: string) {
   const [, monthText, dayText] = source.slice(0, 10).split("-");

@@ -5,9 +5,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class AgendaService(OperationsDbContext db) : IAgendaService
+public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProvider = null) : IAgendaService
 {
     private const string CommercialBlockPrefix = "[BLOQUEIO COMERCIAL]";
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
 
     public async Task<AgendaModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
@@ -219,6 +220,7 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
             .Select(startsAt => startsAt.ToUniversalTime()).Order().ToArray();
         for (var index = 0; index < occurrences.Length; index++)
         {
+            EnsureUpcomingCommercialSlot(command.Title, occurrences[index]);
             if (index > 0 && occurrences[index] < occurrences[index - 1].Add(duration))
                 throw new DomainException("As datas selecionadas geram compromissos com horários sobrepostos.", 409);
             await EnsureAvailabilityAsync(calendar.Id, null, command.ResponsibleUserId, command.Title.Trim(),
@@ -275,6 +277,8 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
             .Select(link => link.UserId).Distinct().ToArrayAsync(cancellationToken);
         if (participantIds.Length != validParticipantIds.Length)
             throw new DomainException("Responsável e colaboradores devem pertencer ao setor da agenda.");
+        if (command.StartsAt != commitment.StartsAt || !commitment.Title.StartsWith("Kick off", StringComparison.OrdinalIgnoreCase))
+            EnsureUpcomingCommercialSlot(command.Title, command.StartsAt);
         await EnsureAvailabilityAsync(calendar.Id, commitment.Id, command.ResponsibleUserId, command.Title.Trim(), command.StartsAt, command.EndsAt, cancellationToken);
 
         commitment.AgendaId = calendar.Id;
@@ -472,6 +476,12 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
         return new string(characters.ToArray()).Normalize(System.Text.NormalizationForm.FormC);
     }
 
+    private void EnsureUpcomingCommercialSlot(string title, DateTimeOffset startsAt)
+    {
+        if (title.Trim().StartsWith("Kick off", StringComparison.OrdinalIgnoreCase) && startsAt <= clock.GetUtcNow())
+            throw new DomainException("Selecione um horário futuro, a partir da data atual, para o agendamento comercial.", 409);
+    }
+
     private async Task EnsureAvailabilityAsync(Guid agendaId, Guid? ignoredId, Guid responsibleUserId, string title, DateTimeOffset startsAt, DateTimeOffset endsAt, CancellationToken cancellationToken)
     {
         var isCommercialBlock = title.StartsWith(CommercialBlockPrefix, StringComparison.OrdinalIgnoreCase);
@@ -484,18 +494,23 @@ public sealed class AgendaService(OperationsDbContext db) : IAgendaService
             if (localDate.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || IsBrazilianHoliday(localDate))
                 throw new DomainException("Agendamentos comerciais não estão disponíveis aos sábados, domingos ou feriados.", 409);
 
+            var cancelledStatuses = db.AgendaStatuses.Where(status => status.Name.ToLower().Contains("cancel")).Select(status => status.Id);
             var blocked = await db.AgendaCommitments.AnyAsync(entry =>
                 entry.Id != ignoredId &&
                 entry.AgendaId == agendaId &&
+                !cancelledStatuses.Contains(entry.AgendaStatusId) &&
                 entry.Title.StartsWith(CommercialBlockPrefix) &&
                 entry.StartsAt < endsAt && entry.EndsAt > startsAt, cancellationToken);
             if (blocked) throw new DomainException("Este horário está dentro de um período bloqueado para agendamentos do Comercial.", 409);
 
+            var slotMinute = startsAt.AddTicks(-(startsAt.Ticks % TimeSpan.TicksPerMinute));
+            var slotMinuteEnd = slotMinute.AddMinutes(1);
             var scheduledAtSlot = await db.AgendaCommitments.CountAsync(entry =>
                 entry.Id != ignoredId &&
                 entry.AgendaId == agendaId &&
+                !cancelledStatuses.Contains(entry.AgendaStatusId) &&
                 !entry.Title.StartsWith(CommercialBlockPrefix) &&
-                entry.StartsAt == startsAt, cancellationToken);
+                entry.StartsAt >= slotMinute && entry.StartsAt < slotMinuteEnd, cancellationToken);
             if (scheduledAtSlot >= 3) throw new DomainException("Este horário já atingiu o limite de 3 compromissos.", 409);
             return;
         }
