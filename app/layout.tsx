@@ -5,6 +5,7 @@ import "./globals.css";
 import "./chat-experience.css";
 import "./settings-refinement.css";
 import "./analytics-experience.css";
+import "./client-distribution.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

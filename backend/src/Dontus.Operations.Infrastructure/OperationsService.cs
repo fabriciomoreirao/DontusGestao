@@ -746,7 +746,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             collaborators = users.Select(user => new CollaboratorSummaryDto(user.Id, user.Email, user.DisplayName,
                 user.Department, [user.Department], ProfilePhotoUrls.For(user), user.Active && !user.BlockedAt.HasValue)).ToList();
         }
-        return new CustomerModuleDto(entries) { Collaborators = collaborators };
+        return new CustomerModuleDto(entries) { Collaborators = collaborators,
+            CsDistribution = actor.HasPermission("cs", "view") ? await new CsDistributionService(db).GetAsync(actor, cancellationToken) : [] };
     }
 
     private static bool CatalogBelongsTo(string description, string idKey, string nameKey, ActorContext actor, Guid? userId, bool allowDepartment = false)
@@ -1209,6 +1210,27 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
+        // Serialize dispatches across API instances so two coordinators cannot
+        // consume the same suggestion concurrently. Other edits stay independent.
+        var dispatch = CsDistributionService.IsDispatch(command);
+        if (dispatch && db.Database.ProviderName?.Contains("Npgsql") == true)
+        {
+            var attempt = 0;
+            await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                if (attempt++ > 0) db.ChangeTracker.Clear();
+                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(74219, 1)", cancellationToken);
+                await UpdateWorkItemCoreAsync(command, actor, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+            });
+            return;
+        }
+        await UpdateWorkItemCoreAsync(command, actor, cancellationToken);
+    }
+
+    private async Task UpdateWorkItemCoreAsync(UpdateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken)
+    {
         var item = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Registro não encontrado.", 404);
         if (!CanEditCustomerEngagement(item, actor) &&
@@ -1230,6 +1252,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Informe o título do registro.");
 
+        CsDistributionService.Assignment? distribution = null;
         if (command.ResponsibleUserId.HasValue)
         {
             if (item.Module != "cs" || !TryReadJourneyIdentity(item.Description, out var kind, out _, out _) || kind != "csJourney" ||
@@ -1241,9 +1264,14 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 nextJourney.RootElement.TryGetProperty("phase", out var nextPhase) && nextPhase.GetString() == "onboarding" &&
                 (!previousJourney.RootElement.TryGetProperty("checkedAt", out var checkedAt) || string.IsNullOrWhiteSpace(checkedAt.GetString())))
                 throw new DomainException("Confira os dados comerciais antes de encaminhar para onboarding.", 409);
+            distribution = await new CsDistributionService(db).PrepareAsync(item, command, actor, cancellationToken);
             var owner = await new AgendaService(db).PrepareJourneyAssignmentAsync(item, command.ResponsibleUserId.Value, actor, cancellationToken);
             command = command with { Owner = owner };
         }
+
+        if (item.Module == "cs")
+            command = command with { Description = CsDistributionService.PreserveMetadata(item.Description, command.Description, distribution) };
+        if (distribution is not null) AddAudit(actor, CsDistributionService.AuditAction, "work_item", item.Id.ToString(), "cs", distribution);
 
         if (!string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
             db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module,

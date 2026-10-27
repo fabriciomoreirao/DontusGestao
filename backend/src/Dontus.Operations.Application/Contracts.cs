@@ -155,7 +155,9 @@ public sealed record UpdateWorkItemCommand(
     string? RecordType,
     string? CustomerName,
     long Version,
-    Guid? ResponsibleUserId = null);
+    Guid? ResponsibleUserId = null,
+    string? DistributionVersion = null,
+    Guid? ExpectedNextResponsibleUserId = null);
 
 public sealed record CreateAppointmentCommand(
     string Title,
@@ -333,6 +335,7 @@ public sealed record CollaboratorSummaryDto(Guid Id, string Email, string Displa
 public sealed record CustomerModuleDto(IReadOnlyCollection<CustomerCatalogOptionDto> Catalogs)
 {
     public IReadOnlyCollection<CollaboratorSummaryDto> Collaborators { get; init; } = [];
+    public IReadOnlyCollection<CsDistributionDto> CsDistribution { get; init; } = [];
 }
 
 public sealed record OperationsSnapshot(
