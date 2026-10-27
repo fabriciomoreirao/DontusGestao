@@ -1,5 +1,7 @@
 "use client";
 
+import { customerSuccessScore } from "@/lib/commission-rules";
+
 import { useReminderFilter } from "@/app/ReminderFilters";
 
 import {
@@ -119,15 +121,7 @@ const catalogFeatureIsBase = (entry: CatalogOption) => {
   try { return (JSON.parse(entry.description || "{}") as { featureBase?: boolean }).featureBase === true; }
   catch { return false; }
 };
-const healthScore = (journey: CsJourney, defaultBaseFeatures: string[] = []) => {
-  const contracted = featureTokens(journey.featuresBase.length ? journey.featuresBase : defaultBaseFeatures);
-  if (!contracted.length) return 0;
-  const inUse = new Set(featureTokens(journey.featuresActive).map(normalize));
-  const contractedKeys = new Set(contracted.map(normalize));
-  const matched = contracted.filter((feature) => inUse.has(normalize(feature))).length;
-  const plus = featureTokens(journey.featuresPlus).filter((feature) => !contractedKeys.has(normalize(feature))).length;
-  return Math.max(0, Math.round((matched + plus) / contracted.length * 100));
-};
+const healthScore = customerSuccessScore;
 const trackingMilestones = (track: CsTrack) => track === "retention" ? [1, 2, 3, 4, 7, 14, 21, 30] : [1, 2, 3, 4, 7, 14, 21, 30, 60, 90];
 const usagePercent = (value?: string) => /nao|não|sem uso/i.test(value || "") ? 0 : /parcial/i.test(value || "") ? 50 : value ? 100 : 0;
 

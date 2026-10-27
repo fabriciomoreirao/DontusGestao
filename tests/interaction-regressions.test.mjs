@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { customerSuccessScore } from "../lib/commission-rules.ts";
 
 test("mantém o perfil amplo e legível nos temas claro e escuro", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -682,7 +683,7 @@ test("calcula score por features e vincula clientes a redes", async () => {
     readFile(new URL("../app/CardLinkEnhancer.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(journey, /catalogFeatureIsBase/);
-  assert.match(journey, /Math\.round\(\(matched \+ plus\) \/ contracted\.length \* 100\)/);
+  assert.equal(customerSuccessScore({ featuresBase: ["Agenda"], featuresActive: ["Agenda"], featuresPlus: ["Financeiro"] }), 200);
   assert.match(journey, /scoreEvolution/);
   assert.match(journey, /As seleções são salvas automaticamente/);
   assert.doesNotMatch(journey, /> Salvar evolução<\/button>/);

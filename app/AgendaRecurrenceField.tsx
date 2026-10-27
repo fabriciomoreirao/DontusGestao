@@ -28,7 +28,7 @@ export default function AgendaRecurrenceField({ value, onChange, referenceDate }
       <input type="radio" name="recurrence" value={mode} checked={value.mode === mode} onChange={() => {
         onChange({ ...value, mode });
         if (mode === "dates") setMonth((referenceDate || dateKey(new Date())).slice(0, 7));
-      }} />{label}
+      }} /><span>{label}</span>
     </label>)}</div>
     {value.mode === "dates" && <section className="agenda-recurrence-dates" aria-label="Datas de repetição" aria-describedby={hintId}>
       <p id={hintId}>O compromisso será criado na data principal e também nas datas marcadas, com o mesmo horário. Selecione até 100 datas.</p>

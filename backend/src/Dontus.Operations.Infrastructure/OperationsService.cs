@@ -793,6 +793,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     private static void ValidateCustomerCatalogConfiguration(string catalog, string? description)
     {
+        if (catalog == "commissionRule")
+        {
+            ValidateCommissionScoreTiers(description);
+            return;
+        }
         if (catalog is not ("funnelStage" or "csFunnel" or "recruitmentStageTemplate")) return;
         try
         {
@@ -817,6 +822,36 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or IndexOutOfRangeException)
         {
             throw new DomainException("As etapas do fluxo estão inválidas. Confira os nomes e as flags antes de salvar.");
+        }
+    }
+
+    private static void ValidateCommissionScoreTiers(string? description)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(description ?? "{}");
+            var root = json.RootElement;
+            // Existing flat rules remain valid until their manager configures score bands.
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("scoreTiers", out var tiers)) return;
+            if (!root.TryGetProperty("scope", out var scope) || scope.GetString() != "cs" ||
+                !root.TryGetProperty("type", out var type) || type.GetString() != "percentage" ||
+                tiers.ValueKind != JsonValueKind.Array || tiers.GetArrayLength() == 0)
+                throw new DomainException("As faixas de score são exclusivas das comissões percentuais de Sucesso do Cliente.");
+            decimal cursor = 0;
+            foreach (var tier in tiers.EnumerateArray())
+            {
+                if (tier.ValueKind != JsonValueKind.Object ||
+                    !tier.TryGetProperty("min", out var min) || !min.TryGetDecimal(out var start) || start != cursor ||
+                    !tier.TryGetProperty("max", out var max) || !max.TryGetDecimal(out var end) || end <= start || end > 100 ||
+                    !tier.TryGetProperty("percentage", out var percentage) || !percentage.TryGetDecimal(out var rate) || rate < 0 || rate > 100)
+                    throw new DomainException("As faixas devem cobrir de 0% a 100% sem lacunas ou sobreposição, com comissão entre 0% e 100%.");
+                cursor = end;
+            }
+            if (cursor != 100) throw new DomainException("A última faixa de score deve terminar em 100%.");
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException)
+        {
+            throw new DomainException("Informe uma configuração de faixas de score válida.");
         }
     }
 
