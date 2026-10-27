@@ -708,7 +708,7 @@ operations.MapGet("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view"))
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view") || actor.HasPermission("commissions", "view") || actor.HasPermission("referrals", "view"))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("admin", "manage"))
         snapshot = snapshot with { Access = await accessControl.GetManagementAsync(actor, cancellationToken) };
@@ -1789,7 +1789,7 @@ operations.MapPost("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view"))
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view") || actor.HasPermission("commissions", "view") || actor.HasPermission("referrals", "view"))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     var access = actor.HasPermission("admin", "manage")
         ? await accessControl.GetManagementAsync(actor, cancellationToken)

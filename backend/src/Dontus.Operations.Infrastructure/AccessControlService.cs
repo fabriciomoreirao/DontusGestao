@@ -225,7 +225,17 @@ public sealed class AccessControlService(
                     .Order()
                     .ToArray()))
             .OrderBy(permission => permission.Screen)
-            .ToArray();
+            .ToList();
+
+        // Coordination is a trusted employee flag; supervision is granted by the
+        // module's approval/management permissions, never by a role's display name.
+        foreach (var screen in new[] { "commissions", "referrals" })
+        {
+            var permission = permissions.SingleOrDefault(entry => entry.Screen == screen);
+            if (!user.IsCoordinator && !(permission?.CanView == true && (permission.CanApprove || permission.CanManage))) continue;
+            permissions.RemoveAll(entry => entry.Screen == screen);
+            permissions.Add(new EffectivePermission(screen, true, true, true, true, true, permission?.Capabilities));
+        }
 
         return new ActorContext(
             user.Email,

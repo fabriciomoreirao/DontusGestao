@@ -66,6 +66,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .ToList();
         var directlyVisibleModules = visibleModules.ToArray();
         var canManageCommissions = actor.HasPermission("commissions", "manage") || actor.HasPermission("commissions", "approve");
+        var canManageReferrals = actor.HasPermission("referrals", "manage") || actor.HasPermission("referrals", "approve");
         var canManageGoals = actor.HasPermission("goals", "manage") || actor.HasPermission("goals", "edit");
         if (actor.HasPermission("commissions", "view"))
             visibleModules.AddRange(["commercial", "cs", "lia"]);
@@ -114,6 +115,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 && (x.Module != "reminders" || x.CustomerName == actor.Email || x.CreatedBy == actor.Email || actor.HasPermission("reminders", "manage"))
                 && (x.Module != "diary" || x.CreatedBy == actor.Email)
                 && (x.Module != "commissions" || canManageCommissions || x.Owner == actor.DisplayName)
+                && (x.Module != "referrals" || canManageReferrals || x.CreatedBy == actor.Email || x.CreatedBy == "" && x.Owner == actor.DisplayName)
                 && (x.Module != "goals" || canManageGoals || x.Owner == actor.DisplayName || x.Team == actor.Department))
             .OrderByDescending(x => x.UpdatedAt)
             .Take(1000)
@@ -131,6 +133,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             ? item with { AssignedAt = assignment.CreatedAt, AssignedBy = assignment.Actor } : item).ToList();
         if (!canManageCommissions)
             items = items.Where(item => item.Module != "commissions" || CommissionBelongsTo(item.Description, item.Owner, actor, registeredUser?.Id)).ToList();
+        if (!new[] { "customers", "catalogs", "commercial", "cs", "lia", "tasks", "waitingQueue", "cancellations", "serviceRequests", "serviceFollowup" }
+                .Any(module => actor.HasPermission(module, "view")))
+            customers = customers.Where(customer => items.Any(item => item.CustomerId == customer.Id ||
+                !string.IsNullOrWhiteSpace(item.CustomerName) && (item.CustomerName == customer.TradeName || item.CustomerName == customer.LegalName))).ToList();
 
         var appointments = actor.HasPermission("work", "view")
             ? await db.Appointments.AsNoTracking()
@@ -713,15 +719,51 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     public async Task<CustomerModuleDto> GetCustomerModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
-        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("commercial", "view") && !actor.HasPermission("cs", "view") && !actor.HasPermission("lia", "view") && !actor.HasPermission("support", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view") && !actor.HasPermission("serviceRequests", "view") && !actor.HasPermission("serviceFollowup", "view"))
+        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("commercial", "view") && !actor.HasPermission("cs", "view") && !actor.HasPermission("lia", "view") && !actor.HasPermission("support", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view") && !actor.HasPermission("serviceRequests", "view") && !actor.HasPermission("serviceFollowup", "view") && !actor.HasPermission("commissions", "view") && !actor.HasPermission("referrals", "view"))
             throw new DomainException("Seu acesso não permite visualizar os cadastros de clientes.", 403);
         var includeInactive = actor.HasPermission("catalogs", "manage") || actor.HasPermission("customers", "manage") || actor.HasPermission("commercial", "manage") || actor.HasPermission("cs", "manage") || actor.HasPermission("lia", "manage") || actor.HasPermission("support", "manage") || actor.HasPermission("cancellations", "manage") || actor.HasPermission("hr", "manage");
+        var manageCommissions = actor.HasPermission("commissions", "manage") || actor.HasPermission("commissions", "approve");
+        var manageReferrals = actor.HasPermission("referrals", "manage") || actor.HasPermission("referrals", "approve");
         var entries = await db.CustomerCatalogOptions.AsNoTracking()
-            .Where(entry => includeInactive || entry.Active)
+            .Where(entry => includeInactive || entry.Active || manageCommissions && entry.Catalog == "commissionRule" ||
+                manageReferrals && (entry.Catalog == "referralCommission" || entry.Catalog == "referralModule" || entry.Catalog == "referralUsageStatus"))
             .OrderBy(entry => entry.Catalog).ThenBy(entry => entry.Name)
             .Select(entry => new CustomerCatalogOptionDto(entry.Id, entry.Catalog, entry.Name, entry.Description, entry.Active))
             .ToListAsync(cancellationToken);
-        return new CustomerModuleDto(entries);
+        var userId = await db.Users.AsNoTracking().Where(user => user.Email == actor.Email)
+            .Select(user => (Guid?)user.Id).SingleOrDefaultAsync(cancellationToken);
+        entries = entries.Where(entry => entry.Catalog switch
+        {
+            "commissionRule" => manageCommissions || CatalogBelongsTo(entry.Description, "employeeId", "employeeName", actor, userId),
+            "referralCommission" => manageReferrals || CatalogBelongsTo(entry.Description, "collaboratorId", "collaboratorName", actor, userId, true),
+            _ => true,
+        }).ToList();
+        var collaborators = new List<CollaboratorSummaryDto>();
+        if (actor.HasPermission("commissions", "view") || actor.HasPermission("referrals", "view"))
+        {
+            var users = await db.Users.AsNoTracking().Where(user => manageCommissions || manageReferrals || user.Email == actor.Email)
+                .OrderBy(user => user.DisplayName).ToListAsync(cancellationToken);
+            collaborators = users.Select(user => new CollaboratorSummaryDto(user.Id, user.Email, user.DisplayName,
+                user.Department, [user.Department], ProfilePhotoUrls.For(user), user.Active && !user.BlockedAt.HasValue)).ToList();
+        }
+        return new CustomerModuleDto(entries) { Collaborators = collaborators };
+    }
+
+    private static bool CatalogBelongsTo(string description, string idKey, string nameKey, ActorContext actor, Guid? userId, bool allowDepartment = false)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(description);
+            var root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return false;
+            if (root.TryGetProperty(idKey, out var id) && id.ValueKind == JsonValueKind.String && Guid.TryParse(id.GetString(), out var employeeId))
+                return employeeId == userId;
+            if (root.TryGetProperty(nameKey, out var name) && name.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(name.GetString()))
+                return string.Equals(name.GetString(), actor.DisplayName, StringComparison.OrdinalIgnoreCase);
+            return allowDepartment && (!root.TryGetProperty("department", out var department) || department.ValueKind == JsonValueKind.String &&
+                (string.IsNullOrWhiteSpace(department.GetString()) || string.Equals(department.GetString(), actor.Department, StringComparison.OrdinalIgnoreCase)));
+        }
+        catch (JsonException) { return false; }
     }
 
     private static void RequireCustomerCatalogManagement(string catalog, ActorContext actor)
@@ -734,6 +776,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             "temperature" or "funnelstage" or "acquisitionchannel" or "followuptype" or "lossreason" => "commercial",
             "employeerole" => "hr",
             "commissionrule" => "commissions",
+            "referralmodule" or "referralusagestatus" or "referralcommission" => "referrals",
             _ when key.StartsWith("commercial") || key.StartsWith("retention") => "commercial",
             _ when key.StartsWith("cs") || key.StartsWith("enterprise") => "cs",
             _ when key.StartsWith("lia") => "lia",
@@ -839,6 +882,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             throw new DomainException("A decisão de comissão exige permissão de aprovação.", 403);
         if (!cancellationRoute && !customerComment && !customerEngagement && !retentionRestart && !serviceRequestRoute && !commissionDecision)
             actor.RequirePermission(command.Module, "create");
+        if (command.Module == "referrals" && !CanSuperviseReferrals(actor))
+            command = PrepareOwnReferral(command, actor);
         if (string.IsNullOrWhiteSpace(command.Module) ||
             string.IsNullOrWhiteSpace(command.RecordType) ||
             string.IsNullOrWhiteSpace(command.Title))
@@ -960,12 +1005,64 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     private static void RequirePersonalRecordScope(WorkItem item, ActorContext actor, bool deleting = false)
     {
+        if (item.Module == "referrals" && !CanSuperviseReferrals(actor) &&
+            !(string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrEmpty(item.CreatedBy) && string.Equals(item.Owner, actor.DisplayName, StringComparison.OrdinalIgnoreCase)))
+            throw new DomainException("Você só pode acessar suas próprias indicações.", 403);
+        if (item.Module == "referrals" && deleting && !CanSuperviseReferrals(actor))
+        {
+            try
+            {
+                if (JsonNode.Parse(item.Description) is JsonObject detail && detail["phase"]?.ToString() == "tracking") return;
+            }
+            catch (JsonException) { }
+            throw new DomainException("Uma indicação enviada para conferência só pode ser excluída pela supervisão.", 403);
+        }
         if (item.Module == "diary" && !string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase))
             throw new DomainException("Você só pode alterar atividades pessoais criadas por você.", 403);
         if (item.Module == "reminders" && !actor.HasPermission("reminders", "manage") &&
             !string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) &&
             (deleting || !string.Equals(item.CustomerName, actor.Email, StringComparison.OrdinalIgnoreCase)))
             throw new DomainException("Você não possui acesso para alterar este lembrete.", 403);
+    }
+
+    private static bool CanSuperviseReferrals(ActorContext actor) =>
+        actor.HasPermission("referrals", "manage") || actor.HasPermission("referrals", "approve");
+
+    private static CreateWorkItemCommand PrepareOwnReferral(CreateWorkItemCommand command, ActorContext actor)
+    {
+        if (!string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(command.Owner.Trim(), actor.DisplayName, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("Você só pode cadastrar indicações em seu próprio nome.", 403);
+        try
+        {
+            if (JsonNode.Parse(command.Description ?? "{}") is not JsonObject detail || detail["kind"]?.ToString() != "referral" ||
+                detail["phase"]?.ToString() != "tracking" || command.AmountCents != 0)
+                throw new DomainException("Uma nova indicação deve iniciar em acompanhamento, sem comissão aprovada.", 403);
+            detail["senderName"] = actor.DisplayName;
+            detail["senderDepartment"] = actor.Department;
+            detail["commissionCents"] = 0;
+            detail["reviewer"] = "";
+            detail["decisionAt"] = "";
+            detail["decisionReason"] = "";
+            return command with { Owner = actor.DisplayName, Team = actor.Department, Status = "Em acompanhamento", Description = detail.ToJsonString() };
+        }
+        catch (JsonException) { throw new DomainException("Informe os dados da indicação."); }
+    }
+
+    private static void RequireReferralUpdate(WorkItem item, UpdateWorkItemCommand command, ActorContext actor)
+    {
+        if (item.Module != "referrals" || CanSuperviseReferrals(actor)) return;
+        try
+        {
+            if (JsonNode.Parse(item.Description) is JsonObject before && JsonNode.Parse(command.Description ?? "{}") is JsonObject after &&
+                before["kind"]?.ToString() == "referral" && after["kind"]?.ToString() == "referral" &&
+                before["phase"]?.ToString() == "tracking" && (after["phase"]?.ToString() is "tracking" or "conference") &&
+                (string.IsNullOrWhiteSpace(command.Owner) || string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase)) &&
+                new[] { "senderName", "senderDepartment", "reviewer", "decisionAt", "decisionReason" }
+                    .All(field => JsonNode.DeepEquals(before[field], after[field]))) return;
+        }
+        catch (JsonException) { }
+        throw new DomainException("A conferência, aprovação e alteração do responsável exigem supervisão de Indicações.", 403);
     }
 
     private static bool CommissionBelongsTo(string description, string owner, ActorContext actor, Guid? userId)
@@ -1084,6 +1181,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             !CanCoordinateCustomerSuccessJourney(item, actor))
             actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor);
+        RequireReferralUpdate(item, command, actor);
         await RequireCommissionScopeAsync(item, actor, false, cancellationToken);
         if (item.Module == "reminders" && !actor.HasPermission("reminders", "manage") &&
             !string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) &&
@@ -1201,6 +1299,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             ?? throw new DomainException("Registro não encontrado.", 404);
         actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor);
+        if (item.Module == "referrals" && !CanSuperviseReferrals(actor))
+            throw new DomainException("Use o envio da sua indicação para conferência; decisões exigem supervisão.", 403);
         if (item.Module == "commissions" && !actor.HasPermission("commissions", "approve") && !actor.HasPermission("commissions", "manage"))
             throw new DomainException("A decisão de comissão exige permissão de aprovação.", 403);
         if (item.Module == "reminders")

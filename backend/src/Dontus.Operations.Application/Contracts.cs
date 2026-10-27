@@ -328,7 +328,12 @@ public sealed record CompanyNoticeDto(
 public sealed record NoticesModuleDto(IReadOnlyCollection<CompanyNoticeDto> Notices);
 
 public sealed record CustomerCatalogOptionDto(Guid Id, string Catalog, string Name, string Description, bool Active);
-public sealed record CustomerModuleDto(IReadOnlyCollection<CustomerCatalogOptionDto> Catalogs);
+public sealed record CollaboratorSummaryDto(Guid Id, string Email, string DisplayName, string DepartmentName,
+    IReadOnlyCollection<string> DepartmentNames, string PhotoDataUrl, bool Active);
+public sealed record CustomerModuleDto(IReadOnlyCollection<CustomerCatalogOptionDto> Catalogs)
+{
+    public IReadOnlyCollection<CollaboratorSummaryDto> Collaborators { get; init; } = [];
+}
 
 public sealed record OperationsSnapshot(
     UserDto User,
