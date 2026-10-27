@@ -733,6 +733,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             "status" or "project" or "version" or "subscription" or "server" or "paymentmethod" or "dueday" or "gracedays" or "duedays" or "invoicecompany" => "customers",
             "temperature" or "funnelstage" or "acquisitionchannel" or "followuptype" or "lossreason" => "commercial",
             "employeerole" => "hr",
+            "commissionrule" => "commissions",
             _ when key.StartsWith("commercial") || key.StartsWith("retention") => "commercial",
             _ when key.StartsWith("cs") || key.StartsWith("enterprise") => "cs",
             _ when key.StartsWith("lia") => "lia",

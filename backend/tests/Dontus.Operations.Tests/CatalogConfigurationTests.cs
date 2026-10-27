@@ -25,6 +25,7 @@ public sealed class CatalogConfigurationTests
     [InlineData("cancellations", "cancellationReason")]
     [InlineData("hr", "hrCommunicationType")]
     [InlineData("admin", "recruitmentStage")]
+    [InlineData("commissions", "commissionRule")]
     public async Task Area_manager_can_save_and_remove_own_catalog(string module, string catalog)
     {
         await using var db = Context(); var service = new OperationsService(db); var actor = Actor(module);
@@ -34,6 +35,64 @@ public sealed class CatalogConfigurationTests
         await service.DeleteCustomerCatalogAsync(id, actor);
         Assert.Empty(db.CustomerCatalogOptions);
     }
+
+    [Theory]
+    [InlineData("commercial")]
+    [InlineData("cs")]
+    [InlineData("lia")]
+    public async Task Commission_coordinator_can_manage_rules_without_generic_catalog_permissions(string scope)
+    {
+        await using var db = Context();
+        var actor = CommissionActor("manage");
+        var service = new OperationsService(db);
+        var description = System.Text.Json.JsonSerializer.Serialize(new { kind = "commissionRule", scope, employeeId = Guid.NewGuid(), employeeName = "Colaborador", product = "*", type = "percentage", value = 50 });
+        var id = await service.SaveCustomerCatalogAsync(null, "commissionRule", $"Regra {scope}", description, true, actor);
+        var saved = await db.CustomerCatalogOptions.SingleAsync(entry => entry.Id == id);
+        Assert.Equal(description, saved.Description);
+        await service.SaveCustomerCatalogAsync(id, "commissionRule", $"Regra atualizada {scope}", description, false, actor);
+        Assert.False(saved.Active);
+        await service.SaveCustomerCatalogAsync(id, "commissionRule", saved.Name, description, true, actor);
+        Assert.True(saved.Active);
+        await service.DeleteCustomerCatalogAsync(id, actor);
+        Assert.Empty(await db.CustomerCatalogOptions.ToArrayAsync());
+    }
+
+    [Theory]
+    [InlineData("view")]
+    [InlineData("create")]
+    [InlineData("edit")]
+    [InlineData("approve")]
+    [InlineData("other-module")]
+    public async Task Commission_rule_management_requires_the_commissions_manage_permission(string permission)
+    {
+        await using var db = Context();
+        var service = new OperationsService(db);
+        var id = await service.SaveCustomerCatalogAsync(null, "commissionRule", "Regra preservada", "{}", true, CommissionActor("manage"));
+        var actor = CommissionActor(permission);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SaveCustomerCatalogAsync(null, "commissionRule", "Nova regra", "{}", true, actor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SaveCustomerCatalogAsync(id, "commissionRule", "Alterada", "{}", false, actor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteCustomerCatalogAsync(id, actor))).StatusCode);
+        await db.SaveChangesAsync();
+        var saved = await db.CustomerCatalogOptions.SingleAsync();
+        Assert.Equal("Regra preservada", saved.Name);
+        Assert.True(saved.Active);
+    }
+
+    [Fact]
+    public async Task Commission_management_does_not_authorize_other_catalogs_or_reclassification()
+    {
+        await using var db = Context();
+        var service = new OperationsService(db);
+        var id = await service.SaveCustomerCatalogAsync(null, "commercialProduct", "Produto preservado", "{}", true, Actor("commercial"));
+        var coordinator = CommissionActor("manage");
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SaveCustomerCatalogAsync(null, "commercialProduct", "Outro produto", "{}", true, coordinator))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteCustomerCatalogAsync(id, coordinator))).StatusCode);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.SaveCustomerCatalogAsync(id, "commissionRule", "Regra indevida", "{}", true, coordinator))).StatusCode);
+        Assert.Equal("commercialProduct", (await db.CustomerCatalogOptions.SingleAsync()).Catalog);
+    }
+
+    private static ActorContext CommissionActor(string permission) => new("coordenador@dontus.local", "Coordenador", "Coordenador", "Comercial",
+        [new EffectivePermission(permission == "other-module" ? "commercial" : "commissions", true, permission == "create", permission == "edit", permission == "approve", permission is "manage" or "other-module")]);
 
     [Fact]
     public async Task Cannot_reclassify_another_areas_catalog_or_duplicate_existing_names()
