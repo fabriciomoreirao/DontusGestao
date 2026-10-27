@@ -88,19 +88,19 @@ internal sealed class CsDistributionService(OperationsDbContext db)
             .OrderByDescending(entry => entry.CreatedAt).ToListAsync(cancellationToken);
         var lastOwnerChange = events.GroupBy(entry => entry.EntityId).ToDictionary(group => group.Key, group => group.First().CreatedAt);
         var pending = new List<(string Track, CsDistributionClientDto Client)>();
-        var active = new List<(string Track, Guid UserId, string CustomerKey)>();
+        var current = new List<(string Track, Guid? UserId, string CustomerKey, string Phase, string Version, DateTimeOffset UpdatedAt, Guid ItemId)>();
         foreach (var item in items.Where(item => item.Module == "cs"))
         {
             if (Read(item.Description) is not { } detail || Text(detail, "kind") != "csJourney") continue;
             var track = Track(detail); var customerKey = ClientKey(item, detail, customers); var phase = Phase(detail);
             var version = Canonical(ResolveVersion(item, detail, customers, sources));
-            if (phase == "validation") { pending.Add((track, new(item.Id, version))); continue; }
             Guid? userId = null;
             if (detail["distributionAssignment"] is JsonObject metadata && Guid.TryParse(Text(metadata, "recipientUserId"), out var stableId) &&
                 allUsers.Any(user => user.Id == stableId && (Key(user.DisplayName) == Key(item.Owner) || !names.ContainsKey(Key(item.Owner))))) userId = stableId;
             if (!userId.HasValue && names.TryGetValue(Key(item.Owner), out var ownerId)) userId = ownerId;
+            current.Add((track, userId, customerKey, phase, version, item.UpdatedAt, item.Id));
+            if (phase == "validation") { pending.Add((track, new(item.Id, version))); continue; }
             if (!userId.HasValue) continue;
-            if (phase is "onboarding" or "tracking" or "conference") active.Add((track, userId.Value, customerKey));
             var latestAudit = assignments.Where(entry => entry.Track == track && entry.CustomerKey == customerKey)
                 .OrderByDescending(entry => entry.AssignedAt).FirstOrDefault();
             if (latestAudit is not null && latestAudit.RecipientUserId == userId) continue;
@@ -114,11 +114,18 @@ internal sealed class CsDistributionService(OperationsDbContext db)
         {
             var history = assignments.Where(entry => entry.Track == track).ToList();
             var clients = history.GroupBy(entry => entry.CustomerKey).Select(group => group.OrderByDescending(entry => entry.AssignedAt).First()).ToList();
-            var collaborators = users.Select(user => new CsDistributionCollaboratorDto(user.Id, user.DisplayName, user.Department, ProfilePhotoUrls.For(user),
-                clients.Count(entry => entry.RecipientUserId == user.Id), active.Where(entry => entry.Track == track && entry.UserId == user.Id &&
-                    clients.Any(client => client.CustomerKey == entry.CustomerKey && client.RecipientUserId == user.Id)).Select(entry => entry.CustomerKey).Distinct().Count(),
-                clients.Where(entry => entry.RecipientUserId == user.Id).GroupBy(entry => entry.Version).ToDictionary(group => group.Key, group => group.Count()),
-                history.Where(entry => entry.RecipientUserId == user.Id).Select(entry => (DateTimeOffset?)entry.AssignedAt).Max())).ToArray();
+            var portfolio = current.Where(entry => entry.Track == track).GroupBy(entry => entry.CustomerKey)
+                .Select(group => group.OrderByDescending(entry => entry.UpdatedAt).ThenByDescending(entry => entry.ItemId).First())
+                .Where(entry => entry.Phase is "onboarding" or "tracking" or "conference").ToArray();
+            var collaborators = users.Select(user =>
+            {
+                var counts = portfolio.Where(entry => entry.UserId == user.Id).GroupBy(entry => new { entry.Phase, entry.Version })
+                    .Select(group => new CsDistributionPortfolioCountDto(group.Key.Phase, group.Key.Version, group.Count())).ToArray();
+                return new CsDistributionCollaboratorDto(user.Id, user.DisplayName, user.Department, ProfilePhotoUrls.For(user),
+                    clients.Count(entry => entry.RecipientUserId == user.Id), counts.Sum(entry => entry.Quantity),
+                    clients.Where(entry => entry.RecipientUserId == user.Id).GroupBy(entry => entry.Version).ToDictionary(group => group.Key, group => group.Count()),
+                    history.Where(entry => entry.RecipientUserId == user.Id).Select(entry => (DateTimeOffset?)entry.AssignedAt).Max()) { CurrentPortfolio = counts };
+            }).ToArray();
             var queues = canonical.Values.Distinct().OrderBy(version => version == UnknownVersion).ThenBy(version => version).Select(version =>
             {
                 var last = history.Where(entry => entry.Version == version).OrderByDescending(entry => entry.AssignedAt).FirstOrDefault();

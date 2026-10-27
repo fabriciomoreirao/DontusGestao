@@ -2,12 +2,13 @@
 
 import { customerSuccessScore } from "@/lib/commission-rules";
 import CsDistributionPanel from "@/app/CsDistributionPanel";
+import CsDistributionIndicators from "@/app/CsDistributionIndicators";
 import { distributionQueue, distributionWarning, unknownClientVersion, type ClientDistribution } from "@/lib/client-distribution";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
 import {
-  Activity, AlertTriangle, ArrowRight, BadgeCheck, Ban, CalendarDays, Check, CheckCircle2,
+  Activity, AlertTriangle, ArrowRight, BadgeCheck, Ban, BarChart3, CalendarDays, Check, CheckCircle2,
   Clock3, Columns3, Copy, ExternalLink, Link2, List, MessageSquareText, Pencil, Phone, Plus, RotateCcw, Save,
   Search, Send, Settings, ShieldCheck, Trash2, UserRound, X, XCircle,
 } from "lucide-react";
@@ -222,8 +223,10 @@ export default function CustomerSuccessJourneyModule({
   const [statusFilter, setStatusFilter] = useState("all");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [creating, setCreating] = useState(false);
+  const [distributionIndicators, setDistributionIndicators] = useState(false);
   const isCoordinator = currentUser.isCoordinator || /admin|gestor|coordenador/i.test(currentUser.role);
   const track: CsTrack = flow === "evolution" ? "retention" : "activation";
+  const distributionBoard = distribution?.find(board => board.track === track);
   const featureUniverse = useMemo(() => featureTokens(catalogs
     .filter((entry) => entry.active && ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog) && catalogFeatureIsBase(entry))
     .map((entry) => entry.name)), [catalogs]);
@@ -329,7 +332,7 @@ export default function CustomerSuccessJourneyModule({
     <header className="cs-pipeline-heading module-page-header">
       <div className="cs-title-icon module-page-title-icon"><Activity size={21} /></div>
       <div><span className="eyebrow">SUCESSO DO CLIENTE</span><h1>{title}</h1><p>Validação, implantação, evolução e retenção em uma jornada auditável.</p></div>
-      <div className="cs-heading-actions module-page-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} title="Configurar jornada e status" aria-label="Configurar jornada e status"><Settings size={18} /></button>}{canCreate && <button className="primary-button" type="button" onClick={() => setCreating(true)}><Plus size={16} /> Inserir cliente</button>}</div>
+      <div className="cs-heading-actions module-page-actions">{distributionBoard && <button className="secondary-button" type="button" onClick={() => setDistributionIndicators(true)}><BarChart3 size={16} />Indicadores de rodízio</button>}{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} title="Configurar jornada e status" aria-label="Configurar jornada e status"><Settings size={18} /></button>}{canCreate && <button className="primary-button" type="button" onClick={() => setCreating(true)}><Plus size={16} /> Inserir cliente</button>}</div>
     </header>
 
     <section className="cs-pipeline-metrics">
@@ -354,7 +357,7 @@ export default function CustomerSuccessJourneyModule({
       <div className="cs-view-switch"><button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Visualizar em cards"><Columns3 size={16} /></button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="Visualizar em lista"><List size={16} /></button></div>
     </section>
 
-    {tab === "validation" && distribution?.find(board=>board.track===track) && <CsDistributionPanel board={distribution.find(board=>board.track===track)!} />}
+    {distributionIndicators && distributionBoard && <CsDistributionIndicators board={distributionBoard} onClose={() => setDistributionIndicators(false)} />}
 
     {visible.length === 0 ? <div className="cs-pipeline-empty"><ClipboardCheckIcon /><h2>Nenhum cliente nesta etapa</h2><p>Os clientes aparecem automaticamente conforme avançam na jornada.</p></div> : view === "grid" ? <div className="cs-pipeline-grid">{visible.map(({ item, journey }) => <JourneyCard key={item.id} item={item} journey={journey} featureUniverse={featureUniverse} commercial={items.find((entry) => entry.id === journey.sourceLeadId)} employee={employees.find(employee => employee.displayName === item.owner)} canEdit={canEdit} canDelete={canDelete} onOpen={() => setSelected(item)} onDelete={() => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />)}</div> : <JourneyList records={visible} sourceItems={items} featureUniverse={featureUniverse} canDelete={canDelete} onOpen={setSelected} onDelete={(item) => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />}
 

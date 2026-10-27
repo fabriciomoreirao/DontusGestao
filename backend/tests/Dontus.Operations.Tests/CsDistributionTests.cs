@@ -44,6 +44,58 @@ public sealed class CsDistributionTests
     }
 
     [Fact]
+    public async Task Current_portfolio_counts_only_the_three_active_stages_and_keeps_versions_separate()
+    {
+        var f = await Setup(); await using var db = f.Db;
+        db.WorkItems.AddRange(Journey("Essencial", "onboarding", owner: "Alice"), Journey("Maxi", "tracking", owner: "Alice"),
+            Journey("Ultra", "conference", owner: "Alice"), Journey("Essencial", "validation", owner: "Alice"),
+            Journey("Essencial", "finished", owner: "Alice"), Journey("Maxi", "cancelled", owner: "Alice"),
+            Journey("Ultra", "finishedWithoutSuccess", owner: "Alice"), Journey("Maxi", "cancelledWithoutTraining", owner: "Alice"),
+            Journey("Essencial", "activation", owner: "Bruno"), Journey("Maxi", "evolution", owner: "Bruno"),
+            Journey("Ultra", "onboarding", "retention", "Carla"));
+        await db.SaveChangesAsync();
+        var board = await Board(f); var alice = board.Collaborators.Single(user => user.DisplayName == "Alice");
+        Assert.Equal(3, alice.ActiveClients);
+        Assert.Contains(new CsDistributionPortfolioCountDto("onboarding", "Essencial", 1), alice.CurrentPortfolio);
+        Assert.Contains(new CsDistributionPortfolioCountDto("tracking", "Maxi", 1), alice.CurrentPortfolio);
+        Assert.Contains(new CsDistributionPortfolioCountDto("conference", "Ultra", 1), alice.CurrentPortfolio);
+        Assert.Equal(3, alice.CurrentPortfolio.Count);
+        Assert.Equal(2, board.Collaborators.Single(user => user.DisplayName == "Bruno").CurrentPortfolio.Sum(entry => entry.Quantity));
+        Assert.Empty(board.Collaborators.Single(user => user.DisplayName == "Carla").CurrentPortfolio);
+        Assert.Single((await Board(f, "retention")).Collaborators.Single(user => user.DisplayName == "Carla").CurrentPortfolio);
+    }
+
+    [Fact]
+    public async Task Current_portfolio_uses_the_current_customer_version_and_owner_instead_of_the_delivery_history()
+    {
+        var f = await Setup(); await using var db = f.Db;
+        var customer = new Customer { LegalName = "Cliente", TradeName = "Cliente", ProductVersion = "Essencial", CreatedBy = "system" };
+        var item = Journey(); item.CustomerId = customer.Id;
+        db.Customers.Add(customer); db.WorkItems.Add(item); await db.SaveChangesAsync();
+        await Dispatch(f, item, "Essencial");
+        customer.ProductVersion = "Ultra"; item.Owner = "Bruno"; item.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        var board = await Board(f);
+        Assert.Empty(board.Collaborators.Single(user => user.DisplayName == "Alice").CurrentPortfolio);
+        Assert.Equal(new CsDistributionPortfolioCountDto("onboarding", "Ultra", 1),
+            Assert.Single(board.Collaborators.Single(user => user.DisplayName == "Bruno").CurrentPortfolio));
+        Assert.Contains("Essencial", db.AuditEvents.Single(entry => entry.Action == "DistributeCustomer").DetailsJson);
+        db.WorkItems.Remove(item); await db.SaveChangesAsync();
+        Assert.All((await Board(f)).Collaborators, user => Assert.Empty(user.CurrentPortfolio));
+    }
+
+    [Fact]
+    public async Task The_latest_closed_record_excludes_legacy_active_duplicates_from_current_portfolios()
+    {
+        var f = await Setup(); await using var db = f.Db;
+        var customer = new Customer { LegalName = "Cliente", TradeName = "Cliente", ProductVersion = "Maxi", CreatedBy = "system" };
+        var old = Journey(phase: "tracking", owner: "Alice"); old.CustomerId = customer.Id; old.UpdatedAt = DateTimeOffset.UtcNow.AddDays(-1);
+        var latest = Journey(phase: "finished", owner: "Bruno"); latest.CustomerId = customer.Id;
+        db.Customers.Add(customer); db.WorkItems.AddRange(old, latest); await db.SaveChangesAsync();
+        Assert.All((await Board(f)).Collaborators, user => Assert.Empty(user.CurrentPortfolio));
+    }
+
+    [Fact]
     public async Task Suggestions_rotate_by_version_and_use_total_clients_to_balance_other_versions()
     {
         var f = await Setup(); await using var db = f.Db;
