@@ -7,7 +7,7 @@ const tiers = [{ min: 0, max: 50, percentage: 5 }, { min: 50, max: 75, percentag
 const rule = { kind: "commissionRule", scope: "cs", employeeId: "employee", employeeName: "Colaborador", product: "*", type: "percentage", value: 0, scoreTiers: tiers };
 
 test("comissão de CS usa o percentual correto nos limites das faixas e nos scores Plus", () => {
-  for (const [score, expected] of [[0, 10000], [49.99, 10000], [50, 20000], [74.99, 20000], [75, 30000], [100, 30000], [200, 30000]]) {
+  for (const [score, expected] of [[0, 0], [49.99, 0], [50, 10000], [74.99, 10000], [75, 20000], [100, 20000], [100.01, 30000], [200, 30000], [350, 30000]]) {
     assert.equal(calculateCommission(rule, 200000, score)?.cents, expected, `score ${score}`);
     assert.match(calculateCommission(rule, 200000, score)?.label ?? "", new RegExp(`score ${score}%`));
   }
@@ -73,3 +73,5 @@ test("aguardar aprovação não conta como conclusão nem recebe a cor de um res
   assert.equal(analyticsColor("Aguardando aprovação", 0), "#d97706");
   assert.equal(analyticsColor("Resolvida", 0), "#0d9488");
 });
+
+test("quatro faixas preservam os percentuais configurados e a faixa acima de 100 não tem teto",()=>{const bands=[{min:0,max:50,percentage:0},{min:50,max:75,percentage:7},{min:75,max:100,percentage:12},{min:100,max:null,percentage:19}];assert.equal(validScoreTiers(bands),true);for(const [score,cents] of [[49,0],[50,7000],[75,12000],[100,12000],[101,19000],[450,19000]])assert.equal(calculateCommission({...rule,scoreTiers:bands},100000,score)?.cents,cents);});

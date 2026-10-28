@@ -11,7 +11,7 @@ public sealed class CsJourneyAssignmentTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Handoff_moves_the_complete_agenda_and_customer_even_without_visible_CS_calendars(bool calendarExists)
+    public async Task Handoff_uses_explicit_calendar_access_independently_of_the_responsible_sector(bool calendarExists)
     {
         var fixture = await Fixture(calendarExists);
         await using var db = fixture.Db;
@@ -21,7 +21,7 @@ public sealed class CsJourneyAssignmentTests
         Assert.Equal("Onboarding", fixture.Journey.Status);
         Assert.Equal(2, fixture.Journey.Version);
         Assert.Equal(fixture.Target.DisplayName, fixture.Customer.CsOwner);
-        var destination = await db.AgendaCalendars.SingleAsync(entry => entry.DepartmentId == fixture.Department.Id);
+        var destination = await db.AgendaCalendars.SingleAsync(entry => entry.Id == db.UserAgendaCalendarAccesses.First(link => link.UserId == fixture.Target.Id).CalendarId);
         Assert.All(fixture.Commitments, entry => { Assert.Equal(destination.Id, entry.AgendaId); Assert.Equal(fixture.Target.Id, entry.ResponsibleUserId); });
         Assert.Equal(starts, fixture.Commitments.Select(entry => entry.StartsAt));
         Assert.Equal(2, await db.AgendaCommitmentParticipants.CountAsync(entry => entry.UserId == fixture.Target.Id));
@@ -103,7 +103,9 @@ public sealed class CsJourneyAssignmentTests
         db.AddRange(sourceDepartment, department, source, target, calendar, customer, first, second, journey);
         db.UserDepartments.AddRange(new UserDepartment { UserId = source.Id, DepartmentId = sourceDepartment.Id, IsPrimary = true }, new UserDepartment { UserId = target.Id, DepartmentId = department.Id, IsPrimary = true });
         db.AgendaCommitmentParticipants.AddRange(new AgendaCommitmentParticipant { CommitmentId = first.Id, UserId = source.Id }, new AgendaCommitmentParticipant { CommitmentId = second.Id, UserId = source.Id });
-        if (calendarExists) db.AgendaCalendars.Add(new AgendaCalendar { Name = department.Name, DepartmentId = department.Id });
+        var destination = calendarExists ? new AgendaCalendar { Name = department.Name, DepartmentId = department.Id } : calendar;
+        if (calendarExists) db.AgendaCalendars.Add(destination);
+        db.UserAgendaCalendarAccesses.AddRange(new UserAgendaCalendarAccess { UserId = source.Id, CalendarId = calendar.Id }, new UserAgendaCalendarAccess { UserId = target.Id, CalendarId = destination.Id });
         await db.SaveChangesAsync();
         var actor = new ActorContext(source.Email, source.DisplayName, "Colaborador", "Comercial", [new EffectivePermission("cs", true, false, true, false, false)]);
         return new(db, actor, source, target, department, customer, journey, [first, second]);

@@ -44,7 +44,8 @@ public sealed record AccessManagementDto(
     IReadOnlyCollection<AccessGroupDto> Groups,
     IReadOnlyCollection<EmployeeDto> Employees,
     IReadOnlyCollection<EmployeeDepartmentDto> Departments,
-    IReadOnlyCollection<EmployeeLevelDto> Levels);
+    IReadOnlyCollection<EmployeeLevelDto> Levels,
+    IReadOnlyCollection<AgendaCalendarDto>? AgendaCalendars = null);
 
 public sealed record EmployeeDto(
     Guid Id,
@@ -66,7 +67,8 @@ public sealed record EmployeeDto(
     IReadOnlyCollection<Guid> GroupIds,
     IReadOnlyCollection<string> GroupNames,
     bool Active,
-    DateTimeOffset? BlockedAt);
+    DateTimeOffset? BlockedAt,
+    IReadOnlyCollection<Guid>? AgendaCalendarIds = null);
 
 public sealed record EmployeeDepartmentDto(Guid Id, string Name, string Description, bool Active);
 public sealed record EmployeeLevelDto(Guid Id, string Name, string Description, bool Active);
@@ -84,7 +86,8 @@ public sealed record CreateEmployeeCommand(
     IReadOnlyCollection<Guid>? SubordinateUserIds,
     IReadOnlyCollection<Guid>? GroupIds = null,
     IReadOnlyCollection<Guid>? AgendaDepartmentIds = null,
-    bool FullAccess = false);
+    bool FullAccess = false,
+    IReadOnlyCollection<Guid>? AgendaCalendarIds = null);
 
 public sealed record UpdateEmployeeCommand(
     Guid Id,
@@ -101,7 +104,8 @@ public sealed record UpdateEmployeeCommand(
     bool Active,
     IReadOnlyCollection<Guid>? GroupIds = null,
     IReadOnlyCollection<Guid>? AgendaDepartmentIds = null,
-    bool FullAccess = false);
+    bool FullAccess = false,
+    IReadOnlyCollection<Guid>? AgendaCalendarIds = null);
 
 public sealed record CreateEmployeeResult(Guid Id, string TemporaryPassword);
 public sealed record SaveEmployeeDepartmentCommand(Guid? Id, string Name, string? Description, bool Active);

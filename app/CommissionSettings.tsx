@@ -2,7 +2,7 @@
 
 import { Save, Settings, UsersRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { validScoreTiers, type CommissionRule, type CommissionScope, type ScoreTier } from "@/lib/commission-rules";
+import { commissionScoreTiers, validScoreTiers, type CommissionRule, type CommissionScope, type ScoreTier } from "@/lib/commission-rules";
 
 type Catalog = { id: string; catalog: string; name: string; description: string; active: boolean };
 type Employee = { id: string; displayName: string; departmentName: string };
@@ -53,20 +53,9 @@ function ProductRuleForm({ product, existing, busy, onSave }: {
 }
 
 function ScoreRuleForm({ existing, busy, onSave }: { existing?: SavedRule; busy: boolean; onSave: (tiers: ScoreTier[]) => Promise<void> }) {
-  const saved = existing?.rule.scoreTiers;
-  const [limits, setLimits] = useState([saved?.[0]?.max ?? 50, saved?.[1]?.max ?? 75]);
-  const [rates, setRates] = useState([0, 1, 2].map(index => saved?.[index]?.percentage ?? existing?.rule.value ?? 0));
-  const [error, setError] = useState("");
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const tiers = rates.map((percentage, index) => ({ min: index === 0 ? 0 : limits[index - 1], max: index === 2 ? 100 : limits[index], percentage }));
-    if (!validScoreTiers(tiers)) { setError("Os limites devem ser crescentes entre 0% e 100%, e as comissões devem ficar entre 0% e 100%."); return; }
-    setError(""); void onSave(tiers);
-  };
-  return <form className="commission-score-rule" onSubmit={submit}>
-    <header><span><small>SUCESSO DO CLIENTE</small><h2>Comissão por score do cliente</h2><p>O score acompanha a utilização registrada em CS. O percentual da faixa é aplicado sobre o valor da venda.</p></span><b>{saved ? "Faixas configuradas" : existing ? `Regra atual: ${existing.rule.value}%` : "Aguardando configuração"}</b></header>
-    <div className="commission-score-limits"><label>Segunda faixa a partir de (%)<input aria-label="Início da segunda faixa de score" type="number" min="0.01" max="99.99" step="0.01" required value={limits[0]} onChange={event => setLimits([Number(event.target.value), limits[1]])} /></label><label>Terceira faixa a partir de (%)<input aria-label="Início da terceira faixa de score" type="number" min="0.01" max="99.99" step="0.01" required value={limits[1]} onChange={event => setLimits([limits[0], Number(event.target.value)])} /></label></div>
-    <div className="commission-score-tiers">{rates.map((rate, index) => <article key={index}><small>FAIXA {index + 1}</small><strong>{index === 0 ? 0 : limits[index - 1]}% {index === 2 ? "ou mais" : `a menos de ${limits[index]}%`}</strong><label>Comissão (%)<input aria-label={`Comissão da faixa ${index + 1}`} type="number" min="0" max="100" step="0.01" required value={rate} onChange={event => setRates(rates.map((value, position) => position === index ? Number(event.target.value) : value))} /></label><p>Em uma venda de R$ 1.000: <b>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(rate * 10)}</b></p></article>)}</div>
-    <footer><span>{error ? <strong role="alert">{error}</strong> : "O limite inicial pertence à nova faixa. Scores acima de 100% por funcionalidades Plus usam a última faixa."}</span><button className="primary-button" disabled={busy}><Save size={16} />Salvar faixas de comissão</button></footer>
-  </form>;
+  const saved=existing?.rule.scoreTiers;const initial=saved&&validScoreTiers(saved)?commissionScoreTiers(saved):[{min:0,max:50,percentage:0},{min:50,max:75,percentage:5},{min:75,max:100,percentage:10},{min:100,max:null,percentage:15}];
+  const [rates,setRates]=useState(initial.map(tier=>tier.percentage));const [error,setError]=useState("");
+  const labels=["Abaixo de 50%","De 50% a menos de 75%","De 75% até 100%","Acima de 100%"];
+  function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const tiers=initial.map((tier,index)=>({...tier,percentage:index===0?0:rates[index]}));if(!validScoreTiers(tiers)){setError("Informe percentuais entre 0% e 100%.");return;}setError("");void onSave(tiers);}
+  return <form className="commission-score-rule" onSubmit={submit}><header><span><small>SUCESSO DO CLIENTE</small><h2>Comissão por score do cliente</h2><p>O percentual é aplicado sobre o valor do cliente. Scores de 200%, 300% ou mais usam a faixa acima de 100%.</p></span><b>{saved?"Faixas configuradas":"Configure os percentuais"}</b></header><div className="commission-score-tiers">{rates.map((rate,index)=><article key={index}><small>FAIXA {index+1}</small><strong>{labels[index]}</strong><label>Comissão (%)<input aria-label={"Comissão da faixa "+(index+1)} type="number" min="0" max="100" step="0.01" required disabled={index===0} value={index===0?0:rate} onChange={event=>setRates(values=>values.map((value,position)=>position===index?Number(event.target.value):value))}/></label><p>{index===0?"Sem comissão abaixo de 50%.":"Em uma base de R$ 1.000: "}{index>0&&<b>{new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(rate*10)}</b>}</p></article>)}</div><footer><span>{error?<strong role="alert">{error}</strong>:"50% entra na segunda faixa; 75% na terceira; 100% permanece na terceira. Acima de 100%, usa a quarta faixa."}</span><button className="primary-button" disabled={busy}><Save size={16}/>Salvar faixas de comissão</button></footer></form>;
 }

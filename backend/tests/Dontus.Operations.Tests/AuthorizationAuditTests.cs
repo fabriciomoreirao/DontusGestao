@@ -113,7 +113,7 @@ public sealed class AuthorizationAuditTests
         await using var db = Context(); var item = Item("commissions"); item.AmountCents = 12000;
         item.Description = "{\"decision\":\"approved\",\"commissionCents\":12000}";
         db.WorkItems.Add(item); await db.SaveChangesAsync(); var service = new OperationsService(db); var actor = Actor("commissions", edit: true);
-        await service.UpdateWorkItemAsync(Update(item, "{\"decision\":\"approved\",\"commissionCents\":12000,\"agreedAt\":\"2026-10-22T12:00:00Z\"}"), actor);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateWorkItemAsync(Update(item, "{\"decision\":\"approved\",\"commissionCents\":12000,\"agreedAt\":\"2026-10-22T12:00:00Z\"}"), actor))).StatusCode);
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateWorkItemAsync(Update(item, item.Description) with { AmountCents = 99999 }, actor))).StatusCode);
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateWorkItemAsync(Update(item, "{\"decision\":\"rejected\"}"), actor))).StatusCode);
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteWorkItemAsync(item.Id, actor))).StatusCode);

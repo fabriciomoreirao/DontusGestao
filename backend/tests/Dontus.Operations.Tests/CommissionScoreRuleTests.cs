@@ -13,6 +13,27 @@ public sealed class CommissionScoreRuleTests
     private static string Rule(string tiers, string scope = "cs", string type = "percentage") =>
         $$"""{"kind":"commissionRule","scope":"{{scope}}","type":"{{type}}","value":0,"scoreTiers":{{tiers}}} """;
 
+    [Theory]
+    [InlineData(0,0)][InlineData(49.99,0)][InlineData(50,5000)][InlineData(74.99,5000)]
+    [InlineData(75,10000)][InlineData(100,10000)][InlineData(100.01,15000)][InlineData(200,15000)][InlineData(450,15000)]
+    public async Task Approval_calculates_score_bands_on_the_server(decimal score,long expected)
+    {
+        await using var db=Context();var employee=Guid.NewGuid();
+        db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog="commissionRule",Name="CS",Description=JsonSerializer.Serialize(new { kind="commissionRule",scope="cs",employeeId=employee,product="*",type="percentage",value=0,scoreTiers=new object[]{new{min=0,max=(int?)50,percentage=0},new{min=50,max=(int?)75,percentage=5},new{min=75,max=(int?)100,percentage=10},new{min=100,max=(int?)null,percentage=15}} }) });await db.SaveChangesAsync();
+        var detail=JsonSerializer.Serialize(new { kind="commissionRecord",sourceKey=Guid.NewGuid(),scope="cs",competence="2026-10",employeeId=employee,employeeName="Ana",customerName="Clínica",product="Dontus",saleValueCents=100000,score,decision="approved",reason="Valores conferidos" });
+        var id=await new OperationsService(db).CreateWorkItemAsync(new("commissions","Comissão","Cliente",null,"Cliente","Ana","CS","P3",null,null,99999,detail,[],null,null,"Aprovada"),Manager());
+        Assert.Equal(expected,(await db.WorkItems.SingleAsync(x=>x.Id==id)).AmountCents);
+    }
+
+    [Fact]
+    public async Task Positive_percentage_requires_the_customer_base_before_approval()
+    {
+        await using var db=Context();db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog="commissionRule",Name="CS",Description="{\"scope\":\"cs\",\"employeeName\":\"Ana\",\"product\":\"*\",\"type\":\"percentage\",\"value\":15}" });await db.SaveChangesAsync();
+        var detail="{\"kind\":\"commissionRecord\",\"sourceKey\":\"customer\",\"scope\":\"cs\",\"employeeName\":\"Ana\",\"product\":\"Dontus\",\"saleValueCents\":0,\"decision\":\"approved\",\"reason\":\"Conferido\"}";
+        var error=await Assert.ThrowsAsync<DomainException>(()=>new OperationsService(db).CreateWorkItemAsync(new("commissions","Comissão","Cliente",null,"Cliente","Ana","CS","P3",null,null,0,detail,[],null,null,"Aprovada"),Manager()));
+        Assert.Contains("valor base",error.Message);Assert.Empty(db.WorkItems);
+    }
+
     [Fact]
     public async Task Score_bands_can_be_saved_changed_and_read_without_losing_their_percentages()
     {

@@ -94,6 +94,7 @@ app.UseAuthorization();
 
 app.MapOpenApi();
 app.MapLiaForms();
+app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken cancellationToken) =>
     await db.Database.CanConnectAsync(cancellationToken)
@@ -592,7 +593,7 @@ app.MapPost("/api/service-request-ai-settings/test", async (
         : Results.Problem(statusCode: 422, title: "Integração não validada", detail: result.IntegrationError ?? "Ative e salve a integração antes de testar.");
 }).RequireAuthorization().RequireRateLimiting("operations");
 
-app.MapPost("/api/public-service-requests", async (HttpContext context, IConfiguration configuration, OperationsDbContext db, IDataProtectionProvider protectionProvider, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+app.MapPost("/api/public-service-requests", async (HttpContext context, IConfiguration configuration, OperationsDbContext db, ServiceRequestCreationService creationService, IDataProtectionProvider protectionProvider, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     if (!ValidServiceRequestKey(context, configuration))
         return Results.Problem(statusCode: 401, title: "Chave inválida", detail: "Informe a chave da integração no cabeçalho X-API-Key.");
@@ -645,18 +646,14 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
         await file.CopyToAsync(stream, cancellationToken);
         attachments.Add(new { id = attachmentId, name = Path.GetFileName(file.FileName), contentType = file.ContentType, sizeBytes = file.Length });
     }
-    var protocol = $"CH-{DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3)):yyyyMMdd}-{item.Id.ToString("N")[..6].ToUpperInvariant()}";
-    item.Description = JsonSerializer.Serialize(new
+    var detail = JsonSerializer.SerializeToNode(new
     {
-        kind = "serviceRequest", protocol, clientId, fullName, whatsapp, selectedType, summary,
+        kind = "serviceRequest", clientId, fullName, whatsapp, selectedType, summary,
         aiClassification = classification.Stage, aiReason = classification.Reason, aiConfidence = classification.Confidence, aiSource = classification.Source,
         attachments, comments = Array.Empty<object>(), history = new[] { new { text = $"Chamado recebido e classificado como {classification.Stage}.", at = DateTimeOffset.UtcNow, by = "Triagem inteligente" } },
         submittedAt = DateTimeOffset.UtcNow,
-    });
-    db.WorkItems.Add(item);
-    db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module, Kind = "Chamado recebido", Summary = $"{protocol} · {classification.Stage}", Actor = "Integração externa" });
-    db.AuditEvents.Add(new AuditEvent { ActorEmail = "integracao-chamados", Action = "Create", Resource = "work_item", ResourceId = item.Id.ToString(), Module = item.Module, DetailsJson = JsonSerializer.Serialize(new { protocol, clientId, selectedType, classification = classification.Stage }), Result = "Sucesso" });
-    await db.SaveChangesAsync(cancellationToken);
+    })!.AsObject();
+    var protocol = await creationService.CreateAsync(item, detail, cancellationToken);
     return Results.Created($"/api/public-service-requests/{item.Id}", new { id = item.Id, protocol, status = item.Status, classification = classification.Stage, customerMatched = customer is not null, message = "Chamado recebido com sucesso." });
 }).DisableAntiforgery().RequireRateLimiting("public-service-requests");
 
@@ -1368,7 +1365,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } employeeDepartmentId ? [employeeDepartmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false), actor, cancellationToken);
+                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds), actor, cancellationToken);
             id = createdEmployee.Id;
             temporaryPassword = createdEmployee.TemporaryPassword;
             break;
@@ -1385,7 +1382,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } departmentId ? [departmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false), actor, cancellationToken);
+                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds), actor, cancellationToken);
             break;
 
         case "deleteEmployee":
@@ -2267,6 +2264,7 @@ public sealed class OperationsRequest
     public Guid? InitialStatusId { get; init; }
     public IReadOnlyCollection<Guid>? DepartmentIds { get; init; }
     public IReadOnlyCollection<Guid>? AgendaDepartmentIds { get; init; }
+    public IReadOnlyCollection<Guid>? AgendaCalendarIds { get; init; }
     public IReadOnlyCollection<Guid>? AllowedStatusIds { get; init; }
     public Guid? UserId { get; init; }
     public string? Phone { get; init; }

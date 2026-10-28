@@ -29,6 +29,7 @@ public sealed class AgendaServiceTests
         var type = new AgendaType { Name = "Reunião" };
         var status = new AgendaStatus { Name = "Reservado" };
         db.AddRange(department, user, calendar, type, status);
+        db.UserAgendaCalendarAccesses.Add(new UserAgendaCalendarAccess { UserId = user.Id, CalendarId = calendar.Id });
         db.UserDepartments.Add(new UserDepartment
         {
             UserId = user.Id,
@@ -263,6 +264,33 @@ public sealed class AgendaServiceTests
         Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateCommitmentAsync(update with { StartsAt = update.StartsAt.AddMinutes(1) }, actor))).StatusCode);
     }
 
+    [Fact]
+    public async Task Sector_membership_does_not_grant_another_calendar_and_cross_sector_access_works()
+    {
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        var sector = await db.TaskDepartments.SingleAsync();
+        var second = new AgendaCalendar { Name = "Agenda restrita", DepartmentId = sector.Id };db.Add(second);await db.SaveChangesAsync();
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.CreateCommitmentAsync(command with { AgendaId=second.Id },actor))).StatusCode);
+        var otherSector = new TaskDepartment { Name="Outro setor" };db.Add(otherSector);
+        var link=await db.UserDepartments.SingleAsync();db.UserDepartments.Remove(link);db.UserDepartments.Add(new UserDepartment { UserId=command.ResponsibleUserId, DepartmentId=otherSector.Id,IsPrimary=true });await db.SaveChangesAsync();
+        var module=await service.GetModuleAsync(actor);Assert.Equal(command.AgendaId,Assert.Single(module.Calendars).Id);
+        Assert.Contains(module.Collaborators,x=>x.Id==command.ResponsibleUserId&&x.AgendaIds!.Contains(command.AgendaId));
+        Assert.Single(await service.CreateCommitmentAsync(command,actor));
+    }
+
+    [Fact]
+    public async Task Revoking_calendar_access_blocks_reads_and_all_commitment_mutations()
+    {
+        var (db, service, command, actor) = await RecurrenceContext();await using var context=db;
+        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));
+        db.UserAgendaCalendarAccesses.RemoveRange(await db.UserAgendaCalendarAccesses.ToArrayAsync());await db.SaveChangesAsync();
+        Assert.Empty((await service.GetModuleAsync(actor)).Calendars);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeCommitmentStatusAsync(new(id,command.AgendaStatusId),actor))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignCommitmentAsync(new(id,command.ResponsibleUserId),actor))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteCommitmentAsync(id,actor))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateCommitmentAsync(new(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,command.ResponsibleUserId,command.Title,command.Description,command.StartsAt,command.EndsAt,[]),actor))).StatusCode);
+    }
+
     private static AgendaCommitment ExistingSlot(CreateAgendaCommitmentCommand command, ActorContext actor) => new()
     {
         AgendaId = command.AgendaId, AgendaTypeId = command.AgendaTypeId, AgendaStatusId = command.AgendaStatusId,
@@ -282,6 +310,7 @@ public sealed class AgendaServiceTests
         var type = new AgendaType { Name = "Reunião" };
         var status = new AgendaStatus { Name = "Agendado" };
         db.AddRange(department, user, calendar, type, status);
+        db.UserAgendaCalendarAccesses.Add(new UserAgendaCalendarAccess { UserId = user.Id, CalendarId = calendar.Id });
         db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = department.Id, IsPrimary = true });
         await db.SaveChangesAsync();
         var startsAt = DateTimeOffset.Parse("2026-10-27T14:00:00-03:00");

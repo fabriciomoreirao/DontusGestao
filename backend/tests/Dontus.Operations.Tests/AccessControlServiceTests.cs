@@ -250,7 +250,7 @@ public sealed class AccessControlServiceTests
     }
 
     [Fact]
-    public async Task Grants_only_the_primary_and_explicitly_selected_department_agendas()
+    public async Task Grants_only_selected_calendars_without_automatic_sector_access()
     {
         await using var db = CreateContext();
         var access = CreateService(db);
@@ -264,9 +264,10 @@ public sealed class AccessControlServiceTests
             new SaveEmployeeDepartmentCommand(null, "Financeiro", "Agenda sem acesso.", true), admin);
         var levelId = await access.SaveEmployeeLevelAsync(
             new SaveEmployeeLevelCommand(null, "Nível 1", "Nível de teste.", true), admin);
+        var allowedCalendar = await db.AgendaCalendars.SingleAsync(x => x.DepartmentId == additionalId);
         var employee = await access.CreateEmployeeAsync(new CreateEmployeeCommand(
             "Agenda Teste", "agenda@dontus.local", new DateOnly(1992, 4, 15), new DateOnly(2025, 2, 1),
-            [primaryId], levelId, null, "Analista", false, [], null, [additionalId]), admin);
+            [primaryId], levelId, null, "Analista", false, [], AgendaCalendarIds: [allowedCalendar.Id]), admin);
 
         db.AgendaCalendars.AddRange(
             new AgendaCalendar { Name = "Agenda Suporte", DepartmentId = primaryId },
@@ -282,10 +283,15 @@ public sealed class AccessControlServiceTests
         var saved = management.Employees.Single(entry => entry.Id == employee.Id);
 
         Assert.Equal(primaryId, saved.DepartmentIds.First());
-        Assert.Equal([additionalId], saved.AgendaDepartmentIds);
-        Assert.Contains(module.Calendars, entry => entry.DepartmentId == primaryId);
+        Assert.Equal([allowedCalendar.Id], saved.AgendaCalendarIds);
+        Assert.Single(module.Calendars);
+        Assert.DoesNotContain(module.Calendars, entry => entry.DepartmentId == primaryId);
         Assert.Contains(module.Calendars, entry => entry.DepartmentId == additionalId);
         Assert.DoesNotContain(module.Calendars, entry => entry.DepartmentId == hiddenId);
+        await access.UpdateEmployeeAsync(new(employee.Id,saved.DisplayName,saved.Email,saved.BirthDate,saved.StartedAt,[hiddenId],levelId,null,"Analista",false,[],true,AgendaCalendarIds:[allowedCalendar.Id]),admin);
+        Assert.Equal(allowedCalendar.Id,Assert.Single((await new AgendaService(db).GetModuleAsync(actor)).Calendars).Id);
+        await access.UpdateEmployeeAsync(new(employee.Id,saved.DisplayName,saved.Email,saved.BirthDate,saved.StartedAt,[hiddenId],levelId,null,"Analista",false,[],true,AgendaCalendarIds:[]),admin);
+        Assert.Empty((await new AgendaService(db).GetModuleAsync(actor)).Calendars);
     }
 
     private static AccessControlService CreateService(OperationsDbContext db)

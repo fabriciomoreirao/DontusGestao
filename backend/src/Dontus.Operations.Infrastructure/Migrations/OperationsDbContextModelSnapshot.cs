@@ -1311,6 +1311,107 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("chat_whatsapp_numbers", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.CommissionConfirmation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("AgreedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BrowserJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Competence")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EmployeeKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EmployeeName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("EmployeeUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EvidenceHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("InvalidatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProtectedToken")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SignatureJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SignedByEmail")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SignedByName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SignedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("SignedPdf")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeUserId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("Module", "Scope", "Competence", "EmployeeKey");
+
+                    b.ToTable("commission_confirmations", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.CompanyNotice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2195,6 +2296,19 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("service_request_ai_settings", (string)null);
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.ServiceRequestProtocolCounter", b =>
+                {
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("LastNumber")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Year");
+
+                    b.ToTable("service_request_protocol_counters", (string)null);
                 });
 
             modelBuilder.Entity("Dontus.Operations.Domain.Suggestion", b =>
@@ -3084,6 +3198,24 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("user_access_groups", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.UserAgendaCalendarAccess", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "CalendarId");
+
+                    b.HasIndex("CalendarId");
+
+                    b.ToTable("user_agenda_calendar_accesses", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.UserAgendaDepartmentAccess", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -3894,6 +4026,25 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Group");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.UserAgendaCalendarAccess", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.AgendaCalendar", "Calendar")
+                        .WithMany()
+                        .HasForeignKey("CalendarId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dontus.Operations.Domain.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Calendar");
 
                     b.Navigation("User");
                 });

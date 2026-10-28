@@ -9,6 +9,9 @@ import {
   X, XCircle,
 } from "lucide-react";
 import Image from "next/image";
+import WorkspaceExperience, { type WorkspaceDestination } from "@/app/WorkspaceExperience";
+import useDialogFocus from "@/app/useDialogFocus";
+import { normalizeWorkspaceSearch, pushWorkspaceHistory, readWorkspaceRoute, workspaceDestinationKey, workspaceRouteUrl, type AdminPage, type WorkspaceRoute } from "@/lib/workspace-navigation";
 import { buildNotifications, newlyReceived, ownMutationNotificationIds } from "@/lib/notifications";
 import { isReminderForToday, pendingLinkedReminders, type ScheduledReminder } from "@/lib/reminder-links";
 import { type CrmActivityStage } from "@/lib/crm-activity";
@@ -127,13 +130,14 @@ type AccessManagement = {
   employees: Employee[];
   departments: EmployeeDepartment[];
   levels: EmployeeLevel[];
+  agendaCalendars?: AgendaModuleData["calendars"];
 };
 
 type Employee = {
   id: string; displayName: string; email: string; birthDate: string | null; startedAt: string | null;
   departmentId: string | null; departmentName: string; levelId: string | null; levelName: string;
   departmentIds: string[]; departmentNames: string[];
-  agendaDepartmentIds: string[];
+  agendaDepartmentIds: string[]; agendaCalendarIds?: string[];
   photoDataUrl: string; jobTitle: string; isCoordinator: boolean; subordinateUserIds: string[];
   groupIds: string[]; groupNames: string[];
   active: boolean; blockedAt: string | null;
@@ -164,7 +168,7 @@ function playNotificationAlert() {
     // Alguns navegadores bloqueiam áudio antes da primeira interação do usuário.
   }
 }
-type AdminSection = "collaborators" | "employeeIndicators" | "departments" | "levels" | "roles" | "agenda" | "customers" | "suggestions" | "commercialCatalogs" | "csCatalogs" | "liaCatalogs" | "serviceCatalogs" | "waitingQueueCatalogs" | "enterpriseCatalogs" | "cancellationCatalogs" | "hrCatalogs" | "referralCatalogs" | "recruitmentCatalogs" | "recruitment" | "audit" | "notices" | "background" | "permissions" | "links";
+type AdminSection = AdminPage;
 type ReportingSection = "performance" | "indicators" | "bi" | "biExecutive";
 
 type AppData = {
@@ -272,6 +276,13 @@ const NAV_GROUPS: Array<{ label: string; items: NavigationItem[] }> = [
 ];
 
 const moduleDescriptions: Record<string, string> = {
+  dashboard: "Prioridades pessoais, agenda e pendências da operação.",
+  customers: "Cadastros, contatos, carteira e histórico completo dos clientes.",
+  internalChat: "Conversas da equipe, grupos e arquivos compartilhados.",
+  marketing: "Campanhas, peças, leads e acompanhamento das entregas.",
+  referrals: "Indicações de clientes, análise e comissões por competência.",
+  surveys: "Pesquisas e indicadores de satisfação dos clientes.",
+  access: "Acompanhe os acessos e a movimentação autorizada no sistema.",
   commercial: "Leads, oportunidades, metas, handoffs e pós-venda.",
   cs: "Treinamentos, onboarding de 90 dias, adoção e contas estratégicas.",
   cancellations: "Solicitações, reversões, renegociações e impacto da receita recorrente.",
@@ -292,7 +303,7 @@ const moduleDescriptions: Record<string, string> = {
   serviceFollowup: "Acompanhamento de reclamações e elogios até a conclusão.",
   chat: "Conversas omnichannel, filas, números oficiais e atendimento entre setores.",
   waitingQueue: "Encaminhamentos do Portal Dontus aguardando contato dos setores.",
-  commissions: "Comissões comerciais e de sucesso do cliente com aprovação e ciência.",
+  commissions: "Regras, aprovações e assinatura das comissões por competência.",
   goals: "Metas diárias, semanais e mensais de vendas, clientes e utilização.",
   catalogs: "Setores, tipos, prioridades, status, SLA e colaboradores.",
 };
@@ -356,6 +367,11 @@ export default function OperationsApp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const globalSearchInput = useRef<HTMLInputElement>(null);
+  const [recordSearchOpen, setRecordSearchOpen] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [modal, setModal] = useState<Modal>(null);
   const [modalModule, setModalModule] = useState("commercial");
@@ -394,7 +410,7 @@ export default function OperationsApp() {
     const flow = requested ? csCardFlow(requested.description) : null;
     if (!flow) return;
     if (flow !== csFlow) setCsFlow(flow);
-    if (url.searchParams.get("csFlow") !== flow) { url.searchParams.set("csFlow", flow); window.history.replaceState({}, "", url); }
+    if (url.searchParams.get("csFlow") !== flow) { url.searchParams.set("csFlow", flow); window.history.replaceState(window.history.state, "", url); }
   }, [active, data, csFlow]);
   const [settingsReturnTarget, setSettingsReturnTarget] = useState<{ module: ModuleKey; commercialFlow: CommercialFlow; csFlow: CsFlow } | null>(null);
   const [dashboardPage, setDashboardPage] = useState<"home" | "portal">("home");
@@ -517,7 +533,7 @@ export default function OperationsApp() {
     const url = new URL(window.location.href);
     url.searchParams.delete("view");
     url.searchParams.set("clientId", query);
-    window.history.pushState({}, "", url);
+    pushWorkspaceHistory(url);
   }, []);
 
   useEffect(() => {
@@ -564,6 +580,19 @@ export default function OperationsApp() {
     if (["azure", "emerald", "violet", "amber", "rose", "teal", "graphite", "navy", "cyan", "orange", "fuchsia", "lime"].includes(storedAgendaVisual ?? "")) setAgendaVisual(storedAgendaVisual as SystemVisual);
   }, []);
 
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !target?.closest('input,textarea,select,[contenteditable=true],dialog[open],[aria-modal=true]')) {
+        event.preventDefault(); globalSearchInput.current?.focus(); setRecordSearchOpen(true);
+      }
+      if (event.key === "Escape") { setRecordSearchOpen(false); setMobileNav(false); }
+    };
+    const outside = (event: PointerEvent) => { if (event.target instanceof Element && !event.target.closest(".global-search")) setRecordSearchOpen(false); };
+    window.addEventListener("keydown", key); document.addEventListener("pointerdown", outside);
+    return () => { window.removeEventListener("keydown", key); document.removeEventListener("pointerdown", outside); };
+  }, []);
+
   const loadInFlight = useRef(false);
   const chatInFlight = useRef(false);
   const lastChatRefresh = useRef(0);
@@ -581,6 +610,7 @@ export default function OperationsApp() {
   const load = async (background = false) => {
     if (loadInFlight.current || (background && document.hidden)) return;
     loadInFlight.current = true;
+    setSyncing(true);
     const revision = mutationRevision.current;
     if (!background) setLoading(true);
     try {
@@ -604,6 +634,7 @@ export default function OperationsApp() {
       const appPayload = payload as AppData;
       if (revision !== mutationRevision.current) return;
       setData(appPayload);
+      setLastUpdatedAt(Date.now()); setSyncError(false);
       setLoginRequired(false);
       setActive((current) => {
         if (userCan(appPayload.user, current)) return current;
@@ -611,9 +642,11 @@ export default function OperationsApp() {
       });
       setError("");
     } catch (caught) {
+      setSyncError(true);
       if (!background) setError(caught instanceof Error ? caught.message : "Falha ao carregar.");
     } finally {
       loadInFlight.current = false;
+      setSyncing(false);
       if (!background) setLoading(false);
     }
   };
@@ -642,24 +675,36 @@ export default function OperationsApp() {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
       if (["overview", "chamados"].includes(params.get("public") ?? "") || params.has("survey")) { setLoading(false); return; }
-      const requestedModule = params.get("mod") as ModuleKey | null;
-      if (requestedModule && requestedModule in MODULES) setActive(requestedModule);
-      const requestedCommercialFlow = params.get("commercialFlow") as CommercialFlow | null;
-      if (requestedCommercialFlow === "qualification" || requestedCommercialFlow === "crm" || requestedCommercialFlow === "retention") setCommercialFlow(requestedCommercialFlow);
-      const requestedCsFlow = params.get("csFlow") as CsFlow | null;
-      if (requestedCsFlow === "onboarding" || requestedCsFlow === "evolution" || requestedCsFlow === "enterprise") setCsFlow(requestedCsFlow);
+      const route = readWorkspaceRoute(window.location.search, Object.keys(MODULES));
+      setActive(route.module);
+      if (route.adminPage) setAdminSection(route.adminPage);
+      if (route.commercialFlow) setCommercialFlow(route.commercialFlow);
+      if (route.csFlow) setCsFlow(route.csFlow);
+      if (route.reportingSection) setReportingSection(route.reportingSection);
+      if (route.catalog) setCatalogSection(route.catalog);
       setIndicatorsOpen(params.get("view") === "indicators");
       setHistoryClientId(params.get("clientId") ?? "");
-      const requestedCatalog = params.get("cad") as CatalogSection | null;
-      if (requestedCatalog && ["departments", "types", "priorities", "statuses", "kanban", "sla", "people"].includes(requestedCatalog))
-        setCatalogSection(requestedCatalog);
+      if (!Number.isFinite(window.history.state?.dontusIndex)) {
+        window.history.replaceState({ ...window.history.state, dontusIndex: 0 }, "", window.location.href);
+        try { sessionStorage.setItem("dontus:navigation-highest", "0"); } catch { /* optional history metadata */ }
+      }
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    const syncUrlPages = () => { const params = new URLSearchParams(window.location.search); setIndicatorsOpen(params.get("view") === "indicators"); setHistoryClientId(params.get("clientId") ?? ""); };
+    const syncUrlPages = () => {
+      const params = new URLSearchParams(window.location.search);
+      const route = readWorkspaceRoute(window.location.search, Object.keys(MODULES));
+      setActive(route.module); setAdminSection(route.adminPage ?? "collaborators");
+      if (route.commercialFlow) setCommercialFlow(route.commercialFlow);
+      if (route.csFlow) setCsFlow(route.csFlow);
+      if (route.reportingSection) setReportingSection(route.reportingSection);
+      if (route.catalog) setCatalogSection(route.catalog);
+      setIndicatorsOpen(params.get("view") === "indicators"); setHistoryClientId(params.get("clientId") ?? "");
+      setLocationSearch(window.location.search); setSelectedItem(null); setSelectedCustomer(null); setMobileNav(false);
+    };
     window.addEventListener("popstate", syncUrlPages);
     return () => window.removeEventListener("popstate", syncUrlPages);
   }, []);
@@ -739,22 +784,16 @@ export default function OperationsApp() {
     setSelectedCustomer(null);
     setIndicatorsOpen(false);
     setHistoryClientId("");
-    const url = new URL(window.location.href);
-    url.searchParams.delete("view");
-    url.searchParams.delete("card");
-    url.searchParams.delete("subtask");
-    url.searchParams.delete("clientId");
-    if (module === "dashboard") url.searchParams.delete("mod");
-    else url.searchParams.set("mod", module);
-    if (module === "commercial" && nextCommercialFlow) url.searchParams.set("commercialFlow", nextCommercialFlow);
-    else if (module !== "commercial") {
-      url.searchParams.delete("commercialFlow");
-      url.searchParams.delete("lead");
-    }
-    if (module === "cs" && nextCsFlow) url.searchParams.set("csFlow", nextCsFlow);
-    else if (module !== "cs") url.searchParams.delete("csFlow");
-    if (module !== "catalogs") url.searchParams.delete("cad");
-    window.history.replaceState({}, "", url);
+    const url = workspaceRouteUrl(window.location.href, {
+      module, adminPage: module === "admin" ? nextAdminSection ?? adminSection : undefined,
+      commercialFlow: module === "commercial" ? nextCommercialFlow ?? commercialFlow : undefined,
+      csFlow: module === "cs" ? nextCsFlow ?? csFlow : undefined,
+      reportingSection: module === "reporting" ? nextReportingSection ?? reportingSection : undefined,
+      catalog: module === "catalogs" ? catalogSection : undefined,
+    });
+    if (url.href !== window.location.href) pushWorkspaceHistory(url);
+    setLocationSearch(url.search); setSearch("");
+    window.requestAnimationFrame(() => { window.scrollTo({ top: 0, behavior: "auto" }); document.getElementById("workspace-content")?.focus({ preventScroll: true }); });
   };
 
   const openIndicatorsPage = () => {
@@ -767,14 +806,14 @@ export default function OperationsApp() {
     setIndicatorsOpen(true);
     const url = new URL(window.location.href);
     url.searchParams.set("view", "indicators");
-    window.history.pushState({}, "", url);
+    pushWorkspaceHistory(url);
   };
 
   const closeIndicatorsPage = () => {
     setIndicatorsOpen(false);
     const url = new URL(window.location.href);
     url.searchParams.delete("view");
-    window.history.replaceState({}, "", url);
+    window.history.replaceState(window.history.state, "", url);
   };
 
 
@@ -783,7 +822,7 @@ export default function OperationsApp() {
     setHistoryClientId("");
     const url = new URL(window.location.href);
     url.searchParams.delete("clientId");
-    window.history.replaceState({}, "", url);
+    window.history.replaceState(window.history.state, "", url);
   };
 
   const changeTheme = (nextTheme: "light" | "dark") => {
@@ -834,7 +873,7 @@ export default function OperationsApp() {
     const url = new URL(window.location.href);
     url.searchParams.set("mod", "catalogs");
     url.searchParams.set("cad", section);
-    window.history.replaceState({}, "", url);
+    window.history.replaceState(window.history.state, "", url);
   };
 
   const openFunctionSettings = (section: AdminSection | CatalogSection, destination: "admin" | "catalogs" = "admin") => {
@@ -1000,26 +1039,26 @@ export default function OperationsApp() {
   const monthSuggestionModule = useMemo(() => suggestionModule ? ({ ...suggestionModule, suggestions: suggestionModule.suggestions.filter((entry) => brasiliaMonthKey(entry.createdAt) === kanbanMonth || brasiliaMonthKey(entry.updatedAt) === kanbanMonth) }) : null, [suggestionModule, kanbanMonth]);
 
   const globalResults = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase("pt-BR");
+    const query = normalizeWorkspaceSearch(search);
     if (!query || !data) return [];
     const employees = (data.access?.employees ?? [])
-      .filter((employee) => `${employee.displayName} ${employee.email} ${employee.jobTitle} ${employee.departmentName} ${employee.departmentNames.join(" ")}`.toLocaleLowerCase("pt-BR").includes(query))
+      .filter((employee) => `${employee.displayName} ${employee.email} ${employee.jobTitle} ${employee.departmentName} ${employee.departmentNames.join(" ")}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").includes(query))
       .slice(0, 5)
       .map((employee) => ({ id: employee.id, label: employee.displayName, meta: `Colaborador · ${employee.jobTitle || employee.departmentName || "Dontus"}`, kind: "employee" as const }));
     const customers = data.customers
-      .filter((customer) => `${customer.id} ${customer.trade_name} ${customer.legal_name} ${customer.document_masked} ${customer.phone}`.toLocaleLowerCase("pt-BR").includes(query))
+      .filter((customer) => `${customer.id} ${customer.trade_name} ${customer.legal_name} ${customer.document_masked} ${customer.phone}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").includes(query))
       .slice(0, 4)
       .map((customer) => ({ id: customer.id, label: customer.trade_name, meta: "Cliente", kind: "customer" as const }));
     const records = data.items
-      .filter((item) => `${item.customer_id ?? ""} ${item.title} ${item.customer_name} ${item.record_type} ${item.description}`.toLocaleLowerCase("pt-BR").includes(query))
+      .filter((item) => `${item.customer_id ?? ""} ${item.title} ${item.customer_name} ${item.record_type} ${item.description}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").includes(query))
       .slice(0, 6)
       .map((item) => ({ id: item.id, label: item.title, meta: `${item.record_type} · ${MODULES[item.module as ModuleKey]?.short ?? item.module}`, kind: "item" as const }));
     const tasks = (data.taskModule?.tasks ?? [])
-      .filter((task) => `${task.customerId ?? ""} ${task.customerCode} ${task.customerName} ${task.protocol} ${task.title} ${task.description}`.toLocaleLowerCase("pt-BR").includes(query))
+      .filter((task) => `${task.customerId ?? ""} ${task.customerCode} ${task.customerName} ${task.protocol} ${task.title} ${task.description}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").includes(query))
       .slice(0, 4)
       .map((task) => ({ id: task.id, label: `${task.protocol} · ${task.title}`, meta: `Tarefa · ${task.statusName}`, kind: "task" as const }));
     const suggestions = (data.suggestionModule?.suggestions ?? [])
-      .filter((suggestion) => `${suggestion.customerId ?? ""} ${suggestion.customerName} ${suggestion.protocol} ${suggestion.name} ${suggestion.description}`.toLocaleLowerCase("pt-BR").includes(query))
+      .filter((suggestion) => `${suggestion.customerId ?? ""} ${suggestion.customerName} ${suggestion.protocol} ${suggestion.name} ${suggestion.description}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").includes(query))
       .slice(0, 3)
       .map((suggestion) => ({ id: suggestion.id, label: `${suggestion.protocol} · ${suggestion.name}`, meta: `Sugestão · ${suggestion.statusName}`, kind: "suggestion" as const }));
     return [...employees, ...customers, ...records, ...tasks, ...suggestions].slice(0, 12);
@@ -1266,6 +1305,20 @@ export default function OperationsApp() {
       return canSeeNavigationItem(candidate) ? [candidate] : [];
     }),
   })).filter((group) => group.items.length > 0);
+  const workspaceTargets: Array<WorkspaceDestination & { route: WorkspaceRoute }> = [];
+  const collectDestination = (item: NavigationItem, group: string) => {
+    if (item.children?.length) { item.children.forEach(child => collectDestination(child, group)); return; }
+    if (!item.module) return;
+    const route: WorkspaceRoute = { module: item.module, adminPage: item.adminSection, commercialFlow: item.commercialFlow, csFlow: item.csFlow, reportingSection: item.reportingSection };
+    workspaceTargets.push({ key: workspaceDestinationKey(route), label: item.label, group,
+      description: (item.adminSection ? ({ collaborators:"Cadastro funcional, setores e acesso dos colaboradores.",permissions:"Grupos de acesso e permissões por funcionalidade.",links:"Links de portais, painéis e formulários do sistema.",notices:"Comunicados, eventos e confirmações de leitura.",audit:"Histórico de alterações, usuários e operações realizadas.",recruitment:"Candidatos, etapas e avaliações do processo seletivo." } as Record<string,string>)[item.adminSection] : undefined) || moduleDescriptions[item.module] || "Cadastros e controles da operação.", icon: item.icon, route });
+  };
+  navigationGroups.forEach(group => group.items.forEach(item => collectDestination(item, group.label)));
+  const currentDestinationKey = workspaceDestinationKey({ module: active, adminPage: active === "admin" ? adminSection : undefined,
+    commercialFlow: active === "commercial" ? commercialFlow : undefined, csFlow: active === "cs" ? csFlow : undefined,
+    reportingSection: active === "reporting" ? reportingSection : undefined });
+  const currentDestination = workspaceTargets.find(item => item.key === currentDestinationKey);
+  const workspaceTitle = historyClientId ? "Histórico do cliente" : indicatorsOpen ? "Indicadores · " + (currentDestination?.label || MODULES[active].label) : currentDestination?.label || MODULES[active].label;
   const markAllNotificationsRead = async () => {
     const visibleNotificationIds = notificationEntries.map((entry) => entry.id);
     const requests: Array<Record<string, unknown>> = [
@@ -1323,7 +1376,7 @@ export default function OperationsApp() {
         <Icon size={iconSize} /><span>{label}</span>
       </button>
     ) : module ? (
-      <button className={itemClassName} onClick={() => navigate(module, itemAdminSection, itemCommercialFlow, itemCsFlow, itemReportingSection)}>
+      <button className={itemClassName} title={label} aria-label={label} aria-current={activeItem ? "page" : undefined} onClick={() => navigate(module, itemAdminSection, itemCommercialFlow, itemCsFlow, itemReportingSection)}>
         <Icon size={iconSize} /><span>{label}</span>{module === "internalChat" && internalChatUnread > 0 && <b className="nav-unread-badge">{internalChatUnread > 99 ? "99+" : internalChatUnread}</b>}{module === "tasks" && assignedOpenTaskCount > 0 && <b className="nav-unread-badge">{assignedOpenTaskCount > 99 ? "99+" : assignedOpenTaskCount}</b>}{module === "notices" && noticeUnread > 0 && <b className="nav-unread-badge">{noticeUnread > 99 ? "99+" : noticeUnread}</b>}{module === "reminders" && reminderUnread > 0 && <b className="nav-unread-badge reminder">{reminderUnread > 99 ? "99+" : reminderUnread}</b>}{module === "waitingQueue" && waitingQueueCount > 0 && <b className="nav-unread-badge waiting">{waitingQueueCount > 99 ? "99+" : waitingQueueCount}</b>}
       </button>
     ) : (
@@ -1345,7 +1398,8 @@ export default function OperationsApp() {
 
   return (
     <ReminderFilterProvider records={data.items.filter((entry) => entry.module === "reminders")}><div className={["app-shell", theme === "dark" ? "theme-dark" : "theme-light", backgroundImage ? "has-workspace-background" : "", active === "chat" ? "chat-focus-mode" : "", sidebarCollapsed ? "sidebar-collapsed" : "", `agenda-visual-${agendaVisual}`, `system-accent-${agendaVisual}`].join(" ")}>
-      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
+      <a className="workspace-skip-link" href="#workspace-content">Pular para o conteúdo</a>
+      <aside id="workspace-sidebar" className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
         <div className="brand">
           <Image src="/dontus-logo.png" alt="Dontus Gestão Odontológica" width={184} height={52} priority unoptimized />
           <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed(current => { const next = !current; window.localStorage.setItem("dontus.sidebar-collapsed", String(next)); return next; })} title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"} aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}>{sidebarCollapsed ? <PanelLeftOpen size={17}/> : <PanelLeftClose size={17}/>}</button>
@@ -1381,13 +1435,14 @@ export default function OperationsApp() {
 
       <main className="main" style={workspaceBackgroundStyle}>
         <header className="topbar">
-          <button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menu"><Menu size={21} /></button>
+          <button className="icon-button menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menu" aria-controls="workspace-sidebar" aria-expanded={mobileNav}><Menu size={21} /></button>
           <div className="global-search">
             <Search size={18} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitGlobalSearch(); }} placeholder="Buscar ID, clientes, colaboradores, protocolos, tarefas..." aria-label="Busca global" />
-            <kbd>⌘ K</kbd>
-            {(globalResults.length > 0 || /^#?[\d-]{3,}$/.test(search.trim())) && (
-              <div className="search-results">
+            <input ref={globalSearchInput} value={search} onFocus={() => setRecordSearchOpen(true)} onChange={(event) => { setSearch(event.target.value); setRecordSearchOpen(true); }} onKeyDown={(event) => { if (event.key === "Enter") submitGlobalSearch(); if (event.key === "Escape") setRecordSearchOpen(false); if (event.key === "ArrowDown") { event.preventDefault(); event.currentTarget.closest(".global-search")?.querySelector<HTMLButtonElement>(".search-results button")?.focus(); } }} placeholder="Buscar clientes, IDs, protocolos e registros..." aria-label="Busca global" />
+            <kbd aria-hidden="true">/</kbd>
+            {recordSearchOpen && search.trim() && (
+              <div className="search-results" role="region" aria-label="Resultados da busca global">
+                {globalResults.length === 0 && !/^#?[\d-]{3,}$/.test(search.trim()) && <p className="search-no-results">Nenhum registro encontrado. Confira o nome, ID ou protocolo.</p>}
                 {/^#?[\d-]{3,}$/.test(search.trim()) && <button className="search-id-overview" onClick={() => { openClientHistoryPage(search); setSearch(""); }}><span><b>Abrir página do ID {search.trim()}</b></span><small>Tarefas, atendimentos, temas, sugestões, acompanhamentos, agenda e rede</small></button>}
                 {globalResults.map((result) => (
                   <button key={`${result.kind}-${result.id}`} onClick={() => {
@@ -1430,7 +1485,11 @@ export default function OperationsApp() {
           </div>
         </header>
 
-        <div className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}>
+        <WorkspaceExperience destinations={workspaceTargets} currentKey={currentDestinationKey} currentTitle={workspaceTitle} userEmail={data.user.email}
+          onNavigate={key => { const target = workspaceTargets.find(item => item.key === key); if (target) navigate(target.route.module, target.route.adminPage, target.route.commercialFlow, target.route.csFlow, target.route.reportingSection); }}
+          onSearchRecords={query => { setSearch(query); setRecordSearchOpen(true); globalSearchInput.current?.focus(); }}
+          lastUpdatedAt={lastUpdatedAt} syncing={syncing} syncError={syncError}/>
+        <div id="workspace-content" tabIndex={-1} className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}>
           <Suspense fallback={<section role="status" className="empty-state">Carregando módulo...</section>}>
           {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext && canViewOperationIndicators ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} catalogs={data.customerModule?.catalogs ?? []} onClose={closeIndicatorsPage} /> : <>
           {operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
@@ -1559,7 +1618,7 @@ export default function OperationsApp() {
             <><ConfigurationReturnBar target={settingsReturnTarget} onBack={returnFromSettings} /><CatalogsModule module={data.taskModule} section={catalogSection} onSection={navigateCatalog} canManage={userCan(data.user, "catalogs", "manage") || userCan(data.user, "tasks", "manage")} busy={busy} operate={operate} /></>
           )}
           {active === "reporting" && <AnalyticsWorkspace data={data} section={reportingSection === "biExecutive" ? "bi" : reportingSection} sector={analyticsDepartment} />}
-          {active === "admin" && <><ConfigurationReturnBar target={settingsReturnTarget} onBack={returnFromSettings} /><AdminView data={data} section={adminSection} onSection={setAdminSection} busy={busy} onOperate={operate} backgroundImage={backgroundImage} onBackgroundChange={changeBackgroundImage} /></>}
+          {active === "admin" && <><ConfigurationReturnBar target={settingsReturnTarget} onBack={returnFromSettings} /><AdminView data={data} section={adminSection} onSection={section=>navigate("admin",section)} busy={busy} onOperate={operate} backgroundImage={backgroundImage} onBackgroundChange={changeBackgroundImage} /></>}
           </>}
           </Suspense>
         </div>
@@ -1765,7 +1824,10 @@ function ClientRecordsPanel({ title, empty, children }: { title: string; empty: 
 function BarChart3Icon() { return <ChartNoAxesCombined />; }
 
 function ProfileAvatar({ name, photo, large = false, coordinator = false }: { name: string; photo?: string; large?: boolean; coordinator?: boolean }) {
-  return <span className={`avatar ${large ? "large" : ""} ${photo ? "has-photo" : ""}`} style={photo ? { backgroundImage: `url("${photo}")` } : undefined}>{!photo && name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}{coordinator && <i className="coordinator-mark" title="Coordenador"><BadgeCheck size={13} /></i>}</span>;
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [photo]);
+  const hasPhoto = Boolean(photo && !failed);
+  return <span className={`avatar ${large ? "large" : ""} ${hasPhoto ? "has-photo" : ""}`} title={name}>{hasPhoto ? <img src={photo} alt={name} loading="lazy" decoding="async" onError={() => setFailed(true)}/> : name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}{coordinator && <i className="coordinator-mark" title="Coordenador"><BadgeCheck size={13} /></i>}</span>;
 }
 
 function GlobalImagePreview() {
@@ -1981,7 +2043,7 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
   const tasksToday = openTasks.filter((task) => Boolean(task.dueAt) && localDay(task.dueAt!) === todayKey).length;
   const unreadRooms = data.internalChatModule?.rooms.filter((room) => !room.isArchived && room.unreadCount > 0) ?? [];
   const internalUnread = unreadRooms.reduce((total, room) => total + room.unreadCount, 0);
-  const waiting = data.chatModule?.metrics.waiting ?? 0;
+  const waiting = data.items.filter(item=>item.module==="waitingQueue"&&parseWaitingQueue(item.description)?.state==="waiting").length;
   const recentNotices = (data.noticesModule?.notices ?? [])
     .filter((notice) => notice.active && notice.visibleToCurrentUser)
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
@@ -2015,7 +2077,7 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
     const url = new URL(window.location.href);
     url.searchParams.set("mod", "work");
     url.searchParams.set("commitment", id);
-    window.history.replaceState({}, "", url);
+    window.history.replaceState(window.history.state, "", url);
   };
 
   const openTask = (id: string) => {
@@ -2023,7 +2085,7 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
     const url = new URL(window.location.href);
     url.searchParams.set("mod", "tasks");
     url.searchParams.set("task", id);
-    window.history.replaceState({}, "", url);
+    window.history.replaceState(window.history.state, "", url);
   };
   const copyPublicLink = async () => {
     const url = new URL(window.location.origin);
@@ -2046,24 +2108,24 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
       <div className="dashboard-welcome-side"><div className="dashboard-welcome-department"><span>Setor vinculado</span><strong>{data.user.department || "Dontus"}</strong></div></div>
     </section>
 
-    <div className="dashboard-lower-actions" aria-label="Atalhos do painel"><button className="dashboard-public-link-button" onClick={() => void copyPublicLink()}>{publicLinkCopied ? <Check size={17} /> : <Copy size={17} />}<span>{publicLinkCopied ? "Link copiado" : "Copiar painel público"}</span></button><button className="dashboard-survey-indicator" onClick={() => onNavigate("surveys")}><ChartNoAxesCombined size={17}/><span>Indicadores de satisfação</span></button><button className="dashboard-portal-button" onClick={onPortal}><span>Portal Dontus</span><ExternalLink size={17} /></button></div>
+    <div className="dashboard-lower-actions" aria-label="Atalhos do painel"><button className="dashboard-public-link-button" onClick={() => void copyPublicLink()}>{publicLinkCopied ? <Check size={17} /> : <Copy size={17} />}<span>{publicLinkCopied ? "Link copiado" : "Copiar painel público"}</span></button>{userCan(data.user,"surveys","view") && <button className="dashboard-survey-indicator" onClick={() => onNavigate("surveys")}><ChartNoAxesCombined size={17}/><span>Indicadores de satisfação</span></button>}<button className="dashboard-portal-button" onClick={onPortal}><span>Portal Dontus</span><ExternalLink size={17} /></button></div>
 
     <div className="dashboard-section-title"><span><Sparkles size={18} /></span><div><h2>Acesso rápido</h2><p>Suas principais ferramentas em um só lugar.</p></div></div>
     <section className="dashboard-quick-grid" aria-label="Acesso rápido">
-      {quickLinks.map((entry) => { const Icon = entry.icon; return <button key={entry.key} className={`dashboard-quick-card ${entry.tone} ${entry.expanded ? "expanded" : ""}`} onClick={entry.action} aria-expanded={entry.key === "notices" ? entry.expanded : undefined}><span className="dashboard-quick-icon"><Icon size={23} /></span><span className="dashboard-quick-copy"><strong>{entry.title}</strong><b>{entry.value}</b><small>{entry.hint}</small></span><ChevronRight size={19} className="dashboard-quick-chevron"/><span className="dashboard-quick-action">Acessar <ChevronRight size={15}/></span></button>; })}
+      {quickLinks.filter(entry => userCan(data.user, ({agenda:"work",tasks:"tasks",chat:"internalChat",queue:"waitingQueue",notices:"notices"} as Record<string,ModuleKey>)[entry.key], "view")).map((entry) => { const Icon = entry.icon; return <button key={entry.key} className={`dashboard-quick-card ${entry.tone} ${entry.expanded ? "expanded" : ""}`} onClick={entry.action} aria-expanded={entry.key === "notices" ? entry.expanded : undefined}><span className="dashboard-quick-icon"><Icon size={23} /></span><span className="dashboard-quick-copy"><strong>{entry.title}</strong><b>{entry.value}</b><small>{entry.hint}</small></span><ChevronRight size={19} className="dashboard-quick-chevron"/><span className="dashboard-quick-action">Acessar <ChevronRight size={15}/></span></button>; })}
     </section>
 
     <section className="dashboard-fixed-panels" aria-label="Pendências da pessoa vinculada">
-      <article className="dashboard-focus-panel dashboard-upcoming-commitments">
+      {userCan(data.user,"work","view") && <article className="dashboard-focus-panel dashboard-upcoming-commitments">
         <header><div><span className="dashboard-notices-icon"><CalendarDays size={18}/></span><div><h2>Próximos compromissos</h2><p>Agenda vinculada a {firstName}.</p></div></div><button onClick={() => onNavigate("work")} aria-label="Acessar agenda"><ChevronRight size={19}/></button></header>
-        <div className="dashboard-focus-list">{upcomingCommitments.length === 0 ? <div className="dashboard-notice-empty"><CalendarDays size={22}/><span><strong>Nenhum compromisso agendado</strong><small>Seus próximos eventos aparecerão aqui.</small></span></div> : upcomingCommitments.map((commitment) => <button data-reminder-entity-id={commitment.id} key={commitment.id} onClick={() => openCommitment(commitment.id)}><span className="dashboard-focus-marker blue"><CalendarDays size={15}/></span><span><strong>{commitment.title}</strong><small>{commitmentDate(commitment.startsAt)} · até {time(commitment.endsAt)}</small></span><span className="dashboard-commitment-status">{commitment.statusName || "Agendado"}</span><ChevronRight size={17}/></button>)}</div>
+        <div className="dashboard-focus-list">{upcomingCommitments.length === 0 ? <div className="dashboard-notice-empty"><CalendarDays size={22}/><span><strong>{data.agendaModule?.calendars.some(calendar=>calendar.active)?"Nenhum compromisso agendado":"Nenhuma agenda liberada"}</strong><small>{data.agendaModule?.calendars.some(calendar=>calendar.active)?"Seus próximos eventos aparecerão aqui.":"Solicite ao administrador a liberação de uma agenda no seu cadastro."}</small></span></div> : upcomingCommitments.map((commitment) => <button data-reminder-entity-id={commitment.id} key={commitment.id} onClick={() => openCommitment(commitment.id)}><span className="dashboard-focus-marker blue"><CalendarDays size={15}/></span><span><strong>{commitment.title}</strong><small>{commitmentDate(commitment.startsAt)} · até {time(commitment.endsAt)}</small></span><span className="dashboard-commitment-status">{commitment.statusName || "Agendado"}</span><ChevronRight size={17}/></button>)}</div>
         <footer><button onClick={() => onNavigate("work")}>Acessar agenda completa <ChevronRight size={16}/></button></footer>
-      </article>
-      <article className="dashboard-focus-panel dashboard-pending-tasks">
+      </article>}
+      {userCan(data.user,"tasks","view") && <article className="dashboard-focus-panel dashboard-pending-tasks">
         <header><div><span className="dashboard-notices-icon task"><ListTodo size={18}/></span><div><h2>Tarefas pendentes</h2><p>Prioridades que aguardam sua análise.</p></div></div><button onClick={() => onNavigate("tasks")} aria-label="Acessar tarefas"><ChevronRight size={19}/></button></header>
         <div className="dashboard-focus-list">{pendingTasks.length === 0 ? <div className="dashboard-notice-empty"><CheckCircle2 size={22}/><span><strong>Nenhuma tarefa pendente</strong><small>Suas próximas demandas aparecerão aqui.</small></span></div> : pendingTasks.map((task) => <button data-reminder-entity-id={task.id} key={task.id} onClick={() => openTask(task.id)}><span className="dashboard-focus-marker violet"><ListTodo size={15}/></span><span><strong>{task.title}</strong><small>{task.protocol} · {task.departmentName || "Setor não informado"}</small></span><span className={`dashboard-task-due ${task.slaState?.toLowerCase().includes("atras") ? "late" : ""}`}><Clock3 size={13}/>{taskDue(task.dueAt)}</span><ChevronRight size={17}/></button>)}</div>
         <footer><button onClick={() => onNavigate("tasks")}>Acessar todas as tarefas <ChevronRight size={16}/></button></footer>
-      </article>
+      </article>}
     </section>
 
     {showNotices && <section className="dashboard-recent-notices dashboard-notices-expanded">
@@ -2190,18 +2252,18 @@ function CustomersView({ customers, catalogs, items, selected, onSelect, onCreat
   const [editing, setEditing] = useState<Customer | null>(null);
   const [selectedNetwork, setSelectedNetwork] = useState<WorkItem | null>(null);
   const networks = items.filter((item) => item.module === "cs" && /enterpriseNetwork/.test(item.description));
-  const filtered = customers.filter((customer) => `${customer.trade_name} ${customer.legal_name} ${customer.document_masked}`.toLowerCase().includes(filter.toLowerCase()) && (!status || customer.status === status) && (!project || customer.project === project) && (!graceDays || customer.grace_days === graceDays));
-  const filteredNetworks = networks.filter((item) => `${item.title} ${item.owner} ${item.customer_name}`.toLocaleLowerCase("pt-BR").includes(filter.toLocaleLowerCase("pt-BR")));
+  const filtered = customers.filter((customer) => normalizeWorkspaceSearch(`${customer.trade_name} ${customer.legal_name} ${customer.document_masked} ${customer.email} ${customer.phone}`).includes(normalizeWorkspaceSearch(filter)) && (!status || customer.status === status) && (!project || customer.project === project) && (!graceDays || customer.grace_days === graceDays));
+  const filteredNetworks = networks.filter((item) => normalizeWorkspaceSearch(`${item.title} ${item.owner} ${item.customer_name}`).includes(normalizeWorkspaceSearch(filter)));
   return <>
     <PageHeader eyebrow="MÓDULO · CLIENTES" title="Clientes" description="Controle a base de clientes, redes, franquias e informações de assinatura." action={<span className="commercial-header-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" type="button" onClick={onOpenSettings} title="Configurar opções do cadastro de clientes" aria-label="Configurar opções do cadastro de clientes"><Settings size={18}/></button>}{canCreate && section === "customers" && <button className="primary-button" onClick={onCreate}><Plus size={17} /> Cadastrar cliente</button>}</span>} />
     <nav className="customer-register-tabs" aria-label="Cadastros de clientes"><button className={section === "customers" ? "active" : ""} onClick={() => { setSection("customers"); setFilter(""); }}><UsersRound size={16}/> Clientes <b>{customers.length}</b></button><button className={section === "networks" ? "active" : ""} onClick={() => { setSection("networks"); setFilter(""); }}><Users size={16}/> Redes e franquias <b>{networks.length}</b></button></nav>
-    <div className={`customer-filter-panel ${section === "networks" ? "network-filter" : ""}`}><div className="field-search"><Search size={17} /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={section === "networks" ? "Nome da rede, franquia ou responsável" : "Identificação, razão social ou CNPJ"} /></div>{section === "customers" && <><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos</option>{[...new Set(["Lead", "Cliente", "Cancelado", ...catalogs.filter((item) => item.catalog === "status" && item.active).map((item) => item.name)])].map((name) => <option key={name}>{name}</option>)}</select></label><label>Projeto<select value={project} onChange={(event) => setProject(event.target.value)}><option value="">Todos</option>{catalogs.filter((item) => item.catalog === "project" && item.active).map((item) => <option key={item.id}>{item.name}</option>)}</select></label><label>Dias de tolerância<select value={graceDays} onChange={(event) => setGraceDays(event.target.value)}><option value="">Todos</option>{catalogs.filter((item) => item.catalog === "graceDays" && item.active).map((item) => <option key={item.id}>{item.name}</option>)}</select></label></>}<div className="toolbar-summary"><strong>{section === "customers" ? filtered.length : filteredNetworks.length}</strong> registros</div></div>
+    <div className={`customer-filter-panel ${section === "networks" ? "network-filter" : ""}`}><div className="field-search"><Search size={17} /><input value={filter} onChange={(event) => setFilter(event.target.value)} aria-label={section === "networks" ? "Buscar rede ou franquia" : "Buscar cliente"} placeholder={section === "networks" ? "Nome da rede, franquia ou responsável" : "Nome, ID, documento, e-mail ou telefone"} /></div>{section === "customers" && <><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos</option>{[...new Set(["Lead", "Cliente", "Cancelado", ...catalogs.filter((item) => item.catalog === "status" && item.active).map((item) => item.name)])].map((name) => <option key={name}>{name}</option>)}</select></label><label>Projeto<select value={project} onChange={(event) => setProject(event.target.value)}><option value="">Todos</option>{catalogs.filter((item) => item.catalog === "project" && item.active).map((item) => <option key={item.id}>{item.name}</option>)}</select></label><label>Dias de tolerância<select value={graceDays} onChange={(event) => setGraceDays(event.target.value)}><option value="">Todos</option>{catalogs.filter((item) => item.catalog === "graceDays" && item.active).map((item) => <option key={item.id}>{item.name}</option>)}</select></label></>}<div className="toolbar-summary"><strong>{section === "customers" ? filtered.length : filteredNetworks.length}</strong> registros</div></div>
     {section === "customers" ? <div className="table-card">
       <div className="data-table customers-table">
         <div className="table-row table-head"><span>ID · Cliente</span><span>Projeto</span><span>Versão</span><span>Contato</span><span>Assinatura</span><span>Status</span></div>
         {filtered.length === 0 ? <EmptyState text="Nenhum cliente encontrado." /> : filtered.map((customer) => (
           <button data-reminder-entity-id={customer.id} className="table-row" key={customer.id} onClick={() => onSelect(customer)}>
-            <span className="customer-cell"><i>{customer.trade_name.slice(0, 2).toUpperCase()}</i><span><strong>{customer.trade_name}</strong><small>{customer.legal_name}</small></span>{Boolean(customer.strategic) && <em><BadgeCheck size={14} /> Estratégico</em>}</span>
+            <span className="customer-cell"><i>{customer.trade_name.slice(0, 2).toUpperCase()}</i><span><strong>{customer.trade_name}</strong>{customer.document_masked&&<small className="customer-record-id">ID / documento: {customer.document_masked}</small>}<small title={customer.legal_name}>{customer.legal_name}</small></span>{Boolean(customer.strategic) && <em><BadgeCheck size={14} /> Estratégico</em>}</span>
             <span>{customer.project || "—"}</span><span>{customer.product_version || "—"}</span><span><strong>{customer.phone || "—"}</strong><small>{customer.email || customer.owner}</small></span><span>{customer.subscription || "—"}</span><span><b className={`status-pill ${statusTone(customer.status)}`}>{customer.status || "Não definido"}</b><ChevronRight size={16} /></span>
           </button>
         ))}
@@ -2662,7 +2724,7 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, marketingCamp
     setSelected(null);
     const url = new URL(window.location.href);
     url.searchParams.delete("lead");
-    window.history.replaceState({}, "", url);
+    window.history.replaceState(window.history.state, "", url);
   };
   const chooseFunnel = (id: string) => {
     setSelectedFunnel(id);
@@ -3114,8 +3176,8 @@ function CommercialLeadDrawer({ item, customers, strategicNetworks, employees, m
     if (!version.trim()) return false;
     const type = agendaModule?.types.find((entry) => entry.active);
     const status = agendaModule?.statuses.find((entry) => entry.active);
-    const responsible = agendaModule?.collaborators.find((entry) => entry.departmentId === activationCalendar?.departmentId && (entry.id === destinationEmployee?.id || entry.name === destinationEmployee?.displayName))
-      ?? agendaModule?.collaborators.find((entry) => entry.departmentId === activationCalendar?.departmentId);
+    const responsible = agendaModule?.collaborators.find((entry) => Boolean(activationCalendar && entry.agendaIds?.includes(activationCalendar.id)) && (entry.id === destinationEmployee?.id || entry.name === destinationEmployee?.displayName))
+      ?? agendaModule?.collaborators.find((entry) => Boolean(activationCalendar && entry.agendaIds?.includes(activationCalendar.id)));
     if (!activationCalendar || !type || !status || !responsible || !slot) return false;
     if (!availableSlotsFor(slotDate, Date.now()).includes(slot)) { setClientIdError("Este horário não está mais disponível. Escolha outro horário."); setShowScheduleModal(false); return false; }
     const startsAt = commercialSlotStartsAt(slotDate, slot);
@@ -3332,7 +3394,7 @@ function CommercialLeadDrawerLegacy({ item, catalogs, agendaModule, funnels, fun
     <section className="lead-summary-grid"><div><span>Contato</span><strong>{lead.phone || "Não informado"}</strong><small>{lead.source || "Origem não definida"}</small></div><div><span>Responsável</span><strong>{lead.seller || item.owner || "Não definido"}</strong><small>{lead.temperature || "Sem temperatura"}</small></div><div><span>Valor estimado</span><strong>{item.amount_cents ? formatMoney(item.amount_cents) : "—"}</strong><small>Score {"★".repeat(lead.score || 0) || "—"}</small></div></section>
     <section className="lead-drawer-section lead-labels-section"><div className="panel-header"><div><span className="eyebrow">ETIQUETAS</span><h3>Classificar lead</h3><p>As etiquetas selecionadas ficam visíveis diretamente no card.</p></div><button type="button" className="secondary-button" disabled={!canEdit || busy || labelCatalogs.length === 0} onClick={() => setShowLabelPicker(true)}><Plus size={15} /> Selecionar etiquetas</button></div>{lead.labels.length > 0 && <div className="selected-label-list">{lead.labels.map((label) => <span key={label} style={{ "--label-color": commercialLabelColor(label) } as CSSProperties}><i />{label}</span>)}</div>}{labelCatalogs.length === 0 && <small>Cadastre etiquetas em Comercial › Configuração › Etiquetas.</small>}{showLabelPicker && <LeadLabelPicker selected={lead.labels} labels={labelCatalogs} busy={busy} onClose={() => setShowLabelPicker(false)} onChange={(labels) => { void saveLead({ ...lead, labels }).then((result) => { if (result) setShowLabelPicker(false); }); }} />}</section>
     {flow === "qualification" && <section className="lead-drawer-section commercial-outcome-section"><div className="panel-header"><div><span className="eyebrow">VALIDAÇÃO</span><h3>Qualificação do lead</h3></div></div>{!showQualification && !showLossReason ? <div className="drawer-actions"><button className="secondary-button danger-action" disabled={!canEdit || busy} onClick={() => setShowLossReason(true)}>Desqualificado</button><button className="primary-button" disabled={!canEdit || busy} onClick={() => setShowQualification(true)}>Qualificado (com envio para CRM)</button></div> : showLossReason ? <div className="lead-control-grid"><label className="wide">Motivo da perda<select value={lossReason} onChange={(event) => setLossReason(event.target.value)}><option value="">Selecione o motivo</option>{lossReasons.map((entry) => <option key={entry.id} value={entry.name}>{entry.name}</option>)}</select>{lossReasons.length === 0 && <small>Cadastre os motivos em Comercial › Configuração › Motivos de perda.</small>}</label><div className="drawer-actions wide"><button className="secondary-button" onClick={() => setShowLossReason(false)}>Cancelar</button><button className="secondary-button danger-action" disabled={!canEdit || busy || !lossReason} onClick={() => void saveLead({ ...lead, qualification: "disqualified", stage: "Desqualificado", comments: [...lead.comments, { text: `Motivo da perda: ${lossReason}`, createdAt: new Date().toISOString() }] })}>Confirmar desqualificação</button></div></div> : <div className="lead-control-grid"><label className="wide">Enviar para o CRM<select value={targetFunnelId} onChange={(event) => setTargetFunnelId(event.target.value)}><option value="">Selecione o CRM</option>{crmFunnels.map(({ entry }) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><div className="drawer-actions wide"><button className="secondary-button" onClick={() => setShowQualification(false)}>Cancelar</button><button className="primary-button" disabled={!canEdit || busy || !targetFunnelId} onClick={() => { const target = crmFunnels.find((entry) => entry.entry.id === targetFunnelId); const targetStage = target?.details.stages?.find((entry) => entry.name.trim())?.name; if (target && targetStage) void onSave({ recordType: commercialRecordType("crm"), description: JSON.stringify({ ...lead, qualification: "qualified", funnel: target.entry.name, stage: targetStage }) }).then((result) => { if (result) onClose(); }); }}>Enviar para o CRM</button></div></div>}</section>}
-    {flow === "crm" && <section className="lead-drawer-section commercial-outcome-section"><div className="panel-header"><div><span className="eyebrow">RESULTADO COMERCIAL</span><h3>Fechar oportunidade</h3></div></div><div className="drawer-actions"><button className="primary-button" disabled={!canEdit || busy} onClick={() => { setStage(wonStage); setShowOnboarding(true); }}>Ganho</button><button className="secondary-button danger-action" disabled={!canEdit || busy} onClick={() => void saveLead({ ...lead, stage: lostStage })}>Perdido</button></div>{showOnboarding && <div className="commercial-onboarding-box"><strong>Valor convertido: {formatMoney(item.amount_cents)}</strong><p>Defina se o onboarding será encaminhado com ou sem um horário reservado.</p><div className="drawer-actions"><button className="secondary-button" disabled={!canEdit || busy} onClick={() => { const journey = { kind: "csJourney", phase: "validation", sourceLeadId: item.id, firstMeetingAt: "", trainingAt: "", rescheduledAt: "", follows: [] }; void onAgendaOperation({ action: "createWorkItem", module: "cs", recordType: "Onboarding", title: item.title, customerName: lead.customer || item.customer_name, owner: "Coordenação de CS", team: "Sucesso do Cliente", priority: "P3", amountCents: item.amount_cents, description: JSON.stringify(journey) }, "Cliente enviado para validação de Onboarding.").then((result) => { if (result) void saveLead({ ...lead, stage: wonStage, onboarding: { status: "sent", sentAt: new Date().toISOString() } }); }); }}>Encaminhar para Onboarding</button><button className="primary-button" type="button" onClick={() => setScheduleMessage("Selecione uma data e um dos horários disponíveis.")}>Verificar horários disponíveis</button></div>{scheduleMessage && <div className="commercial-schedule-controls"><label>Data<input type="date" min={minimumScheduleDate} value={slotDate} onChange={(event) => { setSlotDate(event.target.value); setSlot(""); }} /></label><div><span>Horários disponíveis</span><div className="commercial-slot-list">{availableSlots.map((option) => <button type="button" key={option} className={slot === option ? "selected" : ""} onClick={() => setSlot(option)}>{option}</button>)}</div>{availableSlots.length === 0 && <small>Não há vaga neste dia. Selecione outra data para ver horários próximos.</small>}</div>{slot && <button className="primary-button" disabled={busy || !canEdit} onClick={() => { const type = agendaModule?.types.find((entry) => entry.active); const status = agendaModule?.statuses.find((entry) => entry.active); const responsible = agendaModule?.collaborators.find((entry) => entry.departmentId === activationCalendar?.departmentId); if (!activationCalendar || !type || !status || !responsible) { setScheduleMessage("Configure agenda, tipo, status e colaborador ativo em Sucesso do Cliente Ativação."); return; } const startsAt = commercialSlotStartsAt(slotDate, slot); const endsAt = new Date(new Date(startsAt).getTime() + 60 * 60 * 1000).toISOString(); void onAgendaOperation({ action: "createAgendaCommitment", agendaId: activationCalendar.id, agendaTypeId: type.id, agendaStatusId: status.id, responsibleUserId: responsible.id, title: `Kick off · ${item.title}`, description: `Kick off agendado pelo Comercial para ${lead.customer || item.title}`, startsAt, endsAt, participantUserIds: [], recurrence: "none" }, "Horário de onboarding reservado com sucesso.").then((result) => { if (result) void onAgendaOperation({ action: "createWorkItem", module: "cs", recordType: "Onboarding", title: item.title, customerName: lead.customer || item.customer_name, owner: "Coordenação de CS", team: "Sucesso do Cliente", priority: "P3", amountCents: item.amount_cents, description: JSON.stringify({ kind: "csJourney", phase: "validation", sourceLeadId: item.id, scheduledAt: startsAt, firstMeetingAt: startsAt, firstMeetingTime: slot, firstMeetingCommitmentId: result.id, status: "Pendente", follows: [{ kind: "Comercial", text: `Kick off agendado pelo Comercial para ${new Intl.DateTimeFormat("pt-BR").format(new Date(startsAt))} às ${slot}.`, createdAt: new Date().toISOString(), actor: lead.seller || item.owner }] }) }, "Cliente enviado para validação de Onboarding.").then((created) => { if (created) void saveLead({ ...lead, stage: wonStage, onboarding: { status: "scheduled", date: slotDate, time: slot, commitmentId: result.id, sentAt: new Date().toISOString() } }); }); }); }}>Marcar como agendado</button>}</div>}</div>}</section>}
+    {flow === "crm" && <section className="lead-drawer-section commercial-outcome-section"><div className="panel-header"><div><span className="eyebrow">RESULTADO COMERCIAL</span><h3>Fechar oportunidade</h3></div></div><div className="drawer-actions"><button className="primary-button" disabled={!canEdit || busy} onClick={() => { setStage(wonStage); setShowOnboarding(true); }}>Ganho</button><button className="secondary-button danger-action" disabled={!canEdit || busy} onClick={() => void saveLead({ ...lead, stage: lostStage })}>Perdido</button></div>{showOnboarding && <div className="commercial-onboarding-box"><strong>Valor convertido: {formatMoney(item.amount_cents)}</strong><p>Defina se o onboarding será encaminhado com ou sem um horário reservado.</p><div className="drawer-actions"><button className="secondary-button" disabled={!canEdit || busy} onClick={() => { const journey = { kind: "csJourney", phase: "validation", sourceLeadId: item.id, firstMeetingAt: "", trainingAt: "", rescheduledAt: "", follows: [] }; void onAgendaOperation({ action: "createWorkItem", module: "cs", recordType: "Onboarding", title: item.title, customerName: lead.customer || item.customer_name, owner: "Coordenação de CS", team: "Sucesso do Cliente", priority: "P3", amountCents: item.amount_cents, description: JSON.stringify(journey) }, "Cliente enviado para validação de Onboarding.").then((result) => { if (result) void saveLead({ ...lead, stage: wonStage, onboarding: { status: "sent", sentAt: new Date().toISOString() } }); }); }}>Encaminhar para Onboarding</button><button className="primary-button" type="button" onClick={() => setScheduleMessage("Selecione uma data e um dos horários disponíveis.")}>Verificar horários disponíveis</button></div>{scheduleMessage && <div className="commercial-schedule-controls"><label>Data<input type="date" min={minimumScheduleDate} value={slotDate} onChange={(event) => { setSlotDate(event.target.value); setSlot(""); }} /></label><div><span>Horários disponíveis</span><div className="commercial-slot-list">{availableSlots.map((option) => <button type="button" key={option} className={slot === option ? "selected" : ""} onClick={() => setSlot(option)}>{option}</button>)}</div>{availableSlots.length === 0 && <small>Não há vaga neste dia. Selecione outra data para ver horários próximos.</small>}</div>{slot && <button className="primary-button" disabled={busy || !canEdit} onClick={() => { const type = agendaModule?.types.find((entry) => entry.active); const status = agendaModule?.statuses.find((entry) => entry.active); const responsible = agendaModule?.collaborators.find((entry) => Boolean(activationCalendar && entry.agendaIds?.includes(activationCalendar.id))); if (!activationCalendar || !type || !status || !responsible) { setScheduleMessage("Configure agenda, tipo, status e colaborador ativo em Sucesso do Cliente Ativação."); return; } const startsAt = commercialSlotStartsAt(slotDate, slot); const endsAt = new Date(new Date(startsAt).getTime() + 60 * 60 * 1000).toISOString(); void onAgendaOperation({ action: "createAgendaCommitment", agendaId: activationCalendar.id, agendaTypeId: type.id, agendaStatusId: status.id, responsibleUserId: responsible.id, title: `Kick off · ${item.title}`, description: `Kick off agendado pelo Comercial para ${lead.customer || item.title}`, startsAt, endsAt, participantUserIds: [], recurrence: "none" }, "Horário de onboarding reservado com sucesso.").then((result) => { if (result) void onAgendaOperation({ action: "createWorkItem", module: "cs", recordType: "Onboarding", title: item.title, customerName: lead.customer || item.customer_name, owner: "Coordenação de CS", team: "Sucesso do Cliente", priority: "P3", amountCents: item.amount_cents, description: JSON.stringify({ kind: "csJourney", phase: "validation", sourceLeadId: item.id, scheduledAt: startsAt, firstMeetingAt: startsAt, firstMeetingTime: slot, firstMeetingCommitmentId: result.id, status: "Pendente", follows: [{ kind: "Comercial", text: `Kick off agendado pelo Comercial para ${new Intl.DateTimeFormat("pt-BR").format(new Date(startsAt))} às ${slot}.`, createdAt: new Date().toISOString(), actor: lead.seller || item.owner }] }) }, "Cliente enviado para validação de Onboarding.").then((created) => { if (created) void saveLead({ ...lead, stage: wonStage, onboarding: { status: "scheduled", date: slotDate, time: slot, commitmentId: result.id, sentAt: new Date().toISOString() } }); }); }); }}>Marcar como agendado</button>}</div>}</div>}</section>}
     <section className="lead-drawer-section"><div className="panel-header"><div><span className="eyebrow">PRODUTOS</span><h3>Interesse do lead</h3></div></div>{lead.products.length === 0 ? <p>Nenhum produto vinculado.</p> : <div className="lead-products-drawer">{lead.products.map((product, index) => <div key={`${product.product}-${index}`}><span><strong>{product.product}</strong><small>{product.plan || "Plano"} · {product.quantity} un.</small></span><b>{formatMoney(Math.round(product.value * product.quantity * 100))}</b></div>)}</div>}</section>
     <section className="lead-drawer-section lead-interaction-section"><div className="panel-header"><div><span className="eyebrow">ETAPA E FOLLOW-UP</span><h3>Registrar interação</h3></div></div><div className="lead-control-grid"><label>Etapa atual<select value={stage} disabled={!canEdit} onChange={(event) => setStage(event.target.value)}>{stages.map((entry) => <option key={entry.name}>{entry.name}</option>)}</select></label><label>Tipo de follow-up<select id="lead-follow-type" disabled={!canEdit}><option value="">Selecionar</option>{followTypes.map((entry) => <option key={entry.id}>{entry.name}</option>)}</select></label></div><label>O que aconteceu?<textarea value={followText} disabled={!canEdit} onChange={(event) => setFollowText(event.target.value)} placeholder="Registre o contexto, acordo ou próximo passo." rows={4} /></label><div className="drawer-actions"><button className="primary-button" disabled={busy || !canEdit || (!followText.trim() && stage === lead.stage)} onClick={() => { const type = (document.getElementById("lead-follow-type") as HTMLSelectElement | null)?.value || "Atualização"; void saveLead({ ...lead, stage, follows: followText.trim() ? [...lead.follows, { type, text: followText.trim(), createdAt: new Date().toISOString() }] : lead.follows }); }}>Registrar follow-up</button></div></section>
     <section className="lead-drawer-section"><div className="panel-header"><div><span className="eyebrow">COMENTÁRIO INTERNO</span><h3>Histórico do lead</h3></div></div><label>Adicionar comentário<textarea value={commentText} disabled={!canEdit} onChange={(event) => setCommentText(event.target.value)} placeholder="Inclua uma observação avulsa para o histórico." rows={3} /></label><div className="drawer-actions"><button className="secondary-button" disabled={busy || !canEdit || !commentText.trim()} onClick={() => void saveLead({ ...lead, comments: [...lead.comments, { text: commentText.trim(), createdAt: new Date().toISOString() }] })}><MessageSquareText size={15} /> Adicionar comentário</button></div>{lead.comments.length > 0 && <div className="lead-follow-history lead-comments-history">{lead.comments.slice().reverse().map((comment, index) => <article key={`${comment.createdAt}-${index}`}><strong>Comentário interno</strong><time>{dateTime(comment.createdAt)}</time><p>{comment.text}</p></article>)}</div>}</section>
@@ -3501,7 +3563,7 @@ function EnterpriseAgendaInteractionModal({ item, network, unit, agendaModule, i
   const [calendarId, setCalendarId] = useState(suggestedCalendar?.id ?? "");
   const [typeId, setTypeId] = useState(types.find((entry) => /reuni|alinh/i.test(entry.name))?.id ?? types[0]?.id ?? "");
   const [statusId, setStatusId] = useState(statuses.find((entry) => /reserv|agend|pendente/i.test(entry.name))?.id ?? statuses[0]?.id ?? "");
-  const availableCollaborators = agendaModule.collaborators.filter((entry) => !calendarId || entry.departmentId === calendars.find((calendar) => calendar.id === calendarId)?.departmentId);
+  const availableCollaborators = agendaModule.collaborators.filter((entry) => !calendarId || entry.agendaIds?.includes(calendarId));
   const [responsibleId, setResponsibleId] = useState(agendaModule.collaborators.find((entry) => entry.name === item.owner)?.id ?? availableCollaborators[0]?.id ?? agendaModule.collaborators[0]?.id ?? "");
   const [date, setDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [time, setTime] = useState("10:00");
@@ -3519,7 +3581,7 @@ function EnterpriseAgendaInteractionModal({ item, network, unit, agendaModule, i
     const saved = await onScheduled(result.id, startsAt, title.trim(), fullDescription);
     if (saved) onClose();
   };
-  return <div className="modal-backdrop nested-modal enterprise-agenda-modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal enterprise-agenda-modal"><header className="modal-head"><div><span className="eyebrow">AGENDA · CONTAS ESTRATÉGICAS</span><h2>Agendar compromisso</h2><p>O compromisso ficará vinculado ao histórico da rede.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={19} /></button></header><form className="form-grid" onSubmit={submit}><label className="wide">Título *<input required value={title} onChange={(event) => setTitle(event.target.value)} /></label><label>Agenda *<select required value={calendarId} onChange={(event) => setCalendarId(event.target.value)}><option value="">Selecionar agenda</option>{calendars.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.departmentName}</option>)}</select></label><label>Responsável *<select required value={responsibleId} onChange={(event) => setResponsibleId(event.target.value)}><option value="">Selecionar responsável</option>{(availableCollaborators.length ? availableCollaborators : agendaModule.collaborators).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label>Tipo *<select required value={typeId} onChange={(event) => setTypeId(event.target.value)}>{types.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label>Status *<select required value={statusId} onChange={(event) => setStatusId(event.target.value)}>{statuses.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label>Data *<input type="date" required min={new Date().toLocaleDateString("en-CA")} value={date} onChange={(event) => setDate(event.target.value)} /></label><label>Horário *<input type="time" required value={time} onChange={(event) => setTime(event.target.value)} /></label><label>Duração<select value={duration} onChange={(event) => setDuration(event.target.value)}><option value="30">30 minutos</option><option value="60">1 hora</option><option value="90">1h30</option><option value="120">2 horas</option></select></label><label className="wide">Descrição<textarea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !calendarId || !typeId || !statusId || !responsibleId}><CalendarDays size={16} /> Salvar na agenda</button></div></form></section></div>;
+  return <div className="modal-backdrop nested-modal enterprise-agenda-modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className="modal enterprise-agenda-modal"><header className="modal-head"><div><span className="eyebrow">AGENDA · CONTAS ESTRATÉGICAS</span><h2>Agendar compromisso</h2><p>O compromisso ficará vinculado ao histórico da rede.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={19} /></button></header><form className="form-grid" onSubmit={submit}><label className="wide">Título *<input required value={title} onChange={(event) => setTitle(event.target.value)} /></label><label>Agenda *<select required value={calendarId} onChange={(event) => setCalendarId(event.target.value)}><option value="">Selecionar agenda</option>{calendars.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.departmentName}</option>)}</select></label><label>Responsável *<select required value={responsibleId} onChange={(event) => setResponsibleId(event.target.value)}><option value="">Selecionar responsável</option>{availableCollaborators.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label>Tipo *<select required value={typeId} onChange={(event) => setTypeId(event.target.value)}>{types.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label>Status *<select required value={statusId} onChange={(event) => setStatusId(event.target.value)}>{statuses.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label>Data *<input type="date" required min={new Date().toLocaleDateString("en-CA")} value={date} onChange={(event) => setDate(event.target.value)} /></label><label>Horário *<input type="time" required value={time} onChange={(event) => setTime(event.target.value)} /></label><label>Duração<select value={duration} onChange={(event) => setDuration(event.target.value)}><option value="30">30 minutos</option><option value="60">1 hora</option><option value="90">1h30</option><option value="120">2 horas</option></select></label><label className="wide">Descrição<textarea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !calendarId || !typeId || !statusId || !responsibleId}><CalendarDays size={16} /> Salvar na agenda</button></div></form></section></div>;
 }
 
 function EnterpriseUnitModal({ unit, products, unitStatuses, usageStatuses, busy, onClose, onSave }: { unit?: EnterpriseUnit; products: string[]; unitStatuses: string[]; usageStatuses: string[]; busy: boolean; onClose: () => void; onSave: (unit: EnterpriseUnit) => Promise<void> }) {
@@ -3636,7 +3698,7 @@ function CsJourneyDrawer({ item, commercialSource, catalogs, agendaModule, emplo
     if (journey[commitmentKey]) return false;
     const type = agendaModule.types.find((entry) => entry.active);
     const status = agendaModule.statuses.find((entry) => entry.active);
-    const responsible = agendaModule.collaborators.find((entry) => entry.name === item.owner) ?? agendaModule.collaborators.find((entry) => entry.departmentId === activationCalendar.departmentId);
+    const responsible = agendaModule.collaborators.find((entry) => entry.name === item.owner) ?? agendaModule.collaborators.find((entry) => entry.agendaIds?.includes(activationCalendar.id));
     if (!type || !status || !responsible) return false;
     const startsAt = new Date(`${date}T${time || "09:30"}:00`).toISOString();
     const endsAt = new Date(new Date(startsAt).getTime() + 60 * 60 * 1000).toISOString();
@@ -3844,7 +3906,7 @@ function BackgroundImageSettings({ image, onChange }: { image: string; onChange:
 }
 
 function PeopleAdminTabs({ section, onSection }: { section: "collaborators" | "employeeIndicators" | "departments" | "levels" | "roles"; onSection: (section: AdminSection) => void }) {
-  return <nav className="people-admin-tabs" aria-label="Cadastros de colaboradores"><button className={section === "collaborators" ? "active" : ""} onClick={() => onSection("collaborators")}>Colaboradores</button><button className={section === "employeeIndicators" ? "active" : ""} onClick={() => onSection("employeeIndicators")}><ChartNoAxesCombined size={15}/> Indicadores</button><button className={section === "roles" ? "active" : ""} onClick={() => onSection("roles")}>Funções</button><button className={section === "departments" ? "active" : ""} onClick={() => onSection("departments")}>Setores</button><button className={section === "levels" ? "active" : ""} onClick={() => onSection("levels")}>Níveis</button></nav>;
+  return <nav className="people-admin-tabs" aria-label="Cadastros de colaboradores"><button className={section === "collaborators" ? "active" : ""} onClick={() => onSection("collaborators")}>Colaboradores</button><button className={section === "roles" ? "active" : ""} onClick={() => onSection("roles")}>Funções</button><button className={section === "departments" ? "active" : ""} onClick={() => onSection("departments")}>Setores</button><button className={section === "levels" ? "active" : ""} onClick={() => onSection("levels")}>Níveis</button></nav>;
 }
 
 function JobRolesAdmin({items,busy,onOperate,onSection}:{items:CustomerCatalogOption[];busy:boolean;onOperate:(payload:Record<string,unknown>,success:string)=>Promise<{id?:string}|false>;onSection:(section:AdminSection)=>void}){
@@ -3863,7 +3925,7 @@ function EmployeesAdmin({ access, roles, busy, onOperate, onSection }: { access:
   const toggleAccess = (employee: Employee) => onOperate({
     action: "updateEmployee", id: employee.id, displayName: employee.displayName, email: employee.email,
     birthDate: employee.birthDate, startedAt: employee.startedAt, departmentIds: employee.departmentIds,
-    agendaDepartmentIds: employee.agendaDepartmentIds,
+    agendaCalendarIds: employee.agendaCalendarIds,
     employeeLevelId: employee.levelId, photoDataUrl: employee.photoDataUrl, jobTitle: employee.jobTitle,
     isCoordinator: employee.isCoordinator, subordinateUserIds: employee.subordinateUserIds, groupIds: employee.groupIds, active: !employee.active,
   }, employee.active ? "Colaborador bloqueado com sucesso." : "Acesso do colaborador reativado com sucesso.");
@@ -3878,11 +3940,11 @@ function EmployeesAdmin({ access, roles, busy, onOperate, onSection }: { access:
         <span className="employee-actions"><button className={`catalog-icon-button ${employee.active ? "lock" : "unlock"}`} onClick={() => { void toggleAccess(employee); }} aria-label={employee.active ? `Bloquear ${employee.displayName}` : `Reativar ${employee.displayName}`} title={employee.active ? "Bloquear acesso" : "Reativar acesso"}>{employee.active ? <LockKeyhole size={15} /> : <BadgeCheck size={15} />}</button><button className="catalog-icon-button" onClick={() => setEditing(employee)} aria-label={`Editar ${employee.displayName}`}><Pencil size={15} /></button><button className="catalog-icon-button delete" onClick={() => { void onOperate({ action: "deleteEmployee", id: employee.id }, "Colaborador excluído com sucesso."); }} aria-label={`Excluir ${employee.displayName}`}><Trash2 size={15} /></button></span>
       </article>)}
     </section>
-    {creating && <EmployeeModal employees={access.employees} departments={access.departments} levels={access.levels} roles={roles} groups={access.groups} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => {
+    {creating && <EmployeeModal employees={access.employees} departments={access.departments} calendars={access.agendaCalendars ?? []} levels={access.levels} roles={roles} groups={access.groups} busy={busy} onClose={() => setCreating(false)} onSave={async (payload) => {
       const result = await onOperate({ action: "createEmployee", ...payload }, "Colaborador cadastrado.");
       if (result) { setCreating(false); setTemporaryPassword(result.temporaryPassword ?? ""); }
     }} />}
-    {editing && <EmployeeModal onResetPassword={async () => { await onOperate({ action: "resetEmployeePassword", id: editing.id }, "Novos dados de acesso enviados ao e-mail cadastrado."); }} employee={editing} employees={access.employees} departments={access.departments} levels={access.levels} roles={roles} groups={access.groups} busy={busy} onClose={() => setEditing(null)} onSave={async (payload) => { const result = await onOperate({ action: "updateEmployee", requireConfirmation: true, id: editing.id, ...payload }, "Colaborador atualizado com sucesso."); if (result) setEditing(null); }} />}
+    {editing && <EmployeeModal onResetPassword={async () => { await onOperate({ action: "resetEmployeePassword", id: editing.id }, "Novos dados de acesso enviados ao e-mail cadastrado."); }} employee={editing} employees={access.employees} departments={access.departments} calendars={access.agendaCalendars ?? []} levels={access.levels} roles={roles} groups={access.groups} busy={busy} onClose={() => setEditing(null)} onSave={async (payload) => { const result = await onOperate({ action: "updateEmployee", requireConfirmation: true, id: editing.id, ...payload }, "Colaborador atualizado com sucesso."); if (result) setEditing(null); }} />}
     {temporaryPassword && <TemporaryPasswordModal password={temporaryPassword} onClose={() => setTemporaryPassword("")} />}
   </>;
 }
@@ -3892,7 +3954,7 @@ function EmployeeIndicatorsAdmin({data,onSection}:{data:AppData;onSection:(secti
   const [selectedId,setSelectedId]=useState(employees.find(employee=>employee.active)?.id??employees[0]?.id??"");
   const [indicatorTab,setIndicatorTab]=useState<"overview"|"hr"|"activity">("overview");
   const employee=employees.find(entry=>entry.id===selectedId)??employees[0];
-  if(!employee)return <><PeopleAdminTabs section="employeeIndicators" onSection={onSection}/><EmptyState text="Nenhum colaborador cadastrado."/></>;
+  if(!employee)return <><button className="secondary-button" onClick={()=>onSection("collaborators")}>← Voltar aos colaboradores</button><EmptyState text="Nenhum colaborador cadastrado."/></>;
   const normalizedName=employee.displayName.trim().toLocaleLowerCase("pt-BR");
   const employeeItems=data.items.filter(item=>[item.owner,item.team,item.description].some(value=>String(value??"").toLocaleLowerCase("pt-BR").includes(normalizedName)));
   const tasks=data.taskModule?.tasks.filter(task=>task.assigneeUserId===employee.id||task.creatorUserId===employee.id||task.assigneeName===employee.displayName||task.creatorName===employee.displayName)??[];
@@ -3905,7 +3967,7 @@ function EmployeeIndicatorsAdmin({data,onSection}:{data:AppData;onSection:(secti
   const years=employee.startedAt?Math.max(0,(Date.now()-new Date(employee.startedAt).getTime())/(365.25*24*60*60*1000)):0;
   const nextBirthday=employee.birthDate?new Date(`${new Date().getFullYear()}-${employee.birthDate.slice(5)}T12:00:00`):null;
   if(nextBirthday&&nextBirthday.getTime()<Date.now())nextBirthday.setFullYear(nextBirthday.getFullYear()+1);
-  return <section className="employee-indicators-page"><PageHeader eyebrow="COLABORADORES · INDICADORES" title="Indicadores da equipe" description="Visão consolidada do cadastro, Gestão RH, atividades, interações, tarefas e compromissos."/><PeopleAdminTabs section="employeeIndicators" onSection={onSection}/><nav className="employee-indicator-tabs">{employees.map(entry=><button className={entry.id===employee.id?"active":""} onClick={()=>setSelectedId(entry.id)} key={entry.id}><ProfileAvatar name={entry.displayName} photo={entry.photoDataUrl}/><span><strong>{entry.displayName}</strong><small>{entry.jobTitle||entry.departmentName}</small></span></button>)}</nav><header className="employee-indicator-profile"><ProfileAvatar name={employee.displayName} photo={employee.photoDataUrl} large coordinator={employee.isCoordinator}/><div><span className="eyebrow">PAINEL INDIVIDUAL</span><h2>{employee.displayName}</h2><p>{employee.jobTitle||"Função não informada"} · {employee.departmentNames.join(" · ")||"Sem setor"}</p></div><span className="employee-profile-states"><b className={`status-pill ${employee.active?"positive":"negative"}`}>{employee.active?"Acesso ativo":"Acesso inativo"}</b><b className={`status-pill ${hrItem?.status==="Ativos"?"positive":hrItem?.status==="Desligados"?"negative":"warning"}`}>RH: {hrItem?.status||"Sem registro"}</b></span></header><IndicatorTabs id="employee" value={indicatorTab} onChange={setIndicatorTab} tabs={[{id:"overview",label:"Visão geral"},{id:"hr",label:"Histórico profissional"},{id:"activity",label:"Tarefas e agenda"}]} /><section role="tabpanel" id={`employee-panel-${indicatorTab}`} aria-labelledby={`employee-tab-${indicatorTab}`} className="indicator-panel">{indicatorTab === "overview" && <div className="employee-indicator-kpis"><article><Clock3/><span><small>Tempo de empresa</small><strong>{years<1?`${Math.floor(years*12)} mês(es)`:`${years.toFixed(1)} ano(s)`}</strong><em>Admissão: {employee.startedAt?new Date(`${employee.startedAt}T12:00:00`).toLocaleDateString("pt-BR"):"não informada"}</em></span></article><article><CalendarDays/><span><small>Próximo aniversário</small><strong>{nextBirthday?nextBirthday.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}):"Não informado"}</strong><em>Nascimento: {employee.birthDate?new Date(`${employee.birthDate}T12:00:00`).toLocaleDateString("pt-BR"):"—"}</em></span></article><article><ListTodo/><span><small>Tarefas</small><strong>{tasks.length}</strong><em>{tasks.filter(task=>!task.completedAt&&!task.cancelled).length} ativa(s)</em></span></article><article><CalendarDays/><span><small>Compromissos</small><strong>{commitments.length}</strong><em>{commitments.filter(entry=>new Date(entry.startsAt)>=new Date()).length} futuro(s)</em></span></article><article><MessageSquareText/><span><small>Interações</small><strong>{interactions.length}</strong><em>{hrComments.length} registrada(s) no RH</em></span></article><article><AlertTriangle/><span><small>Ocorrências / advertências</small><strong>{warnings.length}</strong><em>alimentadas pela Gestão RH</em></span></article><article><CalendarDays/><span><small>Férias</small><strong>{vacations.length}</strong><em>{vacations.filter(entry=>entry.status==="Concluída").reduce((sum,entry)=>sum+Number(entry.days||0),0)} dia(s) concluído(s)</em></span></article><article><FileCheck2/><span><small>Documentos RH</small><strong>{hrDocuments.length}</strong><em>{hrProfile?.readmissions?.length??0} readmissão(ões)</em></span></article></div>}{indicatorTab === "hr" && hrProfile && <section className="employee-rh-summary"><header><div><span className="eyebrow">DADOS DA GESTÃO RH</span><h3>Histórico profissional</h3></div><b>{hrItem?.status}</b></header><div><span><small>Interações</small><strong>{hrComments.length}</strong></span><span><small>Férias planejadas</small><strong>{vacations.filter(entry=>entry.status==="Planejada").length}</strong></span><span><small>Férias concluídas</small><strong>{vacations.filter(entry=>entry.status==="Concluída").length}</strong></span><span><small>Documentos</small><strong>{hrDocuments.length}</strong></span><span><small>Desligamento</small><strong>{hrProfile.termination?.type||"Não"}</strong></span><span><small>Readmissões</small><strong>{hrProfile.readmissions?.length??0}</strong></span></div>{hrComments.length>0&&<div className="employee-rh-timeline">{hrComments.slice().reverse().slice(0,6).map((entry,index)=><article key={entry.id||index}><i/><span><strong>{entry.type||"Interação"}</strong><p>{entry.text}</p><small>{entry.author||"RH"} · {dateTime(entry.at||"")}</small></span></article>)}</div>}</section>}{indicatorTab === "hr" && !hrProfile && <EmptyState text="Nenhum registro de RH vinculado a este colaborador." />}{indicatorTab === "activity" && <div className="employee-indicator-detail-grid"><ClientRecordsPanel title="Tarefas recentes" empty="Nenhuma tarefa vinculada.">{tasks.slice(0,8).map(task=><button data-reminder-entity-id={task.id} key={task.id}><span><strong>{task.title}</strong><small>{task.protocol} · {task.departmentName}</small></span><b className={`status-pill ${task.completedAt?"success":"warning"}`}>{task.statusName}</b><time>{dateTime(task.updatedAt)}</time></button>)}</ClientRecordsPanel><ClientRecordsPanel title="Próximos compromissos" empty="Nenhum compromisso vinculado.">{commitments.filter(entry=>new Date(entry.endsAt)>=new Date()).slice(0,8).map(entry=><button data-reminder-entity-id={entry.id} key={entry.id}><span><strong>{entry.title}</strong><small>{entry.typeName} · {entry.statusName}</small></span><time>{dateTime(entry.startsAt)}</time></button>)}</ClientRecordsPanel></div>}</section></section>;
+  return <section className="employee-indicators-page"><PageHeader eyebrow="COLABORADORES · INDICADORES" title="Indicadores da equipe" description="Visão consolidada do cadastro, Gestão RH, atividades, interações, tarefas e compromissos."/><button className="secondary-button" onClick={()=>onSection("collaborators")}>← Voltar aos colaboradores</button><nav className="employee-indicator-tabs">{employees.map(entry=><button className={entry.id===employee.id?"active":""} onClick={()=>setSelectedId(entry.id)} key={entry.id}><ProfileAvatar name={entry.displayName} photo={entry.photoDataUrl}/><span><strong>{entry.displayName}</strong><small>{entry.jobTitle||entry.departmentName}</small></span></button>)}</nav><header className="employee-indicator-profile"><ProfileAvatar name={employee.displayName} photo={employee.photoDataUrl} large coordinator={employee.isCoordinator}/><div><span className="eyebrow">PAINEL INDIVIDUAL</span><h2>{employee.displayName}</h2><p>{employee.jobTitle||"Função não informada"} · {employee.departmentNames.join(" · ")||"Sem setor"}</p></div><span className="employee-profile-states"><b className={`status-pill ${employee.active?"positive":"negative"}`}>{employee.active?"Acesso ativo":"Acesso inativo"}</b><b className={`status-pill ${hrItem?.status==="Ativos"?"positive":hrItem?.status==="Desligados"?"negative":"warning"}`}>RH: {hrItem?.status||"Sem registro"}</b></span></header><IndicatorTabs id="employee" value={indicatorTab} onChange={setIndicatorTab} tabs={[{id:"overview",label:"Visão geral"},{id:"hr",label:"Histórico profissional"},{id:"activity",label:"Tarefas e agenda"}]} /><section role="tabpanel" id={`employee-panel-${indicatorTab}`} aria-labelledby={`employee-tab-${indicatorTab}`} className="indicator-panel">{indicatorTab === "overview" && <div className="employee-indicator-kpis"><article><Clock3/><span><small>Tempo de empresa</small><strong>{years<1?`${Math.floor(years*12)} mês(es)`:`${years.toFixed(1)} ano(s)`}</strong><em>Admissão: {employee.startedAt?new Date(`${employee.startedAt}T12:00:00`).toLocaleDateString("pt-BR"):"não informada"}</em></span></article><article><CalendarDays/><span><small>Próximo aniversário</small><strong>{nextBirthday?nextBirthday.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}):"Não informado"}</strong><em>Nascimento: {employee.birthDate?new Date(`${employee.birthDate}T12:00:00`).toLocaleDateString("pt-BR"):"—"}</em></span></article><article><ListTodo/><span><small>Tarefas</small><strong>{tasks.length}</strong><em>{tasks.filter(task=>!task.completedAt&&!task.cancelled).length} ativa(s)</em></span></article><article><CalendarDays/><span><small>Compromissos</small><strong>{commitments.length}</strong><em>{commitments.filter(entry=>new Date(entry.startsAt)>=new Date()).length} futuro(s)</em></span></article><article><MessageSquareText/><span><small>Interações</small><strong>{interactions.length}</strong><em>{hrComments.length} registrada(s) no RH</em></span></article><article><AlertTriangle/><span><small>Ocorrências / advertências</small><strong>{warnings.length}</strong><em>alimentadas pela Gestão RH</em></span></article><article><CalendarDays/><span><small>Férias</small><strong>{vacations.length}</strong><em>{vacations.filter(entry=>entry.status==="Concluída").reduce((sum,entry)=>sum+Number(entry.days||0),0)} dia(s) concluído(s)</em></span></article><article><FileCheck2/><span><small>Documentos RH</small><strong>{hrDocuments.length}</strong><em>{hrProfile?.readmissions?.length??0} readmissão(ões)</em></span></article></div>}{indicatorTab === "hr" && hrProfile && <section className="employee-rh-summary"><header><div><span className="eyebrow">DADOS DA GESTÃO RH</span><h3>Histórico profissional</h3></div><b>{hrItem?.status}</b></header><div><span><small>Interações</small><strong>{hrComments.length}</strong></span><span><small>Férias planejadas</small><strong>{vacations.filter(entry=>entry.status==="Planejada").length}</strong></span><span><small>Férias concluídas</small><strong>{vacations.filter(entry=>entry.status==="Concluída").length}</strong></span><span><small>Documentos</small><strong>{hrDocuments.length}</strong></span><span><small>Desligamento</small><strong>{hrProfile.termination?.type||"Não"}</strong></span><span><small>Readmissões</small><strong>{hrProfile.readmissions?.length??0}</strong></span></div>{hrComments.length>0&&<div className="employee-rh-timeline">{hrComments.slice().reverse().slice(0,6).map((entry,index)=><article key={entry.id||index}><i/><span><strong>{entry.type||"Interação"}</strong><p>{entry.text}</p><small>{entry.author||"RH"} · {dateTime(entry.at||"")}</small></span></article>)}</div>}</section>}{indicatorTab === "hr" && !hrProfile && <EmptyState text="Nenhum registro de RH vinculado a este colaborador." />}{indicatorTab === "activity" && <div className="employee-indicator-detail-grid"><ClientRecordsPanel title="Tarefas recentes" empty="Nenhuma tarefa vinculada.">{tasks.slice(0,8).map(task=><button data-reminder-entity-id={task.id} key={task.id}><span><strong>{task.title}</strong><small>{task.protocol} · {task.departmentName}</small></span><b className={`status-pill ${task.completedAt?"success":"warning"}`}>{task.statusName}</b><time>{dateTime(task.updatedAt)}</time></button>)}</ClientRecordsPanel><ClientRecordsPanel title="Próximos compromissos" empty="Nenhum compromisso vinculado.">{commitments.filter(entry=>new Date(entry.endsAt)>=new Date()).slice(0,8).map(entry=><button data-reminder-entity-id={entry.id} key={entry.id}><span><strong>{entry.title}</strong><small>{entry.typeName} · {entry.statusName}</small></span><time>{dateTime(entry.startsAt)}</time></button>)}</ClientRecordsPanel></div>}</section></section>;
 }
 
 function EmployeeCatalog({ title, description, items, action, buttonLabel, busy, onOperate, section, onSection }: { title: string; description: string; items: Array<EmployeeDepartment | EmployeeLevel>; action: "saveEmployeeDepartment" | "saveEmployeeLevel"; buttonLabel: string; busy: boolean; onOperate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string; temporaryPassword?: string } | false>; section: "departments" | "levels"; onSection: (section: AdminSection) => void }) {
@@ -3925,7 +3987,7 @@ function EmployeeCatalog({ title, description, items, action, buttonLabel, busy,
   </>;
 }
 
-function EmployeeModal({ onResetPassword, employee, employees, departments, levels, roles, groups, busy, onClose, onSave }: { onResetPassword?: () => Promise<void>; employee?: Employee; employees: Employee[]; departments: EmployeeDepartment[]; levels: EmployeeLevel[]; roles: string[]; groups: AccessGroup[]; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
+function EmployeeModal({ onResetPassword, employee, employees, departments, calendars, levels, roles, groups, busy, onClose, onSave }: { onResetPassword?: () => Promise<void>; employee?: Employee; employees: Employee[]; departments: EmployeeDepartment[]; calendars: AgendaModuleData["calendars"]; levels: EmployeeLevel[]; roles: string[]; groups: AccessGroup[]; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
   const [photoDataUrl, setPhotoDataUrl] = useState(employee?.photoDataUrl ?? "");
   const [photoError, setPhotoError] = useState("");
   const [isCoordinator, setIsCoordinator] = useState(employee?.isCoordinator ?? false);
@@ -3933,7 +3995,7 @@ function EmployeeModal({ onResetPassword, employee, employees, departments, leve
   const [fullAccess, setFullAccess] = useState(employee?.groupNames.some((name) => /administrador/i.test(name)) ?? false);
   const [subordinateUserIds, setSubordinateUserIds] = useState<string[]>(employee?.subordinateUserIds ?? []);
   const [departmentIds, setDepartmentIds] = useState<string[]>(employee?.departmentIds ?? (employee?.departmentId ? [employee.departmentId] : []));
-  const [agendaDepartmentIds, setAgendaDepartmentIds] = useState<string[]>(employee?.agendaDepartmentIds ?? []);
+  const [agendaCalendarIds, setAgendaCalendarIds] = useState<string[]>(employee?.agendaCalendarIds ?? []);
   const [departmentError, setDepartmentError] = useState("");
   const [groupError, setGroupError] = useState("");
   const choosePhoto = (file?: File) => {
@@ -3950,7 +4012,7 @@ function EmployeeModal({ onResetPassword, employee, employees, departments, leve
     const groupIds=fullAccess ? [] : form.getAll("groupIds"); if(!fullAccess&&groupIds.length===0){setGroupError("Selecione ao menos um grupo de permissões ou marque Acesso total.");return} setGroupError("");
     if (departmentIds.length === 0) { setDepartmentError("Selecione ao menos um setor para o colaborador."); return; }
     setDepartmentError("");
-    onSave({ displayName: form.get("displayName"), email: form.get("email"), birthDate: form.get("birthDate") || null, startedAt: form.get("startedAt") || null, departmentIds, agendaDepartmentIds: agendaDepartmentIds.filter((id) => id !== departmentIds[0]), employeeLevelId: form.get("employeeLevelId"), photoDataUrl, jobTitle: form.get("jobTitle"), isCoordinator, subordinateUserIds: isCoordinator ? subordinateUserIds : [], groupIds, fullAccess, active });
+    onSave({ displayName: form.get("displayName"), email: form.get("email"), birthDate: form.get("birthDate") || null, startedAt: form.get("startedAt") || null, departmentIds, agendaCalendarIds, employeeLevelId: form.get("employeeLevelId"), photoDataUrl, jobTitle: form.get("jobTitle"), isCoordinator, subordinateUserIds: isCoordinator ? subordinateUserIds : [], groupIds, fullAccess, active });
   };
   return <ModalShell className="employee-modal" title={employee ? "Editar colaborador" : "Novo colaborador"} subtitle={employee ? "Atualize os dados cadastrais e o vínculo do colaborador." : "A senha temporária será gerada para o teste do login local."} onClose={onClose}><form className="form-grid employee-form" onSubmit={submit}>
     <MediaUploadField className="wide" label="Foto do usuário" accept="image/*" selectedText={photoDataUrl ? "Foto selecionada" : undefined} previewUrl={photoDataUrl} previewLabel="Abrir foto do colaborador" hint="Selecione uma imagem para o perfil do colaborador, com no máximo 2 MB." onChange={(event) => choosePhoto(event.target.files?.[0])} />
@@ -3959,9 +4021,9 @@ function EmployeeModal({ onResetPassword, employee, employees, departments, leve
     <label className="wide">Função na empresa<select name="jobTitle" required defaultValue={employee?.jobTitle ?? ""}><option value="">Selecione a função cadastrada</option>{[...new Set([...(employee?.jobTitle ? [employee.jobTitle] : []), ...roles])].map(role => <option key={role}>{role}</option>)}</select><small>A função permanece vinculada diretamente ao cadastro do colaborador.</small></label>
     <label>Data de nascimento<input name="birthDate" type="date" required defaultValue={employee?.birthDate ?? ""} /></label><label>Início na empresa<input name="startedAt" type="date" required defaultValue={employee?.startedAt ?? ""} /></label>
     <label>Nível<select name="employeeLevelId" required defaultValue={levels.some((level) => level.active && level.id === employee?.levelId) ? (employee?.levelId ?? "") : ""}><option value="">Selecione</option>{levels.filter((level) => level.active).map((level) => <option value={level.id} key={level.id}>{level.name}</option>)}</select></label>
-    <fieldset className="wide group-selector employee-departments"><legend>Setores de acesso</legend><p>Selecione todos os setores aos quais o colaborador poderá acessar. O primeiro marcado será o setor principal.</p>{departments.filter((department) => department.active).map((department) => <label key={department.id}><input name="departmentIds" type="checkbox" value={department.id} checked={departmentIds.includes(department.id)} onChange={(event) => setDepartmentIds((current) => event.target.checked ? [...current, department.id] : current.filter((id) => id !== department.id))} /><span><strong>{department.name}</strong><small>{department.description || "Setor operacional"}</small></span></label>)}</fieldset>
+    <fieldset className="wide group-selector employee-departments"><legend>Setores do colaborador</legend><p>Selecione os vínculos funcionais. O primeiro marcado será o setor principal. O acesso às agendas é definido abaixo.</p>{departments.filter((department) => department.active).map((department) => <label key={department.id}><input name="departmentIds" type="checkbox" value={department.id} checked={departmentIds.includes(department.id)} onChange={(event) => setDepartmentIds((current) => event.target.checked ? [...current, department.id] : current.filter((id) => id !== department.id))} /><span><strong>{department.name}</strong><small>{department.description || "Setor operacional"}</small></span></label>)}</fieldset>
     {departmentError && <p className="form-error wide">{departmentError}</p>}
-    <fieldset className="wide group-selector employee-agenda-departments"><legend>Acesso a agendas de outros setores</legend><p>O setor principal já é liberado automaticamente. Marque somente os outros setores cujas agendas este colaborador poderá consultar e utilizar.</p>{departments.filter((department) => department.active).map((department) => { const primary = department.id === departmentIds[0]; return <label className={primary ? "automatic" : ""} key={department.id}><input type="checkbox" value={department.id} disabled={primary} checked={primary || agendaDepartmentIds.includes(department.id)} onChange={(event) => setAgendaDepartmentIds((current) => event.target.checked ? [...new Set([...current, department.id])] : current.filter((id) => id !== department.id))} /><span><strong>{department.name}{primary && <em>Automático</em>}</strong><small>{primary ? "Agenda liberada pelo setor principal do colaborador." : "Permite acessar a agenda deste setor sem alterar o vínculo funcional."}</small></span></label>; })}</fieldset>
+    <fieldset className="wide group-selector employee-agenda-calendars"><legend>Acesso às agendas</legend><p>Selecione as agendas que o colaborador poderá consultar e utilizar. O setor do cadastro não libera acesso automaticamente. Administradores e gestores de agenda mantêm acesso a todas as agendas.</p>{calendars.filter(calendar=>calendar.active||agendaCalendarIds.includes(calendar.id)).map(calendar=><label key={calendar.id}><input type="checkbox" disabled={fullAccess} checked={fullAccess||agendaCalendarIds.includes(calendar.id)} onChange={event=>setAgendaCalendarIds(current=>event.target.checked?[...new Set([...current,calendar.id])]:current.filter(id=>id!==calendar.id))}/><span><strong>{calendar.name}</strong><small>{calendar.departmentName}{!calendar.active?" · Inativa":""}</small></span></label>)}{!calendars.length&&<small>Nenhuma agenda cadastrada.</small>}</fieldset>
     <fieldset className={`wide group-selector employee-access-groups ${fullAccess ? "disabled-by-full-access" : ""}`} disabled={fullAccess}><legend>Grupo de permissões {fullAccess ? "(dispensado)" : "*"}</legend><p>{fullAccess ? "O acesso total libera automaticamente todas as funcionalidades atuais e futuras." : "O colaborador verá e poderá editar somente as funcionalidades habilitadas nos grupos selecionados."}</p>{groups.filter(group=>group.active||(employee?.groupIds??[]).includes(group.id)).map(group=><label key={group.id}><input name="groupIds" type="checkbox" value={group.id} defaultChecked={(employee?.groupIds??[]).includes(group.id)}/><span><strong>{group.name}</strong><small>{group.permissions.filter(permission=>permission.canView).length} funcionalidade(s) liberada(s)</small></span></label>)}</fieldset>
     {groupError&&<p className="form-error wide">{groupError}</p>}
     <label className={`check-row wide employee-full-access ${fullAccess ? "enabled" : ""}`}><input type="checkbox" checked={fullAccess} onChange={(event) => { setFullAccess(event.target.checked); if (event.target.checked) setGroupError(""); }} /><span><strong>Acesso total ao sistema</strong><small>Libera todas as telas, ações, aprovações e configurações sem exigir seleção de grupo de permissões.</small></span></label>
@@ -4126,7 +4188,9 @@ function AppointmentModal({ customers, busy, onClose, onSubmit }: { customers: C
 }
 
 function ModalShell({ title, subtitle, eyebrow = "NOVO REGISTRO", className = "", onClose, children }: { title: string; subtitle: string; eyebrow?: string; className?: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="modal-backdrop standard-modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className={`modal standard-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-label={title}><div className="modal-head"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>{children}</div></div>;
+  const dialog = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialog, onClose);
+  return <div className="modal-backdrop standard-modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div ref={dialog} tabIndex={-1} className={`modal standard-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-label={title}><div className="modal-head"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>{children}</div></div>;
 }
 
 function BackgroundImageModal({ image, agendaVisual, onAgendaVisual, onClose, onUpload, onRemove }: { image: string; agendaVisual: SystemVisual; onAgendaVisual: (visual: SystemVisual) => void; onClose: () => void; onUpload: (file: File) => void; onRemove: () => void }) {

@@ -30,7 +30,7 @@ test("abre o perfil lateral do colaborador pela busca global", async () => {
   assert.match(operations, /const openEmployeeFromGlobalSearch/);
   assert.match(operations, /setProfileEmployee\(employee\)/);
   assert.match(operations, /result\.kind === "employee"/);
-  assert.match(operations, /Buscar ID, clientes, colaboradores, protocolos, tarefas/);
+  assert.match(operations, /Buscar clientes, IDs, protocolos e registros/);
   assert.match(operations, /employee\.displayName\.toLocaleLowerCase\("pt-BR"\) === normalized/);
 });
 
@@ -627,15 +627,15 @@ test("separa o acesso às agendas, preserva o rodapé dos modais e usa o ID púb
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
   assert.match(app, /agendaDepartmentIds/);
-  assert.match(app, /Acesso a agendas de outros setores/);
-  assert.match(app, /Agenda liberada pelo setor principal/);
+  assert.match(app, /Acesso às agendas/);
+  assert.match(app, /O setor do cadastro não libera acesso automaticamente/);
   assert.match(services, /publicCustomerCode\(customer\)/);
   assert.match(services, /pattern="\\d\{6\}"/);
   assert.doesNotMatch(services, /clientCode: customer\.id\.slice/);
-  assert.match(access, /ValidateAgendaDepartmentAccessesAsync/);
-  assert.match(agenda, /AccessibleAgendaDepartmentIdsAsync/);
-  assert.match(entities, /class UserAgendaDepartmentAccess/);
-  assert.match(context, /UserAgendaDepartmentAccesses/);
+  assert.match(access, /ValidateAgendaCalendarAccessesAsync/);
+  assert.match(agenda, /AccessibleAgendaCalendarIdsAsync/);
+  assert.match(entities, /class UserAgendaCalendarAccess/);
+  assert.match(context, /UserAgendaCalendarAccesses/);
   assert.match(css, /proteção global contra corte no final dos modais/);
   assert.match(css, /scroll-padding-bottom:88px/);
 });

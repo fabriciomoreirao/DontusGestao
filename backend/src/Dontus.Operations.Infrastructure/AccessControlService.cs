@@ -269,8 +269,9 @@ public sealed class AccessControlService(
             .ToListAsync(cancellationToken);
         var userDepartments = await db.UserDepartments.AsNoTracking()
             .ToListAsync(cancellationToken);
-        var agendaDepartmentAccesses = await db.UserAgendaDepartmentAccesses.AsNoTracking()
+        var agendaCalendarAccesses = await db.UserAgendaCalendarAccesses.AsNoTracking()
             .ToListAsync(cancellationToken);
+        var agendaCalendars = await db.AgendaCalendars.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken);
         var supervisions = await db.EmployeeSupervisions.AsNoTracking()
             .ToListAsync(cancellationToken);
         var departmentNames = departments.ToDictionary(department => department.Id, department => department.Name);
@@ -322,11 +323,7 @@ public sealed class AccessControlService(
                     .Distinct()
                     .ToArray();
                 var employeeDepartmentNames = employeeDepartmentIds.Select(id => departmentNames.GetValueOrDefault(id, "Setor não informado")).ToArray();
-                var employeeAgendaDepartmentIds = agendaDepartmentAccesses
-                    .Where(entry => entry.UserId == user.Id)
-                    .Select(entry => entry.DepartmentId)
-                    .Distinct()
-                    .ToArray();
+                var employeeAgendaCalendarIds = agendaCalendarAccesses.Where(entry => entry.UserId == user.Id).Select(entry => entry.CalendarId).ToArray();
                 return new EmployeeDto(
                     user.Id,
                     user.DisplayName,
@@ -337,7 +334,7 @@ public sealed class AccessControlService(
                     departmentId == Guid.Empty ? user.Department : departmentNames.GetValueOrDefault(departmentId, user.Department),
                     employeeDepartmentIds,
                     employeeDepartmentNames,
-                    employeeAgendaDepartmentIds,
+                    [],
                     user.EmployeeLevelId,
                     user.EmployeeLevelId is { } levelId ? levelNames.GetValueOrDefault(levelId, "Não informado") : "Não informado",
                     ProfilePhotoUrls.For(user),
@@ -347,10 +344,11 @@ public sealed class AccessControlService(
                     user.Groups.Select(membership => membership.GroupId).ToArray(),
                     user.Groups.Select(membership => membership.Group.Name).Order().ToArray(),
                     user.Active,
-                    user.BlockedAt);
+                    user.BlockedAt, employeeAgendaCalendarIds);
             }).ToArray(),
             departments.Select(department => new EmployeeDepartmentDto(department.Id, department.Name, department.Description, department.Active)).ToArray(),
-            levels.Select(level => new EmployeeLevelDto(level.Id, level.Name, level.Description, level.Active)).ToArray());
+            levels.Select(level => new EmployeeLevelDto(level.Id, level.Name, level.Description, level.Active)).ToArray(),
+            agendaCalendars.Select(calendar => new AgendaCalendarDto(calendar.Id, calendar.Name, calendar.Description, calendar.DepartmentId, departmentNames.GetValueOrDefault(calendar.DepartmentId, "Setor"), calendar.Active)).ToArray());
     }
 
     public async Task<Guid> CreateUserAsync(
@@ -485,7 +483,7 @@ public sealed class AccessControlService(
         var departmentIds = await ValidateEmployeeDepartmentsAsync(command.DepartmentIds, cancellationToken);
         var departments = await db.TaskDepartments.Where(entry => departmentIds.Contains(entry.Id)).ToListAsync(cancellationToken);
         var primaryDepartment = departments.Single(entry => entry.Id == departmentIds[0]);
-        var agendaDepartmentIds = await ValidateAgendaDepartmentAccessesAsync(command.AgendaDepartmentIds, primaryDepartment.Id, cancellationToken);
+        var agendaCalendarIds = await ValidateAgendaCalendarAccessesAsync(command.AgendaCalendarIds, cancellationToken);
         var level = await db.EmployeeLevels.SingleOrDefaultAsync(
             entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um nível ativo.");
@@ -517,17 +515,17 @@ public sealed class AccessControlService(
         db.WorkItems.Add(CreateHrWorkItem(user, actor.Email));
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
-        db.UserAgendaDepartmentAccesses.AddRange(agendaDepartmentIds.Select(departmentId => new UserAgendaDepartmentAccess
+        db.UserAgendaCalendarAccesses.AddRange(agendaCalendarIds.Select(calendarId => new UserAgendaCalendarAccess
         {
             UserId = user.Id,
-            DepartmentId = departmentId,
+            CalendarId = calendarId,
         }));
         db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
         {
             CoordinatorUserId = user.Id,
             SubordinateUserId = subordinateId,
         }));
-        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaDepartmentIds = agendaDepartmentIds, Level = level.Name });
+        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name });
         await db.SaveChangesAsync(cancellationToken);
         return new CreateEmployeeResult(user.Id, temporaryPassword);
     }
@@ -549,7 +547,9 @@ public sealed class AccessControlService(
         var departmentIds = await ValidateEmployeeDepartmentsAsync(command.DepartmentIds, cancellationToken);
         var departments = await db.TaskDepartments.Where(entry => departmentIds.Contains(entry.Id)).ToListAsync(cancellationToken);
         var primaryDepartment = departments.Single(entry => entry.Id == departmentIds[0]);
-        var agendaDepartmentIds = await ValidateAgendaDepartmentAccessesAsync(command.AgendaDepartmentIds, primaryDepartment.Id, cancellationToken);
+        var agendaCalendarIds = command.AgendaCalendarIds is null
+            ? await db.UserAgendaCalendarAccesses.Where(x => x.UserId == user.Id).Select(x => x.CalendarId).ToArrayAsync(cancellationToken)
+            : await ValidateAgendaCalendarAccessesAsync(command.AgendaCalendarIds, cancellationToken, user.Id);
         var level = await db.EmployeeLevels.SingleOrDefaultAsync(entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um nível ativo.");
         var subordinateIds = await ValidateSubordinatesAsync(command.IsCoordinator, command.SubordinateUserIds, user.Id, cancellationToken);
@@ -599,11 +599,11 @@ public sealed class AccessControlService(
         db.UserDepartments.RemoveRange(await db.UserDepartments.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
-        db.UserAgendaDepartmentAccesses.RemoveRange(await db.UserAgendaDepartmentAccesses.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
-        db.UserAgendaDepartmentAccesses.AddRange(agendaDepartmentIds.Select(departmentId => new UserAgendaDepartmentAccess
+        db.UserAgendaCalendarAccesses.RemoveRange(await db.UserAgendaCalendarAccesses.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
+        db.UserAgendaCalendarAccesses.AddRange(agendaCalendarIds.Select(calendarId => new UserAgendaCalendarAccess
         {
             UserId = user.Id,
-            DepartmentId = departmentId,
+            CalendarId = calendarId,
         }));
         db.EmployeeSupervisions.RemoveRange(await db.EmployeeSupervisions.Where(entry => entry.CoordinatorUserId == user.Id).ToListAsync(cancellationToken));
         db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
@@ -616,7 +616,7 @@ public sealed class AccessControlService(
             var sessions = await db.LocalAuthSessions.Where(entry => entry.UserId == user.Id && entry.RevokedAt == null).ToListAsync(cancellationToken);
             foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
         }
-        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaDepartmentIds = agendaDepartmentIds, Level = level.Name });
+        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name });
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -691,7 +691,7 @@ public sealed class AccessControlService(
         department.Active = command.Active;
         department.UpdatedAt = DateTimeOffset.UtcNow;
         if (!command.Id.HasValue) db.TaskDepartments.Add(department);
-        if (!command.Id.HasValue && department.Active)
+        if (department.Active && !await db.AgendaCalendars.AnyAsync(x => x.DepartmentId == department.Id, cancellationToken))
             db.AgendaCalendars.Add(new AgendaCalendar { Name = department.Name, Description = $"Agenda automática do setor {department.Name}.", DepartmentId = department.Id, Active = true });
         AddAudit(actor, command.Id.HasValue ? "Update" : "Create", "employee_department", department.Id.ToString(), new { department.Name, department.Active });
         await db.SaveChangesAsync(cancellationToken);
@@ -858,24 +858,11 @@ public sealed class AccessControlService(
         return selected;
     }
 
-    private async Task<Guid[]> ValidateAgendaDepartmentAccessesAsync(
-        IReadOnlyCollection<Guid>? requestedIds,
-        Guid primaryDepartmentId,
-        CancellationToken cancellationToken)
+    private async Task<Guid[]> ValidateAgendaCalendarAccessesAsync(IReadOnlyCollection<Guid>? requestedIds, CancellationToken cancellationToken, Guid? existingUserId = null)
     {
-        var selected = (requestedIds ?? [])
-            .Where(id => id != Guid.Empty && id != primaryDepartmentId)
-            .Distinct()
-            .ToArray();
-        if (selected.Length == 0) return [];
-
-        var activeIds = await db.TaskDepartments.AsNoTracking()
-            .Where(entry => entry.Active && selected.Contains(entry.Id))
-            .Select(entry => entry.Id)
-            .ToArrayAsync(cancellationToken);
-        if (activeIds.Length != selected.Length)
-            throw new DomainException("Uma ou mais agendas adicionais pertencem a setores inativos ou inexistentes.");
-
+        var selected = (requestedIds ?? []).Where(id => id != Guid.Empty).Distinct().ToArray();
+        var valid = await db.AgendaCalendars.AsNoTracking().Where(x => selected.Contains(x.Id) && (x.Active || db.UserAgendaCalendarAccesses.Any(grant => grant.UserId == existingUserId && grant.CalendarId == x.Id))).CountAsync(cancellationToken);
+        if (valid != selected.Length) throw new DomainException("Selecione agendas ativas e existentes.");
         return selected;
     }
 

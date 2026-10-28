@@ -65,7 +65,8 @@ public sealed class CommissionsAndReferralsAccessTests
         var referral = Referral(other); var commission = Commission(other);
         db.WorkItems.AddRange(referral, commission); await db.SaveChangesAsync(); var service = new OperationsService(db);
         Assert.Equal(2, (await service.GetSnapshotAsync(actor)).Items.Count);
-        await service.UpdateWorkItemAsync(Update(referral, Patch(referral, "phase", "approved")), actor);
+        var rejection = JsonNode.Parse(referral.Description)!.AsObject(); rejection["phase"] = "rejected"; rejection["decisionReason"] = "Não elegível";
+        await service.UpdateWorkItemAsync(Update(referral, rejection.ToJsonString()), actor);
         await service.UpdateWorkItemAsync(Update(commission) with { AmountCents = 2000 }, actor);
         Assert.Equal(2000, commission.AmountCents);
         foreach (var catalog in new[] { "commissionRule", "referralModule", "referralUsageStatus", "referralCommission" })
@@ -142,7 +143,7 @@ public sealed class CommissionsAndReferralsAccessTests
         await service.UpdateWorkItemAsync(Update(referral, Patch(referral, "phase", "conference")), actor);
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteWorkItemAsync(referral.Id, actor))).StatusCode);
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateWorkItemAsync(Update(referral, Patch(referral, "phase", "approved")), actor))).StatusCode);
-        await service.UpdateWorkItemAsync(Update(commission, Patch(commission, "agreedAt", DateTimeOffset.UtcNow.ToString("O"))), actor);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateWorkItemAsync(Update(commission, Patch(commission, "agreedAt", DateTimeOffset.UtcNow.ToString("O"))), actor))).StatusCode);
 
         var command = new CreateWorkItemCommand("referrals", "Indicação", "Nova", null, null, "Outra pessoa", null, "P3", null, null, 0, Referral(user).Description, [], null, null);
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.CreateWorkItemAsync(command, actor))).StatusCode);

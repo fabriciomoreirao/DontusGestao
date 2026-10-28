@@ -10,7 +10,7 @@ export type AgendaCalendar = { id: string; name: string; description: string; de
 export type AgendaDepartment = { id: string; name: string; active: boolean };
 export type AgendaType = { id: string; name: string; description: string; color: string; active: boolean };
 export type AgendaStatus = { id: string; name: string; description: string; color: string; active: boolean };
-export type AgendaCollaborator = { id: string; name: string; email: string; departmentId: string; departmentName: string; birthDate: string | null; startedAt: string | null };
+export type AgendaCollaborator = { id: string; name: string; email: string; departmentId: string; departmentName: string; birthDate: string | null; startedAt: string | null; agendaIds?: string[] };
 export type AgendaCelebrant = { id: string; name: string; birthDate: string | null; startedAt: string | null };
 export type AgendaCommitment = {
   id: string; agendaId: string; agendaTypeId: string; agendaStatusId: string; title: string; description: string;
@@ -256,7 +256,7 @@ function AvailabilityBlockForm({ module, busy, onClose, onSave }: { module: Agen
   const calendars = module.calendars.filter((item) => item.active);
   const [agendaId, setAgendaId] = useState(calendars[0]?.id ?? "");
   const calendar = calendars.find((item) => item.id === agendaId);
-  const responsible = module.collaborators.find((item) => item.departmentId === calendar?.departmentId);
+  const responsible = module.collaborators.find((item) => Boolean(calendar && item.agendaIds?.includes(calendar.id)));
   const type = module.types.find((item) => item.active);
   const status = module.statuses.find((item) => item.active);
   const ready = Boolean(calendar && responsible && type && status);
@@ -334,10 +334,10 @@ function CommitmentModal({ module, commitment, preset, busy, currentEmail, canRe
   const [editing, setEditing] = useState(!commitment);
   const [recurrence, setRecurrence] = useState<AgendaRecurrenceSelection>({ mode: "none", dates: [] });
   const presetCollaborator = module.collaborators.find((entry) => entry.name.toLocaleLowerCase("pt-BR") === preset?.responsibleName?.toLocaleLowerCase("pt-BR"));
-  const preferredCalendar = module.calendars.find((entry) => entry.departmentId === presetCollaborator?.departmentId);
+  const preferredCalendar = module.calendars.find((entry) => presetCollaborator?.agendaIds?.includes(entry.id));
   const [agendaId, setAgendaId] = useState(commitment?.agendaId ?? preferredCalendar?.id ?? module.calendars[0]?.id ?? "");
   const calendar = module.calendars.find((item) => item.id === agendaId);
-  const collaborators = module.collaborators.filter((entry) => entry.departmentId === calendar?.departmentId);
+  const collaborators = module.collaborators.filter((entry) => Boolean(calendar && entry.agendaIds?.includes(calendar.id)));
   const defaultResponsible = collaborators.find((entry) => entry.id === presetCollaborator?.id || entry.email.toLowerCase() === currentEmail.toLowerCase());
   const defaultStart = new Date(Date.now() + 60 * 60 * 1000);
   defaultStart.setMinutes(Math.ceil(defaultStart.getMinutes() / 15) * 15, 0, 0);
@@ -362,7 +362,7 @@ function AgendaCommitmentModal({ module, commitment, busy, currentEmail, canRese
   const [quickChanging, setQuickChanging] = useState(false);
   const [referenceDate, setReferenceDate] = useState(commitment ? dateInput(commitment.startsAt) : "");
   const calendar = module.calendars.find((item) => item.id === agendaId);
-  const collaborators = module.collaborators.filter((entry) => entry.departmentId === calendar?.departmentId);
+  const collaborators = module.collaborators.filter((entry) => Boolean(calendar && entry.agendaIds?.includes(calendar.id)));
   const canEdit = (!commitment || commitment.createdBy.toLowerCase() === currentEmail.toLowerCase()) && (canReserveMeetingRoom || !isMeetingRoomCalendar(calendar));
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

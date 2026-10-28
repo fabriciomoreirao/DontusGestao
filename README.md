@@ -69,6 +69,8 @@ O menu expansível **Cadastros** reúne os submenus Setores, Tipos de tarefa, Pr
 
 Em **Repetir compromisso → Escolher datas**, marque os dias no calendário; navegue entre meses para escolher datas não consecutivas. O compromisso é criado na data principal e nas datas marcadas, sem duplicações, mantendo horário de Brasília, duração, responsável e colaboradores. Se houver conflito em qualquer data, nenhum compromisso do lote é salvo. A opção está disponível na Agenda, nos agendamentos rápidos e nas novas reservas de sala pelo Portal. A agenda de sala utiliza a largura disponível e quadrados maiores, com rolagem horizontal da grade em telas pequenas.
 
+Cada setor recebe uma agenda automaticamente, tanto nos cadastros de Colaboradores quanto em Tarefas. Em **Colaboradores → Acesso às agendas**, selecione as agendas individuais de cada usuário. O vínculo funcional com um setor não concede acesso automático. Administradores e gestores de agenda mantêm acesso geral. A migração AgendaCalendarPermissions preserva uma única vez os acessos anteriores como permissões por agenda; alterações futuras de setor não modificam essas permissões.
+
 ## Módulo de Tarefas
 
 Em **Diário de Bordo**, coordenadores podem escolher **Meu diário** ou um de seus coordenados no seletor ao lado de **Nova atividade**. A consulta inclui atividades manuais e compromissos sob responsabilidade do colaborador, em modo de leitura. Somente vínculos diretos de coordenação com colaboradores ativos e não bloqueados são disponibilizados; os vínculos são mantidos em **Administração → Colaboradores**.
@@ -97,6 +99,20 @@ Configure no arquivo .env as variáveis SMTP_HOST, SMTP_PORT, SMTP_USE_SSL, SMTP
 Os cards do CRM comercial e de retenção mostram os dias sem interação desde o cadastro ou o último comentário/follow-up de contato. Movimentações de etapa e alterações gerais não reiniciam a contagem. Etapas finais de ganho ou perda e status finalizados mostram zero e interrompem a contagem. Cada card com lembrete pendente exibe um sino; o indicador desaparece após a confirmação ou exclusão do lembrete.
 
 No filtro **Lembretes** do CRM, escolha **Lembretes para hoje**, **Com lembrete agendado** ou **Sem lembrete agendado**. A tela **Lembretes** também possui o filtro de período para hoje. As datas seguem Brasília e respeitam o horário atualizado de lembretes adiados.
+
+## Comissões e indicações: confirmação por competência
+
+Na lista de Comissões, aprove ou reprove cada cliente e informe o motivo. Clique no nome do cliente para consultar dados gerais, utilização e datas de kick off, treinamento e alinhamento único. As regras e os valores são calculados novamente na API ao registrar a decisão; reprovações têm valor a pagar igual a zero.
+
+Em CS, abaixo de 50% de score a comissão é zero; de 50% a menos de 75%, de 75% até 100% (inclusive) e acima de 100% há percentuais editáveis por colaborador, inicialmente 5%, 10% e 15%. Scores de 200% ou mais continuam na última faixa. Configurações antigas mantêm seus três percentuais nas três faixas remuneradas. O valor base usa o lançamento ou a venda vinculada, os produtos contratados e, quando ausentes, a mensalidade do cliente. A supervisão pode revisar a base na aprovação; uma comissão percentual positiva exige valor base informado. PDFs já assinados permanecem preservados; novas assinaturas usam o layout atualizado.
+
+Depois de decidir todos os resultados filtrados, **Enviar confirmação** gera um link por responsável e competência. Em Indicações, a aba **Todas as decisões** reúne aprovadas e reprovadas do mês; busca, responsável, decisão e lembretes são respeitados na geração. O relatório preserva clientes, filtros, score, valores, regras, cálculos e motivos apresentados na geração.
+
+O documento exige login com uma sessão válida, inclusive em ambiente com bypass de desenvolvimento. Somente o usuário vinculado como responsável e a supervisão com permissão de aprovar ou administrar o módulo podem consultar o conteúdo e o PDF. Somente o responsável pode assinar. Vínculos são verificados por ID de usuário ou e-mail, nunca pelo nome exibido.
+
+Para assinar, o responsável marca **Concordo**, desenha sua rubrica no quadro e escolhe **Concordar e confirmar valor**. A API registra o ID, nome e e-mail do usuário autenticado, o horário do servidor, a rubrica, User-Agent, idioma, plataforma, fuso horário e dimensões da tela. O PDF é produzido na confirmação, preservado no banco e disponibilizado em **Baixar PDF assinado**, tanto no documento quanto no histórico de **Confirmações** da competência. O arquivo inclui os clientes, cálculos, decisões, motivos e os dados da assinatura. Confirmações anteriores à exigência de rubrica são identificadas como tal, sem inventar dados de assinatura.
+
+Supervisores podem usar **Adicionar valor manual** para informar cliente, identificação, produto, valor do cliente, comissão e justificativa. O lançamento fica pendente de aprovação ou reprovação e participa do relatório e da assinatura da competência como os demais.
 
 ## Formulários do acompanhamento LIA
 
@@ -179,6 +195,16 @@ npm run dev
 ```
 
 O frontend usa `API_INTERNAL_URL` (padrão `http://localhost:8080`) para encaminhar as requisições à API C#.
+
+A geração e os testes dos PDFs assinados usam `DejaVuSans.ttf` e `DejaVuSans-Bold.ttf`. A imagem Docker da API instala essas fontes. Fora dela, instale as fontes DejaVu em `/usr/share/fonts/truetype/dejavu` ou defina `DONTUS_PDF_FONT_DIR` com a pasta que contém os dois arquivos.
+
+## Experiência e navegação
+
+A navegação oferece **Ctrl+K** (ou **⌘K** no macOS) para localizar ferramentas, favoritos e acessos recentes. O atalho **/** posiciona o cursor na busca de clientes, colaboradores, IDs e protocolos. A busca desconsidera acentos. Favoritos ficam salvos por usuário neste navegador e respeitam as permissões disponíveis na sessão.
+
+O caminho da tela aparece acima do conteúdo, com botões de voltar e avançar. Módulos e subáreas mantêm seus endereços ao recarregar e ao percorrer o histórico. **Foco** amplia a área operacional ocultando o menu lateral; **Esc** restaura a navegação. Nos formulários compartilhados, **Tab** permanece dentro da janela e **Esc** fecha o formulário, retornando o foco ao controle que o abriu.
+
+O indicador de atualização mostra o horário de Brasília da última leitura bem-sucedida da API. Quando uma atualização em segundo plano falha, a interface identifica os dados como pendentes de atualização, mantendo a última leitura disponível. O painel da Fila de espera considera os encaminhamentos operacionais em espera.
 
 ## Controles essenciais
 

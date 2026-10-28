@@ -6,6 +6,8 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> options) : DbContext(options)
 {
+    public DbSet<ServiceRequestProtocolCounter> ServiceRequestProtocolCounters => Set<ServiceRequestProtocolCounter>();
+    public DbSet<CommissionConfirmation> CommissionConfirmations => Set<CommissionConfirmation>();
     public DbSet<LiaForm> LiaForms => Set<LiaForm>();
     public DbSet<LiaFormRequest> LiaFormRequests => Set<LiaFormRequest>();
     public DbSet<Customer> Customers => Set<Customer>();
@@ -18,6 +20,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<AgendaCommitment> AgendaCommitments => Set<AgendaCommitment>();
     public DbSet<AgendaCommitmentParticipant> AgendaCommitmentParticipants => Set<AgendaCommitmentParticipant>();
     public DbSet<UserAgendaDepartmentAccess> UserAgendaDepartmentAccesses => Set<UserAgendaDepartmentAccess>();
+    public DbSet<UserAgendaCalendarAccess> UserAgendaCalendarAccesses => Set<UserAgendaCalendarAccess>();
     public DbSet<Approval> Approvals => Set<Approval>();
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
@@ -71,6 +74,18 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ServiceRequestProtocolCounter>(entity => {
+            entity.ToTable("service_request_protocol_counters");
+            entity.HasKey(x => x.Year);
+            entity.Property(x => x.Year).ValueGeneratedNever();
+        });
+        ConfigureEntity(modelBuilder.Entity<CommissionConfirmation>(), "commission_confirmations");
+        modelBuilder.Entity<CommissionConfirmation>(entity => {
+            entity.Property(x => x.TokenHash).HasMaxLength(64);
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => new { x.Module, x.Scope, x.Competence, x.EmployeeKey });
+            entity.HasIndex(x => x.EmployeeUserId);
+        });
         modelBuilder.Entity<LiaForm>(entity => {
             entity.ToTable("lia_forms");
             entity.Property(x => x.Name).HasMaxLength(160);
@@ -238,6 +253,14 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.HasIndex(x => x.UserId);
             entity.HasOne<AgendaCommitment>().WithMany().HasForeignKey(x => x.CommitmentId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<UserAgendaCalendarAccess>(entity =>
+        {
+            entity.ToTable("user_agenda_calendar_accesses");
+            entity.HasKey(entry => new { entry.UserId, entry.CalendarId });
+            entity.HasOne(entry => entry.User).WithMany().HasForeignKey(entry => entry.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(entry => entry.Calendar).WithMany().HasForeignKey(entry => entry.CalendarId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<UserAgendaDepartmentAccess>(entity =>

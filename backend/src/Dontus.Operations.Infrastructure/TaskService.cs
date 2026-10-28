@@ -70,6 +70,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 task.Protocol = $"T{task.CreatedAt:yy}{task.Number:0000}";
             if (missingDepartments.Length > 0 || invalidFinalStatuses.Count > 0 || tasksWithoutProtocol.Count > 0 || repairedUnassignedPriority || !hasApprovalStatus)
                 await db.SaveChangesAsync(cancellationToken);
+            await EnsureDepartmentCalendarsAsync(cancellationToken);
             return;
         }
 
@@ -153,6 +154,14 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 });
         }
         await db.SaveChangesAsync(cancellationToken);
+        await EnsureDepartmentCalendarsAsync(cancellationToken);
+    }
+
+    private async Task EnsureDepartmentCalendarsAsync(CancellationToken ct)
+    {
+        var missing = await db.TaskDepartments.Where(d => d.Active && !db.AgendaCalendars.Any(c => c.DepartmentId == d.Id)).ToArrayAsync(ct);
+        db.AgendaCalendars.AddRange(missing.Select(d => new AgendaCalendar { Name = d.Name, DepartmentId = d.Id, Description = $"Agenda automática do setor {d.Name}." }));
+        if (missing.Length > 0) await db.SaveChangesAsync(ct);
     }
 
     public async Task<TaskModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
@@ -787,6 +796,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         entity.Active = command.Active; entity.RequiresAssigneeOnTransfer = command.RequiresAssigneeOnTransfer;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         if (!command.Id.HasValue && duplicate is null) db.TaskDepartments.Add(entity);
+        if (entity.Active && !await db.AgendaCalendars.AnyAsync(x => x.DepartmentId == entity.Id, cancellationToken))
+            db.AgendaCalendars.Add(new AgendaCalendar { Name = entity.Name, DepartmentId = entity.Id, Description = $"Agenda automática do setor {entity.Name}." });
         var existing = await db.UserDepartments.Where(x => x.DepartmentId == entity.Id).ToListAsync(cancellationToken);
         foreach (var membership in existing)
             membership.IsCoordinator = command.CoordinatorUserIds.Contains(membership.UserId);

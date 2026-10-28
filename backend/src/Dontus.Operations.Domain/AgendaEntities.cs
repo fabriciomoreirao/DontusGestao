@@ -17,6 +17,15 @@ public sealed class UserAgendaDepartmentAccess
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
+public sealed class UserAgendaCalendarAccess
+{
+    public Guid UserId { get; set; }
+    public AppUser User { get; set; } = null!;
+    public Guid CalendarId { get; set; }
+    public AgendaCalendar Calendar { get; set; } = null!;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
 public sealed class AgendaType : Entity
 {
     public required string Name { get; set; }

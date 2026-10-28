@@ -838,17 +838,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 !root.TryGetProperty("type", out var type) || type.GetString() != "percentage" ||
                 tiers.ValueKind != JsonValueKind.Array || tiers.GetArrayLength() == 0)
                 throw new DomainException("As faixas de score são exclusivas das comissões percentuais de Sucesso do Cliente.");
-            decimal cursor = 0;
-            foreach (var tier in tiers.EnumerateArray())
-            {
-                if (tier.ValueKind != JsonValueKind.Object ||
-                    !tier.TryGetProperty("min", out var min) || !min.TryGetDecimal(out var start) || start != cursor ||
-                    !tier.TryGetProperty("max", out var max) || !max.TryGetDecimal(out var end) || end <= start || end > 100 ||
-                    !tier.TryGetProperty("percentage", out var percentage) || !percentage.TryGetDecimal(out var rate) || rate < 0 || rate > 100)
-                    throw new DomainException("As faixas devem cobrir de 0% a 100% sem lacunas ou sobreposição, com comissão entre 0% e 100%.");
-                cursor = end;
-            }
-            if (cursor != 100) throw new DomainException("A última faixa de score deve terminar em 100%.");
+            CommissionScoreBands.Parse(tiers);
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException)
         {
@@ -985,6 +975,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             CreatedBy = actor.Email,
         };
 
+        var commissionDecisionData = await CommissionDecisionPolicy.PrepareAsync(db, item.Module, item.Description, null, item.AmountCents, actor, cancellationToken, item.CreatedBy);
+        item.Description = commissionDecisionData.Description; item.AmountCents = commissionDecisionData.Amount;
         db.WorkItems.Add(item);
         db.Activities.Add(new Activity
         {
@@ -1244,9 +1236,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             !string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) &&
             !ChangesOnlyDescriptionFields(item, command, "nextAlertAt", "snoozeCount", "seenAt", "seenBy", "confirmedAt", "confirmedBy"))
             throw new DomainException("O destinatário só pode adiar ou confirmar o lembrete recebido.", 403);
-        if (item.Module == "commissions" && !actor.HasPermission("commissions", "approve") && !actor.HasPermission("commissions", "manage") &&
-            !ChangesOnlyDescriptionFields(item, command, "viewedAt", "agreedAt"))
-            throw new DomainException("Você só pode registrar ciência; valores e decisões exigem aprovação.", 403);
+        if (item.Module == "commissions" && !actor.HasPermission("commissions", "approve") && !actor.HasPermission("commissions", "manage"))
+            throw new DomainException("A concordância deve ser registrada pelo link do relatório mensal.", 403);
         if (item.Version != command.Version)
             throw new DomainException("O registro foi alterado por outro usuário. Atualize a tela e tente novamente.", 409);
         if (string.IsNullOrWhiteSpace(command.Title))
@@ -1276,10 +1267,15 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (!string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
             db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module,
                 Kind = "Responsável alterado", Summary = command.Owner.Trim(), Actor = actor.DisplayName });
+        var commissionDecisionData = await CommissionDecisionPolicy.PrepareAsync(db, item.Module, command.Description, item.Description, command.AmountCents, actor, cancellationToken, item.CreatedBy);
+        command = command with { Description = commissionDecisionData.Description, AmountCents = commissionDecisionData.Amount };
+        await CommissionConfirmationService.InvalidatePendingAsync(db, item, cancellationToken);
         item.Title = command.Title.Trim();
         item.Owner = string.IsNullOrWhiteSpace(command.Owner) ? item.Owner : command.Owner.Trim();
         item.AmountCents = Math.Max(0, command.AmountCents);
         item.Description = command.Description?.Trim() ?? "";
+        if (item.Module == "commissions" && CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "decision") is "approved" or "rejected")
+            item.Status = CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "decision") == "approved" ? "Aprovada" : "Reprovada";
         if (item.Module == "cs" && CustomerSuccessJourneyStatus(item.Description) is { } journeyStatus)
             item.Status = journeyStatus;
         if (item.Module == "commercial" && !string.IsNullOrWhiteSpace(command.RecordType))
@@ -1339,6 +1335,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         await RequireCommissionScopeAsync(item, actor, true, cancellationToken);
         if (await db.LiaFormRequests.AnyAsync(entry => entry.WorkItemId == id, cancellationToken))
             throw new DomainException("Este acompanhamento possui formulários vinculados e não pode ser excluído. Preserve-o no histórico de concluídos.", 409);
+        await CommissionConfirmationService.InvalidatePendingAsync(db, item, cancellationToken);
         db.WorkItems.Remove(item);
         db.Activities.Add(new Activity
         {

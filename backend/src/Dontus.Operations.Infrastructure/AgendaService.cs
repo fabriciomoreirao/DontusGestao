@@ -15,10 +15,10 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         actor.RequirePermission("work", "view");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         var canManage = CanManage(actor);
-        var memberDepartmentIds = await AccessibleAgendaDepartmentIdsAsync(actorUser.Id, cancellationToken);
+        var memberDepartmentIds = await AccessibleAgendaCalendarIdsAsync(actorUser.Id, cancellationToken);
 
         var calendarsQuery = db.AgendaCalendars.AsNoTracking();
-        if (!canManage) calendarsQuery = calendarsQuery.Where(calendar => calendar.Active && memberDepartmentIds.Contains(calendar.DepartmentId));
+        if (!canManage) calendarsQuery = calendarsQuery.Where(calendar => calendar.Active && memberDepartmentIds.Contains(calendar.Id));
         var calendars = await calendarsQuery.OrderBy(calendar => calendar.Name).ToListAsync(cancellationToken);
         var calendarIds = calendars.Select(calendar => calendar.Id).ToArray();
         // A agenda utiliza a mesma base de setores do RH. Assim, setores criados ou
@@ -36,18 +36,18 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             .OrderBy(status => status.Name)
             .ToListAsync(cancellationToken);
         var visibleDepartmentIds = calendars.Select(calendar => calendar.DepartmentId).Distinct().ToArray();
-        var userDepartments = await db.UserDepartments.AsNoTracking()
-            .Where(link => visibleDepartmentIds.Contains(link.DepartmentId))
-            .ToListAsync(cancellationToken);
-        var users = await db.Users.AsNoTracking().Where(user => user.Active).ToDictionaryAsync(user => user.Id, cancellationToken);
-        var collaborators = userDepartments
-            .Where(link => users.ContainsKey(link.UserId))
-            .Select(link => new AgendaCollaboratorDto(link.UserId, users[link.UserId].DisplayName, users[link.UserId].Email,
-                link.DepartmentId, departments.GetValueOrDefault(link.DepartmentId, "Setor não encontrado"),
-                users[link.UserId].BirthDate, users[link.UserId].StartedAt))
-            .DistinctBy(collaborator => new { collaborator.Id, collaborator.DepartmentId })
-            .OrderBy(collaborator => collaborator.Name)
-            .ToArray();
+        var userDepartments = await db.UserDepartments.AsNoTracking().ToListAsync(cancellationToken);
+        var grants = await db.UserAgendaCalendarAccesses.AsNoTracking().Where(x => calendarIds.Contains(x.CalendarId)).ToListAsync(cancellationToken);
+        var managers = await CalendarManagerIdsAsync(cancellationToken);
+        if (canManage) managers = managers.Append(actorUser.Id).Distinct().ToArray();
+        var users = await db.Users.AsNoTracking().Where(user => user.Active && user.BlockedAt == null).ToDictionaryAsync(user => user.Id, cancellationToken);
+        var collaborators = users.Values.Select(user =>
+        {
+            var ids = managers.Contains(user.Id) ? calendarIds : grants.Where(x => x.UserId == user.Id).Select(x => x.CalendarId).ToArray();
+            var primary = userDepartments.Where(x => x.UserId == user.Id).OrderByDescending(x => x.IsPrimary).FirstOrDefault();
+            return new AgendaCollaboratorDto(user.Id, user.DisplayName, user.Email, primary?.DepartmentId ?? Guid.Empty,
+                primary is null ? user.Department : departments.GetValueOrDefault(primary.DepartmentId, user.Department), user.BirthDate, user.StartedAt, ids);
+        }).Where(user => user.AgendaIds!.Count > 0).OrderBy(user => user.Name).ToArray();
 
         var commitments = await db.AgendaCommitments.AsNoTracking()
             .Where(commitment => calendarIds.Contains(commitment.AgendaId))
@@ -160,6 +160,8 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             ?? throw new DomainException("Agenda não encontrada.", 404);
         if (await db.AgendaCommitments.AnyAsync(entry => entry.AgendaId == id, cancellationToken))
             throw new DomainException("Esta agenda possui compromissos ou bloqueios. Desative-a para preservar o histórico.", 409);
+        if (!await db.AgendaCalendars.AnyAsync(x => x.DepartmentId == calendar.DepartmentId && x.Id != id, cancellationToken))
+            throw new DomainException("O setor precisa manter uma agenda. Edite ou desative este cadastro para preservar o vínculo.", 409);
         db.AgendaCalendars.Remove(calendar);
         AddAudit(actor, "Delete", "agenda_calendar", id.ToString(), new { calendar.Name });
         await db.SaveChangesAsync(cancellationToken);
@@ -204,16 +206,12 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             ?? throw new DomainException("Selecione um status de agendamento ativo.");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         EnsureMeetingRoomReservationAllowed(calendar, actorUser);
-        var allowedDepartments = await AccessibleAgendaDepartmentIdsAsync(actorUser.Id, cancellationToken);
-        if (!CanManage(actor) && !allowedDepartments.Contains(calendar.DepartmentId))
-            throw new DomainException("Você não possui acesso à agenda deste setor.", 403);
+        var allowedDepartments = await AccessibleAgendaCalendarIdsAsync(actorUser.Id, cancellationToken);
+        if (!CanManage(actor) && !allowedDepartments.Contains(calendar.Id))
+            throw new DomainException("Você não possui acesso a esta agenda.", 403);
 
         var participantIds = (command.ParticipantUserIds ?? []).Append(command.ResponsibleUserId).Distinct().ToArray();
-        var validParticipantIds = await db.UserDepartments.AsNoTracking()
-            .Where(link => link.DepartmentId == calendar.DepartmentId && participantIds.Contains(link.UserId))
-            .Select(link => link.UserId).Distinct().ToArrayAsync(cancellationToken);
-        if (validParticipantIds.Length != participantIds.Length)
-            throw new DomainException("Responsável e colaboradores devem pertencer ao setor da agenda.");
+        var validParticipantIds = await ValidateCalendarParticipantsAsync(calendar.Id, participantIds, actorUser.Id, CanManage(actor), cancellationToken);
 
         var duration = command.EndsAt - command.StartsAt;
         var occurrences = RecurringStarts(command.StartsAt, command.Recurrence, command.RecurrenceDates)
@@ -268,15 +266,13 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             ?? throw new DomainException("Selecione um status ativo.");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         EnsureMeetingRoomReservationAllowed(calendar, actorUser);
-        var actorDepartments = await AccessibleAgendaDepartmentIdsAsync(actorUser.Id, cancellationToken);
-        if (!CanManage(actor) && !actorDepartments.Contains(calendar.DepartmentId))
-            throw new DomainException("Você não possui acesso à agenda deste setor.", 403);
+        var actorDepartments = await AccessibleAgendaCalendarIdsAsync(actorUser.Id, cancellationToken);
+        await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
+        if (!CanManage(actor) && !actorDepartments.Contains(calendar.Id))
+            throw new DomainException("Você não possui acesso a esta agenda.", 403);
         var participantIds = (command.ParticipantUserIds ?? []).Append(command.ResponsibleUserId).Distinct().ToArray();
-        var validParticipantIds = await db.UserDepartments.AsNoTracking()
-            .Where(link => link.DepartmentId == calendar.DepartmentId && participantIds.Contains(link.UserId))
-            .Select(link => link.UserId).Distinct().ToArrayAsync(cancellationToken);
-        if (participantIds.Length != validParticipantIds.Length)
-            throw new DomainException("Responsável e colaboradores devem pertencer ao setor da agenda.");
+        var validParticipantIds = await ValidateCalendarParticipantsAsync(calendar.Id, participantIds, actorUser.Id, CanManage(actor), cancellationToken);
+
         if (command.StartsAt != commitment.StartsAt || !commitment.Title.StartsWith("Kick off", StringComparison.OrdinalIgnoreCase))
             EnsureUpcomingCommercialSlot(command.Title, command.StartsAt);
         await EnsureAvailabilityAsync(calendar.Id, commitment.Id, command.ResponsibleUserId, command.Title.Trim(), command.StartsAt, command.EndsAt, cancellationToken);
@@ -301,6 +297,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var commitment = await db.AgendaCommitments.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Compromisso não encontrado.", 404);
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
         if (!string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) && commitment.ResponsibleUserId != actorUser.Id)
             throw new DomainException("Apenas o criador ou responsável pelo compromisso pode alterar o status.", 403);
         var status = await db.AgendaStatuses.SingleOrDefaultAsync(entry => entry.Id == command.AgendaStatusId && entry.Active, cancellationToken)
@@ -323,9 +320,8 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             commitment.ResponsibleUserId == actorUser.Id || string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase);
         if (!canAssign) throw new DomainException("Seu acesso não permite alterar o responsável deste compromisso.", 403);
 
-        var targetBelongsToCalendar = await db.UserDepartments.AsNoTracking().AnyAsync(link =>
-            link.UserId == command.ResponsibleUserId && link.DepartmentId == calendar.DepartmentId, cancellationToken);
-        if (!targetBelongsToCalendar) throw new DomainException("O novo responsável deve pertencer ao setor da agenda.");
+        await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
+        await ValidateCalendarParticipantsAsync(calendar.Id, [command.ResponsibleUserId], actorUser.Id, CanManage(actor), cancellationToken);
 
         await EnsureAvailabilityAsync(commitment.AgendaId, commitment.Id, command.ResponsibleUserId, commitment.Title, commitment.StartsAt, commitment.EndsAt, cancellationToken);
         var previousResponsibleId = commitment.ResponsibleUserId;
@@ -360,25 +356,15 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var commitments = await db.AgendaCommitments.Where(entry => ids.Contains(entry.Id)).ToArrayAsync(cancellationToken);
         if (commitments.Length != ids.Count) throw new DomainException("Um compromisso vinculado não foi encontrado. Revise a agenda antes de encaminhar.", 409);
 
-        var departments = await (from link in db.UserDepartments
-                                 join department in db.TaskDepartments on link.DepartmentId equals department.Id
-                                 where link.UserId == responsibleUserId && department.Active
-                                 orderby link.IsPrimary descending, department.Name
-                                 select department).ToArrayAsync(cancellationToken);
-        if (commitments.Length > 0 && departments.Length == 0) throw new DomainException("O responsável precisa estar vinculado a um setor ativo para receber a agenda.");
-        var departmentIds = departments.Select(entry => entry.Id).ToArray();
-        var calendars = await db.AgendaCalendars.Where(entry => entry.Active && departmentIds.Contains(entry.DepartmentId)).OrderBy(entry => entry.Name).ToArrayAsync(cancellationToken);
-        AgendaCalendar? newCalendar = null;
+        var grantedIds = await AccessibleAgendaCalendarIdsAsync(responsibleUserId, cancellationToken);
+        var targetManages = (await CalendarManagerIdsAsync(cancellationToken)).Contains(responsibleUserId);
+        var calendars = await db.AgendaCalendars.Where(entry => entry.Active && (targetManages || grantedIds.Contains(entry.Id))).OrderBy(entry => entry.Name).ToArrayAsync(cancellationToken);
         var plans = new List<(AgendaCommitment Commitment, AgendaCalendar Calendar)>();
         foreach (var commitment in commitments)
         {
             var destination = calendars.FirstOrDefault(entry => entry.Id == commitment.AgendaId)
-                ?? departments.SelectMany(department => calendars.Where(entry => entry.DepartmentId == department.Id && !IsMeetingRoom(entry))).FirstOrDefault();
-            if (destination is null)
-            {
-                newCalendar ??= new AgendaCalendar { Name = departments[0].Name, DepartmentId = departments[0].Id, Description = "Agenda de atendimentos do setor." };
-                destination = newCalendar;
-            }
+                ?? calendars.FirstOrDefault(entry => !IsMeetingRoom(entry));
+            if (destination is null) throw new DomainException("Libere uma agenda no cadastro do responsável antes de encaminhar a jornada.");
             // Kick offs allow several commercial reservations per slot, but a handoff must still respect the person's availability.
             if (await db.AgendaCommitments.AnyAsync(entry => !ids.Contains(entry.Id) && entry.ResponsibleUserId == responsibleUserId &&
                 entry.StartsAt < commitment.EndsAt && entry.EndsAt > commitment.StartsAt && !entry.Title.StartsWith(CommercialBlockPrefix), cancellationToken))
@@ -390,11 +376,6 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         }
 
         // No tracked changes occur until every commitment has passed validation.
-        if (newCalendar is not null)
-        {
-            db.AgendaCalendars.Add(newCalendar);
-            AddAudit(actor, "Create", "agenda_calendar", newCalendar.Id.ToString(), new { newCalendar.Name, JourneyId = journey.Id });
-        }
         foreach (var (commitment, calendar) in plans)
         {
             var previousResponsibleId = commitment.ResponsibleUserId;
@@ -425,6 +406,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var commitment = await db.AgendaCommitments.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
             ?? throw new DomainException("Compromisso não encontrado.", 404);
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
         if (!string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) && commitment.ResponsibleUserId != actorUser.Id && !CanManage(actor))
             throw new DomainException("Apenas o criador, responsável ou coordenador pode excluir o compromisso.", 403);
         db.AgendaCommitmentParticipants.RemoveRange(db.AgendaCommitmentParticipants.Where(entry => entry.CommitmentId == id));
@@ -437,22 +419,28 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         await db.Users.SingleOrDefaultAsync(user => user.Email == actor.Email, cancellationToken)
         ?? throw new DomainException("Usuário autenticado não encontrado.", 403);
 
-    private async Task<Guid[]> AccessibleAgendaDepartmentIdsAsync(Guid userId, CancellationToken cancellationToken)
-    {
-        var primaryDepartmentId = await db.UserDepartments.AsNoTracking()
-            .Where(link => link.UserId == userId)
-            .OrderByDescending(link => link.IsPrimary)
-            .Select(link => (Guid?)link.DepartmentId)
-            .FirstOrDefaultAsync(cancellationToken);
-        var additionalDepartmentIds = await db.UserAgendaDepartmentAccesses.AsNoTracking()
-            .Where(link => link.UserId == userId)
-            .Select(link => link.DepartmentId)
-            .ToArrayAsync(cancellationToken);
+    private Task<Guid[]> AccessibleAgendaCalendarIdsAsync(Guid userId, CancellationToken ct) =>
+        db.UserAgendaCalendarAccesses.AsNoTracking().Where(x => x.UserId == userId).Select(x => x.CalendarId).ToArrayAsync(ct);
 
-        return additionalDepartmentIds
-            .Concat(primaryDepartmentId.HasValue ? [primaryDepartmentId.Value] : [])
-            .Distinct()
-            .ToArray();
+    private Task<Guid[]> CalendarManagerIdsAsync(CancellationToken ct) => db.UserAccessGroups.AsNoTracking()
+        .Where(x => x.Group.Active && x.Group.Permissions.Any(p => (p.Screen == "work" || p.Screen == "admin") && p.CanManage))
+        .Select(x => x.UserId).Distinct().ToArrayAsync(ct);
+
+    private async Task RequireCalendarAccessAsync(Guid calendarId, Guid userId, ActorContext actor, CancellationToken ct)
+    {
+        if (!CanManage(actor) && !await db.UserAgendaCalendarAccesses.AnyAsync(x => x.UserId == userId && x.CalendarId == calendarId, ct))
+            throw new DomainException("Você não possui acesso a esta agenda.", 403);
+    }
+
+    private async Task<Guid[]> ValidateCalendarParticipantsAsync(Guid calendarId, Guid[] userIds, Guid actorId, bool actorManages, CancellationToken ct)
+    {
+        var managers = await CalendarManagerIdsAsync(ct);
+        if (actorManages) managers = managers.Append(actorId).Distinct().ToArray();
+        var granted = await db.UserAgendaCalendarAccesses.Where(x => x.CalendarId == calendarId && userIds.Contains(x.UserId)).Select(x => x.UserId).ToArrayAsync(ct);
+        var eligible = granted.Concat(managers).Distinct().ToArray();
+        var valid = await db.Users.Where(x => userIds.Contains(x.Id) && x.Active && x.BlockedAt == null && eligible.Contains(x.Id)).Select(x => x.Id).ToArrayAsync(ct);
+        if (valid.Length != userIds.Length) throw new DomainException("Libere o acesso do responsável e dos participantes a esta agenda no cadastro do colaborador.");
+        return valid;
     }
 
     private static bool CanManage(ActorContext actor) => actor.HasPermission("work", "manage") || actor.HasPermission("admin", "manage");
