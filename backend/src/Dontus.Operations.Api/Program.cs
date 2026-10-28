@@ -88,11 +88,13 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     });
 }));
 
-app.UseRateLimiter();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapOpenApi();
+app.MapLiaForms();
+app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken cancellationToken) =>
     await db.Database.CanConnectAsync(cancellationToken)
@@ -481,10 +483,10 @@ app.MapGet("/api/public-service-requests", (HttpContext context, IConfiguration 
         endpoint = "/api/public-service-requests",
         method = "POST",
         contentType = "multipart/form-data",
-        requiredFields = new[] { "clientId", "companyName", "whatsapp", "type", "summary", "files" },
+        requiredFields = new[] { "clientId", "companyName", "whatsapp", "type", "summary" },
         aliases = new { companyName = new[] { "fullName" } },
         types = serviceRequestTypes,
-        files = new { field = "files", required = true, maximum = 5, maximumSizeMb = 25 },
+        files = new { field = "files", required = false, maximum = 5, maximumSizeMb = 25 },
     });
 }).RequireRateLimiting("public-service-requests");
 
@@ -591,7 +593,7 @@ app.MapPost("/api/service-request-ai-settings/test", async (
         : Results.Problem(statusCode: 422, title: "Integração não validada", detail: result.IntegrationError ?? "Ative e salve a integração antes de testar.");
 }).RequireAuthorization().RequireRateLimiting("operations");
 
-app.MapPost("/api/public-service-requests", async (HttpContext context, IConfiguration configuration, OperationsDbContext db, IDataProtectionProvider protectionProvider, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
+app.MapPost("/api/public-service-requests", async (HttpContext context, IConfiguration configuration, OperationsDbContext db, ServiceRequestCreationService creationService, IDataProtectionProvider protectionProvider, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
     if (!ValidServiceRequestKey(context, configuration))
         return Results.Problem(statusCode: 401, title: "Chave inválida", detail: "Informe a chave da integração no cabeçalho X-API-Key.");
@@ -614,8 +616,8 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
         return Results.Problem(statusCode: 400, title: "Tipo inválido", detail: "Selecione um dos tipos disponíveis.");
     if (summary.Length < 10 || summary.Length > 1000)
         return Results.Problem(statusCode: 400, title: "Descrição inválida", detail: "Descreva a solicitação com 10 a 1000 caracteres.");
-    if (form.Files.Count is < 1 or > 5 || form.Files.Any(file => file.Length <= 0 || file.Length > 25 * 1024 * 1024))
-        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie de 1 a 5 arquivos, com no máximo 25 MB cada.");
+    if (form.Files.Count > 5 || form.Files.Any(file => file.Length <= 0 || file.Length > 25 * 1024 * 1024))
+        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie no máximo 5 arquivos, com até 25 MB cada.");
 
     var customers = await db.Customers.AsNoTracking().ToListAsync(cancellationToken);
     var customer = customers.FirstOrDefault(entry => PublicCustomerCode(entry.DocumentMasked) == clientId);
@@ -644,18 +646,14 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
         await file.CopyToAsync(stream, cancellationToken);
         attachments.Add(new { id = attachmentId, name = Path.GetFileName(file.FileName), contentType = file.ContentType, sizeBytes = file.Length });
     }
-    var protocol = $"CH-{DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3)):yyyyMMdd}-{item.Id.ToString("N")[..6].ToUpperInvariant()}";
-    item.Description = JsonSerializer.Serialize(new
+    var detail = JsonSerializer.SerializeToNode(new
     {
-        kind = "serviceRequest", protocol, clientId, fullName, whatsapp, selectedType, summary,
+        kind = "serviceRequest", clientId, fullName, whatsapp, selectedType, summary,
         aiClassification = classification.Stage, aiReason = classification.Reason, aiConfidence = classification.Confidence, aiSource = classification.Source,
         attachments, comments = Array.Empty<object>(), history = new[] { new { text = $"Chamado recebido e classificado como {classification.Stage}.", at = DateTimeOffset.UtcNow, by = "Triagem inteligente" } },
         submittedAt = DateTimeOffset.UtcNow,
-    });
-    db.WorkItems.Add(item);
-    db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module, Kind = "Chamado recebido", Summary = $"{protocol} · {classification.Stage}", Actor = "Integração externa" });
-    db.AuditEvents.Add(new AuditEvent { ActorEmail = "integracao-chamados", Action = "Create", Resource = "work_item", ResourceId = item.Id.ToString(), Module = item.Module, DetailsJson = JsonSerializer.Serialize(new { protocol, clientId, selectedType, classification = classification.Stage }), Result = "Sucesso" });
-    await db.SaveChangesAsync(cancellationToken);
+    })!.AsObject();
+    var protocol = await creationService.CreateAsync(item, detail, cancellationToken);
     return Results.Created($"/api/public-service-requests/{item.Id}", new { id = item.Id, protocol, status = item.Status, classification = classification.Stage, customerMatched = customer is not null, message = "Chamado recebido com sucesso." });
 }).DisableAntiforgery().RequireRateLimiting("public-service-requests");
 
@@ -707,7 +705,7 @@ operations.MapGet("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view"))
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view") || actor.HasPermission("commissions", "view") || actor.HasPermission("referrals", "view") || actor.HasPermission("cs", "view"))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("admin", "manage"))
         snapshot = snapshot with { Access = await accessControl.GetManagementAsync(actor, cancellationToken) };
@@ -855,13 +853,46 @@ var internalChatFiles = app.MapGroup("/api/internal-chats")
     .RequireRateLimiting("operations");
 
 internalChatFiles.MapGet("", async (
+    int? historyDays,
     ClaimsPrincipal principal,
     IInternalChatService internalChatService,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
-    return Results.Ok(await internalChatService.GetModuleAsync(actor, cancellationToken));
+    return Results.Ok(await internalChatService.GetModuleAsync(actor, cancellationToken, historyDays ?? 30));
+});
+
+internalChatFiles.MapGet("/photos/{kind}/{id:guid}", async (
+    string kind, Guid id, ClaimsPrincipal principal, OperationsDbContext db,
+    IAccessControlService accessControl, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    string? photo = null;
+    if (kind == "user")
+    {
+        var canSeeProfiles = new[] { "internalChat", "tasks", "catalogs", "notices", "suggestions", "admin", "hr" }
+            .Any(screen => actor.HasPermission(screen, "view"));
+        photo = await db.Users.AsNoTracking().Where(user => user.Id == id && (user.Active || actor.HasPermission("admin", "manage"))
+                && (canSeeProfiles || user.Email == actor.Email))
+            .Select(user => user.PhotoDataUrl).SingleOrDefaultAsync(cancellationToken);
+    }
+    else if (kind == "room")
+    {
+        actor.RequirePermission("internalChat", "view");
+        photo = await db.InternalChatRooms.AsNoTracking().Where(room => room.Id == id
+            && db.InternalChatRoomMembers.Any(member => member.RoomId == room.Id
+                && db.Users.Any(user => user.Id == member.UserId && user.Email == actor.Email)))
+            .Select(room => room.PhotoDataUrl).SingleOrDefaultAsync(cancellationToken);
+    }
+    if (string.IsNullOrEmpty(photo) || !photo.StartsWith("data:image/", StringComparison.Ordinal)) return Results.NotFound();
+    var separator = photo.IndexOf(";base64,", StringComparison.Ordinal);
+    if (separator < 0) return Results.NotFound();
+    var contentType = photo[5..separator];
+    if (contentType is not ("image/png" or "image/jpeg" or "image/webp" or "image/gif")) return Results.NotFound();
+    context.Response.Headers.CacheControl = "private, max-age=300";
+    try { return Results.File(Convert.FromBase64String(photo[(separator + 8)..]), contentType); }
+    catch (FormatException) { return Results.NotFound(); }
 });
 
 internalChatFiles.MapPost("/{roomId:guid}/attachments", async (
@@ -1038,6 +1069,7 @@ operations.MapPost("", async (
     ITaskService taskService,
     IChatService chatService,
     IInternalChatService internalChatService,
+    ILocalAuthenticationService authentication,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
@@ -1131,7 +1163,10 @@ operations.MapPost("", async (
                 request.Description,
                 request.RecordType,
                 request.CustomerName,
-                request.Version ?? 0), actor, cancellationToken);
+                request.Version ?? 0,
+                request.ResponsibleUserId,
+                request.DistributionVersion,
+                request.ExpectedNextResponsibleUserId), actor, cancellationToken);
             break;
 
         case "deleteWorkItem":
@@ -1228,7 +1263,7 @@ operations.MapPost("", async (
                 request.Title ?? "", request.Description,
                 request.StartsAt ?? throw new DomainException("Início obrigatório."),
                 request.EndsAt ?? throw new DomainException("Término obrigatório."),
-                request.ParticipantUserIds, request.Recurrence), actor, cancellationToken);
+                request.ParticipantUserIds, request.Recurrence, request.RecurrenceDates), actor, cancellationToken);
             id = commitments.FirstOrDefault();
             break;
 
@@ -1330,9 +1365,14 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } employeeDepartmentId ? [employeeDepartmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds), actor, cancellationToken);
             id = createdEmployee.Id;
             temporaryPassword = createdEmployee.TemporaryPassword;
+            break;
+
+        case "resetEmployeePassword":
+            await authentication.ResetEmployeePasswordAsync(
+                request.Id ?? throw new DomainException("Colaborador obrigatório."), actor, cancellationToken);
             break;
 
         case "updateEmployee":
@@ -1342,7 +1382,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } departmentId ? [departmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds), actor, cancellationToken);
             break;
 
         case "deleteEmployee":
@@ -1721,6 +1761,15 @@ operations.MapPost("", async (
             throw new DomainException("A operação solicitada não é suportada.");
     }
 
+    // Chat commands only need the chat projection; rebuilding every module here
+    // can time out after a message has already been persisted.
+    if (request.Action?.Contains("InternalChat", StringComparison.Ordinal) == true)
+        return Results.Ok(new { ok = true, id, internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) });
+    if (request.Action is "markNoticeViewed" or "markNoticeRead")
+        return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
+    if (request.Action == "markTaskNotificationRead")
+        return Results.Ok(new { ok = true, taskModule = await taskService.GetModuleAsync(actor, cancellationToken) });
+
     actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);
     if (actor.HasPermission("diary", "view"))
@@ -1739,7 +1788,7 @@ operations.MapPost("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view"))
+    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view") || actor.HasPermission("commissions", "view") || actor.HasPermission("referrals", "view") || actor.HasPermission("cs", "view"))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     var access = actor.HasPermission("admin", "manage")
         ? await accessControl.GetManagementAsync(actor, cancellationToken)
@@ -2090,6 +2139,8 @@ public sealed class OperationsRequest
     public Guid? AgendaTypeId { get; init; }
     public Guid? AgendaStatusId { get; init; }
     public Guid? ResponsibleUserId { get; init; }
+    public string? DistributionVersion { get; init; }
+    public Guid? ExpectedNextResponsibleUserId { get; init; }
     public string? CustomerName { get; init; }
     public string? LegalName { get; init; }
     public string? TradeName { get; init; }
@@ -2146,6 +2197,7 @@ public sealed class OperationsRequest
     public string? Department { get; init; }
     public bool? Active { get; init; }
     public bool? IsCoordinator { get; init; }
+    public bool? FullAccess { get; init; }
     public IReadOnlyCollection<Guid>? SubordinateUserIds { get; init; }
     public IReadOnlyCollection<Guid>? GroupIds { get; init; }
     public string? Name { get; init; }
@@ -2189,6 +2241,7 @@ public sealed class OperationsRequest
     public int? SeverityOrder { get; init; }
     public string? Color { get; init; }
     public string? Recurrence { get; init; }
+    public IReadOnlyCollection<DateOnly>? RecurrenceDates { get; init; }
     public int? DefaultDueMinutes { get; init; }
     public int? DisplayOrder { get; init; }
     public string? KanbanColumn { get; init; }
@@ -2211,6 +2264,7 @@ public sealed class OperationsRequest
     public Guid? InitialStatusId { get; init; }
     public IReadOnlyCollection<Guid>? DepartmentIds { get; init; }
     public IReadOnlyCollection<Guid>? AgendaDepartmentIds { get; init; }
+    public IReadOnlyCollection<Guid>? AgendaCalendarIds { get; init; }
     public IReadOnlyCollection<Guid>? AllowedStatusIds { get; init; }
     public Guid? UserId { get; init; }
     public string? Phone { get; init; }

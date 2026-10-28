@@ -22,6 +22,9 @@ public static class DependencyInjection
                     .EnableRetryOnFailure(5);
                 npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
             }));
+        services.AddScoped<LiaFormService>();
+        services.AddScoped<CommissionConfirmationService>();
+        services.AddScoped<ServiceRequestCreationService>();
         services.AddScoped<IOperationsService, OperationsService>();
         services.AddScoped<IAccessControlService, AccessControlService>();
         services.AddScoped<IAgendaService, AgendaService>();

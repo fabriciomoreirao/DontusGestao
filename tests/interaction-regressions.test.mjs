@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { customerSuccessScore } from "../lib/commission-rules.ts";
 
 test("mantém o perfil amplo e legível nos temas claro e escuro", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -29,7 +30,7 @@ test("abre o perfil lateral do colaborador pela busca global", async () => {
   assert.match(operations, /const openEmployeeFromGlobalSearch/);
   assert.match(operations, /setProfileEmployee\(employee\)/);
   assert.match(operations, /result\.kind === "employee"/);
-  assert.match(operations, /Buscar ID, clientes, colaboradores, protocolos, tarefas/);
+  assert.match(operations, /Buscar clientes, IDs, protocolos e registros/);
   assert.match(operations, /employee\.displayName\.toLocaleLowerCase\("pt-BR"\) === normalized/);
 });
 
@@ -115,7 +116,7 @@ test("mantém cartões compactos e status completos no desenvolvimento", async (
   assert.match(css, /\.app-shell \.main \.recruitment-process-list h2/);
   assert.match(css, /\.app-shell \.main \.survey-grid h2/);
   assert.match(development, /\{ name: "Em validação", tone: "cyan" \}/);
-  assert.match(development, /<option>Em validação<\/option><option>Em produção<\/option>/);
+  assert.match(development, /<option>Em validação<\/option><option>Liberada<\/option><option>Em produção<\/option>/);
 });
 
 test("controla indicadores por grupo e exibe somente ferramentas do menu", async () => {
@@ -176,14 +177,16 @@ test("mantém os novos fluxos de CRM, evolução, metas e animações", async ()
 });
 
 test("limita os horários comerciais e permite bloquear períodos na agenda", async () => {
-  const [operations, agenda, agendaService, css] = await Promise.all([
+  const [operations, agenda, agendaService, css, scheduling] = await Promise.all([
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/AgendaModule.tsx", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AgendaService.cs", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../lib/commercial-scheduling.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(operations, /slotCommitments\.length < 3/);
-  assert.match(operations, /commercialSlotIsBlocked/);
+  assert.match(operations, /availableCommercialSlots/);
+  assert.match(scheduling, /slotCommitments\.length < 3/);
+  assert.match(scheduling, /commercialSlotIsBlocked/);
   assert.match(operations, /isBrazilianHoliday/);
   assert.doesNotMatch(operations, /dayCommitments\.length\s*>=\s*3/);
   assert.match(agenda, /COMMERCIAL_AVAILABILITY_BLOCK_PREFIX/);
@@ -205,7 +208,7 @@ test("sincroniza responsáveis e suporta alinhamento único no acompanhamento", 
     readFile(new URL("../backend/src/Dontus.Operations.Api/Program.cs", import.meta.url), "utf8"),
   ]);
   assert.match(operations, /entry\.isCoordinator && destinationTerms/);
-  assert.match(journey, /assignAgendaCommitment/);
+  assert.match(journey, /responsibleUserId: employee\.id/);
   assert.match(journey, /Atualizar responsável e agenda/);
   assert.match(journey, /singleAlignmentCompletedAt/);
   assert.match(journey, /onboardingReady = Boolean\(journey\.singleAlignmentCompletedAt/);
@@ -317,7 +320,7 @@ test("configura clientes, vincula redes e consolida comentários por ID", async 
   assert.match(app, /const CUSTOMER_CATALOGS/);
   assert.match(app, /scope="customers"/);
   assert.match(app, /name="strategicNetworkId"/);
-  assert.match(app, /Rede: \{linkedNetwork\.title\}/);
+  assert.match(app, /Cliente estratégico vinculado à rede \{linkedNetwork\.title\}/);
   assert.match(app, /label: "Comentários"/);
   assert.match(app, /label: "Alerta"/);
   assert.match(app, /structuredClientEvolutions/);
@@ -366,7 +369,12 @@ test("centraliza alertas e checklists e retoma clientes pelo CRM Retenção", as
   assert.match(app, /label: "Checklists"/);
   assert.match(app, /commercialChecklist/);
   assert.match(app, /retentionChecklist/);
-  assert.match(app, /csActivationChecklist/);
+  assert.match(app, /\["csFeatureActive", "Configuração de features"\]/);
+  assert.match(app, /\["csWorkflowStatus", "Status da jornada"\]/);
+  assert.match(app, /\["csActivationChecklist", "Checklist · Ativação"\]/);
+  const csCatalogs = app.match(/const CS_CATALOGS = \[([\s\S]*?)\] as const;/)?.[1] ?? "";
+  assert.doesNotMatch(csCatalogs, /csFeatureBase|csFeaturePlus/);
+  assert.match(app, /catalog === "csFeatureActive" && \["csFeature", "csFeatureBase", "csFeaturePlus"\]\.includes\(item\.catalog\)/);
   assert.match(app, /enterpriseChecklist/);
   assert.match(app, /serviceChecklist/);
   assert.match(app, /cancellationChecklist/);
@@ -421,6 +429,7 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   ]);
   assert.match(enhancer, /CLIENT_RECORD_EVENT/);
   assert.match(enhancer, /Ficha do cliente/);
+  assert.match(enhancer, /Ficha da rede/);
   assert.match(app, /Retomar cliente/);
   assert.match(app, /label: "Acompanhamentos"/);
   assert.match(app, /EmployeeIndicatorsAdmin/);
@@ -429,7 +438,7 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   assert.match(app, /className="form-grid employee-form"/);
   assert.match(app, /userCan\(data\.user, "catalogs", "manage"\) \|\| userCan\(data\.user, "tasks", "manage"\)/);
   assert.match(reminders, /confirmedAt/);
-  assert.match(reminders, /30 minutos/);
+  assert.match(reminders, /60 minutos/);
   assert.match(reminders, /ReminderDetailModal/);
   assert.match(development, /DevelopmentTriageCompletePortal/);
   assert.match(development, /searchParams\.delete\("subtask"\)/);
@@ -465,12 +474,18 @@ test("integra chamados públicos, competência mensal e rolagem do chat", async 
   assert.match(requests, /TRIAGE_STAGES/);
   assert.match(requests, /Dúvida sobre o sistema.*Tarefa.*Reclamação.*Sugestão.*Bug.*Cancelamento.*Nova contratação/s);
   assert.match(requests, /PublicServiceRequestPage/);
-  assert.match(requests, /required=\{files\.length===0\} multiple/);
+  assert.match(requests, /Imagens ou arquivos <small>\(opcional\)<\/small>/);
+  assert.match(requests, /<input type="file" multiple/);
+  assert.doesNotMatch(requests, /required=\{files\.length===0\}/);
   assert.match(api, /MapPost\("\/api\/public-service-requests"/);
   assert.match(api, /X-API-Key/);
   assert.match(api, /customerMatched = customer is not null/);
   assert.match(api, /maximum = 5/);
   assert.match(api, /form\["companyName"\]/);
+  assert.match(api, /form\.Files\.Count > 5/);
+  assert.doesNotMatch(api, /form\.Files\.Count is < 1 or > 5/);
+  assert.match(api, /files = new \{ field = "files", required = false/);
+  assert.doesNotMatch(api, /requiredFields = new\[\] \{[^}]*"files"/);
   assert.match(screens, /serviceRequests/);
   assert.match(screens, /serviceFollowup/);
   assert.match(compose, /PUBLIC_SERVICE_REQUESTS_API_KEY/);
@@ -528,17 +543,19 @@ test("qualifica vendas diretas, acompanha metas e retorna das configurações", 
   assert.match(css, /\.goals-bi-tracking/);
 });
 
-test("mantém o painel público em tempo real escuro e sem cartões internos brancos", async () => {
+test("permite temas claro e escuro no painel público em tempo real", async () => {
   const [overview, css] = await Promise.all([
     readFile(new URL("../app/PublicOperationsOverview.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
   assert.match(overview, /Dontus BI em tempo real/);
+  assert.match(overview, /Tema do BI público/);
+  assert.match(css, /public-bi-light\{color-scheme:light/);
   assert.match(overview, /public-talent-radar/);
   assert.match(css, /Painel público em tempo real: command center escuro e uniforme/);
-  assert.match(css, /\.public-ops-page\.public-bi-page\{/);
+  assert.match(css, /\.public-ops-page\.public-bi-page:not\(\.public-bi-light\)\{/);
   assert.match(css, /--public-surface:#0d1a28/);
-  assert.match(css, /\.public-ops-page\.public-bi-page \.public-talent-radar section/);
+  assert.match(css, /\.public-ops-page\.public-bi-page:not\(\.public-bi-light\) \.public-talent-radar section/);
   assert.match(css, /background:linear-gradient\(145deg,#142a3f,#0d1c2b\)/);
 });
 
@@ -610,15 +627,15 @@ test("separa o acesso às agendas, preserva o rodapé dos modais e usa o ID púb
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
   assert.match(app, /agendaDepartmentIds/);
-  assert.match(app, /Acesso a agendas de outros setores/);
-  assert.match(app, /Agenda liberada pelo setor principal/);
+  assert.match(app, /Acesso às agendas/);
+  assert.match(app, /O setor do cadastro não libera acesso automaticamente/);
   assert.match(services, /publicCustomerCode\(customer\)/);
   assert.match(services, /pattern="\\d\{6\}"/);
   assert.doesNotMatch(services, /clientCode: customer\.id\.slice/);
-  assert.match(access, /ValidateAgendaDepartmentAccessesAsync/);
-  assert.match(agenda, /AccessibleAgendaDepartmentIdsAsync/);
-  assert.match(entities, /class UserAgendaDepartmentAccess/);
-  assert.match(context, /UserAgendaDepartmentAccesses/);
+  assert.match(access, /ValidateAgendaCalendarAccessesAsync/);
+  assert.match(agenda, /AccessibleAgendaCalendarIdsAsync/);
+  assert.match(entities, /class UserAgendaCalendarAccess/);
+  assert.match(context, /UserAgendaCalendarAccesses/);
   assert.match(css, /proteção global contra corte no final dos modais/);
   assert.match(css, /scroll-padding-bottom:88px/);
 });
@@ -643,4 +660,144 @@ test("organiza reservas da sala e restringe a criação aos coordenadores", asyn
   assert.match(css, /\.portal-room-overview/);
   assert.match(css, /\.agenda-room-visibility/);
   assert.match(css, /\.agenda-filter-controls/);
+});
+
+test("sincroniza etapas das versões e reaproveita a versão do cliente nos atendimentos", async () => {
+  const [development, services] = await Promise.all([
+    readFile(new URL("../app/DevelopmentModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ServiceRecordsModule.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(development, /const versionKanbanStage = \(detail: DevelopmentData\) => detail\.processStage/);
+  assert.match(development, /onClick=\{openEditor\}/);
+  assert.match(development, /ref=\{editSectionRef\} className="development-actions"/);
+  assert.match(development, /processStage:"Em validação", versionName:selectedVersion/);
+  assert.match(services, /const lastVersionByClientCode = useMemo/);
+  assert.match(services, /customer\.product_version\?\.trim\(\) \|\| lastVersionByClientCode\[clientCode\]/);
+  assert.match(services, /changeClientCode\(event\.target\.value\)/);
+});
+
+test("calcula score por features e vincula clientes a redes", async () => {
+  const [journey, app, enhancer] = await Promise.all([
+    readFile(new URL("../app/CustomerSuccessJourneyModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CardLinkEnhancer.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(journey, /catalogFeatureIsBase/);
+  assert.equal(customerSuccessScore({ featuresBase: ["Agenda"], featuresActive: ["Agenda"], featuresPlus: ["Financeiro"] }), 200);
+  assert.match(journey, /scoreEvolution/);
+  assert.match(journey, /As seleções são salvas automaticamente/);
+  assert.doesNotMatch(journey, /> Salvar evolução<\/button>/);
+  assert.match(app, /saveStrategicNetwork/);
+  assert.match(app, /strategicNetworkId/);
+  assert.match(app, /title="Visualizar dados da unidade"/);
+  assert.match(app, /const openUnitJourney = async/);
+  assert.match(app, /Abrir acompanhamento sem sair de Contas estratégicas/);
+  assert.match(app, /openedJourney && openedJourneyDetail && unit && <JourneyDrawer/);
+  assert.doesNotMatch(app, /window\.location\.assign\(url\.toString\(\)\)/);
+  assert.match(await readFile(new URL("../app/detail-header.ts", import.meta.url), "utf8"), /commercial-copy-link/);
+});
+
+test("integra redes, acesso total, alertas por ID e notificações persistentes", async () => {
+  const [app, actions, notices, contracts, access] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ClientEngagementActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/NoticesModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Application/AccessContracts.cs", import.meta.url), "utf8"),
+    readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/AccessControlService.cs", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /Redes e franquias/);
+  assert.match(app, /function NetworkCustomerRecord/);
+  assert.match(app, /network\?\.id \|\| context\.clientId/);
+  assert.match(app, /networkRecord && networkDetail/);
+  assert.match(app, /network-customer-record-page/);
+  assert.match(app, /Cadastro sincronizado automaticamente com Contas Estratégicas/);
+  assert.match(app, /Acesso total ao sistema/);
+  assert.match(app, /fullAccess/);
+  assert.match(app, /dontus:snoozed-notices/);
+  assert.match(app, /Date\.now\(\) \+ 60 \* 60_000/);
+  assert.match(app, /buildNotifications/);
+  assert.match(app, /entry\.targetUrl/);
+  assert.match(app, /onAuthenticated=\{\(\) => window\.location\.replace\("\/"\)\}/);
+  assert.match(actions, /ID do cliente \*/);
+  assert.match(actions, /pattern="\[0-9\]\{6\}"/);
+  assert.match(actions, /Nome do cliente/);
+  assert.match(notices, /Ver depois/);
+  assert.match(contracts, /bool FullAccess = false/);
+  assert.match(access, /group\.Name == AdministratorsGroup && group\.Active/);
+  assert.match(access, /existing\.CanManage = true/);
+});
+
+test("arquiva versões liberadas por competência e unifica kanbans, portal e cores persistentes", async () => {
+  const [app, development, portal, tasks, suggestions, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/DevelopmentModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/PortalDontus.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/SuggestionsModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /release\.kind === "developmentRelease" && release\.status !== "Liberada"/);
+  assert.match(app, /item\.record_type === "Configuração de Kanban"/);
+  assert.match(app, /useState<"board" \| "list">\("board"\)/);
+  assert.match(app, /useState<"list" \| "kanban">\("kanban"\)/);
+  assert.match(app, /dontus\.agenda-visual/);
+  assert.match(app, /Azul-marinho/);
+  assert.match(app, /Verde-lima/);
+  assert.match(development, /useState<"list" \| "kanban">\("kanban"\)/);
+  assert.match(development, /<option>Liberada<\/option>/);
+  assert.match(tasks, /useState<"kanban" \| "list">\("kanban"\)/);
+  assert.match(suggestions, /useState<"list" \| "kanban">\("kanban"\)/);
+  assert.match(portal, /portal-version-feature/);
+  assert.match(portal, /portal-feature-summary-modal/);
+  assert.match(portal, /\["Liberada","Em produção"\]/);
+  assert.match(css, /Kanbans: colunas translúcidas/);
+  assert.match(css, /\.service-request-column/);
+  assert.match(css, /\.standard-kanban-column/);
+  assert.match(css, /\.app-shell\.theme-light \.sidebar \.brand/);
+  assert.match(css, /\.app-shell\.theme-dark \.sidebar \.brand img\{filter:brightness\(0\) invert\(1\)\}/);
+  assert.match(css, /system-accent-fuchsia/);
+});
+
+test("padroniza copiar link, posiciona checklist no corpo e prioriza modais de ação", async () => {
+  const [links, enhancer, actions, agenda, tasks, css] = await Promise.all([
+    readFile(new URL("../app/CardLinkEnhancer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ReminderAction.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ClientEngagementActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/AgendaModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(links, /card-copy-link card-detail-copy/);
+  assert.match(links, /<svg aria-hidden="true"/);
+  assert.match(links, /insertBefore\(button, closeButton\)/);
+  assert.match(enhancer, /copy\.innerHTML = '<svg/);
+  assert.match(tasks, /copy-task-link card-copy-link/);
+  assert.match(actions, /\.retention-detail-grid>main/);
+  assert.match(actions, /\.commercial-lead-drawer-content/);
+  assert.match(actions, /\.journey-drawer-body/);
+  assert.match(actions, /\.cancellation-history/);
+  assert.match(actions, /contentHost\.insertBefore\(portalHost, directAnchor \|\| fallbackAnchor \|\| null\)/);
+  assert.match(agenda, /action-modal-backdrop agenda-action-backdrop/);
+  assert.match(css, /\.card-copy-link\{position:static!important/);
+  assert.match(css, /\.action-modal-backdrop,.agenda-action-backdrop\{z-index:42000!important/);
+  assert.match(css, /\.reminder-alert-backdrop,.notice-attention-backdrop,.confirmation-backdrop\{z-index:50000!important/);
+});
+
+test("alinha ações dos cards e conta somente tarefas abertas do responsável", async () => {
+  const [app, tasks, links, css] = await Promise.all([
+    readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CardLinkEnhancer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /const assignedOpenTaskCount = data\.taskModule\?\.tasks\.filter/);
+  assert.match(app, /assignedToCurrentUser && !task\.completedAt && !task\.cancelled && !finalTaskStatusIds\.has\(task\.statusId\)/);
+  assert.match(app, /module === "tasks" && assignedOpenTaskCount > 0/);
+  assert.match(app, /const taskNotificationUnread =/);
+  assert.match(app, /totalUnread = internalChatUnread \+ taskNotificationUnread/);
+  assert.match(tasks, /!onlyMine \|\| \(currentCollaborator \? task\.assigneeUserId === currentCollaborator\.id : task\.assigneeName === user\.displayName\)/);
+  assert.match(links, /const actionHost = header\.querySelector/);
+  assert.match(links, /actionHost\.insertBefore\(button, closeButton\)/);
+  assert.match(css, /\.card-copy-link\{position:static!important;display:inline-flex!important;flex:0 0 auto;align-self:center/);
+  assert.match(css, /\.task-detail-overlay \.task-overlay-header-actions>:is\(button,\.task-header-status,\.task-client-state\)/);
 });

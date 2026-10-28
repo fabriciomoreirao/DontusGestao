@@ -9,6 +9,73 @@ namespace Dontus.Operations.Tests;
 public sealed class AccessControlServiceTests
 {
     [Fact]
+    public async Task Permission_changes_apply_to_an_open_session_and_inactive_groups_grant_nothing()
+    {
+        await using var db = CreateContext(); var access = CreateService(db); await access.InitializeAsync();
+        var bootstrap = await db.Users.SingleAsync();
+        var admin = await access.ResolveActorAsync(new(bootstrap.Email, bootstrap.DisplayName));
+        var groupId = await access.CreateGroupAsync(new("Grupo de teste", "Teste de revogação", true), admin);
+        await access.UpdateGroupAsync(new(groupId, "Grupo de teste", "", true, [new("notes", true, true, true, false, false)]), admin);
+        var userId = await access.CreateUserAsync(new("session@test.local", "Sessão de teste", "Suporte", true, [groupId]), admin);
+        (await db.Users.SingleAsync(user => user.Id == userId)).PasswordHash = bootstrap.PasswordHash;
+        await db.SaveChangesAsync();
+        var auth = new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender());
+        var login = await auth.LoginAsync("session@test.local", "dontus_teste_2026");
+        var identity = (await auth.ResolveSessionAsync(login.Token))!;
+        Assert.True((await access.ResolveActorAsync(identity)).HasPermission("notes", "edit"));
+        await access.UpdateGroupAsync(new(groupId, "Grupo de teste", "", true, [new("notes", true, false, false, false, false)]), admin);
+        var restricted = await access.ResolveActorAsync((await auth.ResolveSessionAsync(login.Token))!);
+        Assert.True(restricted.HasPermission("notes", "view"));
+        Assert.False(restricted.HasPermission("notes", "edit"));
+        await access.UpdateGroupAsync(new(groupId, "Grupo de teste", "", false, [new("notes", true, true, true, true, true)]), admin);
+        Assert.Empty((await access.ResolveActorAsync(identity)).Permissions!);
+    }
+
+    [Fact]
+    public async Task The_last_active_administrator_cannot_be_blocked_or_have_administration_removed()
+    {
+        await using var db = CreateContext(); var access = CreateService(db); await access.InitializeAsync();
+        var admin = await access.ResolveActorAsync(new("gestor@dontus.local", "Gestor"));
+        var user = await db.Users.Include(entry => entry.Groups).SingleAsync();
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => access.UpdateUserAsync(
+            new(user.Id, user.Email, user.DisplayName, user.Department, false, user.Groups.Select(group => group.GroupId).ToArray()), admin))).StatusCode);
+        var adminGroup = await db.AccessGroups.SingleAsync(group => group.IsSystem);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => access.UpdateGroupAsync(
+            new(adminGroup.Id, adminGroup.Name, adminGroup.Description, true, []), admin))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Startup_preserves_revoked_collaborator_permissions_and_disabled_groups()
+    {
+        await using var db = CreateContext(); var service = CreateService(db); await service.InitializeAsync();
+        var admin = await service.ResolveActorAsync(new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
+        var group = await db.AccessGroups.Include(entry => entry.Permissions).SingleAsync(entry => entry.Name == "Colaboradores");
+        await service.UpdateGroupAsync(new(group.Id, group.Name, group.Description, false,
+            [new GroupPermissionDto("dashboard", true, false, false, false, false)]), admin);
+        await service.InitializeAsync();
+        Assert.False(group.Active);
+        Assert.All(group.Permissions.Where(permission => permission.Screen != "dashboard"), permission =>
+        {
+            Assert.False(permission.CanView); Assert.False(permission.CanCreate); Assert.False(permission.CanEdit);
+        });
+    }
+
+    [Fact]
+    public async Task A_blocked_user_cannot_resolve_permissions_or_keep_using_an_existing_session()
+    {
+        await using var db = CreateContext(); var service = CreateService(db); await service.InitializeAsync();
+        var user = await db.Users.SingleAsync();
+        var auth = new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender());
+        var login = await auth.LoginAsync(user.Email, "dontus_teste_2026");
+        Assert.NotNull(await auth.ResolveSessionAsync(login.Token));
+        user.BlockedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        Assert.Null(await auth.ResolveSessionAsync(login.Token));
+        await Assert.ThrowsAsync<DomainException>(() => auth.LoginAsync(user.Email, "dontus_teste_2026"));
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.ResolveActorAsync(new(user.Email, user.DisplayName)))).StatusCode);
+    }
+
+    [Fact]
     public async Task Initializes_bootstrap_administrator_with_all_screens()
     {
         await using var db = CreateContext();
@@ -101,6 +168,14 @@ public sealed class AccessControlServiceTests
             Screen = "finance",
             CanView = true,
         });
+        foreach (var permission in adminGroup.Permissions.Where(permission => permission.Screen is "commissions" or "referrals"))
+        {
+            permission.CanView = false;
+            permission.CanCreate = false;
+            permission.CanEdit = false;
+            permission.CanApprove = false;
+            permission.CanManage = false;
+        }
         await db.SaveChangesAsync();
 
         await service.InitializeAsync();
@@ -108,6 +183,8 @@ public sealed class AccessControlServiceTests
         Assert.DoesNotContain(ScreenCatalog.All, screen => screen.Code is "finance" or "procurement" or "approvals" or "reporting" or "catalogs");
         Assert.False(await db.GroupPermissions.AnyAsync(permission => permission.Screen == "finance"));
         var admin = await service.ResolveActorAsync(new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
+        Assert.True(admin.HasPermission("commissions", "manage"));
+        Assert.True(admin.HasPermission("referrals", "manage"));
         var management = await service.GetManagementAsync(admin);
         Assert.All(management.Screens.Where(screen => screen.SupportsIndicators), screen =>
             Assert.True(admin.HasCapability(screen.Code, ScreenCatalog.ViewIndicatorsCapability)));
@@ -142,7 +219,9 @@ public sealed class AccessControlServiceTests
             [departmentId], levelId, null, "Analista de Suporte", false, []), admin);
         var coordinator = await service.CreateEmployeeAsync(new CreateEmployeeCommand(
             "Coordenador Dontus", "coordenador@dontus.local", new DateOnly(1990, 2, 20), new DateOnly(2024, 3, 15),
-            [departmentId], levelId, null, "Coordenador de Suporte", true, [subordinate.Id]), admin);
+            [departmentId], levelId, "data:image/png;base64,AA==", "Coordenador de Suporte", true, [subordinate.Id]), admin);
+        var photoReference = (await service.GetManagementAsync(admin)).Employees.Single(entry => entry.Id == coordinator.Id).PhotoDataUrl;
+        Assert.StartsWith($"/api/internal-chat-photos/user/{coordinator.Id}?v=", photoReference);
 
         db.LocalAuthSessions.Add(new LocalAuthSession
         {
@@ -153,12 +232,13 @@ public sealed class AccessControlServiceTests
         await db.SaveChangesAsync();
         await service.UpdateEmployeeAsync(new UpdateEmployeeCommand(
             coordinator.Id, "Coordenador Dontus", "coordenador@dontus.local", new DateOnly(1990, 2, 20),
-            new DateOnly(2024, 3, 15), [departmentId], levelId, null, "Coordenador de Suporte", true,
+            new DateOnly(2024, 3, 15), [departmentId], levelId, photoReference, "Coordenador de Suporte", true,
             [subordinate.Id], false), admin);
 
         var management = await service.GetManagementAsync(admin);
         var saved = management.Employees.Single(entry => entry.Id == coordinator.Id);
         Assert.True(saved.IsCoordinator);
+        Assert.Equal("data:image/png;base64,AA==", (await db.Users.SingleAsync(entry => entry.Id == coordinator.Id)).PhotoDataUrl);
         Assert.Contains(subordinate.Id, saved.SubordinateUserIds);
         Assert.False(saved.Active);
         Assert.NotNull(saved.BlockedAt);
@@ -170,7 +250,7 @@ public sealed class AccessControlServiceTests
     }
 
     [Fact]
-    public async Task Grants_only_the_primary_and_explicitly_selected_department_agendas()
+    public async Task Grants_only_selected_calendars_without_automatic_sector_access()
     {
         await using var db = CreateContext();
         var access = CreateService(db);
@@ -184,9 +264,10 @@ public sealed class AccessControlServiceTests
             new SaveEmployeeDepartmentCommand(null, "Financeiro", "Agenda sem acesso.", true), admin);
         var levelId = await access.SaveEmployeeLevelAsync(
             new SaveEmployeeLevelCommand(null, "Nível 1", "Nível de teste.", true), admin);
+        var allowedCalendar = await db.AgendaCalendars.SingleAsync(x => x.DepartmentId == additionalId);
         var employee = await access.CreateEmployeeAsync(new CreateEmployeeCommand(
             "Agenda Teste", "agenda@dontus.local", new DateOnly(1992, 4, 15), new DateOnly(2025, 2, 1),
-            [primaryId], levelId, null, "Analista", false, [], null, [additionalId]), admin);
+            [primaryId], levelId, null, "Analista", false, [], AgendaCalendarIds: [allowedCalendar.Id]), admin);
 
         db.AgendaCalendars.AddRange(
             new AgendaCalendar { Name = "Agenda Suporte", DepartmentId = primaryId },
@@ -202,10 +283,15 @@ public sealed class AccessControlServiceTests
         var saved = management.Employees.Single(entry => entry.Id == employee.Id);
 
         Assert.Equal(primaryId, saved.DepartmentIds.First());
-        Assert.Equal([additionalId], saved.AgendaDepartmentIds);
-        Assert.Contains(module.Calendars, entry => entry.DepartmentId == primaryId);
+        Assert.Equal([allowedCalendar.Id], saved.AgendaCalendarIds);
+        Assert.Single(module.Calendars);
+        Assert.DoesNotContain(module.Calendars, entry => entry.DepartmentId == primaryId);
         Assert.Contains(module.Calendars, entry => entry.DepartmentId == additionalId);
         Assert.DoesNotContain(module.Calendars, entry => entry.DepartmentId == hiddenId);
+        await access.UpdateEmployeeAsync(new(employee.Id,saved.DisplayName,saved.Email,saved.BirthDate,saved.StartedAt,[hiddenId],levelId,null,"Analista",false,[],true,AgendaCalendarIds:[allowedCalendar.Id]),admin);
+        Assert.Equal(allowedCalendar.Id,Assert.Single((await new AgendaService(db).GetModuleAsync(actor)).Calendars).Id);
+        await access.UpdateEmployeeAsync(new(employee.Id,saved.DisplayName,saved.Email,saved.BirthDate,saved.StartedAt,[hiddenId],levelId,null,"Analista",false,[],true,AgendaCalendarIds:[]),admin);
+        Assert.Empty((await new AgendaService(db).GetModuleAsync(actor)).Calendars);
     }
 
     private static AccessControlService CreateService(OperationsDbContext db)

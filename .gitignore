@@ -44,3 +44,6 @@ next-env.d.ts
 /outputs/
 /work/
 .devserver.*.log
+/.openai/outputs/
+/.openai/*.log
+/.openai/pdf-fonts/

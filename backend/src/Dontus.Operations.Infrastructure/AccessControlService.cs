@@ -30,12 +30,21 @@ public sealed class AccessControlService(
             };
             db.AccessGroups.Add(adminGroup);
         }
+        else
+        {
+            adminGroup.Active = true;
+        }
 
         foreach (var screen in ScreenCatalog.All)
         {
             var existing = adminGroup.Permissions.FirstOrDefault(permission => permission.Screen == screen.Code);
             if (existing is not null)
             {
+                existing.CanView = true;
+                existing.CanCreate = true;
+                existing.CanEdit = true;
+                existing.CanApprove = true;
+                existing.CanManage = true;
                 existing.CapabilitiesJson = JsonSerializer.Serialize(AdministratorCapabilities(screen));
                 continue;
             }
@@ -64,228 +73,23 @@ public sealed class AccessControlService(
                 Description = "Acesso inicial dos colaboradores cadastrados.",
                 CreatedBy = "system@dontus.local",
             };
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "dashboard",
-                CanView = true,
-            });
+            // Defaults apply only when the group is first created. Later startup
+            // must preserve the administrator's explicit grants and restrictions.
+            (string Screen, bool Create, bool Edit)[] defaults =
+            [
+                ("dashboard", false, false), ("work", true, false), ("diary", true, true),
+                ("notes", true, true), ("reminders", true, true), ("internalChat", true, true),
+                ("suggestions", true, true), ("notices", false, false), ("waitingQueue", true, true),
+                ("referrals", true, true), ("commissions", false, true), ("goals", false, false),
+                ("cancellations", true, true),
+            ];
+            foreach (var permission in defaults)
+                collaboratorsGroup.Permissions.Add(new GroupPermission
+                {
+                    GroupId = collaboratorsGroup.Id, Screen = permission.Screen,
+                    CanView = true, CanCreate = permission.Create, CanEdit = permission.Edit,
+                });
             db.AccessGroups.Add(collaboratorsGroup);
-        }
-        var collaboratorAgendaPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "work");
-        if (collaboratorAgendaPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "work",
-                CanView = true,
-                CanCreate = true,
-            });
-        }
-        else
-        {
-            collaboratorAgendaPermission.CanView = true;
-            collaboratorAgendaPermission.CanCreate = true;
-        }
-
-        var collaboratorDiaryPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "diary");
-        if (collaboratorDiaryPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "diary",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorDiaryPermission.CanView = true;
-            collaboratorDiaryPermission.CanCreate = true;
-            collaboratorDiaryPermission.CanEdit = true;
-        }
-
-        var collaboratorNotesPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "notes");
-        if (collaboratorNotesPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "notes",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorNotesPermission.CanView = true;
-            collaboratorNotesPermission.CanCreate = true;
-            collaboratorNotesPermission.CanEdit = true;
-        }
-
-        var collaboratorChatPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "internalChat");
-        var collaboratorReminderPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "reminders");
-        if (collaboratorReminderPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "reminders",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorReminderPermission.CanView = true;
-            collaboratorReminderPermission.CanCreate = true;
-            collaboratorReminderPermission.CanEdit = true;
-        }
-
-        if (collaboratorChatPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "internalChat",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorChatPermission.CanView = true;
-            collaboratorChatPermission.CanCreate = true;
-            collaboratorChatPermission.CanEdit = true;
-        }
-
-        var collaboratorSuggestionPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "suggestions");
-        if (collaboratorSuggestionPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "suggestions",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorSuggestionPermission.CanView = true;
-            collaboratorSuggestionPermission.CanCreate = true;
-            collaboratorSuggestionPermission.CanEdit = true;
-        }
-
-        var collaboratorNoticePermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "notices");
-        if (collaboratorNoticePermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "notices",
-                CanView = true,
-            });
-        }
-        else
-        {
-            collaboratorNoticePermission.CanView = true;
-        }
-
-        var collaboratorWaitingQueuePermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "waitingQueue");
-        if (collaboratorWaitingQueuePermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "waitingQueue",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorWaitingQueuePermission.CanView = true;
-            collaboratorWaitingQueuePermission.CanCreate = true;
-            collaboratorWaitingQueuePermission.CanEdit = true;
-        }
-
-        var collaboratorReferralPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "referrals");
-        if (collaboratorReferralPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "referrals",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorReferralPermission.CanView = true;
-            collaboratorReferralPermission.CanCreate = true;
-            collaboratorReferralPermission.CanEdit = true;
-        }
-
-        var collaboratorCommissionPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "commissions");
-        if (collaboratorCommissionPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "commissions",
-                CanView = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorCommissionPermission.CanView = true;
-            collaboratorCommissionPermission.CanEdit = true;
-        }
-
-        var collaboratorGoalsPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "goals");
-        if (collaboratorGoalsPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "goals",
-                CanView = true,
-            });
-        }
-        else
-        {
-            collaboratorGoalsPermission.CanView = true;
-        }
-
-        var collaboratorCancellationPermission = collaboratorsGroup.Permissions.FirstOrDefault(permission => permission.Screen == "cancellations");
-        if (collaboratorCancellationPermission is null)
-        {
-            collaboratorsGroup.Permissions.Add(new GroupPermission
-            {
-                GroupId = collaboratorsGroup.Id,
-                Screen = "cancellations",
-                CanView = true,
-                CanCreate = true,
-                CanEdit = true,
-            });
-        }
-        else
-        {
-            collaboratorCancellationPermission.CanView = true;
-            collaboratorCancellationPermission.CanCreate = true;
-            collaboratorCancellationPermission.CanEdit = true;
         }
 
         var bootstrapEmail = NormalizeEmail(
@@ -394,7 +198,7 @@ public sealed class AccessControlService(
                 "Seu usuário ainda não foi cadastrado. Solicite acesso a um administrador.",
                 403);
 
-        if (!user.Active)
+        if (!user.Active || user.BlockedAt.HasValue)
             throw new DomainException("Seu usuário está inativo. Solicite a reativação a um administrador.", 403);
 
         var groups = await db.UserAccessGroups.AsNoTracking()
@@ -421,7 +225,17 @@ public sealed class AccessControlService(
                     .Order()
                     .ToArray()))
             .OrderBy(permission => permission.Screen)
-            .ToArray();
+            .ToList();
+
+        // Coordination is a trusted employee flag; supervision is granted by the
+        // module's approval/management permissions, never by a role's display name.
+        foreach (var screen in new[] { "commissions", "referrals" })
+        {
+            var permission = permissions.SingleOrDefault(entry => entry.Screen == screen);
+            if (!user.IsCoordinator && !(permission?.CanView == true && (permission.CanApprove || permission.CanManage))) continue;
+            permissions.RemoveAll(entry => entry.Screen == screen);
+            permissions.Add(new EffectivePermission(screen, true, true, true, true, true, permission?.Capabilities));
+        }
 
         return new ActorContext(
             user.Email,
@@ -455,8 +269,9 @@ public sealed class AccessControlService(
             .ToListAsync(cancellationToken);
         var userDepartments = await db.UserDepartments.AsNoTracking()
             .ToListAsync(cancellationToken);
-        var agendaDepartmentAccesses = await db.UserAgendaDepartmentAccesses.AsNoTracking()
+        var agendaCalendarAccesses = await db.UserAgendaCalendarAccesses.AsNoTracking()
             .ToListAsync(cancellationToken);
+        var agendaCalendars = await db.AgendaCalendars.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken);
         var supervisions = await db.EmployeeSupervisions.AsNoTracking()
             .ToListAsync(cancellationToken);
         var departmentNames = departments.ToDictionary(department => department.Id, department => department.Name);
@@ -477,7 +292,7 @@ public sealed class AccessControlService(
                 user.Email,
                 user.DisplayName,
                 user.Department,
-                user.PhotoDataUrl,
+                ProfilePhotoUrls.For(user),
                 user.JobTitle,
                 user.IsCoordinator,
                 user.Active,
@@ -508,11 +323,7 @@ public sealed class AccessControlService(
                     .Distinct()
                     .ToArray();
                 var employeeDepartmentNames = employeeDepartmentIds.Select(id => departmentNames.GetValueOrDefault(id, "Setor não informado")).ToArray();
-                var employeeAgendaDepartmentIds = agendaDepartmentAccesses
-                    .Where(entry => entry.UserId == user.Id)
-                    .Select(entry => entry.DepartmentId)
-                    .Distinct()
-                    .ToArray();
+                var employeeAgendaCalendarIds = agendaCalendarAccesses.Where(entry => entry.UserId == user.Id).Select(entry => entry.CalendarId).ToArray();
                 return new EmployeeDto(
                     user.Id,
                     user.DisplayName,
@@ -523,20 +334,21 @@ public sealed class AccessControlService(
                     departmentId == Guid.Empty ? user.Department : departmentNames.GetValueOrDefault(departmentId, user.Department),
                     employeeDepartmentIds,
                     employeeDepartmentNames,
-                    employeeAgendaDepartmentIds,
+                    [],
                     user.EmployeeLevelId,
                     user.EmployeeLevelId is { } levelId ? levelNames.GetValueOrDefault(levelId, "Não informado") : "Não informado",
-                    user.PhotoDataUrl,
+                    ProfilePhotoUrls.For(user),
                     user.JobTitle,
                     user.IsCoordinator,
                     supervisions.Where(entry => entry.CoordinatorUserId == user.Id).Select(entry => entry.SubordinateUserId).ToArray(),
                     user.Groups.Select(membership => membership.GroupId).ToArray(),
                     user.Groups.Select(membership => membership.Group.Name).Order().ToArray(),
                     user.Active,
-                    user.BlockedAt);
+                    user.BlockedAt, employeeAgendaCalendarIds);
             }).ToArray(),
             departments.Select(department => new EmployeeDepartmentDto(department.Id, department.Name, department.Description, department.Active)).ToArray(),
-            levels.Select(level => new EmployeeLevelDto(level.Id, level.Name, level.Description, level.Active)).ToArray());
+            levels.Select(level => new EmployeeLevelDto(level.Id, level.Name, level.Description, level.Active)).ToArray(),
+            agendaCalendars.Select(calendar => new AgendaCalendarDto(calendar.Id, calendar.Name, calendar.Description, calendar.DepartmentId, departmentNames.GetValueOrDefault(calendar.DepartmentId, "Setor"), calendar.Active)).ToArray());
     }
 
     public async Task<Guid> CreateUserAsync(
@@ -671,7 +483,7 @@ public sealed class AccessControlService(
         var departmentIds = await ValidateEmployeeDepartmentsAsync(command.DepartmentIds, cancellationToken);
         var departments = await db.TaskDepartments.Where(entry => departmentIds.Contains(entry.Id)).ToListAsync(cancellationToken);
         var primaryDepartment = departments.Single(entry => entry.Id == departmentIds[0]);
-        var agendaDepartmentIds = await ValidateAgendaDepartmentAccessesAsync(command.AgendaDepartmentIds, primaryDepartment.Id, cancellationToken);
+        var agendaCalendarIds = await ValidateAgendaCalendarAccessesAsync(command.AgendaCalendarIds, cancellationToken);
         var level = await db.EmployeeLevels.SingleOrDefaultAsync(
             entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um nível ativo.");
@@ -692,26 +504,28 @@ public sealed class AccessControlService(
             PasswordHash = PasswordSecurity.Hash(temporaryPassword),
             CreatedBy = actor.Email,
         };
-        var groupIds = command.GroupIds is { Count: > 0 }
-            ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
-            : [await db.AccessGroups.Where(group => group.Name == CollaboratorsGroup).Select(group => group.Id).SingleAsync(cancellationToken)];
+        Guid[] groupIds = command.FullAccess
+            ? [await db.AccessGroups.Where(group => group.Name == AdministratorsGroup && group.Active).Select(group => group.Id).SingleAsync(cancellationToken)]
+            : command.GroupIds is { Count: > 0 }
+                ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
+                : [await db.AccessGroups.Where(group => group.Name == CollaboratorsGroup).Select(group => group.Id).SingleAsync(cancellationToken)];
         foreach (var groupId in groupIds)
             user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = groupId });
         db.Users.Add(user);
         db.WorkItems.Add(CreateHrWorkItem(user, actor.Email));
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
-        db.UserAgendaDepartmentAccesses.AddRange(agendaDepartmentIds.Select(departmentId => new UserAgendaDepartmentAccess
+        db.UserAgendaCalendarAccesses.AddRange(agendaCalendarIds.Select(calendarId => new UserAgendaCalendarAccess
         {
             UserId = user.Id,
-            DepartmentId = departmentId,
+            CalendarId = calendarId,
         }));
         db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
         {
             CoordinatorUserId = user.Id,
             SubordinateUserId = subordinateId,
         }));
-        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaDepartmentIds = agendaDepartmentIds, Level = level.Name });
+        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name });
         await db.SaveChangesAsync(cancellationToken);
         return new CreateEmployeeResult(user.Id, temporaryPassword);
     }
@@ -733,13 +547,17 @@ public sealed class AccessControlService(
         var departmentIds = await ValidateEmployeeDepartmentsAsync(command.DepartmentIds, cancellationToken);
         var departments = await db.TaskDepartments.Where(entry => departmentIds.Contains(entry.Id)).ToListAsync(cancellationToken);
         var primaryDepartment = departments.Single(entry => entry.Id == departmentIds[0]);
-        var agendaDepartmentIds = await ValidateAgendaDepartmentAccessesAsync(command.AgendaDepartmentIds, primaryDepartment.Id, cancellationToken);
+        var agendaCalendarIds = command.AgendaCalendarIds is null
+            ? await db.UserAgendaCalendarAccesses.Where(x => x.UserId == user.Id).Select(x => x.CalendarId).ToArrayAsync(cancellationToken)
+            : await ValidateAgendaCalendarAccessesAsync(command.AgendaCalendarIds, cancellationToken, user.Id);
         var level = await db.EmployeeLevels.SingleOrDefaultAsync(entry => entry.Id == command.LevelId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um nível ativo.");
         var subordinateIds = await ValidateSubordinatesAsync(command.IsCoordinator, command.SubordinateUserIds, user.Id, cancellationToken);
-        var groupIds = command.GroupIds is { Count: > 0 }
-            ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
-            : user.Groups.Select(membership => membership.GroupId).ToArray();
+        Guid[] groupIds = command.FullAccess
+            ? [await db.AccessGroups.Where(group => group.Name == AdministratorsGroup && group.Active).Select(group => group.Id).SingleAsync(cancellationToken)]
+            : command.GroupIds is { Count: > 0 }
+                ? await ValidateGroupsAsync(command.GroupIds, cancellationToken)
+                : user.Groups.Select(membership => membership.GroupId).ToArray();
         await EnsureAdministrationRemainsAsync(user, command.Active, groupIds, cancellationToken);
 
         user.DisplayName = command.DisplayName.Trim();
@@ -752,7 +570,8 @@ public sealed class AccessControlService(
         user.IsCoordinator = command.IsCoordinator;
         user.Active = command.Active;
         user.BlockedAt = command.Active ? null : user.BlockedAt ?? DateTimeOffset.UtcNow;
-        if (command.PhotoDataUrl is not null) user.PhotoDataUrl = ValidatePhoto(command.PhotoDataUrl);
+        if (command.PhotoDataUrl is not null && !ProfilePhotoUrls.IsCurrentUserReference(command.PhotoDataUrl, user.Id))
+            user.PhotoDataUrl = ValidatePhoto(command.PhotoDataUrl);
         user.UpdatedAt = DateTimeOffset.UtcNow;
         user.Version++;
         var hrCard = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Module == "hr" && entry.OriginType == "employee" && entry.OriginId == user.Id, cancellationToken);
@@ -780,11 +599,11 @@ public sealed class AccessControlService(
         db.UserDepartments.RemoveRange(await db.UserDepartments.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
         foreach (var departmentId in departmentIds)
             db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
-        db.UserAgendaDepartmentAccesses.RemoveRange(await db.UserAgendaDepartmentAccesses.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
-        db.UserAgendaDepartmentAccesses.AddRange(agendaDepartmentIds.Select(departmentId => new UserAgendaDepartmentAccess
+        db.UserAgendaCalendarAccesses.RemoveRange(await db.UserAgendaCalendarAccesses.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
+        db.UserAgendaCalendarAccesses.AddRange(agendaCalendarIds.Select(calendarId => new UserAgendaCalendarAccess
         {
             UserId = user.Id,
-            DepartmentId = departmentId,
+            CalendarId = calendarId,
         }));
         db.EmployeeSupervisions.RemoveRange(await db.EmployeeSupervisions.Where(entry => entry.CoordinatorUserId == user.Id).ToListAsync(cancellationToken));
         db.EmployeeSupervisions.AddRange(subordinateIds.Select(subordinateId => new EmployeeSupervision
@@ -797,7 +616,7 @@ public sealed class AccessControlService(
             var sessions = await db.LocalAuthSessions.Where(entry => entry.UserId == user.Id && entry.RevokedAt == null).ToListAsync(cancellationToken);
             foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
         }
-        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaDepartmentIds = agendaDepartmentIds, Level = level.Name });
+        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name });
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -872,7 +691,7 @@ public sealed class AccessControlService(
         department.Active = command.Active;
         department.UpdatedAt = DateTimeOffset.UtcNow;
         if (!command.Id.HasValue) db.TaskDepartments.Add(department);
-        if (!command.Id.HasValue && department.Active)
+        if (department.Active && !await db.AgendaCalendars.AnyAsync(x => x.DepartmentId == department.Id, cancellationToken))
             db.AgendaCalendars.Add(new AgendaCalendar { Name = department.Name, Description = $"Agenda automática do setor {department.Name}.", DepartmentId = department.Id, Active = true });
         AddAudit(actor, command.Id.HasValue ? "Update" : "Create", "employee_department", department.Id.ToString(), new { department.Name, department.Active });
         await db.SaveChangesAsync(cancellationToken);
@@ -1039,24 +858,11 @@ public sealed class AccessControlService(
         return selected;
     }
 
-    private async Task<Guid[]> ValidateAgendaDepartmentAccessesAsync(
-        IReadOnlyCollection<Guid>? requestedIds,
-        Guid primaryDepartmentId,
-        CancellationToken cancellationToken)
+    private async Task<Guid[]> ValidateAgendaCalendarAccessesAsync(IReadOnlyCollection<Guid>? requestedIds, CancellationToken cancellationToken, Guid? existingUserId = null)
     {
-        var selected = (requestedIds ?? [])
-            .Where(id => id != Guid.Empty && id != primaryDepartmentId)
-            .Distinct()
-            .ToArray();
-        if (selected.Length == 0) return [];
-
-        var activeIds = await db.TaskDepartments.AsNoTracking()
-            .Where(entry => entry.Active && selected.Contains(entry.Id))
-            .Select(entry => entry.Id)
-            .ToArrayAsync(cancellationToken);
-        if (activeIds.Length != selected.Length)
-            throw new DomainException("Uma ou mais agendas adicionais pertencem a setores inativos ou inexistentes.");
-
+        var selected = (requestedIds ?? []).Where(id => id != Guid.Empty).Distinct().ToArray();
+        var valid = await db.AgendaCalendars.AsNoTracking().Where(x => selected.Contains(x.Id) && (x.Active || db.UserAgendaCalendarAccesses.Any(grant => grant.UserId == existingUserId && grant.CalendarId == x.Id))).CountAsync(cancellationToken);
+        if (valid != selected.Length) throw new DomainException("Selecione agendas ativas e existentes.");
         return selected;
     }
 

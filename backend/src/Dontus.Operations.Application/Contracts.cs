@@ -154,7 +154,10 @@ public sealed record UpdateWorkItemCommand(
     string? Description,
     string? RecordType,
     string? CustomerName,
-    long Version);
+    long Version,
+    Guid? ResponsibleUserId = null,
+    string? DistributionVersion = null,
+    Guid? ExpectedNextResponsibleUserId = null);
 
 public sealed record CreateAppointmentCommand(
     string Title,
@@ -229,7 +232,10 @@ public sealed record WorkItemDto(
     string Description,
     long Version,
     [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt,
-    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+    [property: JsonPropertyName("created_by")] string CreatedBy = "",
+    [property: JsonPropertyName("assigned_at")] DateTimeOffset? AssignedAt = null,
+    [property: JsonPropertyName("assigned_by")] string AssignedBy = "");
 
 public sealed record AppointmentDto(
     Guid Id,
@@ -286,7 +292,14 @@ public sealed record DiaryEntryDto(
 
 public sealed record DiaryModuleDto(
     IReadOnlyCollection<DiaryEntryDto> Entries,
-    IReadOnlyCollection<AgendaStatusDto> AgendaStatuses);
+    IReadOnlyCollection<AgendaStatusDto> AgendaStatuses,
+    IReadOnlyCollection<DiaryCollaboratorDto> Collaborators);
+
+public sealed record DiaryCollaboratorDto(
+    Guid UserId,
+    string DisplayName,
+    string Department,
+    IReadOnlyCollection<DiaryEntryDto> Entries);
 
 public sealed record NoteDto(
     Guid Id,
@@ -317,7 +330,13 @@ public sealed record CompanyNoticeDto(
 public sealed record NoticesModuleDto(IReadOnlyCollection<CompanyNoticeDto> Notices);
 
 public sealed record CustomerCatalogOptionDto(Guid Id, string Catalog, string Name, string Description, bool Active);
-public sealed record CustomerModuleDto(IReadOnlyCollection<CustomerCatalogOptionDto> Catalogs);
+public sealed record CollaboratorSummaryDto(Guid Id, string Email, string DisplayName, string DepartmentName,
+    IReadOnlyCollection<string> DepartmentNames, string PhotoDataUrl, bool Active);
+public sealed record CustomerModuleDto(IReadOnlyCollection<CustomerCatalogOptionDto> Catalogs)
+{
+    public IReadOnlyCollection<CollaboratorSummaryDto> Collaborators { get; init; } = [];
+    public IReadOnlyCollection<CsDistributionDto> CsDistribution { get; init; } = [];
+}
 
 public sealed record OperationsSnapshot(
     UserDto User,

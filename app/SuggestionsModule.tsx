@@ -1,5 +1,8 @@
 "use client";
 
+import { useReminderFilter } from "@/app/ReminderFilters";
+
+
 import {
   AlertTriangle, ArrowRight, BadgeCheck, Check, CheckCircle2, CircleDot, Columns3, Copy, Flag, Hash, List,
   FileText, MessageSquareText, Paperclip, Pencil, Plus, Search, Settings2, ShieldAlert, Sparkles,
@@ -51,14 +54,15 @@ function FlagBadges({ suggestion, compact = false }: { suggestion: Suggestion; c
 export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate, uploadAttachments, onOpenSettings }: {
   module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; uploadAttachments: (suggestionId: string, files: File[]) => Promise<boolean>; onOpenSettings?: () => void;
 }) {
-  const [view, setView] = useState<"list" | "kanban">("list");
+  const reminderFilter = useReminderFilter("suggestions");
+  const [view, setView] = useState<"list" | "kanban">("kanban");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Suggestion | null>(null);
   const [createdProtocol, setCreatedProtocol] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("card"));
   const selected = module.suggestions.find((entry) => entry.id === selectedId) ?? null;
   const activeStatuses = module.statuses.filter((entry) => entry.active).sort((a, b) => a.displayOrder - b.displayOrder);
   const activePriorities = module.priorities.filter((entry) => entry.active).sort((a, b) => a.displayOrder - b.displayOrder);
@@ -68,9 +72,9 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
     const normalized = search.trim().toLocaleLowerCase("pt-BR");
     return module.suggestions.filter((entry) => {
       const matchesText = !normalized || `${entry.protocol} ${entry.name} ${entry.description} ${entry.customerName} ${entry.responsibleName}`.toLocaleLowerCase("pt-BR").includes(normalized);
-      return matchesText && (!effectiveStatusFilter || entry.statusId === effectiveStatusFilter) && (!effectivePriorityFilter || entry.priorityId === effectivePriorityFilter);
+      return reminderFilter.matches({ entityId: entry.id, title: entry.name }) && matchesText && (!effectiveStatusFilter || entry.statusId === effectiveStatusFilter) && (!effectivePriorityFilter || entry.priorityId === effectivePriorityFilter);
     });
-  }, [module.suggestions, search, effectiveStatusFilter, effectivePriorityFilter]);
+  }, [module.suggestions, search, effectiveStatusFilter, effectivePriorityFilter, reminderFilter.matches]);
 
   const changeStatus = async (suggestion: Suggestion, statusId: string) => {
     if (!canEdit || suggestion.statusId === statusId) return;
@@ -85,7 +89,7 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
         sourceTaskId: suggestion.id,
         sourceProtocol: suggestion.protocol,
         sourceDepartment: "Sugestões",
-        triageStage: "Recebida",
+        triageStage: "Sugestões aprovadas",
         processStage: "Aguardando triagem",
         sourceSnapshot: {
           description: suggestion.description,
@@ -114,10 +118,11 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
 
     {!configured && <div className="suggestion-setup-warning"><Settings2 size={20} /><span><strong>Cadastros necessários</strong><small>Configure ao menos uma prioridade e um status ativo em Cadastros › Sugestões.</small></span></div>}
 
-    <div className="suggestion-toolbar panel">
-      <label className="suggestion-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar por protocolo, nome, cliente ou descrição..." /></label>
+    <div className="suggestion-toolbar panel reminder-filter-toolbar">
+      <label className="suggestion-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar por protocolo, nome, cliente ou descrição..." /></label>{reminderFilter.control}
       <select value={effectiveStatusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Todos os status</option>{activeStatuses.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select>
       <select value={effectivePriorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="">Todas as prioridades</option>{activePriorities.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select>
+
       <span className="suggestion-result-count">{filtered.length} resultado{filtered.length === 1 ? "" : "s"}</span>
     </div>
 
@@ -163,7 +168,7 @@ function SuggestionCreatedModal({ protocol, onClose }: { protocol: string; onClo
 function SuggestionList({ suggestions, canEdit, canDelete, canDeleteOthers, currentUserEmail, onOpen, onEdit, onDelete }: { suggestions: Suggestion[]; canEdit: boolean; canDelete: boolean; canDeleteOthers: boolean; currentUserEmail: string; onOpen: (id: string) => void; onEdit: (suggestion: Suggestion) => void; onDelete: (suggestion: Suggestion) => void }) {
   if (!suggestions.length) return <div className="suggestion-empty panel"><Sparkles size={27} /><strong>Nenhuma sugestão encontrada</strong><p>Quando uma sugestão for cadastrada, ela aparecerá aqui e no Kanban.</p></div>;
   return <div className="suggestion-table-wrap panel"><table className="suggestion-table"><thead><tr><th>Protocolo</th><th>Sugestão</th><th>Sinalizadores</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Atualização</th><th>Ações</th></tr></thead><tbody>
-    {suggestions.map((entry) => <tr key={entry.id} tabIndex={0} onClick={() => onOpen(entry.id)} onKeyDown={(event) => event.key === "Enter" && onOpen(entry.id)}>
+    {suggestions.map((entry) => <tr data-reminder-entity-id={entry.id} key={entry.id} tabIndex={0} onClick={() => onOpen(entry.id)} onKeyDown={(event) => event.key === "Enter" && onOpen(entry.id)}>
       <td><strong className="suggestion-protocol"><Hash size={13} />{entry.protocol}</strong></td>
       <td><span className="suggestion-title-cell"><strong>{entry.name}</strong><small>{entry.customerName}</small></span></td>
       <td><FlagBadges suggestion={entry} compact /></td>
@@ -246,9 +251,9 @@ function SuggestionDetailsModal({ suggestion, statuses, currentUserId, canEdit, 
     <div className="modal-body suggestion-detail-body">
       <main className="suggestion-detail-main">
       <section className="suggestion-description"><h3>Descrição da sugestão</h3><p>{suggestion.description || "Nenhuma descrição informada."}</p></section>
-      <section className="suggestion-attachments"><h3><Paperclip size={17} /> Anexos</h3>{suggestion.attachments?.length ? <div>{suggestion.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => /^(image|video)\//i.test(attachment.contentType) ? setAttachmentPreview(attachment) : window.open(attachment.url, "_blank", "noopener,noreferrer")}><FileText size={17} /><span><strong>{attachment.fileName}</strong><small>{attachment.contentType || "Arquivo"} · {(attachment.sizeBytes / 1024 / 1024).toFixed(2)} MB</small></span></button>)}</div> : <p className="suggestion-muted">Nenhum arquivo anexado.</p>}</section>
+      <section className="suggestion-attachments"><h3><Paperclip size={17} /> Anexos</h3>{suggestion.attachments?.length ? <div>{suggestion.attachments.map((attachment) => <button data-reminder-entity-id={attachment.id} type="button" key={attachment.id} onClick={() => /^(image|video)\//i.test(attachment.contentType) ? setAttachmentPreview(attachment) : window.open(attachment.url, "_blank", "noopener,noreferrer")}><FileText size={17} /><span><strong>{attachment.fileName}</strong><small>{attachment.contentType || "Arquivo"} · {(attachment.sizeBytes / 1024 / 1024).toFixed(2)} MB</small></span></button>)}</div> : <p className="suggestion-muted">Nenhum arquivo anexado.</p>}</section>
       <section className="suggestion-comments"><div className="suggestion-comments-title"><span><MessageSquareText size={18} /><strong>Comentários</strong></span><b>{suggestion.comments.length}</b></div>
-        <div className="suggestion-comment-list">{suggestion.comments.length === 0 ? <p className="suggestion-muted">Ainda não há comentários nesta sugestão.</p> : suggestion.comments.map((entry) => <article key={entry.id}><Avatar name={entry.authorName} photo={entry.authorPhotoDataUrl} coordinator={entry.authorIsCoordinator} small /><div><header><strong>{entry.authorName}</strong><span><time>{dateTime(entry.createdAt)}</time>{entry.authorUserId === currentUserId && editingCommentId !== entry.id && <button type="button" className="icon-button" title="Editar comentário" onClick={() => { setEditingCommentId(entry.id); setEditingCommentBody(entry.body); }}><Pencil size={13} /></button>}</span></header>{editingCommentId === entry.id ? <form className="suggestion-comment-edit" onSubmit={async (event) => { event.preventDefault(); if (await onUpdateComment(entry.id, editingCommentBody)) setEditingCommentId(""); }}><textarea value={editingCommentBody} maxLength={3000} rows={3} onChange={(event) => setEditingCommentBody(event.target.value)} /><div><button type="button" className="secondary-button" onClick={() => setEditingCommentId("")}>Cancelar</button><button className="primary-button" disabled={busy || !editingCommentBody.trim()}>Salvar</button></div></form> : <p>{entry.body}</p>}</div></article>)}</div>
+        <div className="suggestion-comment-list">{suggestion.comments.length === 0 ? <p className="suggestion-muted">Ainda não há comentários nesta sugestão.</p> : suggestion.comments.map((entry) => <article data-reminder-entity-id={entry.id} key={entry.id}><Avatar name={entry.authorName} photo={entry.authorPhotoDataUrl} coordinator={entry.authorIsCoordinator} small /><div><header><strong>{entry.authorName}</strong><span><time>{dateTime(entry.createdAt)}</time>{entry.authorUserId === currentUserId && editingCommentId !== entry.id && <button type="button" className="icon-button" title="Editar comentário" onClick={() => { setEditingCommentId(entry.id); setEditingCommentBody(entry.body); }}><Pencil size={13} /></button>}</span></header>{editingCommentId === entry.id ? <form className="suggestion-comment-edit" onSubmit={async (event) => { event.preventDefault(); if (await onUpdateComment(entry.id, editingCommentBody)) setEditingCommentId(""); }}><textarea value={editingCommentBody} maxLength={3000} rows={3} onChange={(event) => setEditingCommentBody(event.target.value)} /><div><button type="button" className="secondary-button" onClick={() => setEditingCommentId("")}>Cancelar</button><button className="primary-button" disabled={busy || !editingCommentBody.trim()}>Salvar</button></div></form> : <p>{entry.body}</p>}</div></article>)}</div>
         <form className="suggestion-comment-form" onSubmit={async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (await onComment(comment)) setComment(""); }}><textarea value={comment} onChange={(event) => setComment(event.target.value)} required maxLength={3000} rows={3} placeholder="Escreva um comentário para a equipe..." /><button className="primary-button" disabled={busy || !comment.trim()}><MessageSquareText size={16} /> Comentar</button></form>
       </section>
       </main>
@@ -280,7 +285,7 @@ export function SuggestionCatalogsModule({ module, busy, operate }: { module: Su
     <div className="suggestion-catalog-tabs"><button className={section === "priorities" ? "active" : ""} onClick={() => setSection("priorities")}><Flag size={16} /> Prioridades</button><button className={section === "statuses" ? "active" : ""} onClick={() => setSection("statuses")}><Columns3 size={16} /> Status e Kanban</button></div>
     <div className="suggestion-catalog-list panel">
       <header><span>{items.length} cadastro{items.length === 1 ? "" : "s"}</span><small>As alterações são refletidas automaticamente no módulo Sugestões.</small></header>
-      {items.map((item) => <article key={item.id}>
+      {items.map((item) => <article data-reminder-entity-id={item.id} key={item.id}>
         <i style={{ background: item.color }} /><div className="suggestion-catalog-data"><strong>{item.name}</strong><small>{item.description || (isSuggestionStatus(item) ? `Coluna: ${item.kanbanColumn}` : `Ordem ${item.displayOrder}`)}</small></div>
         {isSuggestionStatus(item) && item.isInitial && <span className="suggestion-initial-badge">Etapa inicial</span>}<span className={`status-pill ${item.active ? "positive" : "negative"}`}>{item.active ? "Ativo" : "Inativo"}</span>
         <button className="catalog-icon-button" onClick={() => isSuggestionStatus(item) ? setEditingStatus(item) : setEditingPriority(item)} aria-label={`Editar ${item.name}`}><Pencil size={15} /></button>

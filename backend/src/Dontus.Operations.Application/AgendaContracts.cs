@@ -6,7 +6,7 @@ public sealed record AgendaTypeDto(Guid Id, string Name, string Description, str
 public sealed record AgendaStatusDto(Guid Id, string Name, string Description, string Color, bool Active);
 public sealed record AgendaCollaboratorDto(
     Guid Id, string Name, string Email, Guid DepartmentId, string DepartmentName,
-    DateOnly? BirthDate, DateOnly? StartedAt);
+    DateOnly? BirthDate, DateOnly? StartedAt, IReadOnlyCollection<Guid>? AgendaIds = null);
 public sealed record AgendaCelebrantDto(Guid Id, string Name, DateOnly? BirthDate, DateOnly? StartedAt);
 public sealed record AgendaCommitmentDto(
     Guid Id, Guid AgendaId, Guid AgendaTypeId, string Title, string Description,
@@ -30,7 +30,7 @@ public sealed record SaveAgendaStatusCommand(Guid? Id, string Name, string? Desc
 public sealed record CreateAgendaCommitmentCommand(
     Guid AgendaId, Guid AgendaTypeId, Guid AgendaStatusId, Guid ResponsibleUserId, string Title, string? Description,
     DateTimeOffset StartsAt, DateTimeOffset EndsAt, IReadOnlyCollection<Guid>? ParticipantUserIds,
-    string? Recurrence);
+    string? Recurrence, IReadOnlyCollection<DateOnly>? RecurrenceDates = null);
 public sealed record UpdateAgendaCommitmentCommand(
     Guid Id, Guid AgendaId, Guid AgendaTypeId, Guid AgendaStatusId, Guid ResponsibleUserId,
     string Title, string? Description, DateTimeOffset StartsAt, DateTimeOffset EndsAt,

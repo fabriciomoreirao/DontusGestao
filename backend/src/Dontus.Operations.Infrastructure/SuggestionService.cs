@@ -80,7 +80,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
                     suggestion.CustomerId,
                     suggestion.CustomerId.HasValue ? customers.GetValueOrDefault(suggestion.CustomerId.Value)?.TradeName ?? "Cliente removido" : "Não informado",
                     suggestion.ResponsibleUserId, responsible?.DisplayName ?? "Colaborador removido", responsible?.Email ?? "",
-                    responsible?.PhotoDataUrl ?? "", responsible?.IsCoordinator ?? false, suggestion.PriorityId, priority?.Name ?? "Prioridade removida",
+                    ProfilePhotoUrls.For(responsible), responsible?.IsCoordinator ?? false, suggestion.PriorityId, priority?.Name ?? "Prioridade removida",
                     priority?.Color ?? "#64748b", suggestion.StatusId, status?.Name ?? "Status removido",
                     status?.Color ?? "#64748b", status?.KanbanColumn ?? "Sem coluna",
                     suggestion.StrategicClient, suggestion.CancellationRisk, suggestion.CreatedBy,
@@ -89,7 +89,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
                     {
                         var author = users.GetValueOrDefault(comment.AuthorUserId);
                         return new SuggestionCommentDto(comment.Id, comment.SuggestionId, comment.AuthorUserId,
-                            author?.DisplayName ?? "Colaborador removido", author?.PhotoDataUrl ?? "", author?.IsCoordinator ?? false,
+                            author?.DisplayName ?? "Colaborador removido", ProfilePhotoUrls.For(author), author?.IsCoordinator ?? false,
                             comment.Body, comment.CreatedAt);
                     }).ToArray(),
                     attachments.Where(entry => entry.SuggestionId == suggestion.Id)
@@ -97,7 +97,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
                             $"/api/suggestion-files/{entry.Id}", entry.ContentType, entry.SizeBytes, entry.CreatedAt))
                         .ToArray());
             }).ToArray(),
-            new SuggestionCurrentUserDto(actorUser.Id, actorUser.DisplayName, actorUser.Email, actorUser.PhotoDataUrl, actorUser.IsCoordinator),
+            new SuggestionCurrentUserDto(actorUser.Id, actorUser.DisplayName, actorUser.Email, ProfilePhotoUrls.For(actorUser), actorUser.IsCoordinator),
             canManage);
     }
 
@@ -272,11 +272,23 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
             throw new DomainException("A sugestão foi atualizada por outra pessoa. Recarregue e tente novamente.", 409);
         var status = await db.SuggestionStatuses.SingleOrDefaultAsync(entry => entry.Id == command.StatusId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um status ativo.");
+        var requestedStatus = status.Name;
+        if (new[] { "em desenvolvimento", "enviada ao ti", "enviada ao /ti", "enviada ao setor de ti", "em produção" }.Contains(status.Name.Trim().ToLowerInvariant()))
+        {
+            var completed = await db.SuggestionStatuses.Where(entry => entry.Active)
+                .FirstOrDefaultAsync(entry => entry.Name == "Concluída" || entry.Name == "Concluída automaticamente", cancellationToken);
+            if (completed is null)
+            {
+                completed = new SuggestionStatus { Name = "Concluída", Description = "Sugestão concluída após encaminhamento ao desenvolvimento ou publicação.", KanbanColumn = "Concluída", Active = true, Color = "#16a34a", DisplayOrder = 999 };
+                db.SuggestionStatuses.Add(completed);
+            }
+            status = completed;
+        }
         var previousStatusId = suggestion.StatusId;
         suggestion.StatusId = status.Id;
         suggestion.Version++;
         suggestion.UpdatedAt = DateTimeOffset.UtcNow;
-        AddAudit(actor, "StatusChange", "suggestion", suggestion.Id, new { From = previousStatusId, To = status.Id, status.Name });
+        AddAudit(actor, "StatusChange", "suggestion", suggestion.Id, new { From = previousStatusId, To = status.Id, status.Name, RequestedStatus = requestedStatus });
         await db.SaveChangesAsync(cancellationToken);
     }
 

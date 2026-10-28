@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 import { Inter, Manrope } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
+import "./chat-experience.css";
+import "./settings-refinement.css";
+import "./analytics-experience.css";
+import "./client-distribution.css";
+import "./workflow-refinements.css";
+import "./quality-foundation.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

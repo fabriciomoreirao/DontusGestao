@@ -13,3 +13,7 @@ outputs
 work
 *.log
 coverage
+.openai/outputs
+.openai/calendar-fixture.json
+.openai/*calendar*.mjs
+.openai/pdf-fonts

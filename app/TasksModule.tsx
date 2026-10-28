@@ -1,5 +1,8 @@
 "use client";
 
+import { useReminderFilter } from "@/app/ReminderFilters";
+
+
 import {
   Bell, Check, CheckCircle2, ChevronRight, CircleDot, Clipboard, Clock3, Columns3,
   Code2, FileText, History, List, MessageSquareText, Paperclip, Pencil, Plus, Search, Upload,
@@ -80,7 +83,7 @@ const dt = (value?: string | null) => value
   : "—";
 
 export default function TasksModule({ module, customers, user, canCreate, canEdit, canManage, capabilities, busy, operate, onSendToDevelopment, uploadAttachments, deleteAttachment, onOpenSettings }: Props) {
-  const [view, setView] = useState<"kanban" | "list">("list");
+  const [view, setView] = useState<"kanban" | "list">("kanban");
   const [query, setQuery] = useState("");
   const [department, setDepartment] = useState("");
   const [priority, setPriority] = useState("");
@@ -91,6 +94,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   const [editRequested, setEditRequested] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createdProtocol, setCreatedProtocol] = useState("");
+  const reminderFilter = useReminderFilter("tasks");
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const currentCollaborator = module.collaborators.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
   const responsibleDepartmentIds = currentCollaborator?.coordinatorDepartmentIds.length
@@ -110,14 +114,14 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     return module.tasks.filter((task) => {
       const text = `#${task.number} ${task.protocol} ${task.title} ${task.description} ${task.customerName}`.toLocaleLowerCase("pt-BR");
-      return (!needle || text.includes(needle))
+      return reminderFilter.matches({ entityId: task.id, clientId: task.customerCode, title: task.title }) && (!needle || text.includes(needle))
         && (!departmentFilter || task.currentDepartmentId === departmentFilter)
         && (!priorityFilter || task.priorityId === priorityFilter)
         && (!assigneeFilter || task.assigneeUserId === assigneeFilter)
         && (clientNotice === "Todos" || task.clientNotificationState === clientNotice)
-        && (!onlyMine || task.assigneeName === user.displayName || task.creatorName === user.displayName);
+        && (!onlyMine || (currentCollaborator ? task.assigneeUserId === currentCollaborator.id : task.assigneeName === user.displayName));
     });
-  }, [module.tasks, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, user.displayName]);
+  }, [module.tasks, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, currentCollaborator, user.displayName, reminderFilter.matches]);
 
   useEffect(() => {
     const taskId = new URLSearchParams(window.location.search).get("task");
@@ -171,11 +175,12 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
           <button className={view === "list" ? "active" : ""} onClick={() => setView("list")}><List size={16} /> Lista</button>
         </div>
       </header>
-      <nav className="task-department-tabs" aria-label="Selecionar setor"><button className={!departmentFilter ? "active" : ""} onClick={() => setDepartment("")}>Todos os setores</button>{availableDepartments.map((item) => <button className={departmentFilter === item.id ? "active" : ""} onClick={() => setDepartment(item.id)} key={item.id}>{item.name}</button>)}</nav>
-      <div className="tasks-toolbar">
-        <div className="task-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por protocolo, título ou cliente" /></div>
+      <div className="module-sector-filter"><label><span>Setor</span><select aria-label="Filtrar tarefas por setor" value={departmentFilter} onChange={(event) => setDepartment(event.target.value)}><option value="">Todos os setores</option>{availableDepartments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
+      <div className="tasks-toolbar reminder-filter-toolbar">
+        <div className="task-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por protocolo, título ou cliente" /></div>{reminderFilter.control}
         <select value={priorityFilter} onChange={(e) => setPriority(e.target.value)} aria-label="Filtrar prioridade"><option value="">Todas as prioridades</option>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select>
         <select value={assigneeFilter} onChange={(e) => setAssignee(e.target.value)} aria-label="Filtrar responsável"><option value="">Todos os responsáveis</option>{module.collaborators.filter((c) => c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select>
+
         <label className="mine-filter"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Somente minhas</label>
       </div>
       <details className="task-secondary-filters">
@@ -404,11 +409,12 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
       setFileInputKey((value) => value + 1);
     }
   };
-  return <Overlay title={`#${task.number} — ${task.title}`} eyebrow="DETALHES DA TAREFA" onClose={onClose} wide side detail headerActions={<>
+  return <Overlay title={`#${task.number} — ${task.title}`} eyebrow="DETALHES DA TAREFA" onClose={onClose} wide side detail headerMeta={<>
     <span className="task-header-status"><CircleDot size={14} /> {task.statusName}</span>
     <TaskClientStateBadge state={task.clientNotificationState}/>
     <span className="task-header-subtitle">{task.departmentName} · Atualizada em {dt(task.updatedAt)}</span>
-    <button className="copy-task-link" onClick={async () => { const url = new URL(window.location.href); url.searchParams.set("mod", "tasks"); url.searchParams.set("task", task.id); await navigator.clipboard.writeText(url.toString()); }}><Clipboard size={14} /> Copiar link</button>
+  </>} headerActions={<>
+    <button className="copy-task-link card-copy-link" onClick={async () => { const url = new URL(window.location.href); url.searchParams.set("mod", "tasks"); url.searchParams.set("task", task.id); await navigator.clipboard.writeText(url.toString()); }}><Clipboard size={14} /> Copiar link</button>
     {developmentSubtaskId ? <button className="task-dev-detail-action" type="button" onClick={() => { window.location.href = `/?mod=ti&subtask=${developmentSubtaskId}`; }}><Code2 size={15} /> Acessar subtarefa de TI</button> : canEdit && <button className="task-dev-detail-action" type="button" disabled={busy || sentToDevelopment} title="Enviar esta tarefa para a triagem de desenvolvimento" onClick={() => { void onSendToDevelopment(task).then((result) => { if (result) { setSentToDevelopment(true); setDevelopmentSubtaskId(result.id ?? ""); } }); }}><Code2 size={15} /> {sentToDevelopment ? "Enviada para Desenvolvimento" : "Enviar para Desenvolvimento"}</button>}
   </>}>
     <div className="task-detail-layout">
@@ -491,8 +497,8 @@ export function CatalogsModule({ module, section, onSection, canManage, busy, op
     departments: { title: "Setores", description: "Organize as áreas da empresa, coordenadores e regras de encaminhamento." },
     types: { title: "Tipos de tarefa", description: "Configure os tipos disponíveis, setores responsáveis, fluxo, prioridade e SLA padrão." },
     priorities: { title: "Prioridades", description: "Defina a criticidade, identificação visual e prazo padrão das demandas." },
-    statuses: { title: "Status", description: "Monte as etapas e colunas do Kanban utilizadas nos fluxos de tarefas." },
-    kanban: { title: "Kanban", description: "Organize a ordem e o nome visual das colunas que recebem as tarefas." },
+    statuses: { title: "Etapas do Kanban", description: "Configure as etapas, a ordem e as regras de movimentação das tarefas em um único cadastro." },
+    kanban: { title: "Etapas do Kanban", description: "Configure as etapas, a ordem e as regras de movimentação das tarefas em um único cadastro." },
     sla: { title: "Políticas de SLA", description: "Defina somente o prazo em dias úteis; a contagem começa quando a tarefa é criada." },
     people: { title: "Colaboradores", description: "Gerencie cargo, contato, situação, setores e responsabilidades de coordenação." },
   };
@@ -502,16 +508,16 @@ export function CatalogsModule({ module, section, onSection, canManage, busy, op
       <div className="module-page-title"><span className="module-page-title-icon"><Settings size={21} /></span><span className="module-page-copy"><span className="eyebrow">CADASTROS DO SISTEMA</span><h1>{page.title}</h1><p>{page.description}</p></span></div>
       <span className="catalog-page-context module-page-actions">Cadastros <ChevronRight size={13} /> {page.title}</span>
     </header>
-    <nav className="task-catalog-tabs" aria-label="Cadastros de tarefas">{([['types','Tipo'],['priorities','Prioridade'],['sla','SLA'],['statuses','Status'],['kanban','Kanban']] as Array<[CatalogSection,string]>).map(([key,label]) => <button className={section === key ? "active" : ""} onClick={() => onSection(key)} key={key}>{label}</button>)}</nav>
+    <nav className="task-catalog-tabs" aria-label="Cadastros de tarefas">{([['types','Tipo'],['priorities','Prioridade'],['sla','SLA'],['statuses','Etapas do Kanban']] as Array<[CatalogSection,string]>).map(([key,label]) => <button className={(section === "kanban" ? "statuses" : section) === key ? "active" : ""} onClick={() => onSection(key)} key={key}>{label}</button>)}</nav>
     {!canManage && <div className="readonly-note">Seu grupo possui acesso de consulta. Para alterar cadastros, habilite “Administrar” na tela Cadastros.</div>}
-    <TaskSettings key={section} module={module} tab={section} onTab={onSection} canManage={canManage} busy={busy} operate={operate} />
+    <TaskSettings key={section === "kanban" ? "statuses" : section} module={module} tab={section === "kanban" ? "statuses" : section} onTab={onSection} canManage={canManage} busy={busy} operate={operate} />
   </div>;
 }
 
 function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module: TaskModuleData; tab: CatalogSection; onTab: (section: CatalogSection) => void; canManage: boolean; busy: boolean; operate: Props["operate"] }) {
   const [editingId, setEditingId] = useState<string | null | undefined>(null);
   const submit = (action: string, success: string) => async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); const f = new FormData(e.currentTarget); const payload: Record<string, unknown> = Object.fromEntries(f);
+    e.preventDefault(); const form = e.currentTarget; const f = new FormData(form); const payload: Record<string, unknown> = Object.fromEntries(f);
     payload.id = editingId;
     payload.active = f.has("active");
     if (action === "saveTaskDepartment") {
@@ -523,6 +529,9 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
       payload.defaultDueMinutes = f.get("defaultDueMinutes") ? Number(f.get("defaultDueMinutes")) : null;
     }
     if (action === "saveTaskStatus") {
+      payload.name = String(f.get("name") || "").trim();
+      payload.kanbanColumn = payload.name;
+      payload.departmentId = f.get("departmentId") || null;
       payload.displayOrder = Number(f.get("displayOrder"));
       payload.isInitial = f.has("isInitial");
       payload.isFinal = f.has("isFinal");
@@ -530,14 +539,14 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
       payload.acceptsNewTasks = f.has("acceptsNewTasks");
       payload.manualMovement = f.has("manualMovement");
     }
-    if (await operate({ action, ...payload }, success)) { e.currentTarget.reset(); setEditingId(null); }
+    if (await operate({ action, ...payload }, success)) { form.reset(); setEditingId(null); }
   };
   const department = module.departments.find((item) => item.id === editingId);
   const priority = module.priorities.find((item) => item.id === editingId);
   const status = module.statuses.find((item) => item.id === editingId);
   const type = module.types.find((item) => item.id === editingId);
   const removeCatalog = async (catalog: string, id: string, label: string) => {
-    await operate({ action: "deleteTaskCatalog", catalog, id }, `${label} excluído com sucesso.`);
+    await operate({ action: "deleteTaskCatalog", catalog, id }, `${label} desativado com histórico preservado.`);
     setEditingId(null);
   };
   const toggleCatalog = async (catalog: string, id: string, label: string) => {
@@ -550,10 +559,13 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
   return <TaskCatalogActions.Provider value={{ remove: removeCatalog, toggle: toggleCatalog }}><div className={`task-settings ${canManage ? "" : "readonly"}`}><section>
         {tab === "sla" && <SimpleSlaEditor module={module} editingId={editingId} setEditingId={setEditingId} busy={busy} operate={operate} />}
         {tab === "departments" && <Catalog title="Setores" editingId={editingId} onEdit={setEditingId} items={module.departments.map((d) => ({ id: d.id, title: d.name, subtitle: d.description, active: d.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskDepartment", "Setor salvo.")}><input name="name" required placeholder="Nome do setor" defaultValue={department?.name} /><input name="catalogDescription" placeholder="Descrição" defaultValue={department?.description} /><label><input type="checkbox" name="requiresAssigneeOnTransfer" defaultChecked={department?.requiresAssigneeOnTransfer} /> Exigir responsável</label><CheckGroup legend="Coordenadores" name="coordinatorUserIds" values={module.collaborators.filter((c) => c.active).map((c) => ({ id: c.id, label: c.name }))} selected={department?.coordinatorUserIds ?? []} /><ActiveField value={department?.active} /><FormButtons editing={!!department} busy={busy} onCancel={() => setEditingId(null)} label="setor" /></form></Catalog>}
-    {tab === "priorities" && <Catalog title="Prioridades" editingId={editingId} onEdit={setEditingId} items={module.priorities.map((p) => ({ id: p.id, title: p.name, subtitle: `Ordem ${p.severityOrder} · prazo ${p.defaultDueMinutes ?? "—"} min`, active: p.active, color: p.color }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskPriority", "Prioridade salva.")}><input name="name" required placeholder="Nome" defaultValue={priority?.name} /><input name="severityOrder" required type="number" placeholder="Ordem" defaultValue={priority?.severityOrder} /><input name="color" type="color" defaultValue={priority?.color ?? "#2563eb"} /><input name="defaultDueMinutes" type="number" placeholder="Prazo padrão (min)" defaultValue={priority?.defaultDueMinutes ?? ""} /><ActiveField value={priority?.active} /><FormButtons editing={!!priority} busy={busy} onCancel={() => setEditingId(null)} label="prioridade" /></form></Catalog>}
-    {tab === "statuses" && <Catalog title="Status" editingId={editingId} onEdit={setEditingId} items={module.statuses.map((s) => ({ id: s.id, title: s.name, subtitle: `${s.kanbanColumn} · ${module.departments.find((department) => department.id === s.departmentId)?.name ?? "Todos os setores"} · ordem ${s.displayOrder}${s.isFinal ? " · final" : ""}`, active: s.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskStatus", "Status salvo.")}><input name="name" required placeholder="Nome" defaultValue={status?.name} /><select name="departmentId" defaultValue={status?.departmentId ?? ""}><option value="">Todos os setores</option>{module.departments.filter((department) => department.active).map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}</select><input name="kanbanColumn" required placeholder="Coluna Kanban" defaultValue={status?.kanbanColumn} /><input name="displayOrder" type="number" required placeholder="Ordem" defaultValue={status?.displayOrder} /><label><input name="isInitial" type="checkbox" defaultChecked={status?.isInitial} /> Inicial</label><label><input name="isFinal" type="checkbox" defaultChecked={status?.isFinal} /> Final</label><label><input name="acceptsNewTasks" type="checkbox" defaultChecked={status?.acceptsNewTasks ?? true} /> Recebe novas</label><label><input name="manualMovement" type="checkbox" defaultChecked={status?.manualMovement ?? true} /> Movimento manual</label><label><input name="requiresJustification" type="checkbox" defaultChecked={status?.requiresJustification} /> Exige justificativa</label><ActiveField value={status?.active} /><FormButtons editing={!!status} busy={busy} onCancel={() => setEditingId(null)} label="status" /></form></Catalog>}
-    {tab === "kanban" && <Catalog title="Kanban" editingId={editingId} onEdit={setEditingId} items={module.statuses.map((s) => ({ id: s.id, title: s.kanbanColumn || s.name, subtitle: `${module.departments.find((department) => department.id === s.departmentId)?.name ?? "Todos os setores"} · ${s.name} · posição ${s.displayOrder}`, active: s.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskStatus", "Coluna do Kanban salva.")}><input name="name" required readOnly value={status?.name ?? ""} placeholder="Selecione um status para editar" /><select name="departmentId" defaultValue={status?.departmentId ?? ""}><option value="">Todos os setores</option>{module.departments.filter((department) => department.active).map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}</select><input name="kanbanColumn" required placeholder="Título da coluna" defaultValue={status?.kanbanColumn} /><input name="displayOrder" type="number" required placeholder="Posição" defaultValue={status?.displayOrder} /><label><input name="isInitial" type="checkbox" defaultChecked={status?.isInitial} /> Primeira coluna</label><label><input name="isFinal" type="checkbox" defaultChecked={status?.isFinal} /> Coluna final</label><label><input name="acceptsNewTasks" type="checkbox" defaultChecked={status?.acceptsNewTasks ?? true} /> Recebe novas tarefas</label><label><input name="manualMovement" type="checkbox" defaultChecked={status?.manualMovement ?? true} /> Permite movimentação</label><label><input name="requiresJustification" type="checkbox" defaultChecked={status?.requiresJustification} /> Exige justificativa</label><ActiveField value={status?.active} /><FormButtons editing={!!status} busy={busy} onCancel={() => setEditingId(null)} label="coluna" /></form></Catalog>}
-        {tab === "types" && <Catalog title="Tipos de tarefa" editingId={editingId} onEdit={setEditingId} items={module.types.map((t) => ({ id: t.id, title: t.name, subtitle: t.description, active: t.active }))}><form key={editingId ?? "new"} className="catalog-complex-form" onSubmit={async (e) => { e.preventDefault(); const f = new FormData(e.currentTarget); if (await operate({ action: "saveTaskType", id: editingId, name: f.get("name"), catalogDescription: f.get("catalogDescription"), departmentIds: f.getAll("departmentIds"), initialStatusId: f.get("initialStatusId"), allowedStatusIds: f.getAll("allowedStatusIds"), defaultPriorityId: f.get("defaultPriorityId") || null, defaultSlaPolicyId: f.get("defaultSlaPolicyId") || null, active: f.has("active") }, "Tipo salvo.")) setEditingId(null); }}><input name="name" required placeholder="Nome" defaultValue={type?.name} /><input name="catalogDescription" placeholder="Descrição" defaultValue={type?.description} /><select name="defaultPriorityId" defaultValue={type?.defaultPriorityId ?? ""}><option value="">Prioridade padrão</option>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select><select name="defaultSlaPolicyId" defaultValue={type?.defaultSlaPolicyId ?? ""}><option value="">SLA padrão</option>{module.slaPolicies.filter((s) => s.active).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select><select name="initialStatusId" required defaultValue={type?.initialStatusId ?? ""}><option value="">Status inicial</option>{module.statuses.filter((s) => s.active).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select><CheckGroup legend="Setores disponíveis" name="departmentIds" values={module.departments.filter((d) => d.active).map((d) => ({ id: d.id, label: d.name }))} selected={type?.departmentIds ?? []} /><CheckGroup legend="Status permitidos" name="allowedStatusIds" values={module.statuses.filter((s) => s.active).map((s) => ({ id: s.id, label: s.name }))} selected={type?.allowedStatusIds ?? []} /><ActiveField value={type?.active} /><FormButtons editing={!!type} busy={busy} onCancel={() => setEditingId(null)} label="tipo" /></form></Catalog>}
+    {tab === "priorities" && <Catalog title="Prioridades" editingId={editingId} onEdit={setEditingId} items={module.priorities.map((p) => ({ id: p.id, title: p.name, subtitle: `Ordem ${p.severityOrder} · prazo ${p.defaultDueMinutes ?? "—"} min`, active: p.active, color: p.color }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskPriority", "Prioridade salva.")}><input name="name" required placeholder="Nome" defaultValue={priority?.name} /><input name="severityOrder" required type="number" placeholder="Ordem" min="0" defaultValue={priority?.severityOrder ?? Math.max(0, ...module.priorities.map(p => p.severityOrder)) + 1} /><input name="color" type="color" defaultValue={priority?.color ?? "#2563eb"} /><input name="defaultDueMinutes" type="number" placeholder="Prazo padrão (min)" defaultValue={priority?.defaultDueMinutes ?? ""} /><ActiveField value={priority?.active} /><FormButtons editing={!!priority} busy={busy} onCancel={() => setEditingId(null)} label="prioridade" /></form></Catalog>}
+    {tab === "statuses" && <Catalog title="Etapas do Kanban" editingId={editingId} onEdit={setEditingId} items={module.statuses.map((s) => ({ id: s.id, title: s.name, subtitle: `${module.departments.find((department) => department.id === s.departmentId)?.name ?? "Todos os setores"} · posição ${s.displayOrder}${s.isInitial ? " · inicial" : ""}${s.isFinal ? " · final" : ""}`, active: s.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskStatus", "Etapa do Kanban salva.")}>
+      <label className="catalog-field"><span>Nome da etapa *</span><input name="name" required maxLength={120} placeholder="Ex.: Em análise" defaultValue={status?.name} autoFocus /></label>
+      <label className="catalog-field"><span>Setor</span><select name="departmentId" defaultValue={status?.departmentId ?? ""}><option value="">Todos os setores</option>{module.departments.filter((department) => department.active || department.id === status?.departmentId).map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}</select></label>
+      <label className="catalog-field"><span>Posição no Kanban</span><input name="displayOrder" type="number" min="0" required defaultValue={status?.displayOrder ?? Math.max(0, ...module.statuses.map(s => s.displayOrder)) + 1} /></label>
+      <label><input name="isInitial" type="checkbox" defaultChecked={status?.isInitial} /> Primeira etapa</label><label><input name="isFinal" type="checkbox" defaultChecked={status?.isFinal} /> Etapa final</label><label><input name="acceptsNewTasks" type="checkbox" defaultChecked={status?.acceptsNewTasks ?? true} /> Recebe novas tarefas</label><label><input name="manualMovement" type="checkbox" defaultChecked={status?.manualMovement ?? true} /> Permite movimentação</label><label><input name="requiresJustification" type="checkbox" defaultChecked={status?.requiresJustification} /> Exige justificativa</label><ActiveField value={status?.active} /><FormButtons editing={!!status} busy={busy} onCancel={() => setEditingId(null)} label="etapa" /></form></Catalog>}
+        {tab === "types" && <Catalog title="Tipos de tarefa" editingId={editingId} onEdit={setEditingId} items={module.types.map((t) => ({ id: t.id, title: t.name, subtitle: t.description, active: t.active }))}><form key={editingId ?? "new"} className="catalog-complex-form" onSubmit={async (e) => { e.preventDefault(); const f = new FormData(e.currentTarget); if (await operate({ action: "saveTaskType", id: editingId, name: f.get("name"), catalogDescription: f.get("catalogDescription"), departmentIds: f.getAll("departmentIds"), initialStatusId: f.get("initialStatusId"), allowedStatusIds: [...new Set([...f.getAll("allowedStatusIds"), f.get("initialStatusId")])], defaultPriorityId: f.get("defaultPriorityId") || null, defaultSlaPolicyId: f.get("defaultSlaPolicyId") || null, active: f.has("active") }, "Tipo salvo.")) setEditingId(null); }}><input name="name" required placeholder="Nome" defaultValue={type?.name} /><input name="catalogDescription" placeholder="Descrição" defaultValue={type?.description} /><select name="defaultPriorityId" defaultValue={type?.defaultPriorityId ?? ""}><option value="">Prioridade padrão</option>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select><select name="defaultSlaPolicyId" defaultValue={type?.defaultSlaPolicyId ?? ""}><option value="">SLA padrão</option>{module.slaPolicies.filter((s) => s.active).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select><select name="initialStatusId" required defaultValue={type?.initialStatusId ?? ""}><option value="">Etapa inicial</option>{module.statuses.filter((s) => s.active && s.acceptsNewTasks && !s.isFinal).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select><CheckGroup legend="Setores disponíveis" name="departmentIds" values={module.departments.filter((d) => d.active).map((d) => ({ id: d.id, label: d.name }))} selected={type?.departmentIds ?? []} /><CheckGroup legend="Etapas permitidas" name="allowedStatusIds" values={module.statuses.filter((s) => s.active).map((s) => ({ id: s.id, label: s.name }))} selected={type?.allowedStatusIds ?? []} /><ActiveField value={type?.active} /><FormButtons editing={!!type} busy={busy} onCancel={() => setEditingId(null)} label="tipo" /></form></Catalog>}
     {tab === "people" && <div className="catalog-page-content">
       <div className="catalog-form collaborator-create-card">
         <div className="catalog-card-heading"><span>NOVO COLABORADOR</span><h2>Cadastrar colaborador</h2><p>Inclua os dados de contato e defina em quais setores o colaborador poderá receber tarefas.</p></div>
@@ -592,32 +604,35 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
 function LegacyCatalog({ title, items, editingId, onEdit, children }: { title: string; items: Array<{ id: string; title: string; subtitle: string; active: boolean; color?: string }>; editingId: string | null; onEdit: (id: string) => void; children: React.ReactNode }) {
   const actions = useContext(TaskCatalogActions);
   const catalog = ({ "Setores": "departments", "Prioridades": "priorities", "Status": "statuses", "Kanban": "statuses", "Tipos de tarefa": "types", "Políticas de SLA": "sla" } as Record<string, string>)[title];
-  return <div className="catalog-page-content" aria-label={title}><div className="catalog-form"><div className="catalog-card-heading"><span>{editingId ? "EDITANDO REGISTRO" : "NOVO REGISTRO"}</span><h2>{editingId ? `Editar ${title.toLocaleLowerCase("pt-BR")}` : `Cadastrar ${title.toLocaleLowerCase("pt-BR")}`}</h2><p>Cadastros inativos deixam de aparecer imediatamente nas seleções operacionais.</p></div>{children}</div><div className="catalog-records-heading"><div><h2>{title} cadastrados</h2><p>Itens inativos permanecem aqui para edição, reativação ou exclusão definitiva.</p></div><b>{items.filter((item) => item.active).length} ativo(s) de {items.length}</b></div><div className="catalog-list">{items.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}><i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} /><span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span><em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em><button type="button" onClick={() => onEdit(item.id)}>Editar</button>{actions && catalog && <button type="button" className="catalog-delete-action" onClick={() => void actions.remove(catalog, item.id, item.title)}><Trash2 size={14} /> Excluir</button>}</article>)}</div></div>;
+  return <div className="catalog-page-content" aria-label={title}><div className="catalog-form"><div className="catalog-card-heading"><span>{editingId ? "EDITANDO REGISTRO" : "NOVO REGISTRO"}</span><h2>{editingId ? `Editar ${title.toLocaleLowerCase("pt-BR")}` : `Cadastrar ${title.toLocaleLowerCase("pt-BR")}`}</h2><p>Cadastros inativos deixam de aparecer imediatamente nas seleções operacionais.</p></div>{children}</div><div className="catalog-records-heading"><div><h2>{title} cadastrados</h2><p>Itens inativos permanecem aqui para edição, reativação ou exclusão definitiva.</p></div><b>{items.filter((item) => item.active).length} ativo(s) de {items.length}</b></div><div className="catalog-list">{items.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}><i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} /><span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span><em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em><button type="button" onClick={() => onEdit(item.id)}>Editar</button>{actions && catalog && <button type="button" className="catalog-delete-action" onClick={() => void actions.remove(catalog, item.id, item.title)}><Trash2 size={14} /> Desativar</button>}</article>)}</div></div>;
 }
 
 function Catalog({ title, items, editingId, onEdit, children }: { title: string; items: Array<{ id: string; title: string; subtitle: string; active: boolean; color?: string }>; editingId: string | null | undefined; onEdit: (id: string | null | undefined) => void; children: React.ReactNode }) {
   const actions = useContext(TaskCatalogActions);
-  const catalog = title === "Setores" ? "departments" : title === "Prioridades" ? "priorities" : title === "Status" || title === "Kanban" ? "statuses" : title === "Tipos de tarefa" ? "types" : title === "Políticas de SLA" ? "sla" : "";
+  const catalog = title === "Setores" ? "departments" : title === "Prioridades" ? "priorities" : ["Status", "Kanban", "Etapas do Kanban"].includes(title) ? "statuses" : title === "Tipos de tarefa" ? "types" : title === "Políticas de SLA" ? "sla" : "";
+  const [showInactive, setShowInactive] = useState(false);
+  const visibleItems = items.filter((item) => item.active || showInactive);
+  const singular = ({ "Setores": "setor", "Prioridades": "prioridade", "Etapas do Kanban": "etapa do Kanban", "Tipos de tarefa": "tipo de tarefa", "Políticas de SLA": "política de SLA" } as Record<string, string>)[title] ?? title;
+  const editorTitle = `${editingId ? "Editar" : ["setor", "tipo de tarefa"].includes(singular) ? "Novo" : "Nova"} ${singular}`;
   const editorOpen = editingId !== null;
   return <div className="catalog-page-content catalog-list-page" aria-label={title}>
     <div className="catalog-records-heading">
-      <div><h2>{title} cadastrados</h2><p>Itens inativos permanecem disponíveis para edição, reativação ou exclusão definitiva.</p></div>
-      <span><b>{items.filter((item) => item.active).length} ativo(s) de {items.length}</b><button className="primary-button" type="button" onClick={() => onEdit(undefined)}><Plus size={16} /> Novo cadastro</button></span>
+      <div><h2>{title}</h2><p>Itens inativos permanecem disponíveis para edição e reativação. O histórico é preservado.</p></div>
+      <span><b>{items.filter((item) => item.active).length} ativo(s) de {items.length}</b><label className="catalog-show-inactive"><input type="checkbox" checked={showInactive} onChange={event => setShowInactive(event.target.checked)} /> Mostrar inativos</label><button className="primary-button" type="button" onClick={() => onEdit(undefined)}><Plus size={16} /> Novo cadastro</button></span>
     </div>
     <div className="catalog-list">
-      {items.filter((item) => item.active).length === 0 && <p className="catalog-empty">Nenhum cadastro ativo encontrado.</p>}
-      {items.filter((item) => item.active).map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}>
+      {visibleItems.length === 0 && <p className="catalog-empty">Nenhum cadastro ativo encontrado. Marque “Mostrar inativos” para consultar e reativar registros.</p>}
+      {visibleItems.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}>
         <i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} />
         <span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span>
         <em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em>
         {actions && catalog && <button type="button" className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`} onClick={() => void actions.toggle(catalog, item.id, item.title)} aria-label={item.active ? `Bloquear ${item.title}` : `Reativar ${item.title}`} title={item.active ? "Bloquear temporariamente" : "Reativar cadastro"}><Power size={14} /></button>}
         <button type="button" onClick={() => onEdit(item.id)}>Editar</button>
-        {actions && catalog && <button type="button" className="catalog-delete-action" onClick={() => void actions.remove(catalog, item.id, item.title)}><Trash2 size={14} /> Excluir</button>}
       </article>)}
     </div>
     {editorOpen && <div className="modal-backdrop catalog-editor-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onEdit(null)}>
-      <div className="modal task-catalog-modal" role="dialog" aria-modal="true" aria-label={editingId ? `Editar ${title}` : `Novo ${title}`}>
-        <div className="modal-head"><div><span className="eyebrow">CADASTROS · TAREFAS</span><h2>{editingId ? `Editar ${title}` : `Novo ${title}`}</h2><p>As alterações ficam disponíveis imediatamente nas seleções do sistema.</p></div><button className="icon-button" type="button" onClick={() => onEdit(null)} aria-label="Fechar"><X size={20} /></button></div>
+      <div className="modal task-catalog-modal" role="dialog" aria-modal="true" aria-label={editorTitle}>
+        <div className="modal-head"><div><span className="eyebrow">CADASTROS · TAREFAS</span><h2>{editorTitle}</h2><p>As alterações ficam disponíveis imediatamente nas seleções do sistema.</p></div><button className="icon-button" type="button" onClick={() => onEdit(null)} aria-label="Fechar"><X size={20} /></button></div>
         <div className="catalog-form">{children}</div>
       </div>
     </div>}
@@ -644,19 +659,19 @@ function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { m
         id: editingId,
         name: `${businessDays} dia${businessDays === 1 ? "" : "s"} útil${businessDays === 1 ? "" : "eis"}`,
         departmentId: defaultDepartmentId,
-        typeId: null,
-        priorityId: null,
-        firstResponseMinutes: 0,
-        serviceStartMinutes: 0,
+        typeId: sla?.taskTypeId ?? null,
+        priorityId: sla?.priorityId ?? null,
+        firstResponseMinutes: sla?.firstResponseMinutes ?? 0,
+        serviceStartMinutes: sla?.serviceStartMinutes ?? 0,
         completionMinutes: businessDays * 480,
-        businessDays: [1, 2, 3, 4, 5],
-        businessStart: "08:00",
-        businessEnd: "18:00",
-        alertBeforeMinutes: 0,
-        escalationMinutes: 0,
-        pauseStatusIds: [],
-        recalculateSla: true,
-        active: true,
+        businessDays: sla?.businessDays ?? [1, 2, 3, 4, 5],
+        businessStart: sla?.businessStart ?? "08:00",
+        businessEnd: sla?.businessEnd ?? "18:00",
+        alertBeforeMinutes: sla?.alertBeforeMinutes ?? 0,
+        escalationMinutes: sla?.escalationMinutes ?? 0,
+        pauseStatusIds: sla?.pauseStatusIds ?? [],
+        recalculateSla: sla?.recalculateOnTransfer ?? true,
+        active: sla?.active ?? true,
       }, "Prazo de SLA salvo.");
       if (saved) setEditingId(null);
     }}>
@@ -664,7 +679,8 @@ function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { m
         <input name="businessDays" type="number" min="1" step="1" required defaultValue={initialDays} />
         <small>A contagem começa no momento da criação da tarefa e considera apenas dias úteis.</small>
       </label>
-      <FormButtons editing={!!sla} busy={busy} onCancel={() => setEditingId(null)} label="prazo" />
+      {!defaultDepartmentId && <p role="alert">Cadastre ou reative um setor para configurar o SLA.</p>}
+      <FormButtons editing={!!sla} busy={busy || !defaultDepartmentId} onCancel={() => setEditingId(null)} label="prazo" />
     </form>
   </Catalog>;
 }
@@ -686,6 +702,6 @@ function TaskCreatedModal({ protocol, onClose }: { protocol: string; onClose: ()
   return <div className="task-overlay task-created-backdrop"><div className="task-modal task-created-modal"><div className="task-modal-body"><span className="task-created-icon"><CheckCircle2 size={34} /></span><h2>Tarefa criada com sucesso</h2><p>O protocolo <strong>{protocol}</strong> já está disponível para acompanhamento.</p><div className="task-created-actions"><button className="secondary-button" onClick={async () => { await navigator.clipboard.writeText(protocol); setCopied(true); }}><Clipboard size={16} /> {copied ? "Protocolo copiado" : "Copiar protocolo"}</button><button className="primary-button" onClick={onClose}>Fechar</button></div></div></div></div>;
 }
 
-function Overlay({ title, eyebrow = "TAREFAS", subtitle, onClose, wide, side = false, detail = false, headerActions, children }: { title: string; eyebrow?: string; subtitle?: string; onClose: () => void; wide?: boolean; side?: boolean; detail?: boolean; headerActions?: React.ReactNode; children: React.ReactNode }) {
-  return <div className={`task-overlay ${side ? "task-side-overlay" : ""} ${detail ? "task-detail-overlay" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}><div className={`task-modal ${wide ? "wide" : ""} ${side ? "task-side-panel" : ""}`} role="dialog" aria-modal="true" aria-label={title}><header><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{headerActions && <div className="task-overlay-header-actions">{headerActions}</div>}<button onClick={onClose} aria-label="Fechar"><X size={19} /></button></header><div className="task-modal-body">{children}</div></div></div>;
+function Overlay({ title, eyebrow = "TAREFAS", subtitle, onClose, wide, side = false, detail = false, headerMeta, headerActions, children }: { title: string; eyebrow?: string; subtitle?: string; onClose: () => void; wide?: boolean; side?: boolean; detail?: boolean; headerMeta?: React.ReactNode; headerActions?: React.ReactNode; children: React.ReactNode }) {
+  return <div className={`task-overlay ${side ? "task-side-overlay" : ""} ${detail ? "task-detail-overlay" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}><div className={`task-modal ${wide ? "wide" : ""} ${side ? "task-side-panel" : ""}`} role="dialog" aria-modal="true" aria-label={title}><header><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}{headerMeta && <div className="task-header-meta">{headerMeta}</div>}</div>{headerActions && <div className="task-overlay-header-actions">{headerActions}</div>}<button onClick={onClose} aria-label="Fechar"><X size={19} /></button></header><div className="task-modal-body">{children}</div></div></div>;
 }

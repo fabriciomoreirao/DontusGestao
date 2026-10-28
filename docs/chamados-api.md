@@ -56,7 +56,7 @@ Resposta de sucesso (`201 Created`):
 ```json
 {
   "id": "uuid-do-card",
-  "protocol": "CH-20261009-ABC123",
+  "protocol": "C260001",
   "status": "Triagem",
   "classification": "Desenvolvimento",
   "customerMatched": true
@@ -64,6 +64,8 @@ Resposta de sucesso (`201 Created`):
 ```
 
 ## Formulário pronto
+
+Novos chamados recebem um protocolo no formato `C` + ano com dois dígitos + sequência anual com pelo menos quatro dígitos: `C260001`, `C260002`, `C260003`. O ano segue o horário de Brasília, e a sequência reinicia em `0001` a cada ano. A numeração é reservada na mesma transação do chamado para impedir duplicações em aberturas simultâneas. A exclusão de um chamado não reutiliza seu número. Protocolos anteriores são preservados.
 
 O mesmo fluxo também está disponível pela interface responsiva:
 

@@ -76,6 +76,29 @@ public sealed class SuggestionServiceTests
         Assert.Equal(newStatusId, (await db.SuggestionStatuses.SingleAsync(entry => entry.IsInitial)).Id);
     }
 
+    [Theory]
+    [InlineData("Em desenvolvimento")]
+    [InlineData("Enviada ao TI")]
+    [InlineData("Em produção")]
+    public async Task Completes_suggestions_when_handed_to_delivery(string requestedStatus)
+    {
+        await using var db = CreateContext();
+        var user = AddUser(db, "gestor@dontus.local", "Gestor");
+        await db.SaveChangesAsync();
+        var service = new SuggestionService(db);
+        await service.InitializeAsync();
+        var priority = await db.SuggestionPriorities.FirstAsync();
+        var status = new SuggestionStatus { Name = requestedStatus, KanbanColumn = requestedStatus };
+        db.SuggestionStatuses.Add(status);
+        await db.SaveChangesAsync();
+        var created = await service.CreateSuggestionAsync(new CreateSuggestionCommand("Melhoria", "Contexto", null, priority.Id, false, false), Actor(user));
+        var suggestion = await db.Suggestions.SingleAsync(entry => entry.Id == created.Id);
+        await service.ChangeStatusAsync(new ChangeSuggestionStatusCommand(suggestion.Id, status.Id, suggestion.Version), Actor(user));
+        var completed = await db.SuggestionStatuses.SingleAsync(entry => entry.Id == suggestion.StatusId);
+        Assert.Equal("Concluída", completed.Name);
+        Assert.Equal("Contexto", suggestion.Description);
+    }
+
     private static AppUser AddUser(OperationsDbContext db, string email, string name)
     {
         var user = new AppUser { Email = email, DisplayName = name, Department = "Produto", CreatedBy = "tests@dontus.local" };
