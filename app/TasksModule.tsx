@@ -649,7 +649,7 @@ function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { m
     subtitle: `${Math.max(1, Math.ceil(item.completionMinutes / 480))} dia(s) útil(eis)`,
     active: item.active,
   }))}>
-    <form key={editingId ?? "new"} className="catalog-complex-form" onSubmit={async (event) => {
+    <form key={editingId ?? "new"} className="catalog-complex-form task-sla-form" onSubmit={async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const businessDays = Number(form.get("businessDays"));
@@ -657,7 +657,7 @@ function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { m
       const saved = await operate({
         action: "saveTaskSla",
         id: editingId,
-        name: `${businessDays} dia${businessDays === 1 ? "" : "s"} útil${businessDays === 1 ? "" : "eis"}`,
+        name: businessDays === 1 ? "1 dia útil" : `${businessDays} dias úteis`,
         departmentId: defaultDepartmentId,
         typeId: sla?.taskTypeId ?? null,
         priorityId: sla?.priorityId ?? null,
@@ -675,8 +675,8 @@ function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { m
       }, "Prazo de SLA salvo.");
       if (saved) setEditingId(null);
     }}>
-      <label className="wide">Prazo para conclusão (dias úteis) *
-        <input name="businessDays" type="number" min="1" step="1" required defaultValue={initialDays} />
+      <label className="catalog-field wide" htmlFor="task-sla-days"><span>Prazo para conclusão (dias úteis) *</span>
+        <input id="task-sla-days" name="businessDays" type="number" min="1" step="1" required defaultValue={initialDays} autoFocus />
         <small>A contagem começa no momento da criação da tarefa e considera apenas dias úteis.</small>
       </label>
       {!defaultDepartmentId && <p role="alert">Cadastre ou reative um setor para configurar o SLA.</p>}

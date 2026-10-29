@@ -1170,6 +1170,11 @@ operations.MapPost("", async (
                 request.ExpectedNextResponsibleUserId), actor, cancellationToken);
             break;
 
+        case "completeHrVacationPeriod":
+            await service.CompleteHrVacationPeriodAsync(request.Id ?? throw new DomainException("Colaborador obrigatório."),
+                request.EntitlementYear ?? throw new DomainException("Período aquisitivo obrigatório."), request.Version ?? 0, request.Description, actor, cancellationToken);
+            break;
+
         case "deleteWorkItem":
             await service.DeleteWorkItemAsync(
                 request.Id ?? throw new DomainException("ID obrigatório."), actor, cancellationToken);
@@ -2181,6 +2186,7 @@ public sealed class OperationsRequest
     public Guid? OriginId { get; init; }
     public string? NextStatus { get; init; }
     public long? Version { get; init; }
+    public int? EntitlementYear { get; init; }
     public bool? Confirmed { get; init; }
     public bool? BoardMove { get; init; }
     public string? Kind { get; init; }

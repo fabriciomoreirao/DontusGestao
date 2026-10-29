@@ -1199,6 +1199,44 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                string.Equals(kind, "csJourney", StringComparison.OrdinalIgnoreCase);
     }
 
+    public async Task CompleteHrVacationPeriodAsync(Guid id, int entitlementYear, long version, string? observation, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("hr", "edit");
+        var item = await db.WorkItems.SingleOrDefaultAsync(x => x.Id == id && x.Module == "hr", cancellationToken)
+            ?? throw new DomainException("Colaborador não encontrado na Gestão RH.", 404);
+        if (item.Version != version) throw new DomainException("O histórico foi alterado. Atualize a ficha antes de finalizar o período.", 409);
+        if (item.Status != "Ativos") throw new DomainException("A conclusão de férias está disponível para colaboradores ativos.");
+        JsonObject profile;
+        try { profile = JsonNode.Parse(item.Description) as JsonObject ?? throw new JsonException(); }
+        catch (JsonException) { throw new DomainException("O cadastro de RH possui um histórico inválido."); }
+        var at = DateTimeOffset.UtcNow;
+        var localToday = DateOnly.FromDateTime(at.ToOffset(TimeSpan.FromHours(-3)).DateTime);
+        if (profile["kind"]?.ToString() != "hrEmployee" || !DateOnly.TryParse(profile["startedAt"]?.ToString(), out var started))
+            throw new DomainException("Informe a data de admissão do colaborador.");
+        if (entitlementYear < 1 || entitlementYear > localToday.Year - started.Year || started.AddYears(entitlementYear) > localToday)
+            throw new DomainException("Selecione um período aquisitivo já completado pelo colaborador.");
+        if ((observation?.Length ?? 0) > 2000) throw new DomainException("A observação deve ter até 2.000 caracteres.");
+        var vacations = profile["vacations"] as JsonArray ?? new JsonArray();
+        profile["vacations"] = vacations.Parent is null ? vacations : vacations.DeepClone();
+        vacations = (JsonArray)profile["vacations"]!;
+        foreach (var entry in vacations.OfType<JsonObject>())
+            if (entry["entitlementYear"]?.ToString() == entitlementYear.ToString() && entry["status"]?.ToString() == "Planejada" && DateOnly.TryParse(entry["endDate"]?.ToString(), out var end) && end < localToday)
+            { entry["status"] = "Concluída"; entry["updatedAt"] = at.ToString("O"); }
+        var completed = vacations.OfType<JsonObject>().Where(entry => entry["entitlementYear"]?.ToString() == entitlementYear.ToString()
+            && entry["status"]?.ToString() == "Concluída").Sum(entry => int.TryParse(entry["days"]?.ToString(), out var days) ? days : 0);
+        if (completed >= 30) throw new DomainException("Este período aquisitivo já está concluído.", 409);
+        var remaining = 30 - Math.Max(0, completed);
+        var entryId = Guid.NewGuid();
+        vacations.Add(new JsonObject { ["id"] = entryId.ToString(), ["entitlementYear"] = entitlementYear, ["startDate"] = "", ["endDate"] = "",
+            ["days"] = remaining, ["status"] = "Concluída", ["manualCompletion"] = true, ["observation"] = observation?.Trim() ?? "",
+            ["createdAt"] = at.ToString("O"), ["updatedAt"] = at.ToString("O"), ["author"] = actor.DisplayName, ["authorEmail"] = actor.Email });
+        item.Description = profile.ToJsonString(); item.UpdatedAt = at; item.Version++;
+        db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = "hr", Kind = "Período de férias finalizado",
+            Summary = $"{entitlementYear}º período aquisitivo finalizado manualmente, sem datas: {remaining} dia(s) de saldo.", Actor = actor.Email });
+        AddAudit(actor, "CompleteVacationPeriod", "work_item", item.Id.ToString(), "hr", new { entitlementYear, remainingDays = remaining, entryId, manualCompletion = true });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task UpdateWorkItemAsync(
         UpdateWorkItemCommand command,
         ActorContext actor,

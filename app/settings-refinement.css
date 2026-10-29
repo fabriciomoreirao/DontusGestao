@@ -26,6 +26,13 @@
 .task-catalog-modal .catalog-field input,.task-catalog-modal .catalog-field select{width:100%;min-width:0;min-height:42px;box-sizing:border-box}
 .task-catalog-modal:has(input[name="acceptsNewTasks"]) form{grid-template-columns:repeat(2,minmax(0,1fr))}
 .task-catalog-modal .catalog-form form .catalog-field{background:transparent!important}
+.task-catalog-modal .task-sla-form{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:20px;width:100%;min-width:0}
+.task-catalog-modal .task-sla-form>.catalog-field{display:flex;flex-direction:column;grid-column:1/-1;width:100%;min-width:0;align-items:stretch}
+.task-catalog-modal .task-sla-form input[name="businessDays"]{width:100%;min-width:0;min-height:46px;padding:10px 12px;font-size:16px}
+.task-catalog-modal .task-sla-form small{font-weight:400;line-height:1.5;color:var(--muted)}
+.hr-entitlements .hr-entitlement-card{min-width:0;gap:7px}
+.hr-entitlements .hr-entitlement-card>button{grid-column:1/-1;justify-self:start;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--primary);padding:7px 9px;font-size:11px;font-weight:650;cursor:pointer}
+.hr-entitlements .hr-entitlement-card>button:disabled{opacity:.5;cursor:wait}
 .cs-conference-actions{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
 .cs-journey-timeline span.active.negative{color:#e26170}.cs-journey-timeline span.active.negative i{background:#a63040;color:#fff;border-color:#a63040}
 .cs-pipeline-tabs{flex-wrap:wrap}.cs-final-panel .cs-retention-resume{display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--primary-soft)}

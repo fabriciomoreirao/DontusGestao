@@ -1,5 +1,7 @@
 "use client";
 
+import { activeCatalogEntries } from "@/lib/catalog-options";
+
 import { useReminderFilter } from "@/app/ReminderFilters";
 
 
@@ -107,14 +109,12 @@ export default function ServiceRecordsModule({ items, customers, catalogs, emplo
     });
     return Object.fromEntries([...latest].map(([clientCode, entry]) => [clientCode, entry.version]));
   }, [records]);
-  const configured = (catalog: string, fallback: string[] = []) => unique([
-    ...catalogs.filter((entry) => entry.active && entry.catalog === catalog).map((entry) => entry.name), ...fallback,
-  ]);
-  const versions = unique([...configured("serviceVersion"), ...customers.map((entry) => entry.product_version), ...records.map((entry) => entry.detail.version)]);
-  const problems = unique([...configured("serviceProblem", ["Alinhamento", "Acompanhamento", "Agendamento", "Dúvida", "Erro"]), ...records.map((entry) => entry.detail.problem)]);
-  const statuses = unique([...configured("serviceStatus", ["Concluído", "Em andamento", "Pendente"]), ...records.map((entry) => entry.detail.status)]);
-  const responsibleOptions = unique([...employees.filter((entry) => entry.active).map((entry) => entry.displayName), ...records.map((entry) => entry.detail.responsible)]);
-  const sectorOptions = unique([...departments.filter((entry) => entry.active).map((entry) => entry.name), ...records.map((entry) => entry.detail.sector)]);
+  const configured = (catalog: string) => activeCatalogEntries(catalogs, catalog).map(entry => entry.name);
+  const versions = configured("serviceVersion");
+  const problems = configured("serviceProblem");
+  const statuses = configured("serviceStatus");
+  const responsibleOptions = unique(employees.filter((entry) => entry.active).map((entry) => entry.displayName));
+  const sectorOptions = unique(departments.filter((entry) => entry.active).map((entry) => entry.name));
   const reminderFilter = useReminderFilter("support");
   const visible = records.filter(({ item, detail }) => {
     const idNeedle = queryId.trim().toLocaleLowerCase("pt-BR");
@@ -158,13 +158,13 @@ function ServiceEntryModal({ mode, editing, currentUser, customers, catalogs, em
   const initial = parsed ? [{ ...parsed, key: crypto.randomUUID(), customerId: editing?.customer_id ?? "" }] : [makeRow(currentUser, currentEmployee)];
   const [rows, setRows] = useState<EntryRow[]>(initial);
   const [validationError, setValidationError] = useState("");
-  const options = (catalog: string, fallback: string[] = []) => unique([...catalogs.filter((entry) => entry.active && entry.catalog === catalog).map((entry) => entry.name), ...fallback]);
-  const versions = unique([...options("serviceVersion"), ...customers.map((entry) => entry.product_version)]);
-  const origins = options("serviceOrigin", ["WhatsApp", "Ligação", "Interno"]);
-  const problems = options("serviceProblem", ["Alinhamento", "Acompanhamento", "Agendamento", "Dúvida", "Erro"]);
-  const statuses = options("serviceStatus", ["Concluído", "Em andamento", "Pendente"]);
-  const contactTypes = options("serviceContactType", ["1º Contato", "2º Contato", "Ligação"]).filter((entry) => !/mal uso|cancelamento/i.test(entry));
-  const tools = options("serviceTool", ["Agenda", "Atendimento", "Financeiro", "CRM", "LIA"]);
+  const options = (catalog: string) => activeCatalogEntries(catalogs, catalog).map(entry => entry.name);
+  const versions = options("serviceVersion");
+  const origins = options("serviceOrigin");
+  const problems = options("serviceProblem");
+  const statuses = options("serviceStatus");
+  const contactTypes = options("serviceContactType").filter((entry) => !/mal uso|cancelamento/i.test(entry));
+  const tools = options("serviceTool");
   const update = (key: string, patch: Partial<EntryRow>) => setRows((current) => current.map((row) => row.key === key ? { ...row, ...patch } : row));
   const ready = rows.filter((row) => /^\d{6}$/.test(row.clientCode.trim()) && row.customerName.trim() && row.date && row.responsible && row.problem && row.status);
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (ready.length !== rows.length) { setValidationError("Preencha o ID público de 6 números, cliente, data, responsável, problema e status em todos os atendimentos."); return; } setValidationError(""); void onSave(rows); };

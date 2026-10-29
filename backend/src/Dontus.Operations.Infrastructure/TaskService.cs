@@ -21,54 +21,15 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     {
         if (await db.TaskDepartments.AnyAsync(cancellationToken))
         {
-            var unassignedPriority = await db.TaskPriorities.FirstOrDefaultAsync(
-                x => x.Name == "Não definida", cancellationToken);
-            var repairedUnassignedPriority = false;
-            if (unassignedPriority is null)
-            {
-                unassignedPriority = Priority("Não definida", 0, "#64748b", null);
-                db.TaskPriorities.Add(unassignedPriority);
-                repairedUnassignedPriority = true;
-            }
-            else if (!unassignedPriority.Active)
-            {
-                // A tarefa nasce sem classificação. Este item de sistema não pode impedir
-                // o cadastro caso tenha sido bloqueado acidentalmente no catálogo.
-                unassignedPriority.Active = true;
-                unassignedPriority.UpdatedAt = DateTimeOffset.UtcNow;
-                repairedUnassignedPriority = true;
-            }
-            var missingDepartments = new[]
-            {
-                Department("Customer Success", "Relacionamento, adoção e retenção de clientes"),
-                Department("Cobrança", "Negociação e recuperação de recebíveis"),
-            }.Where(candidate => !db.TaskDepartments.Any(existing => existing.Name == candidate.Name)).ToArray();
-            if (missingDepartments.Length > 0)
-            {
-                db.TaskDepartments.AddRange(missingDepartments);
-                var existingAdmin = await db.Users.FirstOrDefaultAsync(x => x.Email == "gestor@dontus.local", cancellationToken);
-                if (existingAdmin is not null)
-                    foreach (var department in missingDepartments)
-                        db.UserDepartments.Add(new UserDepartment
-                        {
-                            UserId = existingAdmin.Id,
-                            DepartmentId = department.Id,
-                            IsCoordinator = true,
-                        });
-            }
             var invalidFinalStatuses = await db.TaskStatuses
                 .Where(x => x.IsFinal && x.AcceptsNewTasks).ToListAsync(cancellationToken);
             foreach (var status in invalidFinalStatuses)
                 status.AcceptsNewTasks = false;
-            var hasApprovalStatus = await db.TaskStatuses.AnyAsync(
-                x => x.Name == "Aguardando aprovação", cancellationToken);
-            if (!hasApprovalStatus)
-                db.TaskStatuses.Add(Status("Aguardando aprovação", 55));
             var tasksWithoutProtocol = await db.CorporateTasks
                 .Where(task => task.Protocol == "").ToListAsync(cancellationToken);
             foreach (var task in tasksWithoutProtocol)
                 task.Protocol = $"T{task.CreatedAt:yy}{task.Number:0000}";
-            if (missingDepartments.Length > 0 || invalidFinalStatuses.Count > 0 || tasksWithoutProtocol.Count > 0 || repairedUnassignedPriority || !hasApprovalStatus)
+            if (invalidFinalStatuses.Count > 0 || tasksWithoutProtocol.Count > 0)
                 await db.SaveChangesAsync(cancellationToken);
             await EnsureDepartmentCalendarsAsync(cancellationToken);
             return;

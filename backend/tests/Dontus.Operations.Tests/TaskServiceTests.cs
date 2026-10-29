@@ -291,6 +291,34 @@ public sealed class TaskServiceTests
         Assert.False(await db.CorporateTasks.AnyAsync(x => x.Id == task.Id));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(30)]
+    public async Task Sla_days_can_be_saved_and_changed_without_losing_the_deadline(int days)
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
+        var department = await db.TaskDepartments.FirstAsync(x => x.Active);
+        var command = new SaveTaskSlaPolicyCommand(null, $"{days} dias úteis", department.Id, null, null, 0, 0, days * 480,
+            [1,2,3,4,5], "08:00", "16:00", 0, 0, true, [], true);
+        var id = await service.SaveSlaPolicyAsync(command, actor);
+        Assert.Equal(days * 480, (await db.TaskSlaPolicies.SingleAsync(x => x.Id == id)).CompletionMinutes);
+        await service.SaveSlaPolicyAsync(command with { Id = id, Name = "Prazo alterado", CompletionMinutes = (days + 1) * 480 }, actor);
+        Assert.Equal((days + 1) * 480, (await service.GetModuleAsync(actor)).SlaPolicies.Single(x => x.Id == id).CompletionMinutes);
+    }
+
+    [Fact]
+    public async Task Startup_preserves_inactive_priorities_and_does_not_restore_deleted_status_options()
+    {
+        await using var db = CreateContext(); var (service, _) = await InitializeAsync(db);
+        var priority = await db.TaskPriorities.SingleAsync(x => x.Name == "Não definida"); priority.Active = false;
+        var status = await db.TaskStatuses.SingleAsync(x => x.Name == "Aguardando aprovação");
+        db.TaskTypeStatuses.RemoveRange(await db.TaskTypeStatuses.Where(x => x.StatusId == status.Id).ToListAsync());
+        db.TaskSlaPauseStatuses.RemoveRange(await db.TaskSlaPauseStatuses.Where(x => x.StatusId == status.Id).ToListAsync());
+        db.TaskStatuses.Remove(status); await db.SaveChangesAsync(); await service.InitializeAsync();
+        Assert.False(priority.Active); Assert.False(await db.TaskStatuses.AnyAsync(x => x.Name == "Aguardando aprovação"));
+    }
+
     private static async Task<(TaskService Service, ActorContext Actor)> InitializeAsync(
         OperationsDbContext db,
         ITaskFileStorage? storage = null)

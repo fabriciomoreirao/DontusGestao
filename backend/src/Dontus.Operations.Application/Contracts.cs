@@ -393,6 +393,7 @@ public interface IOperationsService
     Task UpdateCustomerAsync(UpdateCustomerCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateWorkItemAsync(CreateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateWorkItemAsync(UpdateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task CompleteHrVacationPeriodAsync(Guid id, int entitlementYear, long version, string? observation, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteWorkItemAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task TransitionWorkItemAsync(TransitionWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateAppointmentAsync(CreateAppointmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);

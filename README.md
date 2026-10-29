@@ -75,6 +75,12 @@ Cada setor recebe uma agenda automaticamente, tanto nos cadastros de Colaborador
 
 ## Módulo de Tarefas
 
+As seleções operacionais utilizam apenas opções cadastradas e ativas. Opções fixas de exemplo e valores encontrados somente no histórico não são acrescentados às listas. Os registros históricos continuam preservados, e os cadastros administrativos permitem consultar e reativar opções inativas. Reiniciar o sistema não reativa prioridades bloqueadas nem recria cadastros excluídos do RH e etapas excluídas de Tarefas.
+
+Em **Cadastros → Políticas de SLA**, informe um número inteiro de dias úteis no campo **Prazo para conclusão**. O prazo pode ser cadastrado e alterado no mesmo formulário.
+
+Na **Gestão RH → Ficha do colaborador → Gestão de férias**, cada período aquisitivo pendente oferece **Finalizar sem datas**. A ação registra somente o saldo restante para completar os 30 dias, sem preencher início ou fim das férias. Uma observação é opcional. A conclusão exige editar RH, verifica a versão do histórico e registra usuário, horário do servidor e auditoria; um período já concluído não pode ser finalizado novamente.
+
 Em **Diário de Bordo**, coordenadores podem escolher **Meu diário** ou um de seus coordenados no seletor ao lado de **Nova atividade**. A consulta inclui atividades manuais e compromissos sob responsabilidade do colaborador, em modo de leitura. Somente vínculos diretos de coordenação com colaboradores ativos e não bloqueados são disponibilizados; os vínculos são mantidos em **Administração → Colaboradores**.
 
 Em **Tarefas** e **Atendimentos**, escolha um setor na lista suspensa para filtrar os registros, ou selecione **Todos os setores** para a visão consolidada. A logo do menu acompanha o tema claro ou escuro independentemente da cor escolhida para os controles do sistema.
