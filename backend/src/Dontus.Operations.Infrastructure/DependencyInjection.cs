@@ -30,6 +30,8 @@ public static class DependencyInjection
         services.AddScoped<CommissionConfirmationService>();
         services.AddScoped<ServiceRequestCreationService>();
         services.AddScoped<EmployeeProfileService>();
+        services.AddSingleton<RealtimeBroker>();
+        services.AddHostedService<RealtimeListener>();
         services.AddScoped<IOperationsService, OperationsService>();
         services.AddScoped<IAccessControlService, AccessControlService>();
         services.AddScoped<IAgendaService, AgendaService>();

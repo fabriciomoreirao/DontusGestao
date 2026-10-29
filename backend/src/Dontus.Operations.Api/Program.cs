@@ -89,12 +89,14 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 }));
 
 app.UseAuthentication();
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20), KeepAliveTimeout = TimeSpan.FromSeconds(20) });
 app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapOpenApi();
 app.MapLiaForms();
 app.MapEmployeeProfiles();
+app.MapRealtime();
 app.MapDontusIntegration();
 app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
@@ -679,6 +681,8 @@ var operations = app.MapGroup("/api/operations")
     .RequireRateLimiting("operations");
 
 operations.MapGet("", async (
+    HttpContext context,
+    RealtimeBroker realtime,
     ClaimsPrincipal principal,
     IOperationsService service,
     IAgendaService agendaService,
@@ -689,6 +693,7 @@ operations.MapGet("", async (
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
+    context.Response.Headers["x-dontus-realtime-cursor"] = realtime.Cursor;
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);
     if (actor.HasPermission("diary", "view"))

@@ -6,11 +6,11 @@ import { matchWorkspaceDestinations, readNavigationPreferences } from "@/lib/wor
 
 export type WorkspaceDestination = { key: string; label: string; group: string; description: string; icon: ComponentType<{ size?: number }> };
 
-export default function WorkspaceExperience({ children, destinations, currentKey, currentTitle, userEmail, onNavigate, onSearchRecords, lastUpdatedAt, syncing, syncError }: {
+export default function WorkspaceExperience({ children, destinations, currentKey, currentTitle, userEmail, onNavigate, onSearchRecords, lastUpdatedAt, syncing, syncError, realtimeConnected = false }: {
   children: ReactNode;
   destinations: WorkspaceDestination[]; currentKey: string; currentTitle: string; userEmail: string;
   onNavigate: (key: string) => void; onSearchRecords: (query: string) => void;
-  lastUpdatedAt: number | null; syncing: boolean; syncError: boolean;
+  lastUpdatedAt: number | null; syncing: boolean; syncError: boolean; realtimeConnected?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -115,7 +115,7 @@ export default function WorkspaceExperience({ children, destinations, currentKey
         <nav aria-label="Você está em" className="workspace-breadcrumb"><button type="button" aria-label="Ir ao início" onClick={() => { const home = destinations.find(item => item.key === "dashboard"); if (home) onNavigate(home.key); }}><Home size={15}/></button><ChevronRight size={13}/><span>{current?.group || "Dontus"}</span><ChevronRight size={13}/><strong aria-current="page">{currentTitle}</strong></nav>
       </div>
       <div className="workspace-context-actions">
-        <span className={`workspace-sync ${syncError ? "stale" : ""}`} title={syncError ? "Não foi possível atualizar os dados. Exibindo a última atualização disponível." : `Última atualização às ${stamp}, horário de Brasília.`}><i className={syncing ? "syncing" : ""}/><span>{syncError ? "Atualização pendente" : syncing ? "Atualizando" : stamp ? `Atualizado às ${stamp}` : "Conectando"}</span></span>
+        <span className={`workspace-sync ${syncError ? "stale" : ""}`} data-sync-transport={realtimeConnected ? "websocket" : "recovery"} title={syncError ? "Não foi possível atualizar os dados. Exibindo a última atualização disponível." : `${realtimeConnected ? "Conectado em tempo real. " : "Reconectando à atualização em tempo real. "}Última atualização às ${stamp}, horário de Brasília.`}><i className={syncing ? "syncing" : ""}/><span>{syncError ? "Atualização pendente" : syncing ? "Atualizando" : realtimeConnected ? "Em tempo real" : stamp ? `Atualizado às ${stamp}` : "Conectando"}</span></span>
         {current && <button type="button" className={`workspace-favorite ${favorite ? "selected" : ""}`} aria-label={`${favorite ? "Remover" : "Adicionar"} ${current.label} ${favorite ? "dos" : "aos"} favoritos`} aria-pressed={favorite} title={favorite ? "Remover dos favoritos" : "Favoritar esta ferramenta"} onClick={() => setFavorites(previous => favorite ? previous.filter(key => key !== current.key) : [...previous, current.key].slice(-20))}><Star size={16}/></button>}
         <button type="button" className="workspace-focus-toggle" onClick={() => setFocusMode(value => !value)} aria-pressed={focusMode} aria-label={focusMode ? "Sair do modo foco" : "Ativar modo foco"} title={focusMode ? "Sair do modo foco (Esc)" : "Ampliar a área de trabalho"}>{focusMode ? <Minimize2 size={16}/> : <Maximize2 size={16}/>}<span>{focusMode ? "Sair do foco" : "Foco"}</span></button>
         <button type="button" className="workspace-command-trigger" aria-label="Abrir navegação rápida" title={`Buscar ferramentas (${shortcut})`} onClick={() => { returnFocus.current = document.activeElement as HTMLElement; setOpen(true); }}><Command size={16}/><span>Ir para...</span><kbd>{shortcut}</kbd></button>

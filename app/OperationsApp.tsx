@@ -13,6 +13,7 @@ import WorkspaceExperience, { type WorkspaceDestination } from "@/app/WorkspaceE
 import MoneyInput from "@/app/MoneyInput";
 import { formatMoney, parseMoneyInput } from "@/lib/money";
 import useDialogFocus from "@/app/useDialogFocus";
+import useRealtimeSync from "@/app/useRealtimeSync";
 import { normalizeWorkspaceSearch, pushWorkspaceHistory, readWorkspaceRoute, workspaceDestinationKey, workspaceRouteUrl, type AdminPage, type WorkspaceRoute } from "@/lib/workspace-navigation";
 import { buildNotifications, newlyReceived, ownMutationNotificationIds } from "@/lib/notifications";
 import { isReminderForToday, pendingLinkedReminders, type ScheduledReminder } from "@/lib/reminder-links";
@@ -601,7 +602,7 @@ export default function OperationsApp() {
 
   const loadInFlight = useRef(false);
   const chatInFlight = useRef(false);
-  const lastChatRefresh = useRef(0);
+  const realtimeCursor = useRef("");
   const mutationRevision = useRef(0);
   const expireSession = useCallback(() => {
     mutationRevision.current += 1;
@@ -614,7 +615,7 @@ export default function OperationsApp() {
     setChatAlerts([]);
   }, []);
   const load = async (background = false) => {
-    if (loadInFlight.current || (background && document.hidden)) return;
+    if (loadInFlight.current || (background && document.hidden)) return false;
     loadInFlight.current = true;
     setSyncing(true);
     const revision = mutationRevision.current;
@@ -629,16 +630,17 @@ export default function OperationsApp() {
       }
       if (response.status === 401) {
         expireSession();
-        return;
+        return true;
       }
       if (response.status === 403) {
         setData(null);
         setError((payload as { detail?: string }).detail ?? "Seu perfil não possui acesso ao sistema. Solicite a revisão das permissões.");
-        return;
+        return true;
       }
       if (!response.ok) throw new Error((payload as { detail?: string }).detail ?? "Não foi possível carregar a operação.");
       const appPayload = payload as AppData;
-      if (revision !== mutationRevision.current) return;
+      if (revision !== mutationRevision.current) return false;
+      realtimeCursor.current = response.headers.get("x-dontus-realtime-cursor") ?? "";
       setData(appPayload);
       setLastUpdatedAt(Date.now()); setSyncError(false);
       setLoginRequired(false);
@@ -647,9 +649,11 @@ export default function OperationsApp() {
         return (appPayload.user.permissions.find((permission: EffectivePermission) => permission.canView)?.screen ?? "dashboard") as ModuleKey;
       });
       setError("");
+      return true;
     } catch (caught) {
       setSyncError(true);
       if (!background) setError(caught instanceof Error ? caught.message : "Falha ao carregar.");
+      return false;
     } finally {
       loadInFlight.current = false;
       setSyncing(false);
@@ -658,20 +662,26 @@ export default function OperationsApp() {
   };
 
   const refreshInternalChat = useCallback(async () => {
-    if (chatInFlight.current || (document.hidden && Date.now() - lastChatRefresh.current < 5_000)) return;
-    lastChatRefresh.current = Date.now();
+    if (chatInFlight.current) return false;
     chatInFlight.current = true;
     const revision = mutationRevision.current;
     try {
       const response = await fetch("/api/internal-chat", { cache: "no-store" });
-      if (response.status === 401) { expireSession(); return; }
-      if (!response.ok) return;
+      if (response.status === 401) { expireSession(); return true; }
+      if (!response.ok) return false;
       const internalChatModule = await response.json() as InternalChatModuleData;
       if (revision === mutationRevision.current) setData((current) => current ? { ...current, internalChatModule } : current);
+      return revision === mutationRevision.current;
     } catch {
-      // A próxima atualização automática retoma o fluxo sem interromper a tela atual.
+      return false;
     } finally { chatInFlight.current = false; }
   }, [expireSession]);
+
+  const realtimeConnected = useRealtimeSync({
+    user: loginRequired ? undefined : data?.user.email,
+    canChat: !!data?.user.permissions.some(permission => permission.screen === "internalChat" && permission.canView),
+    busy, cursor: () => realtimeCursor.current, operations: () => load(true), chat: refreshInternalChat, unauthorized: expireSession,
+  });
 
   useEffect(() => {
     setLocationSearch(window.location.search);
@@ -715,25 +725,6 @@ export default function OperationsApp() {
     return () => window.removeEventListener("popstate", syncUrlPages);
   }, []);
 
-  useEffect(() => {
-    if (busy || loginRequired || !data?.user.email) return;
-    const timer = window.setInterval(() => void load(true), active === "reporting" || active === "waitingQueue" ? 10_000 : 15_000);
-    return () => window.clearInterval(timer);
-  }, [active, busy, loginRequired, data?.user.email]);
-
-  useEffect(() => {
-    if (busy || loginRequired || !data?.user.email) return;
-    const refreshWhenVisible = () => { if (!document.hidden) void load(true); };
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
-  }, [busy, loginRequired, data?.user.email]);
-
-  useEffect(() => {
-    if (!data?.user.permissions.some((permission) => permission.screen === "internalChat" && permission.canView)) return;
-    const interval = active === "internalChat" ? 1_500 : 5_000;
-    const timer = window.setInterval(() => void refreshInternalChat(), interval);
-    return () => window.clearInterval(timer);
-  }, [active, data?.user.email, data?.user.permissions, refreshInternalChat]);
 
 
 
@@ -1443,7 +1434,7 @@ export default function OperationsApp() {
         <WorkspaceExperience destinations={workspaceTargets} currentKey={currentDestinationKey} currentTitle={workspaceTitle} userEmail={data.user.email}
           onNavigate={key => { const target = workspaceTargets.find(item => item.key === key); if (target) navigate(target.route.module, target.route.adminPage, target.route.commercialFlow, target.route.csFlow, target.route.reportingSection); }}
           onSearchRecords={query => { setSearch(query); setRecordSearchOpen(true); globalSearchInput.current?.focus(); }}
-          lastUpdatedAt={lastUpdatedAt} syncing={syncing} syncError={syncError}>
+          lastUpdatedAt={lastUpdatedAt} syncing={syncing} syncError={syncError} realtimeConnected={realtimeConnected}>
           <button className="icon-button menu-button" onClick={() => setMobileNav(current => !current)} aria-label={mobileNav ? "Fechar menu" : "Abrir menu"} aria-controls="workspace-sidebar" aria-expanded={mobileNav}><Menu size={21} /></button>
           <button className="icon-button desktop-menu-button" onClick={() => setSidebarCollapsed(current => { const next = !current; window.localStorage.setItem("dontus.sidebar-collapsed", String(next)); return next; })} aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"} aria-controls="workspace-sidebar" aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={20}/> : <PanelLeftClose size={20}/>}</button>
           <div className="global-search">

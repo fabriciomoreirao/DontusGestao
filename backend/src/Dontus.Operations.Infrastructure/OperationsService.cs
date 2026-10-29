@@ -111,6 +111,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var registeredAt = registeredUser?.CreatedAt ?? DateTimeOffset.MinValue;
         var items = await db.WorkItems.AsNoTracking()
             .Where(x => visibleModules.Contains(x.Module)
+                && x.RecordType != "Perfil de colaborador"
                 && (directlyVisibleModules.Contains(x.Module) || canManageCommissions || x.Owner == actor.DisplayName)
                 && (x.Module != "reminders" || x.CreatedAt >= registeredAt)
                 && (x.Module != "reminders" || x.CustomerName == actor.Email || x.CreatedBy == actor.Email || actor.HasPermission("reminders", "manage"))

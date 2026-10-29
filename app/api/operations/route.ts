@@ -28,7 +28,7 @@ async function proxy(request: Request) {
       signal: controller.signal,
     });
 
-    return apiResponse(request, response, { "x-dontus-api": "aspnet-core" });
+    return apiResponse(request, response, { "x-dontus-api": "aspnet-core", "x-dontus-realtime-cursor": response.headers.get("x-dontus-realtime-cursor") ?? "" });
   } catch (error) {
     const detail = error instanceof Error && error.name === "AbortError"
       ? "A API C# não respondeu dentro do tempo esperado."

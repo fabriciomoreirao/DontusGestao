@@ -26,6 +26,16 @@ exigem reconstruir o contêiner web.
 
 A API aplica automaticamente as migrations do Entity Framework na inicialização. Na primeira tela, use a ação administrativa de carga demonstrativa para inserir dados de exemplo; nada é carregado silenciosamente.
 
+### Atualização em tempo real
+
+O workspace mantém uma conexão WebSocket autenticada em `/api/realtime`, na mesma origem da aplicação (`wss` em HTTPS). O chat e o snapshot operacional atualizam após mudanças, sem as antigas consultas a cada 1,5 e 10–15 segundos. Avisos de chat chegam somente às conexões dos participantes; o socket não transporta mensagens, arquivos ou credenciais. As projeções HTTP continuam aplicando as permissões de cada usuário. Rajadas de avisos são agrupadas, e uma atualização operacional já inclui o chat.
+
+Uma conexão PostgreSQL `LISTEN/NOTIFY` por instância da API recebe mudanças após o commit, inclusive de outras instâncias e integrações. A migration `RealtimeNotifications` instala os gatilhos; sessões, auditoria e histórico não geram recargas gerais. As capas dos perfis ficam na consulta dedicada do perfil. Os registros de RH ainda podem conter anexos grandes, mas deixam de ser baixados periodicamente.
+
+Docker e `npm start` usam `server/start.mjs`, que inicia o servidor Vinext e encaminha o upgrade do WebSocket à API com a sessão existente. O modo `npm run dev` usa o mesmo encaminhamento pelo Vite. Proxies externos devem preservar `Host` e encaminhar `Upgrade`/`Connection` para a porta web, com timeout acima de 75 segundos. Não é necessário publicar a porta da API nem configurar outro domínio ou token no navegador.
+
+O cliente reconecta com espera progressiva, verifica heartbeat e recupera o estado após reconectar. Se o proxy não permitir WebSocket, há recuperação por HTTP a cada 60 segundos para a operação e 15 segundos para o chat, apenas com a aba visível. Conexões saudáveis não fazem essas consultas periódicas. O indicador superior mostra **Em tempo real** quando conectado. Validação de sessão ocorre também durante a conexão; logout/expiração encerram o acesso.
+
 ### Acesso ao PostgreSQL pelo pgAdmin
 
 O Compose inicia o pgAdmin em `http://localhost:5050`. O login padrão é

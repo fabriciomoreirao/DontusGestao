@@ -44,6 +44,8 @@ public sealed class EmployeeProfileTests
         Assert.Equal(Cover, reopened.CoverDataUrl); Assert.Equal(2, await db.WorkItems.CountAsync());
         Assert.Equal("Bio anterior", JsonDocument.Parse((await db.WorkItems.SingleAsync(item => item.Id == otherRecord.Id)).Description).RootElement.GetProperty("bio").GetString());
         Assert.Equal("private-hash", (await db.Users.SingleAsync(user => user.Id == own.Id)).PasswordHash);
+        var snapshot = await new OperationsService(db).GetSnapshotAsync(Actor(own, true));
+        Assert.DoesNotContain(snapshot.Items, item => item.RecordType == "Perfil de colaborador");
         var audit = await db.AuditEvents.SingleAsync();
         Assert.Equal(actor.Email, audit.ActorEmail); Assert.DoesNotContain(Cover, audit.DetailsJson);
         Assert.Equal("Mesmo nome", JsonDocument.Parse((await db.WorkItems.SingleAsync(item => item.CreatedBy == own.Email)).Description).RootElement.GetProperty("updatedBy").GetString());
