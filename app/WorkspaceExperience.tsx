@@ -1,12 +1,13 @@
 "use client";
 
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronRight, Clock3, Command, Home, Maximize2, Minimize2, Search, Star, X } from "lucide-react";
-import { useEffect, useRef, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { matchWorkspaceDestinations, readNavigationPreferences } from "@/lib/workspace-navigation";
 
 export type WorkspaceDestination = { key: string; label: string; group: string; description: string; icon: ComponentType<{ size?: number }> };
 
-export default function WorkspaceExperience({ destinations, currentKey, currentTitle, userEmail, onNavigate, onSearchRecords, lastUpdatedAt, syncing, syncError }: {
+export default function WorkspaceExperience({ children, destinations, currentKey, currentTitle, userEmail, onNavigate, onSearchRecords, lastUpdatedAt, syncing, syncError }: {
+  children: ReactNode;
   destinations: WorkspaceDestination[]; currentKey: string; currentTitle: string; userEmail: string;
   onNavigate: (key: string) => void; onSearchRecords: (query: string) => void;
   lastUpdatedAt: number | null; syncing: boolean; syncError: boolean;
@@ -106,6 +107,8 @@ export default function WorkspaceExperience({ destinations, currentKey, currentT
   const stamp = lastUpdatedAt ? new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(lastUpdatedAt) : "";
 
   return <>
+    <header className="topbar workspace-topbar">
+      {children}
     <div className="workspace-context-bar">
       <div className="workspace-location">
         <div className="workspace-history"><button type="button" disabled={!history.back} onClick={() => window.history.back()} aria-label="Voltar à tela anterior" title="Voltar"><ArrowLeft size={16}/></button><button type="button" disabled={!history.forward} onClick={() => window.history.forward()} aria-label="Avançar para a próxima tela" title="Avançar"><ArrowRight size={16}/></button></div>
@@ -118,6 +121,7 @@ export default function WorkspaceExperience({ destinations, currentKey, currentT
         <button type="button" className="workspace-command-trigger" aria-label="Abrir navegação rápida" title={`Buscar ferramentas (${shortcut})`} onClick={() => { returnFocus.current = document.activeElement as HTMLElement; setOpen(true); }}><Command size={16}/><span>Ir para...</span><kbd>{shortcut}</kbd></button>
       </div>
     </div>
+    </header>
     {favorites.some(key => destinations.some(item => item.key === key)) && <nav className="workspace-favorites" aria-label="Ferramentas favoritas"><span><Star size={13}/>Favoritos</span>{favorites.flatMap(key => { const item = destinations.find(entry => entry.key === key); if (!item) return []; const Icon = item.icon; return <button type="button" key={key} aria-current={key === currentKey ? "page" : undefined} onClick={() => onNavigate(key)}><Icon size={14}/>{item.label}</button>; })}</nav>}
     <dialog ref={dialog} className="workspace-command" aria-label="Navegação rápida" onCancel={event => { event.preventDefault(); close(); }} onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="workspace-command-inner"><header><span className="workspace-command-symbol"><Command size={20}/></span><div><strong>Encontre sua próxima ação</strong><small>Ferramentas, favoritos e acessos recentes</small></div><button type="button" onClick={() => close()} aria-label="Fechar navegação rápida"><X size={19}/></button></header>

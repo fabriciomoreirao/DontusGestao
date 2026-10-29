@@ -230,7 +230,9 @@ A geração e os testes dos PDFs assinados usam `DejaVuSans.ttf` e `DejaVuSans-B
 
 A navegação oferece **Ctrl+K** (ou **⌘K** no macOS) para localizar ferramentas, favoritos e acessos recentes. O atalho **/** posiciona o cursor na busca de clientes, colaboradores, IDs e protocolos. A busca desconsidera acentos. Favoritos ficam salvos por usuário neste navegador e respeitam as permissões disponíveis na sessão.
 
-O caminho da tela aparece acima do conteúdo, com botões de voltar e avançar. Módulos e subáreas mantêm seus endereços ao recarregar e ao percorrer o histórico. **Foco** amplia a área operacional ocultando o menu lateral; **Esc** restaura a navegação. Nos formulários compartilhados, **Tab** permanece dentro da janela e **Esc** fecha o formulário, retornando o foco ao controle que o abriu.
+O caminho da tela e a navegação rápida ficam na mesma barra da pesquisa, com botões de voltar e avançar nas telas maiores. Em notebooks menores e celulares, o botão ao lado da busca abre o menu sobre o conteúdo, sem reduzir a área de trabalho. Módulos e subáreas mantêm seus endereços ao recarregar e ao percorrer o histórico. **Foco** amplia a área operacional ocultando o menu lateral; **Esc** restaura a navegação. Nos formulários compartilhados, **Tab** permanece dentro da janela e **Esc** fecha o formulário, retornando o foco ao controle que o abriu.
+
+O **Chat interno** ocupa a altura disponível, com rolagem nas mensagens e campo de envio sempre visível. No celular, selecione uma conversa para abri-la em toda a largura; a seta **Voltar às conversas** retorna à lista. A navegação entre a lista e a conversa preserva o texto ainda não enviado.
 
 O indicador de atualização mostra o horário de Brasília da última leitura bem-sucedida da API. Quando uma atualização em segundo plano falha, a interface identifica os dados como pendentes de atualização, mantendo a última leitura disponível. O painel da Fila de espera considera os encaminhamentos operacionais em espera.
 

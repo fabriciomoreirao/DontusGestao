@@ -3,7 +3,7 @@
 import { useReminderFilter } from "@/app/ReminderFilters";
 
 import {
-  Archive, ArchiveRestore, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
+  Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
   Gift, MessageCircleMore, Palette, Paperclip, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -258,7 +258,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
       <div className="module-page-actions"><button type="button" className="secondary-button chat-appearance-open" onClick={() => setAppearanceOpen(true)}><Palette size={17}/>Personalizar chat</button>{canCreateGroup && <button className="primary-button" onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button>}</div>
     </header>
 
-    <section className="internal-chat-shell">
+    <section className={`internal-chat-shell ${selectedKey ? "show-conversation" : ""}`}>
       <aside className="internal-chat-sidebar">
         <div className="internal-chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar colaboradores ou grupos..." /></div><div className="internal-chat-reminder-filter">{reminderFilter.control}</div>
         <div className="internal-chat-view-tabs">
@@ -282,6 +282,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
       <main className="internal-chat-conversation">
         {!selectedConversation ? <div className="internal-chat-welcome"><div><MessageCircleMore size={38} /></div><h2>Escolha um colaborador</h2><p>A conversa será criada automaticamente ao enviar a primeira mensagem.</p></div> : <>
           <header className="internal-chat-conversation-head" data-reminder-entity-id={selectedConversation.user ? `user:${selectedConversation.user.id}` : selectedConversation.key}>
+            <button type="button" className="internal-chat-back internal-chat-head-tool" onClick={() => setSelectedKey("")} aria-label="Voltar às conversas" title="Voltar às conversas"><ArrowLeft size={19}/></button>
             <span className="internal-chat-group-photo-wrap" role={selectedConversation.user?"button":undefined} tabIndex={selectedConversation.user?0:undefined} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)}><Avatar name={selectedConversation.name} photo={selectedConversation.photoDataUrl} group={selectedConversation.isGroup} coordinator={selectedConversation.user?.isCoordinator} />
               {selectedRoom?.isGroup && selectedRoom.canManage && canEdit && <><input ref={groupPhotoInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void updateGroupPhoto(event.target.files?.[0])} /><button type="button" onClick={() => groupPhotoInput.current?.click()} aria-label="Alterar foto do grupo" title="Alterar foto do grupo"><Camera size={11} /></button></>}
             </span>
