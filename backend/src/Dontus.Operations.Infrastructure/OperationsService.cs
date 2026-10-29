@@ -747,7 +747,16 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             collaborators = users.Select(user => new CollaboratorSummaryDto(user.Id, user.Email, user.DisplayName,
                 user.Department, [user.Department], ProfilePhotoUrls.For(user), user.Active && !user.BlockedAt.HasValue)).ToList();
         }
-        return new CustomerModuleDto(entries) { Collaborators = collaborators,
+        var commercialSellers = actor.HasPermission("commercial", "view")
+            ? await db.Users.AsNoTracking()
+                .Where(user => user.Active && !user.BlockedAt.HasValue && db.UserDepartments.Any(membership =>
+                    membership.UserId == user.Id && membership.Department.Active &&
+                    membership.Department.Name.Trim().ToLower() == "comercial"))
+                .OrderBy(user => user.DisplayName)
+                .Select(user => new CommercialSellerDto(user.Id, user.DisplayName))
+                .ToListAsync(cancellationToken)
+            : [];
+        return new CustomerModuleDto(entries) { Collaborators = collaborators, CommercialSellers = commercialSellers,
             CsDistribution = actor.HasPermission("cs", "view") ? await new CsDistributionService(db).GetAsync(actor, cancellationToken) : [] };
     }
 

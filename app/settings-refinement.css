@@ -42,3 +42,16 @@
 .cs-retention-resume>div{flex:1 1 260px;min-width:0}.cs-retention-resume>button{flex:0 1 auto;min-height:42px;white-space:normal}
 @media(max-width:760px){.indicator-tabs{flex-wrap:nowrap;overflow-x:auto}.indicator-tabs button{flex-shrink:0;padding:9px 12px}.indicator-panel>.operation-bi-grid{grid-template-columns:1fr}.indicator-panel .operation-bi-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.indicator-record-list article{grid-template-columns:minmax(0,1fr) minmax(100px,.5fr)}.indicator-record-list time{display:none}.catalog-records-heading>span{flex-wrap:wrap;gap:10px}}
 @media(max-width:480px){.indicator-panel .operation-bi-kpis{grid-template-columns:1fr}.cs-conference-actions,.cs-conference-actions.compact{grid-template-columns:1fr}}
+.commercial-lead-form .commercial-products > div { grid-template-columns: minmax(0,1fr) 120px auto 28px; }
+.commercial-lead-form .commercial-products > div .commercial-product-value { grid-column: auto; min-width: 0; }
+.commercial-lead-form .commercial-products > div input { width: 100%; min-width: 0; }
+.direct-sale-selected-products article { grid-template-columns: minmax(0,1fr) 120px auto 32px; }
+.direct-sale-selected-products article > input { width: 100%; min-width: 0; }
+@media (max-width:600px) {
+  .commercial-lead-form .commercial-products > div,
+  .direct-sale-selected-products article { grid-template-columns: minmax(0,1fr) 110px 28px; }
+  .commercial-lead-form .commercial-products > div > b,
+  .direct-sale-selected-products article > b { grid-column: 1 / -1; grid-row: 2; text-align: right; }
+  .commercial-lead-form .commercial-products > div > button,
+  .direct-sale-selected-products article > button { grid-column: 3; grid-row: 1; }
+}

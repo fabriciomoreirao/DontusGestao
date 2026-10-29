@@ -124,6 +124,10 @@ Todas as rotas exigem autenticação e as permissões locais de Clientes ou Aces
 
 ## CRM e lembretes de contato
 
+Os seletores de vendedor e responsável do CRM utilizam somente colaboradores ativos, não bloqueados e vinculados ao setor ativo **Comercial**, inclusive por vínculo adicional. A lista também está disponível para operadores sem acesso à Administração. Responsáveis antigos permanecem no histórico dos cards; eles não são oferecidos para novas atribuições quando deixam de pertencer ao Comercial.
+
+Valores monetários exibem sempre duas casas decimais: `R$ 129,90` permanece `R$ 129,90`. Os valores unitários podem ser editados ao cadastrar e editar os produtos do lead e da venda direta. Os campos aceitam vírgula ou ponto decimal, inclusive `R$ 1.234,56`; totais e descontos são calculados mantendo os centavos.
+
 Os cards do CRM comercial e de retenção mostram os dias sem interação desde o cadastro ou o último comentário/follow-up de contato. Movimentações de etapa e alterações gerais não reiniciam a contagem. Etapas finais de ganho ou perda e status finalizados mostram zero e interrompem a contagem. Cada card com lembrete pendente exibe um sino; o indicador desaparece após a confirmação ou exclusão do lembrete.
 
 No filtro **Lembretes** do CRM, escolha **Lembretes para hoje**, **Com lembrete agendado** ou **Sem lembrete agendado**. A tela **Lembretes** também possui o filtro de período para hoje. As datas seguem Brasília e respeitam o horário atualizado de lembretes adiados.
