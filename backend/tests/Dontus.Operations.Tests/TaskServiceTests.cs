@@ -323,7 +323,7 @@ public sealed class TaskServiceTests
     public async Task Employee_department_type_and_stages_are_available_to_a_full_access_user_without_memberships()
     {
         await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
-        var access = new AccessControlService(db, new ConfigurationBuilder().Build());
+        var access = new AccessControlService(db, new ConfigurationBuilder().Build(), new RecordingPasswordEmailSender());
         var departmentId = await access.SaveEmployeeDepartmentAsync(new(null, "Setor criado em Colaboradores", "Compartilhado com tarefas", true), actor);
         db.UserDepartments.RemoveRange(await db.UserDepartments.ToListAsync()); await db.SaveChangesAsync();
         var initialId = await service.SaveStatusAsync(new(null, "Pendente configurada", null, 1, "Pendente configurada", true, false, true, true, false, true), actor);
@@ -395,7 +395,7 @@ public sealed class TaskServiceTests
                 ["AccessControl:BootstrapAdminEmail"] = "gestor@dontus.local",
                 ["AccessControl:BootstrapAdminName"] = "Gestor Dontus",
             }).Build();
-        var access = new AccessControlService(db, configuration);
+        var access = new AccessControlService(db, configuration, new RecordingPasswordEmailSender());
         await access.InitializeAsync();
         var service = new TaskService(db, storage);
         await service.InitializeAsync();

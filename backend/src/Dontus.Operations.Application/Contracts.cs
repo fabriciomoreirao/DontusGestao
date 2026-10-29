@@ -353,7 +353,6 @@ public sealed record OperationsSnapshot(
 {
     public bool? Ok { get; init; }
     public Guid? Id { get; init; }
-    public string? TemporaryPassword { get; init; }
     public string? CreatedProtocol { get; init; }
     public AccessManagementDto? Access { get; init; }
     public AgendaModuleDto? AgendaModule { get; init; }

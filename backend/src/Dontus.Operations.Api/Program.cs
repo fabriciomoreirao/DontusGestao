@@ -402,7 +402,7 @@ localAuth.MapPost("/change-password", async (
         request.CurrentPassword ?? "",
         request.NewPassword ?? "",
         cancellationToken);
-    return Results.NoContent();
+    return Results.Ok(new { message = "Senha alterada com sucesso." });
 }).RequireAuthorization();
 
 // Links públicos de pesquisa usam tokens individuais e não expõem o restante
@@ -1076,7 +1076,6 @@ operations.MapPost("", async (
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     Guid? id = null;
-    string? temporaryPassword = null;
     string? createdProtocol = null;
 
     switch (request.Action?.Trim())
@@ -1373,7 +1372,6 @@ operations.MapPost("", async (
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
                 request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds), actor, cancellationToken);
             id = createdEmployee.Id;
-            temporaryPassword = createdEmployee.TemporaryPassword;
             break;
 
         case "resetEmployeePassword":
@@ -1799,7 +1797,7 @@ operations.MapPost("", async (
     var access = actor.HasPermission("admin", "manage")
         ? await accessControl.GetManagementAsync(actor, cancellationToken)
         : null;
-    var response = snapshot with { Ok = true, Id = id, TemporaryPassword = temporaryPassword, CreatedProtocol = createdProtocol, Access = access };
+    var response = snapshot with { Ok = true, Id = id, CreatedProtocol = createdProtocol, Access = access };
     return id.HasValue ? Results.Json(response, statusCode: StatusCodes.Status201Created) : Results.Ok(response);
 });
 

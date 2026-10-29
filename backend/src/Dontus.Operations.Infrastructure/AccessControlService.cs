@@ -8,7 +8,8 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class AccessControlService(
     OperationsDbContext db,
-    IConfiguration configuration) : IAccessControlService
+    IConfiguration configuration,
+    IPasswordRecoveryEmailSender passwordEmailSender) : IAccessControlService
 {
     private const string AdministratorsGroup = "Administradores";
     private const string CollaboratorsGroup = "Colaboradores";
@@ -353,6 +354,7 @@ public sealed class AccessControlService(
             throw new DomainException("Já existe um usuário cadastrado com este e-mail.", 409);
 
         var groupIds = await ValidateGroupsAsync(command.GroupIds, cancellationToken);
+        var temporaryPassword = PasswordSecurity.GenerateTemporaryPassword();
         var user = new AppUser
         {
             Email = email,
@@ -360,11 +362,13 @@ public sealed class AccessControlService(
             Department = CleanDepartment(command.Department),
             Active = command.Active,
             BlockedAt = command.Active ? null : DateTimeOffset.UtcNow,
+            PasswordHash = PasswordSecurity.Hash(temporaryPassword),
             CreatedBy = actor.Email,
         };
         foreach (var groupId in groupIds)
             user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = groupId });
 
+        await passwordEmailSender.SendAsync(user.Email, user.DisplayName, temporaryPassword, cancellationToken);
         db.Users.Add(user);
         AddAudit(actor, "Create", "user", user.Id.ToString(), new { user.Email, Groups = groupIds });
         await db.SaveChangesAsync(cancellationToken);
@@ -501,6 +505,7 @@ public sealed class AccessControlService(
                 : [await db.AccessGroups.Where(group => group.Name == CollaboratorsGroup).Select(group => group.Id).SingleAsync(cancellationToken)];
         foreach (var groupId in groupIds)
             user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = groupId });
+        await passwordEmailSender.SendAsync(user.Email, user.DisplayName, temporaryPassword, cancellationToken);
         db.Users.Add(user);
         db.WorkItems.Add(CreateHrWorkItem(user, actor.Email));
         foreach (var departmentId in departmentIds)
@@ -517,7 +522,7 @@ public sealed class AccessControlService(
         }));
         AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name });
         await db.SaveChangesAsync(cancellationToken);
-        return new CreateEmployeeResult(user.Id, temporaryPassword);
+        return new CreateEmployeeResult(user.Id);
     }
 
     public async Task UpdateEmployeeAsync(

@@ -1,12 +1,10 @@
-import { NextResponse } from "next/server";
-
 export const dynamic = "force-dynamic";
 
 const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
 
 export async function POST(request: Request) {
   const token = request.headers.get("cookie")?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
-  if (!token) return NextResponse.json({ detail: "Sessão não encontrada." }, { status: 401 });
+  if (!token) return Response.json({ detail: "Sessão não encontrada." }, { status: 401 });
 
   try {
     const response = await fetch(`${apiBase()}/api/auth/change-password`, {
@@ -19,9 +17,12 @@ export async function POST(request: Request) {
       body: await request.text(),
       cache: "no-store",
     });
-    const payload = await response.json().catch(() => ({}));
-    return NextResponse.json(payload, { status: response.status });
+    if (response.ok) {
+      return Response.json({ message: "Senha alterada com sucesso." }, { headers: { "cache-control": "no-store" } });
+    }
+    const payload = await response.json().catch(() => ({ detail: "Não foi possível alterar a senha." }));
+    return Response.json(payload, { status: response.status });
   } catch {
-    return NextResponse.json({ detail: "Serviço de autenticação indisponível." }, { status: 503 });
+    return Response.json({ detail: "Serviço de autenticação indisponível." }, { status: 503 });
   }
 }

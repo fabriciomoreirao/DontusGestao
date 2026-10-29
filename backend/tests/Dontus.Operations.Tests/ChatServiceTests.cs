@@ -116,7 +116,7 @@ public sealed class ChatServiceTests
             ["AccessControl:BootstrapAdminEmail"] = "gestor@dontus.local",
             ["AccessControl:BootstrapAdminName"] = "Gestor Dontus",
         }).Build();
-        var access = new AccessControlService(db, configuration);
+        var access = new AccessControlService(db, configuration, new RecordingPasswordEmailSender());
         await access.InitializeAsync();
         var tasks = new TaskService(db);
         await tasks.InitializeAsync();

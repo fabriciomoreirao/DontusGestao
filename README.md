@@ -102,9 +102,13 @@ Agenda e Tarefas são módulos separados. Em **Tarefas** estão disponíveis:
 
 O envio externo por e-mail, WhatsApp ou SMS permanece desativado até a configuração de um provedor. A ação “Notificar cliente” registra a tentativa e informa que a integração está pendente.
 
-Com a autenticação local habilitada, as senhas são armazenadas como hash e não podem ser consultadas. Em **Administração → Colaboradores → Editar**, a ação **Gerar nova senha e enviar por e-mail** exige permissão administrativa, envia os dados ao e-mail salvo, substitui a senha e encerra as sessões anteriores. Colaboradores inativos precisam ser reativados antes da redefinição. A ação fica registrada na auditoria sem a senha.
+Ao cadastrar um usuário ou colaborador, o sistema gera uma senha temporária e envia diretamente ao e-mail cadastrado o nome, o endereço do sistema, o e-mail de login e a senha. O cadastro só é concluído se o envio for aceito pelo SMTP; em caso de falha, nenhum usuário ou vínculo parcial é salvo e o formulário permite tentar novamente. A senha não é exibida na tela nem retornada pela API. As senhas são armazenadas como hash e não podem ser consultadas.
 
-Configure no arquivo .env as variáveis SMTP_HOST, SMTP_PORT, SMTP_USE_SSL, SMTP_USERNAME, SMTP_PASSWORD e SMTP_FROM e recrie o serviço api para habilitar o envio. Se o envio falhar ou não estiver configurado, a senha atual é preservada. O e-mail contém o endereço de acesso e a nova senha temporária; o colaborador pode alterá-la no menu da conta. A autorização é resolvida no PostgreSQL.
+Em **Administração → Colaboradores → Editar**, a ação **Gerar nova senha e enviar por e-mail** exige permissão administrativa, envia os dados ao e-mail salvo, substitui a senha e encerra as sessões anteriores. Colaboradores inativos precisam ser reativados antes da redefinição. A ação fica registrada na auditoria sem a senha. Se o envio falhar ou não estiver configurado, a senha atual é preservada.
+
+Configure no arquivo `.env` as variáveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_USE_SSL`, `SMTP_USERNAME`, `SMTP_PASSWORD` e `SMTP_FROM`, além de `APP_PUBLIC_URL` com o endereço completo usado pelos colaboradores (por exemplo, `https://gestao.suaempresa.com.br`). Recrie o serviço `api` para aplicar a configuração. O padrão `http://localhost:3000` atende apenas ao acesso local. Credenciais reais devem permanecer somente no `.env` do servidor.
+
+O colaborador pode alterar a própria senha no menu da conta, informando a senha atual e confirmando uma nova senha com ao menos 10 caracteres. A operação retorna **Senha alterada com sucesso.**, preserva a sessão atual e funciona independentemente do SMTP. A autorização é resolvida no PostgreSQL.
 
 ## Integrações com o Ambiente Dontus
 

@@ -263,7 +263,8 @@ public sealed class AccessControlServiceTests
     public async Task Persists_coordinator_hierarchy_and_blocks_login_with_the_current_date()
     {
         await using var db = CreateContext();
-        var service = CreateService(db);
+        var sender = new RecordingPasswordEmailSender();
+        var service = CreateService(db, sender);
         await service.InitializeAsync();
         var admin = await service.ResolveActorAsync(new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
         var departmentId = await service.SaveEmployeeDepartmentAsync(
@@ -302,7 +303,7 @@ public sealed class AccessControlServiceTests
         Assert.NotNull((await db.LocalAuthSessions.SingleAsync(entry => entry.UserId == coordinator.Id)).RevokedAt);
         await Assert.ThrowsAsync<DomainException>(() =>
             new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender())
-                .LoginAsync("coordenador@dontus.local", coordinator.TemporaryPassword));
+                .LoginAsync("coordenador@dontus.local", sender.Messages.Single(message => message.Email == "coordenador@dontus.local").Password));
     }
 
     [Fact]
@@ -350,7 +351,7 @@ public sealed class AccessControlServiceTests
         Assert.Empty((await new AgendaService(db).GetModuleAsync(actor)).Calendars);
     }
 
-    private static AccessControlService CreateService(OperationsDbContext db)
+    private static AccessControlService CreateService(OperationsDbContext db, IPasswordRecoveryEmailSender? sender = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -359,7 +360,7 @@ public sealed class AccessControlServiceTests
                 ["AccessControl:BootstrapAdminName"] = "Gestor Dontus",
             })
             .Build();
-        return new AccessControlService(db, configuration);
+        return new AccessControlService(db, configuration, sender ?? new RecordingPasswordEmailSender());
     }
 
     private static CreateWorkItemCommand WorkItemCommand(string module, string title) =>

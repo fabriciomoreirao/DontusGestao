@@ -107,7 +107,7 @@ public sealed record UpdateEmployeeCommand(
     bool FullAccess = false,
     IReadOnlyCollection<Guid>? AgendaCalendarIds = null);
 
-public sealed record CreateEmployeeResult(Guid Id, string TemporaryPassword);
+public sealed record CreateEmployeeResult(Guid Id);
 public sealed record SaveEmployeeDepartmentCommand(Guid? Id, string Name, string? Description, bool Active);
 public sealed record SaveEmployeeLevelCommand(Guid? Id, string Name, string? Description, bool Active);
 
