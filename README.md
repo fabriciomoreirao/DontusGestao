@@ -57,6 +57,8 @@ Na tela **Administração**:
 3. cadastre o usuário com o mesmo e-mail utilizado no login;
 4. associe um ou mais grupos ao usuário.
 
+A opção **Acesso total ao sistema** concede todas as telas, ações, capacidades e configurações, incluindo o cadastro de links do Portal e novos cadastros. A autorização é resolvida no servidor pelo vínculo ativo com o grupo de sistema Administradores e atualizada a cada requisição; nomes de cargo ou de outros grupos não concedem acesso total.
+
 As permissões disponíveis por tela são visualizar, criar, editar, aprovar e administrar. Um usuário em vários grupos recebe a união das permissões. Usuários não cadastrados ou inativos recebem acesso negado pela API.
 
 Na tela de grupos, o módulo **Tarefas** também oferece permissões específicas para cancelar, alterar status, prioridade ou SLA, encaminhar, assumir, transferir responsabilidade, consultar outros usuários/setores, administrar cadastros e registrar comunicação com o cliente.
@@ -93,6 +95,18 @@ O envio externo por e-mail, WhatsApp ou SMS permanece desativado até a configur
 Com a autenticação local habilitada, as senhas são armazenadas como hash e não podem ser consultadas. Em **Administração → Colaboradores → Editar**, a ação **Gerar nova senha e enviar por e-mail** exige permissão administrativa, envia os dados ao e-mail salvo, substitui a senha e encerra as sessões anteriores. Colaboradores inativos precisam ser reativados antes da redefinição. A ação fica registrada na auditoria sem a senha.
 
 Configure no arquivo .env as variáveis SMTP_HOST, SMTP_PORT, SMTP_USE_SSL, SMTP_USERNAME, SMTP_PASSWORD e SMTP_FROM e recrie o serviço api para habilitar o envio. Se o envio falhar ou não estiver configurado, a senha atual é preservada. O e-mail contém o endereço de acesso e a nova senha temporária; o colaborador pode alterá-la no menu da conta. A autorização é resolvida no PostgreSQL.
+
+## Integrações com o Ambiente Dontus
+
+Na ficha do cliente, abra **Dados ambiente Dontus**, informe o **ID do cliente no Ambiente Dontus** e clique em **Vincular e consultar**. A API é percorrida por completo até encontrar o campo `ID` exatamente igual ao informado, relacionando esse cadastro ao campo `Ident` do sisteminha. Os dois identificadores ficam visíveis na ficha. O vínculo é salvo no PostgreSQL e a aba consulta os dados atuais ao ser aberta. **Atualizar consulta** realiza uma nova leitura. O campo `Ident` da API corresponde à identificação do sisteminha; o campo `ID` é o identificador do registro no Ambiente Dontus. Na ficha, novas consultas usam o `ID` do Ambiente salvo no vínculo; no Acesso, a busca usa a identificação `Ident` do sisteminha. O filtro `busca` da API não pesquisa o campo `ID`, por isso a ficha utiliza a listagem geral paginada.
+
+Os campos disponíveis na API são apresentados em Cadastro e identificação, Endereço e Demais informações do ambiente, incluindo campos adicionais, estruturas e valores não informados. O cadastro local é preservado. Uma identificação pode ser vinculada a apenas um cliente. Consultar exige visualizar Clientes; vincular exige também editar Clientes.
+
+Em **Acesso**, informe a identificação do cliente e clique em **Pesquisar**. A lista apresenta nome, usuário, e-mail, tipo **Supervisor / Comum** e status. A lista exibe **10 usuários por página**, com botões Anterior e Próxima. A busca por nome, usuário, e-mail ou ID e o filtro de tipo são aplicados a todos os usuários retornados, antes da paginação; mudar os filtros retorna à primeira página. O botão de casinha **Acessar** consulta novamente a permissão/status do usuário no Dontus e abre o endereço retornado em uma nova aba. Usuários inativos e links não autorizados permanecem sem acesso. O navegador precisa permitir novas abas para o sistema.
+
+Configure `DONTUS_CLIENTS_TOKEN` e `DONTUS_USERS_TOKEN` somente no `.env` do servidor. O Compose encaminha essas variáveis exclusivamente à API C#. Os endereços padrão são `https://ambiente.dontus.com.br/api/APICliente/GetAllClientes` (GET com `skip`, `take`, `busca` e cabeçalho `Token`) e `https://sistema.dontus.com.br/api/Ambiente/listarUsuarios` (POST com `identificacao`, `schema` e token). Para outro servidor Dontus, ajuste `DONTUS_USERS_BASE_URL` e configure explicitamente `DontusIntegration:AllowedLoginHosts` na API com os hosts de login autorizados; o padrão permite `sistema.dontus.com.br`. Redirecionamentos HTTP nas chamadas externas são recusados.
+
+Todas as rotas exigem autenticação e as permissões locais de Clientes ou Acesso, conforme a operação. Vínculos, consultas de usuários e abertura de acesso são auditados sem senhas, tokens ou URLs de login. A lista enviada à tela não contém senhas ou links de entrada; o link é obtido apenas ao clicar em Acessar. As credenciais de integração nunca são enviadas ao navegador.
 
 ## CRM e lembretes de contato
 

@@ -11,6 +11,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<LiaForm> LiaForms => Set<LiaForm>();
     public DbSet<LiaFormRequest> LiaFormRequests => Set<LiaFormRequest>();
     public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<CustomerDontusLink> CustomerDontusLinks => Set<CustomerDontusLink>();
     public DbSet<CustomerCatalogOption> CustomerCatalogOptions => Set<CustomerCatalogOption>();
     public DbSet<WorkItem> WorkItems => Set<WorkItem>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
@@ -100,6 +101,15 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.HasOne<LiaForm>().WithMany().HasForeignKey(x => x.FormId).OnDelete(DeleteBehavior.Restrict);
         });
         ConfigureEntity(modelBuilder.Entity<Customer>(), "customers");
+        modelBuilder.Entity<CustomerDontusLink>(entity =>
+        {
+            entity.ToTable("customer_dontus_links");
+            entity.HasKey(x => x.CustomerId);
+            entity.Property(x => x.Identification).HasMaxLength(19);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => x.Identification).IsUnique();
+        });
         modelBuilder.Entity<Customer>(entity =>
         {
             entity.Property(x => x.LegalName).HasMaxLength(240);

@@ -118,6 +118,7 @@ public sealed class TaskServiceTests
 
         var readOnly = admin with
         {
+            FullAccess = false,
             Permissions =
             [
                 new EffectivePermission("tasks", true, false, true, false, false, [])

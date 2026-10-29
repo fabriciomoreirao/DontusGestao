@@ -206,10 +206,12 @@ public sealed class AccessControlService(
             .Select(membership => new
             {
                 membership.Group.Name,
+                membership.Group.IsSystem,
                 Permissions = membership.Group.Permissions,
             })
             .ToListAsync(cancellationToken);
 
+        var fullAccess = groups.Any(group => group.IsSystem && group.Name == AdministratorsGroup);
         var permissions = groups
             .SelectMany(group => group.Permissions)
             .GroupBy(permission => permission.Screen, StringComparer.OrdinalIgnoreCase)
@@ -227,6 +229,10 @@ public sealed class AccessControlService(
             .OrderBy(permission => permission.Screen)
             .ToList();
 
+        if (fullAccess)
+            permissions = ScreenCatalog.All.Select(screen => new EffectivePermission(
+                screen.Code, true, true, true, true, true, AdministratorCapabilities(screen))).ToList();
+
         // Coordination is a trusted employee flag; supervision is granted by the
         // module's approval/management permissions, never by a role's display name.
         foreach (var screen in new[] { "commissions", "referrals" })
@@ -242,7 +248,8 @@ public sealed class AccessControlService(
             string.IsNullOrWhiteSpace(user.DisplayName) ? identity.DisplayName : user.DisplayName,
             groups.Count == 0 ? "Sem grupo" : string.Join(", ", groups.Select(group => group.Name).Order()),
             user.Department,
-            permissions);
+            permissions,
+            fullAccess);
     }
 
     public async Task<AccessManagementDto> GetManagementAsync(

@@ -25,7 +25,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         ("V-011", "Portal externo do cliente", "Médio", "Fluxos permanecem internos"),
         ("V-012", "Canais e consentimentos", "Alto", "Envio externo desativado até validação"),
         ("V-013", "APIs Sicoob e CelCash", "Crítico", "Somente simulação; emissão bloqueada"),
-        ("V-014", "Integração Dontus", "Alto", "Adaptador desativado; evidência manual"),
+        ("V-014", "Integração Dontus", "Alto", "Consulta de clientes e acesso assistido via API; tokens somente no servidor"),
         ("V-015", "Retenção, anonimização, RPO e RTO", "Crítico", "Exclusão física desativada"),
         ("V-016", "Escopo de migração do legado", "Alto", "Apenas dry-run e reconciliação"),
         ("V-017", "Configurações por papel", "Alto", "Menor privilégio e autorização explícita"),
@@ -50,6 +50,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 Title = x.Title,
                 Risk = x.Risk,
                 DefaultBehavior = x.Behavior,
+                Status = x.Code == "V-014" ? "Implementado" : "Pendente",
             });
         await db.DecisionItems.AddRangeAsync(missing, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -187,7 +188,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         return new OperationsSnapshot(
             new UserDto(actor.Email, actor.DisplayName, actor.Role, actor.Department,
                 currentUserProfile is null ? "" : ProfilePhotoUrls.For(currentUserProfile.Id, currentUserProfile.UpdatedAt, currentUserProfile.PhotoDataUrl), currentUserProfile?.JobTitle ?? "",
-                currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? []),
+                currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? [], actor.FullAccess),
             customers, items, appointments, approvals, decisions, audit, moduleCounts);
     }
 
@@ -769,13 +770,14 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     private static void RequireCustomerCatalogManagement(string catalog, ActorContext actor)
     {
-        if (actor.HasPermission("catalogs", "manage")) return;
+        if (actor.FullAccess || actor.HasPermission("catalogs", "manage")) return;
         var key = catalog.ToLowerInvariant();
         var module = key switch
         {
             "status" or "project" or "version" or "subscription" or "server" or "paymentmethod" or "dueday" or "gracedays" or "duedays" or "invoicecompany" => "customers",
             "temperature" or "funnelstage" or "acquisitionchannel" or "followuptype" or "lossreason" => "commercial",
             "employeerole" => "hr",
+            "portallink" => "admin",
             "commissionrule" => "commissions",
             "referralmodule" or "referralusagestatus" or "referralcommission" => "referrals",
             _ when key.StartsWith("commercial") || key.StartsWith("retention") => "commercial",

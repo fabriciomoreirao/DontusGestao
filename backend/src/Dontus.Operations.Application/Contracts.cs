@@ -17,10 +17,12 @@ public sealed record ActorContext(
     string DisplayName,
     string Role,
     string Department,
-    IReadOnlyCollection<EffectivePermission>? Permissions = null)
+    IReadOnlyCollection<EffectivePermission>? Permissions = null,
+    bool FullAccess = false)
 {
     public bool HasPermission(string screen, string action)
     {
+        if (FullAccess && action is "view" or "create" or "edit" or "approve" or "manage") return true;
         var permission = Permissions?.FirstOrDefault(entry =>
             string.Equals(entry.Screen, screen, StringComparison.OrdinalIgnoreCase));
         return action switch
@@ -43,7 +45,7 @@ public sealed record ActorContext(
     }
 
     public bool HasCapability(string screen, string capability) =>
-        Permissions?.FirstOrDefault(entry =>
+        FullAccess || Permissions?.FirstOrDefault(entry =>
             string.Equals(entry.Screen, screen, StringComparison.OrdinalIgnoreCase))
             ?.Capabilities?.Contains(capability, StringComparer.OrdinalIgnoreCase) == true;
 
@@ -180,7 +182,8 @@ public sealed record UserDto(
     string PhotoDataUrl,
     string JobTitle,
     bool IsCoordinator,
-    IReadOnlyCollection<EffectivePermission> Permissions);
+    IReadOnlyCollection<EffectivePermission> Permissions,
+    bool FullAccess = false);
 
 public sealed record CustomerDto(
     Guid Id,

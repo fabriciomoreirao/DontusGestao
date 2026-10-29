@@ -94,6 +94,7 @@ app.UseAuthorization();
 
 app.MapOpenApi();
 app.MapLiaForms();
+app.MapDontusIntegration();
 app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken cancellationToken) =>

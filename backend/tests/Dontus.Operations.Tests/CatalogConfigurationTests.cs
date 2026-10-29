@@ -12,6 +12,7 @@ public sealed class CatalogConfigurationTests
 
     [Theory]
     [InlineData("customers", "version")]
+    [InlineData("admin", "portalLink")]
     [InlineData("commercial", "acquisitionChannel")]
     [InlineData("commercial", "followUpType")]
     [InlineData("commercial", "lossReason")]

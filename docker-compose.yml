@@ -56,6 +56,10 @@ services:
       Email__Smtp__Username: ${SMTP_USERNAME:-}
       Email__Smtp__Password: ${SMTP_PASSWORD:-}
       Email__Smtp__From: ${SMTP_FROM:-}
+      DontusIntegration__ClientsToken: ${DONTUS_CLIENTS_TOKEN:-}
+      DontusIntegration__UsersToken: ${DONTUS_USERS_TOKEN:-}
+      DontusIntegration__ClientsBaseUrl: ${DONTUS_CLIENTS_BASE_URL:-https://ambiente.dontus.com.br}
+      DontusIntegration__UsersBaseUrl: ${DONTUS_USERS_BASE_URL:-https://sistema.dontus.com.br}
       TaskFiles__BucketName: ${AWS_S3_BUCKET:-controle-prod}
       TaskFiles__Region: ${AWS_REGION:-us-east-1}
       Chat__DataProtectionKeysPath: /app/data-protection-keys

@@ -23,6 +23,10 @@ public static class DependencyInjection
                 npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
             }));
         services.AddScoped<LiaFormService>();
+        services.Configure<DontusIntegrationOptions>(configuration.GetSection("DontusIntegration"));
+        services.AddScoped<DontusIntegrationService>();
+        services.AddHttpClient<DontusApiClient>(client => client.Timeout = TimeSpan.FromSeconds(12))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddScoped<CommissionConfirmationService>();
         services.AddScoped<ServiceRequestCreationService>();
         services.AddScoped<IOperationsService, OperationsService>();
