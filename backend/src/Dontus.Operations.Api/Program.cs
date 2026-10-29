@@ -94,6 +94,7 @@ app.UseAuthorization();
 
 app.MapOpenApi();
 app.MapLiaForms();
+app.MapEmployeeProfiles();
 app.MapDontusIntegration();
 app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));

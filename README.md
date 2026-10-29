@@ -61,6 +61,8 @@ A opção **Acesso total ao sistema** concede todas as telas, ações, capacidad
 
 As permissões disponíveis por tela são visualizar, criar, editar, aprovar e administrar. Um usuário em vários grupos recebe a união das permissões. Usuários não cadastrados ou inativos recebem acesso negado pela API.
 
+No menu da conta, **Perfil** abre os dados do próprio colaborador e permite alterar capa, biografia e frase, mesmo sem permissão de Administração ou de escrita no Chat interno. A capa aceita PNG, JPEG e WebP de até 2 MB; a biografia aceita 900 caracteres e a frase, 180. **Salvar perfil** confirma o resultado na própria janela. O conteúdo permanece ao fechar e reabrir, incluindo perfis cadastrados anteriormente. A consulta de colegas pelo chat abre o perfil em modo de leitura; somente o titular pode editar o próprio conteúdo. Falhas de carregamento exibem **Tentar novamente**.
+
 Na tela de grupos, o módulo **Tarefas** também oferece permissões específicas para cancelar, alterar status, prioridade ou SLA, encaminhar, assumir, transferir responsabilidade, consultar outros usuários/setores, administrar cadastros e registrar comunicação com o cliente.
 
 O módulo **Atendimento** possui capacidades próprias para enviar mensagens, registrar notas internas, atribuir e transferir conversas, supervisionar outros setores e administrar canais, números WhatsApp e cadastros do chat.

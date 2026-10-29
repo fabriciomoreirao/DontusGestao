@@ -55,3 +55,8 @@
   .commercial-lead-form .commercial-products > div > button,
   .direct-sale-selected-products article > button { grid-column: 3; grid-row: 1; }
 }
+.employee-profile-body[role="status"] { display:block; padding:28px; color:var(--muted); }
+.employee-profile-message { padding:16px 28px 28px; }
+.employee-profile-message .employee-profile-error { max-width:none; }
+.employee-profile-body > .employee-profile-error { grid-column:1/-1; }
+.employee-profile-feedback { grid-column:1/-1; margin:0; padding:12px 16px; border-radius:9px; color:var(--teal); background:color-mix(in srgb,var(--teal) 10%,var(--surface)); }

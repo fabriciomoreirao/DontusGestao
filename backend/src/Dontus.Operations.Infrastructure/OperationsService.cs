@@ -893,6 +893,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
+        EmployeeProfileService.RequireDedicatedEditor(command.RecordType, command.Description);
         var cancellationRoute = string.Equals(command.OriginType, "cancellations", StringComparison.OrdinalIgnoreCase)
             && (string.Equals(command.Module, "cs", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(command.Module, "lia", StringComparison.OrdinalIgnoreCase))
@@ -1044,6 +1045,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     private static void RequirePersonalRecordScope(WorkItem item, ActorContext actor, bool deleting = false)
     {
+        EmployeeProfileService.RequireDedicatedEditor(item.RecordType, item.Description);
         if (item.Module == "referrals" && !CanSuperviseReferrals(actor) &&
             !(string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrEmpty(item.CreatedBy) && string.Equals(item.Owner, actor.DisplayName, StringComparison.OrdinalIgnoreCase)))
@@ -1280,6 +1282,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor);
         RequireReferralUpdate(item, command, actor);
+        EmployeeProfileService.RequireDedicatedEditor(command.RecordType, command.Description);
         await RequireCommissionScopeAsync(item, actor, false, cancellationToken);
         if (item.Module == "reminders" && !actor.HasPermission("reminders", "manage") &&
             !string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) &&

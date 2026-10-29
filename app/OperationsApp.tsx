@@ -439,7 +439,7 @@ export default function OperationsApp() {
   const [agendaVisual, setAgendaVisual] = useState<SystemVisual>("azure");
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [historyClientId, setHistoryClientId] = useState("");
-  const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
+  const [profileEmployee, setProfileEmployee] = useState<{ id: string } | null>(null);
   const [profileEditable, setProfileEditable] = useState(false);
   const [reminderContext, setReminderContext] = useState<ReminderContext | null>(null);
   const [agendaContext, setAgendaContext] = useState<ReminderContext | null>(null);
@@ -565,13 +565,15 @@ export default function OperationsApp() {
   useEffect(() => {
     const openProfile = (event: MouseEvent) => {
       const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-collaborator-id],[data-collaborator-name]");
-      if (!target || !data?.access?.employees) return;
-      const employee = data.access.employees.find(entry => entry.id === target.dataset.collaboratorId || entry.displayName === target.dataset.collaboratorName);
-      if (employee) { event.preventDefault(); event.stopPropagation(); setProfileEditable(false); setProfileEmployee(employee); }
+      if (!target) return;
+      const employee = data?.access?.employees.find(entry => entry.id === target.dataset.collaboratorId || entry.displayName === target.dataset.collaboratorName);
+      const chatUser = data?.internalChatModule?.users.find(entry => entry.name === target.dataset.collaboratorName);
+      const id = target.dataset.collaboratorId || employee?.id || chatUser?.id;
+      if (id) { event.preventDefault(); event.stopPropagation(); setProfileEditable(false); setProfileEmployee({ id }); }
     };
     document.addEventListener("click", openProfile, true);
     return () => document.removeEventListener("click", openProfile, true);
-  }, [data?.access?.employees]);
+  }, [data?.access?.employees, data?.internalChatModule?.users]);
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem("dontus.theme");
@@ -1428,7 +1430,7 @@ export default function OperationsApp() {
             <ChevronDown size={15} />
           </button>
           {accountMenuOpen && <div className="account-menu">
-            <button onClick={() => { const employee=data.access?.employees.find(entry=>entry.email===data.user.email)??null; setProfileEditable(true); setProfileEmployee(employee); setAccountMenuOpen(false); }}>Perfil</button>
+            <button onClick={() => { setProfileEditable(true); setProfileEmployee({ id: "me" }); setAccountMenuOpen(false); }}>Perfil</button>
             <button onClick={() => { setChangingPassword(true); setAccountMenuOpen(false); }}>Alterar senha</button>
             <button className="signout" onClick={() => void signOut()}>Sair do sistema</button>
           </div>}
@@ -1564,7 +1566,7 @@ export default function OperationsApp() {
               markRead={markInternalChatRead}
               uploadAttachments={uploadInternalChatAttachments}
               initialRoomId={chatRoomTarget}
-              onOpenProfile={(userId) => { setProfileEditable(false); setProfileEmployee(data.access?.employees.find(employee => employee.id === userId) ?? null); }}
+              onOpenProfile={(userId) => { setProfileEditable(false); setProfileEmployee({ id: userId }); }}
             />
           )}
           {active === "approvals" && (
@@ -1685,7 +1687,7 @@ export default function OperationsApp() {
       {dueReminder && userCan(data.user,"reminders","edit") && !reminderContext && <ReminderDueModal item={dueReminder.item} detail={dueReminder.detail} busy={busy} onLater={() => { const next={...dueReminder.detail,nextAlertAt:new Date(Date.now()+60*60_000).toISOString(),snoozeCount:dueReminder.detail.snoozeCount+1}; void operate({action:"updateWorkItem",id:dueReminder.item.id,title:dueReminder.item.title,owner:dueReminder.item.owner,amountCents:0,version:dueReminder.item.version,description:JSON.stringify(next)},"Lembrete adiado por 60 minutos."); }} onSeen={() => { const confirmedAt=new Date().toISOString(); const next={...dueReminder.detail,seenAt:confirmedAt,seenBy:data.user.displayName,confirmedAt,confirmedBy:data.user.displayName}; void operate({action:"updateWorkItem",id:dueReminder.item.id,title:dueReminder.item.title,owner:dueReminder.item.owner,amountCents:0,version:dueReminder.item.version,description:JSON.stringify(next)},"Lembrete marcado como visto e confirmado."); }} />}
 
       {changingPassword && <PasswordChangeModal busy={busy} onClose={() => setChangingPassword(false)} onComplete={() => { setChangingPassword(false); setToast({ kind: "success", message: "Senha alterada com sucesso." }); }} />}
-      {profileEmployee && <EmployeeProfileDrawer employee={profileEmployee} employees={data.access?.employees ?? []} items={data.items} currentUser={data.user} editable={profileEditable} taskCount={data.taskModule?.tasks.filter(task=>task.assigneeName===profileEmployee.displayName&&!task.completedAt&&!task.cancelled).length??0} busy={busy} operate={operate} onClose={() => { setProfileEmployee(null); setProfileEditable(false); }} />}
+      {profileEmployee && <EmployeeProfileDrawer key={profileEmployee.id} profileId={profileEmployee.id} items={data.items} tasks={data.taskModule?.tasks ?? []} editable={profileEditable} onClose={() => { setProfileEmployee(null); setProfileEditable(false); }} />}
       {backgroundModalOpen && <BackgroundImageModal image={backgroundImage} agendaVisual={agendaVisual} onAgendaVisual={(visual)=>{setAgendaVisual(visual);window.localStorage.setItem("dontus.agenda-visual",visual);}} onClose={() => setBackgroundModalOpen(false)} onUpload={(file) => uploadBackgroundImage(file, () => setBackgroundModalOpen(false))} onRemove={() => { changeBackgroundImage(""); setBackgroundModalOpen(false); }} />}
       {confirmation && <ConfirmationModal action={confirmation.payload.action as string | undefined} successMessage={confirmation.success} busy={busy} onCancel={cancelOperation} onConfirm={() => void confirmOperation()} />}
       <ChatNotifications alerts={chatAlerts} onOpen={(roomId) => { setChatRoomTarget(roomId); setChatAlerts(current => current.filter(alert => alert.roomId !== roomId)); navigate("internalChat"); }} onDismiss={(id) => { const timer = chatAlertTimers.current.get(id); if (timer) clearTimeout(timer); chatAlertTimers.current.delete(id); setChatAlerts(current => current.filter(alert => alert.id !== id)); }} />
