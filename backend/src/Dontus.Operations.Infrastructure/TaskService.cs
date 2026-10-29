@@ -32,6 +32,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             if (invalidFinalStatuses.Count > 0 || tasksWithoutProtocol.Count > 0)
                 await db.SaveChangesAsync(cancellationToken);
             await EnsureDepartmentCalendarsAsync(cancellationToken);
+            await RepairTypeInitialStatusesAsync(cancellationToken);
             return;
         }
 
@@ -116,6 +117,39 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         }
         await db.SaveChangesAsync(cancellationToken);
         await EnsureDepartmentCalendarsAsync(cancellationToken);
+    }
+
+    private async Task RepairTypeInitialStatusesAsync(CancellationToken ct)
+    {
+        var statuses = await db.TaskStatuses.AsNoTracking().Where(status => status.Active && status.AcceptsNewTasks && !status.IsFinal).ToListAsync(ct);
+        var types = await db.TaskTypes.Where(type => type.Active).ToListAsync(ct);
+        var departments = await db.TaskTypeDepartments.AsNoTracking().ToListAsync(ct);
+        var links = await db.TaskTypeStatuses.ToListAsync(ct);
+        foreach (var type in types)
+        {
+            var sectorIds = departments.Where(link => link.TaskTypeId == type.Id).Select(link => link.DepartmentId).ToArray();
+            if (sectorIds.Length == 0) continue;
+            var compatible = statuses.Where(status => !status.DepartmentId.HasValue || sectorIds.All(id => id == status.DepartmentId.Value)).ToList();
+            var replacement = compatible.FirstOrDefault(status => status.Id == type.InitialStatusId);
+            if (replacement is null)
+            {
+                // Only an explicitly configured, unambiguous first stage can replace a retired reference.
+                var marked = compatible.Where(status => status.IsInitial).ToList();
+                var linked = marked.Where(status => links.Any(link => link.TaskTypeId == type.Id && link.StatusId == status.Id)).ToList();
+                replacement = linked.Count == 1 ? linked[0] : marked.Count == 1 ? marked[0] : null;
+            }
+            if (replacement is null) continue;
+            var missingLink = !links.Any(link => link.TaskTypeId == type.Id && link.StatusId == replacement.Id);
+            if (replacement.Id == type.InitialStatusId && !missingLink) continue;
+            var previous = type.InitialStatusId;
+            type.InitialStatusId = replacement.Id;
+            type.UpdatedAt = DateTimeOffset.UtcNow;
+            type.Version++;
+            if (missingLink) db.TaskTypeStatuses.Add(new TaskTypeStatus { TaskTypeId = type.Id, StatusId = replacement.Id });
+            db.AuditEvents.Add(new AuditEvent { ActorEmail = "system@dontus.local", Action = "RepairTaskTypeInitialStatus", Resource = "task_type",
+                ResourceId = type.Id.ToString(), Module = "tasks", DetailsJson = JsonSerializer.Serialize(new { previousStatusId = previous, statusId = replacement.Id }) });
+        }
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
     }
 
     private async Task EnsureDepartmentCalendarsAsync(CancellationToken ct)
@@ -874,6 +908,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("Uma das etapas selecionadas não está disponível.");
         if (command.Active && !allowedStatuses.Any(x => x.Id == command.InitialStatusId && x.AcceptsNewTasks && !x.IsFinal))
             throw new DomainException("A etapa inicial deve estar ativa, receber novas tarefas e não ser final.");
+        var initial = allowedStatuses.FirstOrDefault(status => status.Id == command.InitialStatusId);
+        if (command.Active && initial?.DepartmentId is Guid initialDepartment && command.DepartmentIds.Any(id => id != initialDepartment))
+            throw new DomainException("Para um tipo disponível em vários setores, selecione uma etapa inicial de todos os setores.");
         if (allowedStatuses.Any(x => x.DepartmentId.HasValue && !command.DepartmentIds.Contains(x.DepartmentId.Value)))
             throw new DomainException("As etapas devem pertencer aos setores selecionados ou a todos os setores.");
         if (command.DefaultPriorityId.HasValue && !await db.TaskPriorities.AnyAsync(x => x.Id == command.DefaultPriorityId && (!command.Active || x.Active), cancellationToken)

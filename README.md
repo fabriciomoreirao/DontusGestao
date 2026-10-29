@@ -85,6 +85,10 @@ Em **Diário de Bordo**, coordenadores podem escolher **Meu diário** ou um de s
 
 Em **Tarefas** e **Atendimentos**, escolha um setor na lista suspensa para filtrar os registros, ou selecione **Todos os setores** para a visão consolidada. A logo do menu acompanha o tema claro ou escuro independentemente da cor escolhida para os controles do sistema.
 
+Os setores cadastrados em **Colaboradores → Setores** são os mesmos utilizados em Tarefas. Usuários com acesso total, administração de Tarefas ou consulta de outros setores veem todos os setores ativos, mesmo sem vínculos pessoais. Os demais veem os setores em que possuem vínculo ou coordenação. Em **Nova tarefa**, o campo **Setor responsável** permite selecionar o setor autorizado e carrega seus tipos ativos; a etapa inicial do tipo escolhido aparece logo abaixo.
+
+Em **Tipos de tarefa**, selecione os setores e a etapa inicial ativa. A etapa inicial entra automaticamente nas etapas permitidas. Para tipos compartilhados entre vários setores, a etapa inicial deve ser geral. Na inicialização, referências antigas a etapas desativadas são corrigidas somente quando existe uma primeira etapa cadastrada, compatível e inequívoca; a correção é auditada e preserva os status das tarefas existentes.
+
 Agenda e Tarefas são módulos separados. Em **Tarefas** estão disponíveis:
 
 - Kanban com movimentação por arrastar e soltar e visualização em lista;
