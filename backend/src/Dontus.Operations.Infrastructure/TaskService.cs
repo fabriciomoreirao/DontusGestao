@@ -359,7 +359,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             .Join(db.Users.AsNoTracking(), membership => membership.UserId, appUser => appUser.Id,
                 (membership, appUser) => new { membership, appUser })
             .Where(entry => entry.membership.DepartmentId == task.CurrentDepartmentId
-                && entry.membership.IsCoordinator && entry.appUser.Active)
+                && entry.membership.IsCoordinator && entry.appUser.Active && entry.appUser.BlockedAt == null)
             .OrderBy(entry => entry.appUser.DisplayName)
             .Select(entry => (Guid?)entry.appUser.Id)
             .FirstOrDefaultAsync(cancellationToken);
@@ -483,12 +483,12 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         else
         {
             var sla = await db.TaskSlaPolicies.SingleOrDefaultAsync(
-                x => x.Id == command.SlaPolicyId && x.Active && x.DepartmentId == task.CurrentDepartmentId, cancellationToken)
-                ?? throw new DomainException("SLA inválido, inativo ou incompatível com o setor.");
+                x => x.Id == command.SlaPolicyId && x.Active, cancellationToken)
+                ?? throw new DomainException("SLA inválido ou inativo.");
             task.SlaPolicyId = sla.Id;
-            task.FirstResponseDueAt = AddBusinessMinutes(DateTimeOffset.UtcNow, sla.FirstResponseMinutes, sla);
-            task.ServiceStartDueAt = AddBusinessMinutes(DateTimeOffset.UtcNow, sla.ServiceStartMinutes, sla);
-            task.SlaDueAt = AddBusinessMinutes(DateTimeOffset.UtcNow, sla.CompletionMinutes, sla);
+            task.FirstResponseDueAt = AddBusinessMinutes(task.CreatedAt, sla.FirstResponseMinutes, sla);
+            task.ServiceStartDueAt = AddBusinessMinutes(task.CreatedAt, sla.ServiceStartMinutes, sla);
+            task.SlaDueAt = AddBusinessMinutes(task.CreatedAt, sla.CompletionMinutes, sla);
         }
         task.UpdatedAt = DateTimeOffset.UtcNow;
         task.Version++;
@@ -761,7 +761,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         RequireCatalogManagement(actor);
         if (string.IsNullOrWhiteSpace(command.Name)) throw new DomainException("Nome do setor é obrigatório.");
         var name = command.Name.Trim();
-        if (await db.Users.CountAsync(x => command.CoordinatorUserIds.Contains(x.Id) && x.Active, cancellationToken) != command.CoordinatorUserIds.Distinct().Count())
+        if (await db.Users.CountAsync(x => command.CoordinatorUserIds.Contains(x.Id) && x.Active && x.BlockedAt == null, cancellationToken) != command.CoordinatorUserIds.Distinct().Count())
             throw new DomainException("Selecione coordenadores ativos e válidos.");
         var normalizedName = name.ToUpperInvariant();
         TaskDepartment? entity = command.Id.HasValue

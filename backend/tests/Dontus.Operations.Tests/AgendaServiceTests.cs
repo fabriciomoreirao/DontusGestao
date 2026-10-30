@@ -291,6 +291,52 @@ public sealed class AgendaServiceTests
         Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateCommitmentAsync(new(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,command.ResponsibleUserId,command.Title,command.Description,command.StartsAt,command.EndsAt,[]),actor))).StatusCode);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Only_the_creator_can_delete_even_when_the_responsible_has_management_access(bool series)
+    {
+        var (db, service, command, creator) = await RecurrenceContext(); await using var context = db;
+        var ids = await service.CreateCommitmentAsync(command with { Recurrence = "month" }, creator);
+        var responsible = await db.Users.SingleAsync();
+        foreach (var entry in db.AgendaCommitments) entry.CreatedBy = "original-creator@dontus.local";
+        await db.SaveChangesAsync();
+        var manager = creator with { FullAccess = true };
+        var error = await Assert.ThrowsAsync<DomainException>(() => service.DeleteCommitmentAsync(ids.First(), manager, deleteSeries: series));
+        Assert.Equal(403, error.StatusCode);
+        Assert.Equal(ids.Count, await db.AgendaCommitments.CountAsync());
+    }
+
+    [Fact]
+    public async Task Monthly_series_can_remove_one_occurrence_then_all_remaining_without_deleting_an_unrelated_event()
+    {
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        var ids = (await service.CreateCommitmentAsync(command with { Recurrence = "month" }, actor)).ToArray();
+        var group = Assert.Single(db.AgendaCommitments.Select(entry => entry.RecurrenceGroupId).Distinct());
+        Assert.NotNull(group);
+        var unrelatedId = Assert.Single(await service.CreateCommitmentAsync(command with { StartsAt = command.StartsAt.AddHours(3), EndsAt = command.EndsAt.AddHours(3) }, actor));
+        await service.DeleteCommitmentAsync(ids[0], actor);
+        Assert.Equal(ids.Length - 1, await db.AgendaCommitments.CountAsync(entry => entry.RecurrenceGroupId == group));
+        var view = await service.GetModuleAsync(actor);
+        Assert.Equal(ids.Length - 1, view.Commitments.First(entry => entry.RecurrenceGroupId == group).RecurrenceCount);
+        await service.DeleteCommitmentAsync(ids[1], actor, deleteSeries: true);
+        Assert.Equal(unrelatedId, Assert.Single(await db.AgendaCommitments.ToArrayAsync()).Id);
+        Assert.DoesNotContain(await db.AgendaCommitmentParticipants.ToArrayAsync(), entry => ids.Contains(entry.CommitmentId));
+        Assert.Equal(ids.Length, await db.AuditEvents.CountAsync(entry => entry.Action == "Delete" && entry.Resource == "agenda_commitment"));
+    }
+
+    [Fact]
+    public async Task Series_deletion_checks_every_occurrence_before_deleting_anything()
+    {
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        var ids = (await service.CreateCommitmentAsync(command with { Recurrence = "month" }, actor)).ToArray();
+        var second = await db.AgendaCommitments.SingleAsync(entry => entry.Id == ids[1]);
+        second.CreatedBy = "someone-else@dontus.local"; await db.SaveChangesAsync();
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteCommitmentAsync(ids[0], actor, deleteSeries: true))).StatusCode);
+        Assert.Equal(ids.Length, await db.AgendaCommitments.CountAsync());
+        Assert.Empty(db.AuditEvents.Where(entry => entry.Action == "Delete"));
+    }
+
     private static AgendaCommitment ExistingSlot(CreateAgendaCommitmentCommand command, ActorContext actor) => new()
     {
         AgendaId = command.AgendaId, AgendaTypeId = command.AgendaTypeId, AgendaStatusId = command.AgendaStatusId,

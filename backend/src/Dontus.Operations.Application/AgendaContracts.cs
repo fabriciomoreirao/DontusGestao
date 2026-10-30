@@ -12,7 +12,7 @@ public sealed record AgendaCommitmentDto(
     Guid Id, Guid AgendaId, Guid AgendaTypeId, string Title, string Description,
     DateTimeOffset StartsAt, DateTimeOffset EndsAt, Guid ResponsibleUserId,
     string ResponsibleName, string TypeName, Guid AgendaStatusId, string StatusName, string StatusColor,
-    string CreatedBy, IReadOnlyCollection<Guid> ParticipantUserIds);
+    string CreatedBy, IReadOnlyCollection<Guid> ParticipantUserIds, Guid? RecurrenceGroupId = null, int RecurrenceCount = 1);
 
 public sealed record AgendaModuleDto(
     IReadOnlyCollection<AgendaCalendarDto> Calendars,
@@ -51,5 +51,5 @@ public interface IAgendaService
     Task UpdateCommitmentAsync(UpdateAgendaCommitmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangeCommitmentStatusAsync(ChangeAgendaCommitmentStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task AssignCommitmentAsync(AssignAgendaCommitmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
-    Task DeleteCommitmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteCommitmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default, bool deleteSeries = false);
 }

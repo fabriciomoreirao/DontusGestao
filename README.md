@@ -49,7 +49,7 @@ regras de negócio nem pela auditoria da aplicação e podem ser irreversíveis.
 
 ### Anexos privados na AWS
 
-Os protocolos são gerados automaticamente no formato `DON-AAAAMMDD-NNNNNN`.
+Os protocolos das tarefas são gerados automaticamente no formato `TAA0001` (por exemplo, `T260001`).
 Os anexos são armazenados em bucket S3 privado e acessados por links temporários
 de 10 minutos. Antes de iniciar os contêineres, preencha no arquivo `.env` as
 variáveis `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` com credenciais novas,
@@ -85,7 +85,23 @@ Em **Repetir compromisso → Escolher datas**, marque os dias no calendário; na
 
 Cada setor recebe uma agenda automaticamente, tanto nos cadastros de Colaboradores quanto em Tarefas. Em **Colaboradores → Acesso às agendas**, selecione as agendas individuais de cada usuário. O vínculo funcional com um setor não concede acesso automático. Administradores e gestores de agenda mantêm acesso geral. A migração AgendaCalendarPermissions preserva uma única vez os acessos anteriores como permissões por agenda; alterações futuras de setor não modificam essas permissões.
 
+Em **Compromisso**, o status aparece uma única vez. Somente o criador pode excluir o compromisso, inclusive quando outro usuário é responsável ou administra a agenda. Para repetições, **Excluir compromisso** remove apenas a ocorrência aberta e **Excluir série** remove todas as ocorrências vinculadas, após confirmação. As séries antigas consecutivas até o fim do mês são identificadas quando os detalhes coincidem e os registros foram criados juntos; registros ambíguos permanecem individuais. As visões **Dia** e **Semana** mostram uma régua de 30 minutos, com compromissos simultâneos lado a lado.
+
+Nos quadros operacionais, o mês fica no filtro compacto da barra superior. Os cabeçalhos foram reduzidos para ampliar a área útil. Filtros nativos acompanham o tema escuro. Os avisos de erro ficam acima das janelas e permanecem até serem fechados.
+
+Em **Chamados → Configurar IA**, o campo de modelo oferece **gpt-6-luna** e permite informar outros modelos. Os cards de chamados e acompanhamentos podem ser excluídos por usuários com permissão de edição. No formulário público, informar os seis dígitos de um ID cadastrado preenche empresa e WhatsApp; ambos continuam editáveis. Ao mudar o ID, os dados anteriores são limpos.
+
+Em **Cadastros → Setores** e **Colaboradores → Setores**, selecione os coordenadores/aprovadores do setor. A coordenação fica vinculada automaticamente às novas tarefas. Participantes usam um seletor compacto com busca e múltiplas caixas de seleção. Anotações públicas de outros colaboradores abrem em modo de leitura. No acompanhamento de CS, o card mantém apenas a conferência e a escolha do responsável; as informações de rodízio ficam em **Indicadores de rodízio**, sem exigir versão ou posição na fila para encaminhar.
+
 ## Módulo de Tarefas
+
+Em **Nova tarefa**, informe o **ID do cliente** com os seis dígitos do ID Dontus. Um ID cadastrado vincula o cliente automaticamente; alterar para um ID sem correspondência remove o vínculo anterior. O protocolo aparece no título e no cabeçalho assim que o card é aberto.
+
+Imagens e vídeos selecionados na criação são enviados com a sessão do usuário e aparecem em **Anexos** ao reabrir a tarefa. Se o envio falhar, os arquivos permanecem selecionados e a ação **Reenviar anexos** conclui o envio para a tarefa já criada. A reprodução de vídeos preserva os intervalos de bytes necessários para avançar e retroceder.
+
+O seletor **Política de SLA** apresenta todos os prazos ativos cadastrados, inclusive aqueles criados no cadastro simplificado de dias úteis. A escolha não depende do vínculo técnico antigo com um setor. Ao aplicar um prazo, a contagem parte da criação da tarefa.
+
+Os cancelamentos exibem o protocolo no card e no cabeçalho dos detalhes, com busca pelo número. A sequência própria começa em `C260001`, `C260002` e assim por diante, com ano e reinício anual pelo horário de Brasília. O servidor gera e preserva o protocolo; edições não o alteram e exclusões não reutilizam números. A migration `CancellationAnnualProtocols` numera solicitações antigas em ordem de criação e continua após protocolos já existentes. O contador de cancelamentos é independente do contador de Chamados.
 
 As seleções operacionais utilizam apenas opções cadastradas e ativas. Opções fixas de exemplo e valores encontrados somente no histórico não são acrescentados às listas. Os registros históricos continuam preservados, e os cadastros administrativos permitem consultar e reativar opções inativas. Reiniciar o sistema não reativa prioridades bloqueadas nem recria cadastros excluídos do RH e etapas excluídas de Tarefas.
 
@@ -167,6 +183,10 @@ No detalhe do cliente, use **Gerar link de formulário**, escolha um modelo ativ
 O card indica se os formulários foram respondidos; **Ver respostas** abre uma nova página autenticada com todos os formulários desse acompanhamento e seus horários em Brasília. A lista atualiza ao voltar à janela, a cada 30 segundos ou pelo botão de atualização. Gerar links exige editar a LIA; consultar respostas exige visualizar a LIA. Tokens são aleatórios e armazenados com hash e uma cópia protegida pela chave persistente de Data Protection. As tabelas são criadas pela migration LiaClientForms.
 
 ## Atendimento omnichannel
+
+No **Chat interno**, enviar por Enter ou pelo botão mantém o cursor no campo e permite preparar a próxima mensagem durante o envio. Clicar em outro campo muda o foco normalmente, sem o chat recuperá-lo ao terminar. Rascunhos ficam separados por conversa; em caso de falha, o texto não enviado é preservado junto ao que foi digitado durante a espera. A janela **Avisar cliente**, nas tarefas, apresenta protocolo, cliente e responsável, com orientação em um campo maior e indicação de que o aviso é interno.
+
+No **Chat interno**, cole imagens com **Ctrl+V** no campo de mensagem. As imagens aparecem em uma prévia, podem ser removidas e são enviadas ao clicar em **Enviar mensagem**, com ou sem texto. Cada conversa mantém suas próprias imagens pendentes; uma falha de envio permite tentar novamente. Colar texto continua funcionando normalmente. O limite é de dez imagens por envio, com até 50 MB cada.
 
 A tela **Atendimento** inclui caixa de entrada em três colunas, pesquisa e filtros,
 histórico de mensagens e transferências, notas internas, atribuição, etiquetas,

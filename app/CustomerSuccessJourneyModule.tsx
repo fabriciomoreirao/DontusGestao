@@ -3,9 +3,8 @@
 import { activeCatalogEntries } from "@/lib/catalog-options";
 
 import { customerSuccessScore } from "@/lib/commission-rules";
-import CsDistributionPanel from "@/app/CsDistributionPanel";
 import CsDistributionIndicators from "@/app/CsDistributionIndicators";
-import { distributionQueue, distributionWarning, unknownClientVersion, type ClientDistribution } from "@/lib/client-distribution";
+import { distributionQueue, unknownClientVersion, type ClientDistribution } from "@/lib/client-distribution";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
@@ -437,15 +436,14 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
   const isStrategic = journey.strategicAccount || Boolean(strategicContext);
   const [responsible, setResponsible] = useState(item.owner || "");
   const detectedVersion = distribution?.pendingClients.find(client => client.workItemId === item.id)?.version ?? "";
-  const [selectedDistributionVersion, setSelectedDistributionVersion] = useState("");
-  const clientDistributionVersion = selectedDistributionVersion || (detectedVersion !== unknownClientVersion ? detectedVersion : "");
+  const clientDistributionVersion = detectedVersion || unknownClientVersion;
   const clientDistributionQueue = distributionQueue(distribution, clientDistributionVersion);
+  const dispatchRecipients = distribution?.collaborators.length ? distribution.collaborators.map(employee => ({ id: employee.userId, displayName: employee.displayName })) : employees.map(employee => ({ id: employee.id, displayName: employee.displayName }));
   const [validationResponsibleId, setValidationResponsibleId] = useState("");
   const [manualRecipient, setManualRecipient] = useState(false);
   useEffect(() => {
     if (journey.phase === "validation" && !manualRecipient) setValidationResponsibleId(clientDistributionQueue?.suggestedUserId ?? "");
   }, [journey.phase, manualRecipient, clientDistributionQueue?.suggestedUserId]);
-  const rotationWarning = distributionWarning(distribution, clientDistributionVersion, validationResponsibleId);
   const [status, setStatus] = useState(journey.status || "Pendente");
   const [usage, setUsage] = useState(journey.usage || "");
   const [callStatus, setCallStatus] = useState(journey.callStatus || "");
@@ -516,13 +514,12 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
   const [linkCopied, setLinkCopied] = useState(false);
   const changeResponsible = async (ownerName: string, advanceToOnboarding = false) => {
     setHandoffError("");
-    const suggestedRecipient = advanceToOnboarding ? distribution?.collaborators.find(entry => entry.userId === validationResponsibleId) : undefined;
-    const employee = suggestedRecipient ? { id: suggestedRecipient.userId, displayName: suggestedRecipient.displayName } : employees.find((entry) => normalize(entry.displayName) === normalize(ownerName));
+    const employee = advanceToOnboarding ? dispatchRecipients.find(entry => entry.id === validationResponsibleId) : employees.find((entry) => normalize(entry.displayName) === normalize(ownerName));
     if (!employee) { setHandoffError("Selecione um responsável ativo."); return false; }
     const next = advanceToOnboarding ? { ...journey, phase: "onboarding" as const, status: "Onboarding", onboardingStartedAt: now() } : journey;
     const message = advanceToOnboarding ? "Cliente encaminhado para onboarding e compromisso transferido na agenda." : `Responsável alterado para ${employee.displayName}; compromissos vinculados atualizados.`;
     const result = await onSave({ owner: employee.displayName, responsibleUserId: employee.id, description: JSON.stringify(append(next, message)),
-      ...(advanceToOnboarding && distribution ? { distributionVersion: clientDistributionVersion, expectedNextResponsibleUserId: clientDistributionQueue?.suggestedUserId } : {}) }, message);
+      ...(advanceToOnboarding && distribution ? { distributionVersion: clientDistributionVersion } : {}) }, message);
     if (!result) setHandoffError("Não foi possível encaminhar. Verifique o aviso da operação e tente novamente.");
     return result;
   };
@@ -651,15 +648,10 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
       {commercial && <section className="cs-drawer-panel"><header><span className="eyebrow">ORIGEM COMERCIAL</span><h3>Informações e interações preservadas</h3></header><div className="cs-info-grid"><span><small>Origem</small><strong>{commercial.source || "Não informada"}</strong></span><span><small>Vendedor</small><strong>{commercial.seller || commercialSource?.owner || "Não informado"}</strong></span><span><small>Temperatura</small><strong>{commercial.temperature || "Não definida"}</strong></span><span><small>Produtos</small><strong>{commercial.products?.length || 0}</strong></span></div></section>}
 
       {journey.phase === "validation" && <section className="cs-drawer-panel cs-validation-panel">
-        <header><span className="eyebrow">VALIDAÇÃO</span><h3>Conferir dados e encaminhar</h3><p>Confirme os dados e consulte a fila da versão antes de atribuir o onboarding. Os compromissos serão transferidos para a agenda do responsável escolhido.</p></header>
-        {distribution && <>
-          <label className="cs-distribution-version-picker">Versão do cliente para o rodízio<select aria-label="Versão do cliente para o rodízio" value={clientDistributionVersion} disabled={!canEdit||busy} onChange={event=>{setSelectedDistributionVersion(event.target.value);setManualRecipient(false);}}><option value="">Informe a versão do cliente</option>{distribution.queues.filter(queue=>queue.version!==unknownClientVersion).map(queue=><option key={queue.version}>{queue.version}</option>)}</select><small>{detectedVersion&&detectedVersion!==unknownClientVersion?"Versão identificada no cadastro do cliente ou na venda. A versão selecionada ficará registrada neste envio.":"A versão não foi identificada. Selecione a versão antes de encaminhar."}</small></label>
-          <CsDistributionPanel compact board={distribution} version={clientDistributionVersion} onUseSuggested={()=>{setValidationResponsibleId(clientDistributionQueue?.suggestedUserId??"");setManualRecipient(false);}} />
-        </>}
+        <header><span className="eyebrow">VALIDAÇÃO</span><h3>Conferir dados e encaminhar</h3><p>Confirme os dados e escolha o responsável pelo onboarding. Os compromissos serão transferidos para a agenda do responsável escolhido.</p></header>
         <div className="cs-validation-actions"><button className={journey.checkedAt ? "secondary-button success-action" : "secondary-button"} disabled={!canEdit || busy || Boolean(journey.checkedAt)} onClick={() => void save({ ...journey, status, checkedAt: now(), checkedBy: currentUser.displayName }, "Dados comerciais conferidos.")}><Check size={16} /> {journey.checkedAt ? "Conferido em "+dateOnly(journey.checkedAt) : "Conferir dados"}</button>
-        <label>Encaminhar para<select aria-label="Encaminhar cliente para colaborador" value={distribution?validationResponsibleId:responsible} disabled={!canEdit||busy} onChange={event=>{if(distribution){setValidationResponsibleId(event.target.value);setManualRecipient(true);}else setResponsible(event.target.value);}}><option value="">Selecione o responsável</option>{distribution?distribution.collaborators.map(employee=><option key={employee.userId} value={employee.userId}>{employee.displayName} · {employee.clientsByVersion[clientDistributionVersion]??0} desta versão · {employee.totalClients} distribuídos</option>):employees.map(employee=><option key={employee.id} value={employee.displayName}>{employee.displayName} · {employee.departmentName}</option>)}</select></label>
-        <button className="primary-button" disabled={!canEdit || busy || !journey.checkedAt || (distribution?!clientDistributionVersion||!validationResponsibleId:!responsible)} onClick={() => void changeResponsible(responsible, true)}><ArrowRight size={16} /> Encaminhar</button></div>
-        {rotationWarning&&<div className="cs-distribution-warning" role="status"><AlertTriangle size={18}/><span><strong>Atenção ao rodízio</strong><p>{rotationWarning}</p></span></div>}
+        <label>Encaminhar para<select aria-label="Encaminhar cliente para colaborador" value={validationResponsibleId} disabled={!canEdit||busy} onChange={event=>{setValidationResponsibleId(event.target.value);setManualRecipient(true);}}><option value="">Selecione o responsável</option>{dispatchRecipients.map(employee=><option key={employee.id} value={employee.id}>{employee.displayName}</option>)}</select></label>
+        <button className="primary-button" disabled={!canEdit || busy || !journey.checkedAt || !validationResponsibleId} onClick={() => void changeResponsible(responsible, true)}><ArrowRight size={16} /> Encaminhar</button></div>
       </section>}
 
       {journey.phase === "onboarding" && <section className="cs-drawer-panel">

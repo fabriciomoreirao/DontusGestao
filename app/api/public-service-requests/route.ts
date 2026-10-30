@@ -8,13 +8,15 @@ async function proxy(request: Request) {
   headers.set("x-api-key", process.env.PUBLIC_SERVICE_REQUESTS_API_KEY ?? "");
   headers.delete("host");
   headers.delete("content-length");
-  const response = await fetch(`${apiBase()}/api/public-service-requests`, {
+  const clientId = new URL(request.url).searchParams.get("clientId");
+  const query = request.method === "GET" && clientId !== null ? `?clientId=${encodeURIComponent(clientId)}` : "";
+  const response = await fetch(`${apiBase()}/api/public-service-requests${query}`, {
     method: request.method,
     headers,
     body: request.method === "POST" ? await request.arrayBuffer() : undefined,
     cache: "no-store",
   });
-  return new Response(response.body, { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json; charset=utf-8" } });
+  return new Response(response.body, { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json; charset=utf-8", "cache-control": "no-store" } });
 }
 
 export async function GET(request: Request) { return proxy(request); }

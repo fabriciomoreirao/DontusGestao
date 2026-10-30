@@ -5,12 +5,13 @@ import {
   ChartNoAxesCombined, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Columns3, Copy,
   ClipboardCheck, Clock3, Command, Database, Eye, EyeOff, FileCheck2, Headphones, ImageIcon, LayoutDashboard,
   ExternalLink, List, ListTodo, LockKeyhole, Mail, Menu, MessageCircleMore, MessageSquareText, MonitorUp, Pencil, Plus, Save, Search, Send, ShieldCheck,
-  PanelLeftClose, PanelLeftOpen, RotateCcw, Settings, Sparkles, Stethoscope, Sun, Moon, Target, Trash2, Upload, UserPlus, UserRound, Users, UsersRound,
+  RotateCcw, Settings, Sparkles, Stethoscope, Sun, Moon, Target, Trash2, Upload, UserPlus, UserRound, Users, UsersRound,
   X, XCircle,
 } from "lucide-react";
 import Image from "next/image";
 import WorkspaceExperience, { type WorkspaceDestination } from "@/app/WorkspaceExperience";
 import MoneyInput from "@/app/MoneyInput";
+import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import { formatMoney, parseMoneyInput } from "@/lib/money";
 import useDialogFocus from "@/app/useDialogFocus";
 import useRealtimeSync from "@/app/useRealtimeSync";
@@ -149,7 +150,7 @@ type Employee = {
   active: boolean; blockedAt: string | null;
 };
 
-type EmployeeDepartment = { id: string; name: string; description: string; active: boolean };
+type EmployeeDepartment = { id: string; name: string; description: string; active: boolean; coordinatorUserIds?: string[] };
 type EmployeeLevel = { id: string; name: string; description: string; active: boolean };
 
 function playNotificationAlert() {
@@ -402,6 +403,11 @@ export default function OperationsApp() {
   }, [data, active]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [toast, setToast] = useState<Toast>(null);
+  useEffect(() => {
+    if (toast?.kind !== "success") return;
+    const timer = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [view, setView] = useState<"board" | "list">("board");
   const [catalogSection, setCatalogSection] = useState<CatalogSection>("departments");
@@ -433,7 +439,6 @@ export default function OperationsApp() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [backgroundImage, setBackgroundImage] = useState("");
   const [backgroundModalOpen, setBackgroundModalOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
   const [dismissedNotificationIds, setDismissedNotificationIds] = useState<Set<string>>(() => new Set());
   const [noticeSnoozedUntil, setNoticeSnoozedUntil] = useState<Record<string, number>>({});
@@ -579,11 +584,9 @@ export default function OperationsApp() {
   useEffect(() => {
     const storedTheme = window.localStorage.getItem("dontus.theme");
     const storedBackground = window.localStorage.getItem("dontus.workspace-background");
-    const storedSidebar = window.localStorage.getItem("dontus.sidebar-collapsed");
     const storedAgendaVisual = window.localStorage.getItem("dontus.agenda-visual");
     if (storedTheme === "dark" || storedTheme === "light") setTheme(storedTheme);
     if (storedBackground) setBackgroundImage(storedBackground);
-    if (storedSidebar === "true") setSidebarCollapsed(true);
     if (["azure", "emerald", "violet", "amber", "rose", "teal", "graphite", "navy", "cyan", "orange", "fuchsia", "lime"].includes(storedAgendaVisual ?? "")) setAgendaVisual(storedAgendaVisual as SystemVisual);
   }, []);
 
@@ -765,7 +768,6 @@ export default function OperationsApp() {
   const navigate = (module: ModuleKey, nextAdminSection?: AdminSection, nextCommercialFlow?: CommercialFlow, nextCsFlow?: CsFlow, nextReportingSection?: ReportingSection) => {
     if (data && !userCan(data.user, module)) {
       setToast({ kind: "error", message: "Seu grupo não possui acesso a esta tela." });
-      window.setTimeout(() => setToast(null), 3500);
       return;
     }
     setActive(module);
@@ -797,7 +799,6 @@ export default function OperationsApp() {
     const permissionScreen = active === "admin" && adminSection === "recruitment" ? "admin" : active;
     if (!data || !userCan(data.user, permissionScreen, "view") || !userHasCapability(data.user, permissionScreen, VIEW_INDICATORS_CAPABILITY)) {
       setToast({ kind: "error", message: "Seu grupo não possui acesso aos indicadores desta ferramenta." });
-      window.setTimeout(() => setToast(null), 3500);
       return;
     }
     setIndicatorsOpen(true);
@@ -833,10 +834,8 @@ export default function OperationsApp() {
       else window.localStorage.removeItem("dontus.workspace-background");
       setBackgroundImage(nextImage);
       setToast({ kind: "success", message: nextImage ? "Imagem de fundo atualizada com sucesso." : "Imagem de fundo removida com sucesso." });
-      window.setTimeout(() => setToast(null), 3500);
     } catch {
       setToast({ kind: "error", message: "Não foi possível salvar esta imagem. Tente uma imagem menor." });
-      window.setTimeout(() => setToast(null), 5000);
     }
   };
 
@@ -844,12 +843,10 @@ export default function OperationsApp() {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setToast({ kind: "error", message: "Selecione um arquivo de imagem." });
-      window.setTimeout(() => setToast(null), 4000);
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
       setToast({ kind: "error", message: "Envie uma imagem de até 2 MB." });
-      window.setTimeout(() => setToast(null), 4000);
       return;
     }
     const reader = new FileReader();
@@ -859,7 +856,6 @@ export default function OperationsApp() {
     };
     reader.onerror = () => {
       setToast({ kind: "error", message: "Não foi possível ler esta imagem." });
-      window.setTimeout(() => setToast(null), 4000);
     };
     reader.readAsDataURL(file);
   };
@@ -917,11 +913,9 @@ export default function OperationsApp() {
       setModal(null);
       setSelectedItem(null);
       setToast({ kind: "success", message: success });
-      window.setTimeout(() => setToast(null), 3500);
       return result as { id?: string; createdProtocol?: string };
     } catch (caught) {
       setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha na operação." });
-      window.setTimeout(() => setToast(null), 5000);
       return false;
     } finally {
       setBusy(false);
@@ -930,6 +924,7 @@ export default function OperationsApp() {
 
   const uploadTaskAttachments = async (taskId: string, files: File[], commentId?: string) => {
     if (files.length === 0) return true;
+    mutationRevision.current += 1;
     setBusy(true);
     try {
       const form = new FormData();
@@ -943,13 +938,12 @@ export default function OperationsApp() {
       let result: { detail?: string } = {};
       try { result = rawResult ? JSON.parse(rawResult) : {}; } catch { result = { detail: rawResult || "Falha no envio do anexo." }; }
       if (!response.ok) throw new Error(result.detail ?? "Os anexos não foram enviados.");
+      mutationRevision.current += 1;
       await load(true);
       setToast({ kind: "success", message: files.length === 1 ? "Arquivo anexado à tarefa." : `${files.length} arquivos anexados à tarefa.` });
-      window.setTimeout(() => setToast(null), 3500);
       return true;
     } catch (caught) {
       setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha no envio dos anexos." });
-      window.setTimeout(() => setToast(null), 5000);
       return false;
     } finally {
       setBusy(false);
@@ -970,11 +964,9 @@ export default function OperationsApp() {
       if (!response.ok) throw new Error(result.detail ?? "Os arquivos não foram enviados.");
       await load(true);
       setToast({ kind: "success", message: files.length === 1 ? "Arquivo anexado à conversa." : `${files.length} arquivos anexados.` });
-      window.setTimeout(() => setToast(null), 3500);
       return true;
     } catch (caught) {
       setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha no envio dos arquivos." });
-      window.setTimeout(() => setToast(null), 5000);
       return false;
     } finally {
       setBusy(false);
@@ -994,11 +986,9 @@ export default function OperationsApp() {
       if (!response.ok) throw new Error(result.detail ?? "Os anexos não foram enviados.");
       await load(true);
       setToast({ kind: "success", message: files.length === 1 ? "Arquivo anexado à sugestão." : `${files.length} arquivos anexados à sugestão.` });
-      window.setTimeout(() => setToast(null), 3500);
       return true;
     } catch (caught) {
       setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha no envio dos anexos." });
-      window.setTimeout(() => setToast(null), 5000);
       return false;
     } finally {
       setBusy(false);
@@ -1085,7 +1075,6 @@ export default function OperationsApp() {
   const openCreate = (module: string) => {
     if (!data || !userCan(data.user, module, "create")) {
       setToast({ kind: "error", message: "Seu grupo não permite criar registros nesta tela." });
-      window.setTimeout(() => setToast(null), 3500);
       return;
     }
     setModalModule(module);
@@ -1126,11 +1115,9 @@ export default function OperationsApp() {
       if (!response.ok) throw new Error(result.detail ?? "O anexo não foi excluído.");
       await load(true);
       setToast({ kind: "success", message: "Anexo excluído com sucesso." });
-      window.setTimeout(() => setToast(null), 3500);
       return true;
     } catch (caught) {
       setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha ao excluir o anexo." });
-      window.setTimeout(() => setToast(null), 5000);
       return false;
     } finally {
       setBusy(false);
@@ -1152,11 +1139,9 @@ export default function OperationsApp() {
       mutationRevision.current += 1;
       await refreshInternalChat();
       setToast({ kind: "success", message: files.length === 1 ? "Arquivo enviado no chat." : `${files.length} arquivos enviados no chat.` });
-      window.setTimeout(() => setToast(null), 3500);
       return true;
     } catch (caught) {
       setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha no envio dos arquivos." });
-      window.setTimeout(() => setToast(null), 5000);
       return false;
     } finally {
       setBusy(false);
@@ -1332,7 +1317,6 @@ export default function OperationsApp() {
       });
       setNotificationCenterOpen(false);
       setToast({ kind: "success", message: "Todas as notificações foram marcadas como vistas." });
-      window.setTimeout(() => setToast(null), 3500);
     };
     if (!requests.length) { finishLocally(); return; }
     setBusy(true);
@@ -1345,7 +1329,6 @@ export default function OperationsApp() {
       finishLocally();
     } catch {
       setToast({ kind: "error", message: "Não foi possível marcar todas as notificações como vistas." });
-      window.setTimeout(() => setToast(null), 4500);
     } finally { setBusy(false); }
   };
   const renderNavigationItem = (item: NavigationItem, path: string, depth = 0): React.ReactNode => {
@@ -1394,12 +1377,11 @@ export default function OperationsApp() {
   };
 
   return (
-    <ReminderFilterProvider records={data.items.filter((entry) => entry.module === "reminders")}><div className={["app-shell", theme === "dark" ? "theme-dark" : "theme-light", backgroundImage ? "has-workspace-background" : "", active === "chat" ? "chat-focus-mode" : "", sidebarCollapsed ? "sidebar-collapsed" : "", `agenda-visual-${agendaVisual}`, `system-accent-${agendaVisual}`].join(" ")}>
+    <ReminderFilterProvider records={data.items.filter((entry) => entry.module === "reminders")}><div className={["app-shell", theme === "dark" ? "theme-dark" : "theme-light", backgroundImage ? "has-workspace-background" : "", active === "chat" ? "chat-focus-mode" : "", `agenda-visual-${agendaVisual}`, `system-accent-${agendaVisual}`].join(" ")}>
       <a className="workspace-skip-link" href="#workspace-content">Pular para o conteúdo</a>
       <aside id="workspace-sidebar" className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
         <div className="brand">
           <Image src="/dontus-logo.png" alt="Dontus Gestão Odontológica" width={184} height={52} priority unoptimized />
-          <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed(current => { const next = !current; window.localStorage.setItem("dontus.sidebar-collapsed", String(next)); return next; })} title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"} aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}>{sidebarCollapsed ? <PanelLeftOpen size={17}/> : <PanelLeftClose size={17}/>}</button>
         </div>
         <nav aria-label="Navegação principal">
           {navigationGroups.map((group) => {
@@ -1436,7 +1418,6 @@ export default function OperationsApp() {
           onSearchRecords={query => { setSearch(query); setRecordSearchOpen(true); globalSearchInput.current?.focus(); }}
           lastUpdatedAt={lastUpdatedAt} syncing={syncing} syncError={syncError} realtimeConnected={realtimeConnected}>
           <button className="icon-button menu-button" onClick={() => setMobileNav(current => !current)} aria-label={mobileNav ? "Fechar menu" : "Abrir menu"} aria-controls="workspace-sidebar" aria-expanded={mobileNav}><Menu size={21} /></button>
-          <button className="icon-button desktop-menu-button" onClick={() => setSidebarCollapsed(current => { const next = !current; window.localStorage.setItem("dontus.sidebar-collapsed", String(next)); return next; })} aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"} aria-controls="workspace-sidebar" aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={20}/> : <PanelLeftClose size={20}/>}</button>
           <div className="global-search">
             <Search size={18} />
             <input ref={globalSearchInput} value={search} onFocus={() => setRecordSearchOpen(true)} onChange={(event) => { setSearch(event.target.value); setRecordSearchOpen(true); }} onKeyDown={(event) => { if (event.key === "Enter") submitGlobalSearch(); if (event.key === "Escape") setRecordSearchOpen(false); if (event.key === "ArrowDown") { event.preventDefault(); event.currentTarget.closest(".global-search")?.querySelector<HTMLButtonElement>(".search-results button")?.focus(); } }} placeholder="Buscar clientes, IDs, protocolos e registros..." aria-label="Busca global" />
@@ -1473,6 +1454,7 @@ export default function OperationsApp() {
             )}
           </div>
           <div className="topbar-actions">
+            {kanbanModules.has(active) && !indicatorsOpen && <label className="topbar-month-filter"><span>Mês</span><input aria-label="Filtrar mês do quadro" type="month" value={kanbanMonth} onChange={event => setKanbanMonth(event.target.value || brasiliaMonthKey())} /></label>}
             <button className="icon-button background-shortcut" onClick={() => setBackgroundModalOpen(true)} aria-label="Alterar imagem de fundo" title="Alterar imagem de fundo"><Upload size={18} /></button>
             <button className="icon-button theme-toggle" onClick={() => changeTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}>
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
@@ -1489,7 +1471,6 @@ export default function OperationsApp() {
           <Suspense fallback={<section role="status" className="empty-state">Carregando módulo...</section>}>
           {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext && canViewOperationIndicators ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={data.access?.employees ?? []} catalogs={data.customerModule?.catalogs ?? []} onClose={closeIndicatorsPage} /> : <>
           {operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
-          {kanbanModules.has(active) && <section className="kanban-month-filter"><span><CalendarDays size={16}/><b>Competência do Kanban</b><small>Na virada do mês, o quadro inicia limpo. Selecione uma competência anterior para consultar o histórico.</small></span><label>Mês<input type="month" value={kanbanMonth} onChange={(event) => setKanbanMonth(event.target.value || brasiliaMonthKey())}/></label>{kanbanMonth !== brasiliaMonthKey() && <button type="button" onClick={() => setKanbanMonth(brasiliaMonthKey())}>Voltar ao mês atual</button>}</section>}
           {active === "dashboard" && (
             dashboardPage === "portal"
               ? <PortalDontus data={data} busy={busy} operate={operate} onBack={() => setDashboardPage("home")} />
@@ -1683,7 +1664,7 @@ export default function OperationsApp() {
       {confirmation && <ConfirmationModal action={confirmation.payload.action as string | undefined} successMessage={confirmation.success} busy={busy} onCancel={cancelOperation} onConfirm={() => void confirmOperation()} />}
       <ChatNotifications alerts={chatAlerts} onOpen={(roomId) => { setChatRoomTarget(roomId); setChatAlerts(current => current.filter(alert => alert.roomId !== roomId)); navigate("internalChat"); }} onDismiss={(id) => { const timer = chatAlertTimers.current.get(id); if (timer) clearTimeout(timer); chatAlertTimers.current.delete(id); setChatAlerts(current => current.filter(alert => alert.id !== id)); }} />
       <GlobalImagePreview />
-      {toast && <div className={`toast ${toast.kind}`} role="status">{toast.kind === "success" ? <CheckCircle2 size={18} /> : <Activity size={18} />}{toast.message}</div>}
+      {toast && createPortal(<div className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} aria-live={toast.kind === "error" ? "assertive" : "polite"}>{toast.kind === "success" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}<span>{toast.message}</span><button type="button" aria-label="Fechar aviso" onClick={() => setToast(null)}><X size={17} /></button></div>, document.body)}
     </div></ReminderFilterProvider>
   );
 }
@@ -1835,7 +1816,8 @@ function GlobalImagePreview() {
     const open=(event:MouseEvent)=>{
       const target=event.target instanceof Element?event.target:null;
       if(!target||target.closest(".global-image-preview"))return;
-      if(target.closest(".employee-cover-upload,.employee-profile-close"))return;
+      // A file input inside a previewable cover must keep its native file-picker action.
+      if(target.closest('input[type="file"],.employee-cover-upload,.employee-profile-close'))return;
       const candidate=target.closest<HTMLElement>('img,a[href^="data:image/"],[data-preview-image],.has-photo,.hr-avatar[style*="background-image"],[data-collaborator-name] i[style*="background-image"]');
       if(!candidate)return;
       let src="";
@@ -3821,10 +3803,10 @@ function AdminView({ data, section, onSection, busy, onOperate, backgroundImage,
   if (requiredConfiguration && !userCan(data.user, requiredConfiguration, "manage")) return <EmptyState text="Seu grupo permite consultar esta funcionalidade, mas não acessar ou alterar suas configurações." />;
   if (section === "collaborators") return <EmployeesAdmin access={data.access} roles={data.customerModule?.catalogs.filter(entry => entry.active && entry.catalog === "employeeRole").map(entry => entry.name) ?? []} busy={busy} onOperate={onOperate} onSection={onSection} />;
   if (section === "employeeIndicators") return <EmployeeIndicatorsAdmin data={data} onSection={onSection} />;
-  if (section === "departments") return <EmployeeCatalog title="Setores" description="Cadastre os setores que serão exibidos no cadastro de colaboradores." items={data.access.departments} action="saveEmployeeDepartment" buttonLabel="Novo setor" busy={busy} onOperate={onOperate} section={section} onSection={onSection} />;
+  if (section === "departments") return <EmployeeCatalog title="Setores" description="Cadastre os setores que serão exibidos no cadastro de colaboradores." items={data.access.departments} employees={data.access.employees} action="saveEmployeeDepartment" buttonLabel="Novo setor" busy={busy} onOperate={onOperate} section={section} onSection={onSection} />;
   if (section === "levels") return <EmployeeCatalog title="Níveis" description="Cadastre os níveis que serão exibidos no cadastro de colaboradores." items={data.access.levels} action="saveEmployeeLevel" buttonLabel="Novo nível" busy={busy} onOperate={onOperate} section={section} onSection={onSection} />;
   if (section === "roles") return <JobRolesAdmin items={data.customerModule?.catalogs.filter(entry=>entry.catalog==="employeeRole")??[]} busy={busy} onOperate={onOperate} onSection={onSection}/>;
-  if (section === "agenda") return data.agendaModule ? <AgendaCatalogsModule module={data.agendaModule} busy={busy} operate={onOperate} /> : <EmptyState text="Não foi possível carregar os cadastros da agenda." />;
+  if (section === "agenda") return data.agendaModule ? <AgendaCatalogsModule currentEmail={data.user.email} module={data.agendaModule} busy={busy} operate={onOperate} /> : <EmptyState text="Não foi possível carregar os cadastros da agenda." />;
   if (section === "customers") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="customers" /> : <EmptyState text="Não foi possível carregar as configurações de Clientes." />;
   if (section === "commercialCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} /> : <EmptyState text="Não foi possível carregar os cadastros comerciais." />;
   if (section === "csCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="cs" /> : <EmptyState text="Não foi possível carregar os cadastros de CS." />;
@@ -3936,7 +3918,7 @@ function EmployeeIndicatorsAdmin({data,onSection}:{data:AppData;onSection:(secti
   return <section className="employee-indicators-page"><PageHeader eyebrow="COLABORADORES · INDICADORES" title="Indicadores da equipe" description="Visão consolidada do cadastro, Gestão RH, atividades, interações, tarefas e compromissos."/><button className="secondary-button" onClick={()=>onSection("collaborators")}>← Voltar aos colaboradores</button><nav className="employee-indicator-tabs">{employees.map(entry=><button className={entry.id===employee.id?"active":""} onClick={()=>setSelectedId(entry.id)} key={entry.id}><ProfileAvatar name={entry.displayName} photo={entry.photoDataUrl}/><span><strong>{entry.displayName}</strong><small>{entry.jobTitle||entry.departmentName}</small></span></button>)}</nav><header className="employee-indicator-profile"><ProfileAvatar name={employee.displayName} photo={employee.photoDataUrl} large coordinator={employee.isCoordinator}/><div><span className="eyebrow">PAINEL INDIVIDUAL</span><h2>{employee.displayName}</h2><p>{employee.jobTitle||"Função não informada"} · {employee.departmentNames.join(" · ")||"Sem setor"}</p></div><span className="employee-profile-states"><b className={`status-pill ${employee.active?"positive":"negative"}`}>{employee.active?"Acesso ativo":"Acesso inativo"}</b><b className={`status-pill ${hrItem?.status==="Ativos"?"positive":hrItem?.status==="Desligados"?"negative":"warning"}`}>RH: {hrItem?.status||"Sem registro"}</b></span></header><IndicatorTabs id="employee" value={indicatorTab} onChange={setIndicatorTab} tabs={[{id:"overview",label:"Visão geral"},{id:"hr",label:"Histórico profissional"},{id:"activity",label:"Tarefas e agenda"}]} /><section role="tabpanel" id={`employee-panel-${indicatorTab}`} aria-labelledby={`employee-tab-${indicatorTab}`} className="indicator-panel">{indicatorTab === "overview" && <div className="employee-indicator-kpis"><article><Clock3/><span><small>Tempo de empresa</small><strong>{years<1?`${Math.floor(years*12)} mês(es)`:`${years.toFixed(1)} ano(s)`}</strong><em>Admissão: {employee.startedAt?new Date(`${employee.startedAt}T12:00:00`).toLocaleDateString("pt-BR"):"não informada"}</em></span></article><article><CalendarDays/><span><small>Próximo aniversário</small><strong>{nextBirthday?nextBirthday.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}):"Não informado"}</strong><em>Nascimento: {employee.birthDate?new Date(`${employee.birthDate}T12:00:00`).toLocaleDateString("pt-BR"):"—"}</em></span></article><article><ListTodo/><span><small>Tarefas</small><strong>{tasks.length}</strong><em>{tasks.filter(task=>!task.completedAt&&!task.cancelled).length} ativa(s)</em></span></article><article><CalendarDays/><span><small>Compromissos</small><strong>{commitments.length}</strong><em>{commitments.filter(entry=>new Date(entry.startsAt)>=new Date()).length} futuro(s)</em></span></article><article><MessageSquareText/><span><small>Interações</small><strong>{interactions.length}</strong><em>{hrComments.length} registrada(s) no RH</em></span></article><article><AlertTriangle/><span><small>Ocorrências / advertências</small><strong>{warnings.length}</strong><em>alimentadas pela Gestão RH</em></span></article><article><CalendarDays/><span><small>Férias</small><strong>{vacations.length}</strong><em>{vacations.filter(entry=>entry.status==="Concluída").reduce((sum,entry)=>sum+Number(entry.days||0),0)} dia(s) concluído(s)</em></span></article><article><FileCheck2/><span><small>Documentos RH</small><strong>{hrDocuments.length}</strong><em>{hrProfile?.readmissions?.length??0} readmissão(ões)</em></span></article></div>}{indicatorTab === "hr" && hrProfile && <section className="employee-rh-summary"><header><div><span className="eyebrow">DADOS DA GESTÃO RH</span><h3>Histórico profissional</h3></div><b>{hrItem?.status}</b></header><div><span><small>Interações</small><strong>{hrComments.length}</strong></span><span><small>Férias planejadas</small><strong>{vacations.filter(entry=>entry.status==="Planejada").length}</strong></span><span><small>Férias concluídas</small><strong>{vacations.filter(entry=>entry.status==="Concluída").length}</strong></span><span><small>Documentos</small><strong>{hrDocuments.length}</strong></span><span><small>Desligamento</small><strong>{hrProfile.termination?.type||"Não"}</strong></span><span><small>Readmissões</small><strong>{hrProfile.readmissions?.length??0}</strong></span></div>{hrComments.length>0&&<div className="employee-rh-timeline">{hrComments.slice().reverse().slice(0,6).map((entry,index)=><article key={entry.id||index}><i/><span><strong>{entry.type||"Interação"}</strong><p>{entry.text}</p><small>{entry.author||"RH"} · {dateTime(entry.at||"")}</small></span></article>)}</div>}</section>}{indicatorTab === "hr" && !hrProfile && <EmptyState text="Nenhum registro de RH vinculado a este colaborador." />}{indicatorTab === "activity" && <div className="employee-indicator-detail-grid"><ClientRecordsPanel title="Tarefas recentes" empty="Nenhuma tarefa vinculada.">{tasks.slice(0,8).map(task=><button data-reminder-entity-id={task.id} key={task.id}><span><strong>{task.title}</strong><small>{task.protocol} · {task.departmentName}</small></span><b className={`status-pill ${task.completedAt?"success":"warning"}`}>{task.statusName}</b><time>{dateTime(task.updatedAt)}</time></button>)}</ClientRecordsPanel><ClientRecordsPanel title="Próximos compromissos" empty="Nenhum compromisso vinculado.">{commitments.filter(entry=>new Date(entry.endsAt)>=new Date()).slice(0,8).map(entry=><button data-reminder-entity-id={entry.id} key={entry.id}><span><strong>{entry.title}</strong><small>{entry.typeName} · {entry.statusName}</small></span><time>{dateTime(entry.startsAt)}</time></button>)}</ClientRecordsPanel></div>}</section></section>;
 }
 
-function EmployeeCatalog({ title, description, items, action, buttonLabel, busy, onOperate, section, onSection }: { title: string; description: string; items: Array<EmployeeDepartment | EmployeeLevel>; action: "saveEmployeeDepartment" | "saveEmployeeLevel"; buttonLabel: string; busy: boolean; onOperate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>; section: "departments" | "levels"; onSection: (section: AdminSection) => void }) {
+function EmployeeCatalog({ title, description, items, employees = [], action, buttonLabel, busy, onOperate, section, onSection }: { title: string; description: string; items: Array<EmployeeDepartment | EmployeeLevel>; employees?: Employee[]; action: "saveEmployeeDepartment" | "saveEmployeeLevel"; buttonLabel: string; busy: boolean; onOperate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>; section: "departments" | "levels"; onSection: (section: AdminSection) => void }) {
   const [editing, setEditing] = useState<EmployeeDepartment | EmployeeLevel | null | undefined>(undefined);
   const [showInactive, setShowInactive] = useState(false);
   const deleteAction = action === "saveEmployeeDepartment" ? "deleteEmployeeDepartment" : "deleteEmployeeLevel";
@@ -3949,7 +3931,7 @@ function EmployeeCatalog({ title, description, items, action, buttonLabel, busy,
     <section className="catalog-list">
       {visibleItems.length === 0 ? <EmptyState text={`Nenhum ${singular.toLowerCase()} cadastrado.`} /> : visibleItems.map((item) => <article data-reminder-entity-id={item.id} key={item.id}><span className="group-icon"><Database size={18} /></span><span className="catalog-record-data"><strong>{item.name}</strong><small>{cleanDepartmentDescription(item.description) || "Sem descrição cadastrada"}</small>{action === "saveEmployeeDepartment" && <em className="queue-mode-chip">Fila {departmentQueueMode(item.description) === "linked" ? "vinculada" : "convencional"}</em>}</span><b className={`status-pill ${item.active ? "positive" : "negative"}`}>{item.active ? "Ativo" : "Inativo"}</b><button className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`} onClick={() => { void toggleItem(item); }} aria-label={item.active ? `Inativar ${item.name}` : `Reativar ${item.name}`} title={item.active ? "Inativar temporariamente" : "Reativar cadastro"}>{item.active ? <LockKeyhole size={15} /> : <BadgeCheck size={15} />}</button><button className="catalog-icon-button" onClick={() => setEditing(item)} aria-label={`Editar ${item.name}`}><Pencil size={15} /></button><button className="catalog-icon-button delete" onClick={() => { void onOperate({ action: deleteAction, id: item.id }, `${singular} excluído com sucesso.`); }} aria-label={`Excluir ${item.name}`}><Trash2 size={15} /></button></article>)}
     </section>
-    {editing !== undefined && <CatalogModal title={editing ? `Editar ${singular.toLowerCase()}` : buttonLabel} item={editing} department={action === "saveEmployeeDepartment"} busy={busy} onClose={() => setEditing(undefined)} onSave={async (payload) => { const result = await onOperate({ action, id: editing?.id, ...payload }, editing ? `${singular} atualizado com sucesso.` : `${singular} cadastrado com sucesso.`); if (result) setEditing(undefined); }} />}
+    {editing !== undefined && <CatalogModal title={editing ? `Editar ${singular.toLowerCase()}` : buttonLabel} item={editing} employees={employees} department={action === "saveEmployeeDepartment"} busy={busy} onClose={() => setEditing(undefined)} onSave={async (payload) => { const result = await onOperate({ action, id: editing?.id, ...payload }, editing ? `${singular} atualizado com sucesso.` : `${singular} cadastrado com sucesso.`); if (result) setEditing(undefined); }} />}
   </>;
 }
 
@@ -4001,10 +3983,10 @@ function EmployeeModal({ onResetPassword, employee, employees, departments, cale
   </form></ModalShell>;
 }
 
-function CatalogModal({ title, item, department = false, busy, onClose, onSave }: { title: string; item?: EmployeeDepartment | EmployeeLevel | null; department?: boolean; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
+function CatalogModal({ title, item, employees = [], department = false, busy, onClose, onSave }: { title: string; item?: EmployeeDepartment | EmployeeLevel | null; employees?: Employee[]; department?: boolean; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
   const [queueMode, setQueueMode] = useState<DepartmentQueueMode>(departmentQueueMode(item?.description));
-  const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); const description = String(form.get("description") ?? ""); onSave({ name: String(form.get("name") ?? ""), description: department ? serializeDepartmentDescription(description, queueMode) : description, active: form.get("active") === "on" }); };
-  return <ModalShell title={title} subtitle="Este cadastro ficará disponível nos formulários do sistema." onClose={onClose}><form className="form-grid" onSubmit={submit}><label className="wide">Nome<input name="name" required autoFocus defaultValue={item?.name} /></label><label className="wide">Descrição<textarea name="description" maxLength={540} rows={3} required defaultValue={cleanDepartmentDescription(item?.description)} placeholder="Explique brevemente quando este cadastro deve ser utilizado." /></label>{department && <label className="wide">Tipo de fila<select value={queueMode} onChange={(event) => setQueueMode(event.target.value as DepartmentQueueMode)}><option value="conventional">Convencional · apenas registrar contato</option><option value="linked">Vinculada · direcionar para uma funcionalidade</option></select><small>Na fila vinculada, o responsável deverá escolher o próximo fluxo ao concluir o contato.</small></label>}<label className="checkbox-label wide"><input name="active" type="checkbox" defaultChecked={item?.active ?? true} /> Cadastro ativo</label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy} type="submit"><Save size={16} /> {busy ? "Salvando..." : "Salvar"}</button></div></form></ModalShell>;
+  const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); const description = String(form.get("description") ?? ""); onSave({ name: String(form.get("name") ?? ""), description: department ? serializeDepartmentDescription(description, queueMode) : description, active: form.get("active") === "on", ...(department ? { coordinatorUserIds: form.getAll("coordinatorUserIds") } : {}) }); };
+  return <ModalShell title={title} subtitle="Este cadastro ficará disponível nos formulários do sistema." onClose={onClose}><form className="form-grid" onSubmit={submit}><label className="wide">Nome<input name="name" required autoFocus defaultValue={item?.name} /></label><label className="wide">Descrição<textarea name="description" maxLength={540} rows={3} required defaultValue={cleanDepartmentDescription(item?.description)} placeholder="Explique brevemente quando este cadastro deve ser utilizado." /></label>{department && <CheckboxMultiSelect label="Coordenadores / aprovadores do setor" name="coordinatorUserIds" options={employees.filter(employee => employee.active && !employee.blockedAt).map(employee => ({ id: employee.id, label: employee.displayName }))} defaultValue={(item as EmployeeDepartment | undefined)?.coordinatorUserIds ?? []} disabled={busy} hint="A coordenação será vinculada automaticamente às novas tarefas deste setor." />}{department && <label className="wide">Tipo de fila<select value={queueMode} onChange={(event) => setQueueMode(event.target.value as DepartmentQueueMode)}><option value="conventional">Convencional · apenas registrar contato</option><option value="linked">Vinculada · direcionar para uma funcionalidade</option></select><small>Na fila vinculada, o responsável deverá escolher o próximo fluxo ao concluir o contato.</small></label>}<label className="checkbox-label wide"><input name="active" type="checkbox" defaultChecked={item?.active ?? true} /> Cadastro ativo</label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy} type="submit"><Save size={16} /> {busy ? "Salvando..." : "Salvar"}</button></div></form></ModalShell>;
 }
 
 function LegacyAdminView({ data, busy, onSeed, onOperate }: { data: AppData; busy: boolean; onSeed: () => void; onOperate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false> }) {
@@ -4170,7 +4152,7 @@ function ConfirmationModal({ action, successMessage, busy, onCancel, onConfirm }
   const actionLabels: Record<string, string> = {
     createCustomer: "criar este cliente", updateCustomer: "salvar os dados deste cliente", createWorkItem: "criar este registro", createAppointment: "reservar este compromisso",
     updateWorkItem: "salvar as alterações deste registro", deleteWorkItem: "excluir este registro",
-    createAgendaCommitment: "agendar este compromisso", updateAgendaCommitment: "salvar as alterações deste compromisso",
+    createAgendaCommitment: "agendar este compromisso", deleteAgendaCommitment: "excluir apenas este compromisso", deleteAgendaCommitmentSeries: "excluir todos os compromissos desta série, inclusive em outras datas", updateAgendaCommitment: "salvar as alterações deste compromisso",
     saveNote: "salvar esta anotação", deleteNote: "excluir esta anotação", duplicateNote: "duplicar esta anotação",
     reorderNotes: "salvar a nova organização das anotações",
     changeAgendaCommitmentStatus: "alterar o status deste compromisso", saveAgendaCalendar: "salvar esta agenda",

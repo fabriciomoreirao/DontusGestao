@@ -337,7 +337,7 @@ public sealed class AccessControlService(
                     user.Active,
                     user.BlockedAt, employeeAgendaCalendarIds);
             }).ToArray(),
-            departments.Select(department => new EmployeeDepartmentDto(department.Id, department.Name, department.Description, department.Active)).ToArray(),
+            departments.Select(department => new EmployeeDepartmentDto(department.Id, department.Name, department.Description, department.Active, userDepartments.Where(link => link.DepartmentId == department.Id && link.IsCoordinator).Select(link => link.UserId).ToArray())).ToArray(),
             levels.Select(level => new EmployeeLevelDto(level.Id, level.Name, level.Description, level.Active)).ToArray(),
             agendaCalendars.Select(calendar => new AgendaCalendarDto(calendar.Id, calendar.Name, calendar.Description, calendar.DepartmentId, departmentNames.GetValueOrDefault(calendar.DepartmentId, "Setor"), calendar.Active)).ToArray());
     }
@@ -591,9 +591,11 @@ public sealed class AccessControlService(
         }
         db.UserAccessGroups.RemoveRange(user.Groups);
         user.Groups = groupIds.Select(groupId => new UserAccessGroup { UserId = user.Id, GroupId = groupId }).ToList();
-        db.UserDepartments.RemoveRange(await db.UserDepartments.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
+        var previousMemberships = await db.UserDepartments.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken);
+        var coordinatedDepartments = previousMemberships.Where(entry => entry.IsCoordinator).Select(entry => entry.DepartmentId).ToHashSet();
+        db.UserDepartments.RemoveRange(previousMemberships);
         foreach (var departmentId in departmentIds)
-            db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = command.IsCoordinator });
+            db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = departmentId, IsPrimary = departmentId == departmentIds[0], IsCoordinator = coordinatedDepartments.Contains(departmentId) || command.IsCoordinator });
         db.UserAgendaCalendarAccesses.RemoveRange(await db.UserAgendaCalendarAccesses.Where(entry => entry.UserId == user.Id).ToListAsync(cancellationToken));
         db.UserAgendaCalendarAccesses.AddRange(agendaCalendarIds.Select(calendarId => new UserAgendaCalendarAccess
         {
@@ -661,6 +663,9 @@ public sealed class AccessControlService(
     {
         actor.RequirePermission("admin", "manage");
         var name = CleanCatalogName(command.Name, "setor");
+        var coordinatorIds = command.CoordinatorUserIds?.Distinct().ToArray();
+        if (coordinatorIds is not null && await db.Users.CountAsync(user => coordinatorIds.Contains(user.Id) && user.Active && user.BlockedAt == null, cancellationToken) != coordinatorIds.Length)
+            throw new DomainException("Selecione coordenadores ativos e válidos.");
         var department = command.Id.HasValue
             ? await db.TaskDepartments.SingleOrDefaultAsync(entry => entry.Id == command.Id.Value, cancellationToken)
                 ?? throw new DomainException("Setor não encontrado.", 404)
@@ -672,15 +677,17 @@ public sealed class AccessControlService(
         {
             if (existingWithName.Active)
                 throw new DomainException("Já existe um setor ativo com este nome.", 409);
+            await SetDepartmentCoordinatorsAsync(existingWithName.Id, coordinatorIds, cancellationToken);
             existingWithName.Description = CleanCatalogDescription(command.Description);
             existingWithName.Active = true;
             existingWithName.UpdatedAt = DateTimeOffset.UtcNow;
             if (!await db.AgendaCalendars.AnyAsync(entry => entry.DepartmentId == existingWithName.Id, cancellationToken))
                 db.AgendaCalendars.Add(new AgendaCalendar { Name = existingWithName.Name, Description = $"Agenda automática do setor {existingWithName.Name}.", DepartmentId = existingWithName.Id, Active = true });
-            AddAudit(actor, "Reactivate", "employee_department", existingWithName.Id.ToString(), new { existingWithName.Name });
+            AddAudit(actor, "Reactivate", "employee_department", existingWithName.Id.ToString(), new { existingWithName.Name, CoordinatorUserIds = coordinatorIds });
             await db.SaveChangesAsync(cancellationToken);
             return existingWithName.Id;
         }
+        await SetDepartmentCoordinatorsAsync(department.Id, coordinatorIds, cancellationToken);
         department.Name = name;
         department.Description = CleanCatalogDescription(command.Description);
         department.Active = command.Active;
@@ -688,9 +695,18 @@ public sealed class AccessControlService(
         if (!command.Id.HasValue) db.TaskDepartments.Add(department);
         if (department.Active && !await db.AgendaCalendars.AnyAsync(x => x.DepartmentId == department.Id, cancellationToken))
             db.AgendaCalendars.Add(new AgendaCalendar { Name = department.Name, Description = $"Agenda automática do setor {department.Name}.", DepartmentId = department.Id, Active = true });
-        AddAudit(actor, command.Id.HasValue ? "Update" : "Create", "employee_department", department.Id.ToString(), new { department.Name, department.Active });
+        AddAudit(actor, command.Id.HasValue ? "Update" : "Create", "employee_department", department.Id.ToString(), new { department.Name, department.Active, CoordinatorUserIds = coordinatorIds });
         await db.SaveChangesAsync(cancellationToken);
         return department.Id;
+    }
+
+    private async Task SetDepartmentCoordinatorsAsync(Guid departmentId, Guid[]? coordinatorIds, CancellationToken ct)
+    {
+        if (coordinatorIds is null) return;
+        var memberships = await db.UserDepartments.Where(link => link.DepartmentId == departmentId).ToListAsync(ct);
+        foreach (var link in memberships) link.IsCoordinator = coordinatorIds.Contains(link.UserId);
+        foreach (var userId in coordinatorIds.Except(memberships.Select(link => link.UserId)))
+            db.UserDepartments.Add(new UserDepartment { UserId = userId, DepartmentId = departmentId, IsCoordinator = true });
     }
 
     public async Task<Guid> SaveEmployeeLevelAsync(

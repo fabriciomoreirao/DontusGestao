@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { createContext, FormEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
 import MediaUploadField from "@/app/MediaUploadField";
+import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
+import TaskClientNoticeModal from "@/app/TaskClientNoticeModal";
 import { availableTaskDepartments, initialTaskStatuses, taskInitialSelection, taskTypesForDepartment } from "@/lib/task-catalogs";
 
 export type TaskModuleData = {
@@ -94,6 +96,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   const [selected, setSelected] = useState<CorporateTask | null>(null);
   const [editRequested, setEditRequested] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [createdTaskPendingUpload, setCreatedTaskPendingUpload] = useState<{ id?: string; createdProtocol?: string } | null>(null);
   const [createdProtocol, setCreatedProtocol] = useState("");
   const reminderFilter = useReminderFilter("tasks");
   const has = (capability: string) => canManage || capabilities.includes(capability);
@@ -191,11 +194,15 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
       </div>
     </section>
 
-    {creating && <CreateTaskModal module={module} customers={customers} user={user} departmentIds={availableDepartments.map((item) => item.id)} initialDepartmentId={departmentFilter} busy={busy} onClose={() => setCreating(false)} onSubmit={async (payload, files) => {
-      const result = await operate({ action: "createTask", ...payload }, "Tarefa criada, protocolo e SLA calculados.");
+    {creating && <CreateTaskModal module={module} customers={customers} user={user} departmentIds={availableDepartments.map((item) => item.id)} initialDepartmentId={departmentFilter} busy={busy} attachmentsOnly={!!createdTaskPendingUpload} onClose={() => { setCreating(false); setCreatedTaskPendingUpload(null); }} onSubmit={async (payload, files) => {
+      const result = createdTaskPendingUpload ?? await operate({ action: "createTask", ...payload }, "Tarefa criada, protocolo e SLA calculados.");
       if (!result) return;
+      if (result.id && files.length > 0 && !await uploadAttachments(result.id, files)) {
+        setCreatedTaskPendingUpload(result);
+        return;
+      }
       setCreating(false);
-      if (result.id && files.length > 0) await uploadAttachments(result.id, files);
+      setCreatedTaskPendingUpload(null);
       setCreatedProtocol(result.createdProtocol ?? "");
     }} />}
     {selected && <TaskDetail task={module.tasks.find((t) => t.id === selected.id) ?? selected} module={module} customers={customers} user={user} canManage={canManage} canEdit={canEdit} startEditing={editRequested} has={has} busy={busy} onClose={closeTask} operate={operate} onSendToDevelopment={onSendToDevelopment} uploadAttachments={uploadAttachments} deleteAttachment={deleteAttachment} />}
@@ -266,7 +273,7 @@ function TaskClientStateBadge({state}:{state:string}){
   return <span className={`task-client-state ${tone}`}>{normalized==="Cliente Informado"?<CheckCircle2 size={12}/>:normalized==="Sem Necessidade"?<Check size={12}/>:<Bell size={12}/>} {normalized}</span>
 }
 
-export function CreateTaskModal({ module, customers, user, departmentIds, initialDepartmentId, busy, initial, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; initialDepartmentId?: string; busy: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
+export function CreateTaskModal({ module, customers, user, departmentIds, initialDepartmentId, busy, initial, attachmentsOnly = false, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; initialDepartmentId?: string; busy: boolean; attachmentsOnly?: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
   const originDepartment = module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.id === initialDepartmentId)
     ?? module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.name.toLocaleLowerCase("pt-BR") === user.department.toLocaleLowerCase("pt-BR"))
     ?? module.departments.find((department) => department.active && departmentIds.includes(department.id));
@@ -277,15 +284,15 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
   const initialStatus = module.statuses.find(status => status.id === selectedType?.initialStatusId && status.active && status.acceptsNewTasks && !status.isFinal
     && (!status.departmentId || status.departmentId === departmentId));
   const selectedDepartment = module.departments.find((department) => department.id === departmentId);
-  const sectorCoordinators = module.collaborators.filter((item) => item.active && item.coordinatorDepartmentIds.includes(departmentId));
+  const sectorCoordinators = module.collaborators.filter((item) => item.active && selectedDepartment?.coordinatorUserIds.includes(item.id)).sort((a,b) => a.name.localeCompare(b.name, "pt-BR"));
   const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
-  const [customerCode, setCustomerCode] = useState(initial?.customerCode ?? "");
+  const [customerCode, setCustomerCode] = useState(initial?.customerCode ?? publicCustomerCode(customers.find(customer => customer.id === initial?.customerId)));
   const [files, setFiles] = useState<File[]>([]);
   const resolveCustomerCode = (value: string) => {
     setCustomerCode(value);
     const digits = value.replace(/\D/g, "");
     const customer = customers.find((item) => digits.length === 6 && publicCustomerCode(item) === digits);
-    if (customer) setCustomerId(customer.id);
+    setCustomerId(customer?.id ?? "");
   };
   const selectCustomer = (id: string) => {
     setCustomerId(id);
@@ -298,35 +305,36 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
       title: f.get("title"), description: f.get("description"),
       typeId: f.get("typeId"), priorityId: null, statusId: null,
       sourceDepartmentId: departmentId, currentDepartmentId: departmentId, assigneeUserId: null,
-      customerId: customerId || null, customerCode,
+      customerId: customerId || null, customerCode, customerName: customers.find(customer => customer.id === customerId)?.trade_name ?? "",
       clientWhatsApp: f.get("clientWhatsApp"), internalNotes: "", dueAt: null, slaPolicyId: null,
       cancellationRequest: false,
       participantUserIds: f.getAll("participantUserIds"),
     }, files);
   };
-  return <Overlay title="Nova tarefa" eyebrow="TAREFAS" subtitle="Informe a solicitação. A coordenação fará a classificação após o cadastro." onClose={onClose}><form className="task-form task-create-form" onSubmit={submit}>
-    <section className="task-form-section wide">
+  return <Overlay title={attachmentsOnly ? "Enviar anexos da tarefa" : "Nova tarefa"} eyebrow="TAREFAS" subtitle="Informe a solicitação. A coordenação fará a classificação após o cadastro." onClose={onClose}><form className="task-form task-create-form" onSubmit={submit}>
+    {attachmentsOnly && <p className="wide" role="alert">A tarefa foi criada, mas os anexos não foram enviados. Reenvie os arquivos para concluir.</p>}
+    {!attachmentsOnly && <section className="task-form-section wide">
       <header><span>01</span><div><h3>Solicitação</h3><p>Descreva de forma simples o que precisa ser analisado.</p></div></header>
       <div className="task-form-section-grid">
         <label className="wide">Título *<input name="title" required defaultValue={initial?.title} placeholder="Resuma a demanda em uma frase" /></label>
+        <label className="task-customer-code-field">ID do cliente *<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" /><small className={customerId ? "task-customer-linked" : undefined}>{customerId ? "Cliente vinculado pelo ID Dontus" : "Informe os 6 dígitos do ID Dontus do cliente."}</small></label>
         <label>Cliente<select name="customerId" value={customerId} onChange={(event) => selectCustomer(event.target.value)}><option value="">Sem cliente vinculado</option>{customers.map((c) => <option value={c.id} key={c.id}>{c.trade_name}</option>)}</select></label>
-        <label>ID do cliente<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
         <label>WhatsApp do cliente *<input name="clientWhatsApp" type="tel" required minLength={10} defaultValue={initial?.clientWhatsApp} placeholder="(11) 99999-9999" /></label>
         <label>Setor responsável *<select name="departmentId" required value={departmentId} onChange={event => { setDepartmentId(event.target.value); setRequestedTypeId(""); }}><option value="">Selecione o setor</option>{module.departments.filter(department => department.active && departmentIds.includes(department.id)).map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select>{!departmentIds.length && <small>Nenhum setor ativo disponível para seu usuário. Confira os vínculos ou as permissões de Tarefas.</small>}</label>
-        <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators.map((item) => item.name).join(", ") || "Coordenador do setor não cadastrado"}</strong><small>A conclusão ficará pendente até a aprovação do coordenador.</small></div>
+        <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators[0]?.name || "Coordenador do setor não cadastrado"}</strong><small>A conclusão ficará pendente até a aprovação do coordenador.</small></div>
         <label className="wide">Tipo de tarefa *<select name="typeId" required value={selectedType?.id ?? ""} onChange={event => setRequestedTypeId(event.target.value)}><option value="">Selecionar...</option>{validTypes.map((t) => <option value={t.id} key={t.id}>{t.name}</option>)}</select>{departmentId && !validTypes.length && <small>Nenhum tipo ativo vinculado a este setor. Configure o vínculo em Cadastros → Tipos de tarefa.</small>}</label>
         {selectedType && <div className="task-readonly-field wide"><span>Etapa inicial</span><strong>{initialStatus?.name ?? "Este tipo precisa de uma etapa inicial ativa. Revise o cadastro do tipo."}</strong></div>}
         <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={initial?.description} placeholder="Explique o problema, o resultado esperado e as informações necessárias para a análise." /></label>
       </div>
-    </section>
+    </section>}
     <section className="task-form-section wide">
       <header><span>02</span><div><h3>Acesso e evidências</h3><p>Inclua participantes e arquivos somente quando forem necessários.</p></div></header>
       <div className="task-form-section-grid">
-        <fieldset className="wide task-participants"><legend>Colaboradores participantes</legend><p>Somente participantes, criador, responsável e coordenação terão acesso.</p>{module.collaborators.filter((item) => item.active).map((item) => <label key={item.id}><input type="checkbox" name="participantUserIds" value={item.id} /> <CollaboratorAvatar collaborator={item} /> {item.name}</label>)}</fieldset>
-        <MediaUploadField className="wide" label="Imagens e vídeos" name="files" accept="image/*,video/*" multiple selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada." onChange={(event) => setFiles((current) => mergeSelectedFiles(current, Array.from(event.currentTarget.files ?? [])))} />
+        {!attachmentsOnly && <CheckboxMultiSelect label="Colaboradores participantes" name="participantUserIds" options={module.collaborators.filter(item => item.active).map(item => ({ id: item.id, label: item.name }))} disabled={busy} hint="Somente participantes, criador, responsável e coordenação terão acesso." />}
+        <MediaUploadField className="wide" label="Imagens e vídeos" name="files" disabled={busy} accept="image/*,video/*" multiple selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada." onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); setFiles(current => mergeSelectedFiles(current, selectedFiles)); }} />
       </div>
     </section>
-    <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !departmentId || !selectedType || !initialStatus}>{busy ? "Salvando..." : "Criar tarefa"}</button></div>
+    <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || (!attachmentsOnly && (!departmentId || !selectedType || !initialStatus))}>{busy ? "Salvando..." : attachmentsOnly ? "Reenviar anexos" : "Criar tarefa"}</button></div>
   </form></Overlay>;
 }
 
@@ -338,14 +346,14 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
     setCustomerCode(value);
     const digits = value.replace(/\D/g, "");
     const customer = customers.find((item) => digits.length === 6 && publicCustomerCode(item) === digits);
-    if (customer) setCustomerId(customer.id);
+    setCustomerId(customer?.id ?? "");
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     onSubmit({
       title: form.get("title"), description: form.get("description"), typeId: form.get("typeId"),
-      customerId: customerId || null, customerCode,
+      customerId: customerId || null, customerCode, customerName: customers.find(customer => customer.id === customerId)?.trade_name ?? "",
       clientWhatsApp: form.get("clientWhatsApp"), cancellationRequest: false,
       participantUserIds: form.getAll("participantUserIds"), version: task.version,
     });
@@ -357,7 +365,7 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
     <label>WhatsApp do cliente *<input name="clientWhatsApp" required minLength={10} defaultValue={task.clientWhatsApp} /></label>
     <label>Tipo *<select name="typeId" required defaultValue={task.typeId}>{validTypes.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>
     <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={task.description} /></label>
-    <fieldset className="wide task-participants"><legend>Colaboradores participantes</legend>{module.collaborators.filter((item) => item.active).map((item) => <label key={item.id}><input type="checkbox" name="participantUserIds" value={item.id} defaultChecked={task.participantUserIds.includes(item.id)} /> <CollaboratorAvatar collaborator={item} /> {item.name}</label>)}</fieldset>
+    <CheckboxMultiSelect label="Colaboradores participantes" name="participantUserIds" options={module.collaborators.filter(item => item.active).map(item => ({ id: item.id, label: item.name }))} defaultValue={task.participantUserIds} disabled={busy} />
     <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? "Salvando..." : "Salvar alterações"}</button></div>
   </form></Overlay>;
 }
@@ -413,7 +421,8 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
       setFileInputKey((value) => value + 1);
     }
   };
-  return <Overlay title={`#${task.number} — ${task.title}`} eyebrow="DETALHES DA TAREFA" onClose={onClose} wide side detail headerMeta={<>
+  return <Overlay title={`${task.protocol} — ${task.title}`} eyebrow="DETALHES DA TAREFA" onClose={onClose} wide side detail headerMeta={<>
+    <span className="task-header-protocol"><Clipboard size={14} /> Protocolo: <strong>{task.protocol}</strong></span>
     <span className="task-header-status"><CircleDot size={14} /> {task.statusName}</span>
     <TaskClientStateBadge state={task.clientNotificationState}/>
     <span className="task-header-subtitle">{task.departmentName} · Atualizada em {dt(task.updatedAt)}</span>
@@ -461,7 +470,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
           if (!target?.requiresJustification || justification) await operate({ action: "changeTaskStatus", taskId: task.id, statusId: e.target.value, justification, version: task.version }, "Status atualizado.");
         }}>{availableStatuses.map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select></label>}
         {canEdit && has("changePriority") && <label className="priority-control"><span>Prioridade</span><select value={task.priorityId} onChange={(e) => void operate({ action: "changeTaskPriority", taskId: task.id, priorityId: e.target.value, version: task.version }, "Prioridade atualizada.")}>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select></label>}
-        {canEdit && has("changeSla") && <label className="sla-control"><span>Política de SLA</span><select value={task.slaPolicyId ?? ""} onChange={(e) => void operate({ action: "changeTaskSla", taskId: task.id, slaPolicyId: e.target.value || null, version: task.version }, "SLA recalculado.")}><option value="">Sem SLA</option>{module.slaPolicies.filter((s) => s.active && s.departmentId === task.currentDepartmentId).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select></label>}
+        {canEdit && has("changeSla") && <label className="sla-control"><span>Política de SLA</span><select value={task.slaPolicyId ?? ""} onChange={(e) => void operate({ action: "changeTaskSla", taskId: task.id, slaPolicyId: e.target.value || null, version: task.version }, "SLA recalculado.")}><option value="">Sem SLA</option>{module.slaPolicies.filter((s) => s.active).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select></label>}
       </div>
       <div className="task-action-buttons">
         {canEdit && has("assume") && !task.assigneeUserId && <button className="assume-action" disabled={busy} onClick={() => operate({ action: "assignTask", taskId: task.id, version: task.version }, "Tarefa assumida.")}><Check size={15} /> Assumir tarefa</button>}
@@ -479,7 +488,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
       <section className="task-history-card"><header><h3><History size={17} /> Histórico</h3><span>{task.history.length}</span></header><div className="task-history">{task.history.map((h) => <article key={h.id}><i /><div><b>{h.summary}</b><small>{h.actorName} · {dt(h.createdAt)}</small>{h.justification && <p>Justificativa: {h.justification}</p>}</div></article>)}</div></section>
     </div>
     </div>
-    {clientNoticeOpen && <div className="modal-backdrop"><form className="modal task-client-notice-modal" onSubmit={async (event) => { event.preventDefault(); if (!clientNoticeMessage.trim()) return; const result = await operate({ action: "communicateWithClient", taskId: task.id, clientAction: "requestContact", channel: "Interno", message: clientNoticeMessage.trim() }, "O responsável foi avisado para contatar o cliente."); if (result) setClientNoticeOpen(false); }}><div className="modal-header"><div><span className="eyebrow">COMUNICAÇÃO COM CLIENTE</span><h2>Avisar o cliente</h2><p>Envie um aviso interno para que o responsável faça o contato.</p></div><button type="button" onClick={() => setClientNoticeOpen(false)} aria-label="Fechar"><X size={20} /></button></div><div className="modal-body"><label className="field"><span>Orientação para o responsável</span><textarea value={clientNoticeMessage} onChange={(event) => setClientNoticeMessage(event.target.value)} required rows={5} placeholder="Descreva o que precisa ser informado ao cliente." /></label></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setClientNoticeOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy || !clientNoticeMessage.trim()}><Bell size={16} /> Enviar aviso</button></div></form></div>}
+    {clientNoticeOpen && <TaskClientNoticeModal task={task} message={clientNoticeMessage} onMessageChange={setClientNoticeMessage} busy={busy} onClose={() => setClientNoticeOpen(false)} onSend={async () => { const result = await operate({ action: "communicateWithClient", taskId: task.id, clientAction: "requestContact", channel: "Interno", message: clientNoticeMessage.trim() }, task.assigneeUserId ? "O responsável foi avisado para contatar o cliente." : "Solicitação de contato registrada na tarefa."); if (result) setClientNoticeOpen(false); return Boolean(result); }} />}
     {editing && <EditTaskModal task={task} module={module} customers={customers} busy={busy} onClose={() => setEditing(false)} onSubmit={async (payload) => { const result = await operate({ action: "updateTask", requireConfirmation: true, taskId: task.id, ...payload }, "Tarefa atualizada com sucesso."); if (result) setEditing(false); }} />}
     {attachmentPreview && <div className="task-media-preview-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) { if (attachmentPreview.temporary) URL.revokeObjectURL(attachmentPreview.url); setAttachmentPreview(null); } }}><section className="task-media-preview" role="dialog" aria-modal="true" aria-label={`Visualizar ${attachmentPreview.name}`}><header><strong>{attachmentPreview.name}</strong><button type="button" aria-label="Fechar" onClick={() => { if (attachmentPreview.temporary) URL.revokeObjectURL(attachmentPreview.url); setAttachmentPreview(null); }}><X size={19}/></button></header>{attachmentPreview.video ? <video controls autoPlay><source src={attachmentPreview.url}/></video> : <img src={attachmentPreview.url} alt={attachmentPreview.name}/>}<a href={attachmentPreview.url} target="_blank" rel="noreferrer">Abrir arquivo em nova guia</a></section></div>}
   </Overlay>;
@@ -561,7 +570,7 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
   };
   return <TaskCatalogActions.Provider value={{ remove: removeCatalog, toggle: toggleCatalog }}><div className={`task-settings ${canManage ? "" : "readonly"}`}><section>
         {tab === "sla" && <SimpleSlaEditor module={module} editingId={editingId} setEditingId={setEditingId} busy={busy} operate={operate} />}
-        {tab === "departments" && <Catalog title="Setores" editingId={editingId} onEdit={setEditingId} items={module.departments.map((d) => ({ id: d.id, title: d.name, subtitle: d.description, active: d.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskDepartment", "Setor salvo.")}><input name="name" required placeholder="Nome do setor" defaultValue={department?.name} /><input name="catalogDescription" placeholder="Descrição" defaultValue={department?.description} /><label><input type="checkbox" name="requiresAssigneeOnTransfer" defaultChecked={department?.requiresAssigneeOnTransfer} /> Exigir responsável</label><CheckGroup legend="Coordenadores" name="coordinatorUserIds" values={module.collaborators.filter((c) => c.active).map((c) => ({ id: c.id, label: c.name }))} selected={department?.coordinatorUserIds ?? []} /><ActiveField value={department?.active} /><FormButtons editing={!!department} busy={busy} onCancel={() => setEditingId(null)} label="setor" /></form></Catalog>}
+        {tab === "departments" && <Catalog title="Setores" editingId={editingId} onEdit={setEditingId} items={module.departments.map((d) => ({ id: d.id, title: d.name, subtitle: d.description, active: d.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskDepartment", "Setor salvo.")}><input name="name" required placeholder="Nome do setor" defaultValue={department?.name} /><input name="catalogDescription" placeholder="Descrição" defaultValue={department?.description} /><label><input type="checkbox" name="requiresAssigneeOnTransfer" defaultChecked={department?.requiresAssigneeOnTransfer} /> Exigir responsável</label><CheckboxMultiSelect label="Coordenadores / aprovadores do setor" name="coordinatorUserIds" options={module.collaborators.filter(c => c.active).map(c => ({ id: c.id, label: c.name }))} defaultValue={department?.coordinatorUserIds ?? []} hint="A coordenação será vinculada automaticamente às novas tarefas deste setor." /><ActiveField value={department?.active} /><FormButtons editing={!!department} busy={busy} onCancel={() => setEditingId(null)} label="setor" /></form></Catalog>}
     {tab === "priorities" && <Catalog title="Prioridades" editingId={editingId} onEdit={setEditingId} items={module.priorities.map((p) => ({ id: p.id, title: p.name, subtitle: `Ordem ${p.severityOrder} · prazo ${p.defaultDueMinutes ?? "—"} min`, active: p.active, color: p.color }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskPriority", "Prioridade salva.")}><input name="name" required placeholder="Nome" defaultValue={priority?.name} /><input name="severityOrder" required type="number" placeholder="Ordem" min="0" defaultValue={priority?.severityOrder ?? Math.max(0, ...module.priorities.map(p => p.severityOrder)) + 1} /><input name="color" type="color" defaultValue={priority?.color ?? "#2563eb"} /><input name="defaultDueMinutes" type="number" placeholder="Prazo padrão (min)" defaultValue={priority?.defaultDueMinutes ?? ""} /><ActiveField value={priority?.active} /><FormButtons editing={!!priority} busy={busy} onCancel={() => setEditingId(null)} label="prioridade" /></form></Catalog>}
     {tab === "statuses" && <Catalog title="Etapas do Kanban" editingId={editingId} onEdit={setEditingId} items={module.statuses.map((s) => ({ id: s.id, title: s.name, subtitle: `${module.departments.find((department) => department.id === s.departmentId)?.name ?? "Todos os setores"} · posição ${s.displayOrder}${s.isInitial ? " · inicial" : ""}${s.isFinal ? " · final" : ""}`, active: s.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskStatus", "Etapa do Kanban salva.")}>
       <label className="catalog-field"><span>Nome da etapa *</span><input name="name" required maxLength={120} placeholder="Ex.: Em análise" defaultValue={status?.name} autoFocus /></label>

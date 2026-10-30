@@ -198,6 +198,9 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("EndsAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("RecurrenceGroupId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("ResponsibleUserId")
                         .HasColumnType("uuid");
 
@@ -221,6 +224,8 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.HasIndex("AgendaStatusId");
 
                     b.HasIndex("AgendaTypeId");
+
+                    b.HasIndex("RecurrenceGroupId");
 
                     b.HasIndex("AgendaId", "StartsAt");
 
@@ -594,6 +599,19 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.HasIndex("Resource", "ResourceId");
 
                     b.ToTable("audit_events", (string)null);
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.CancellationProtocolCounter", b =>
+                {
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("LastNumber")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Year");
+
+                    b.ToTable("cancellation_protocol_counters", (string)null);
                 });
 
             modelBuilder.Entity("Dontus.Operations.Domain.ChatChannel", b =>

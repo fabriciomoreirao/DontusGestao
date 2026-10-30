@@ -27,6 +27,7 @@ const noteDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { day: "2-d
 export default function NotesModule({ module, busy, operate }: { module: NotesModuleData; busy: boolean; operate: Operate }) {
   const [query, setQuery] = useState("");
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [viewing, setViewing] = useState<Note | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [scope, setScope] = useState<"all"|"private"|"public">("all");
@@ -53,7 +54,7 @@ export default function NotesModule({ module, busy, operate }: { module: NotesMo
     if (from < 0 || to < 0) return;
     const [moved] = ordered.splice(from, 1);
     ordered.splice(to, 0, moved);
-    const result = await operate({ action: "reorderNotes", noteIds: ordered.map((note) => note.id) }, "Anotações reorganizadas com sucesso.");
+    const result = await operate({ action: "reorderNotes", noteIds: ordered.filter(note => note.canEdit).map(note => note.id) }, "Anotações reorganizadas com sucesso.");
     if (result) setDraggedId(null);
   };
 
@@ -79,7 +80,7 @@ export default function NotesModule({ module, busy, operate }: { module: NotesMo
 
     {visibleNotes.length === 0 ? <div className="notes-empty"><StickyNote size={30} /><strong>{query ? "Nenhuma anotação encontrada" : "Comece sua coleção de anotações"}</strong><p>{query ? "Tente outra palavra na busca." : "Registre informações, modelos e lembretes importantes para o seu dia."}</p>{!query && <button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={16} /> Criar primeira anotação</button>}</div> : <section className="notes-grid">
       {visibleNotes.map((note) => <NoteCard key={note.id} note={note} busy={busy} dragging={draggedId === note.id} copied={copiedId === note.id}
-        onEdit={() => note.canEdit && setEditor({ id: note.id, title: note.title, content: note.content, color: note.color, visibility: note.visibility })}
+        onEdit={() => note.canEdit ? setEditor({ id: note.id, title: note.title, content: note.content, color: note.color, visibility: note.visibility }) : setViewing(note)}
     onCopy={() => void copyNote(note)}
         onDuplicate={() => void operate({ action: "duplicateNote", id: note.id }, "Anotação duplicada com sucesso.")}
         onDelete={() => void operate({ action: "deleteNote", id: note.id }, "Anotação excluída com sucesso.")}
@@ -89,6 +90,7 @@ export default function NotesModule({ module, busy, operate }: { module: NotesMo
       />)}
     </section>}
 
+    {viewing && <div className="modal-backdrop" onMouseDown={event => event.currentTarget === event.target && setViewing(null)}><section className="modal note-editor" role="dialog" aria-modal="true" aria-label="Visualizar anotação pública"><header className="modal-head"><div><span className="eyebrow">ANOTAÇÃO PÚBLICA · {viewing.author}</span><h2>{viewing.title}</h2></div><button className="icon-button" aria-label="Fechar" onClick={() => setViewing(null)}><X size={20} /></button></header><div className="note-view-content">{viewing.content || "Sem conteúdo."}</div><div className="form-actions"><button className="secondary-button" onClick={() => void copyNote(viewing)}><Copy size={15} />{copiedId === viewing.id ? "Copiado" : "Copiar conteúdo"}</button><button className="primary-button" onClick={() => setViewing(null)}>Fechar</button></div></section></div>}
     {editor && <NoteEditor editor={editor} busy={busy} onClose={() => setEditor(null)} onSave={saveNote} />}
   </>;
 }

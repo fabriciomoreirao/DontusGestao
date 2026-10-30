@@ -53,6 +53,7 @@ public sealed class AgendaCommitment : Entity
     public DateTimeOffset StartsAt { get; set; }
     public DateTimeOffset EndsAt { get; set; }
     public required string CreatedBy { get; set; }
+    public Guid? RecurrenceGroupId { get; set; }
 }
 
 public sealed class AgendaCommitmentParticipant
