@@ -54,6 +54,9 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             .OrderBy(commitment => commitment.StartsAt)
             .Take(1500)
             .ToListAsync(cancellationToken);
+        var groupIds = commitments.Where(entry => entry.RecurrenceGroupId.HasValue).Select(entry => entry.RecurrenceGroupId!.Value).Distinct().ToArray();
+        var groupCounts = await db.AgendaCommitments.AsNoTracking().Where(entry => entry.RecurrenceGroupId.HasValue && groupIds.Contains(entry.RecurrenceGroupId.Value))
+            .GroupBy(entry => entry.RecurrenceGroupId!.Value).Select(group => new { Id = group.Key, Count = group.Count() }).ToDictionaryAsync(group => group.Id, group => group.Count, cancellationToken);
         var commitmentIds = commitments.Select(commitment => commitment.Id).ToArray();
         var participants = await db.AgendaCommitmentParticipants.AsNoTracking()
             .Where(participant => commitmentIds.Contains(participant.CommitmentId))
@@ -83,7 +86,8 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
                     users.GetValueOrDefault(commitment.ResponsibleUserId)?.DisplayName ?? "Responsável removido",
                     type?.Name ?? "Tipo removido", commitment.AgendaStatusId, status?.Name ?? "Status removido", status?.Color ?? "#64748b",
                     commitment.CreatedBy,
-                    participants.Where(participant => participant.CommitmentId == commitment.Id).Select(participant => participant.UserId).ToArray());
+                    participants.Where(participant => participant.CommitmentId == commitment.Id).Select(participant => participant.UserId).ToArray(),
+                    commitment.RecurrenceGroupId, commitment.RecurrenceGroupId.HasValue ? groupCounts.GetValueOrDefault(commitment.RecurrenceGroupId.Value, 1) : 1);
             }).ToArray(),
             canManage);
     }
@@ -225,6 +229,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
                 occurrences[index], occurrences[index].Add(duration), cancellationToken);
         }
 
+        var recurrenceGroupId = occurrences.Length > 1 ? Guid.NewGuid() : (Guid?)null;
         var createdIds = new List<Guid>();
         foreach (var startsAt in occurrences)
         {
@@ -240,6 +245,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
                 StartsAt = startsAt,
                 EndsAt = endsAt,
                 CreatedBy = actor.Email,
+                RecurrenceGroupId = recurrenceGroupId,
             };
             db.AgendaCommitments.Add(commitment);
             db.AgendaCommitmentParticipants.AddRange(validParticipantIds.Select(userId => new AgendaCommitmentParticipant { CommitmentId = commitment.Id, UserId = userId }));
@@ -401,17 +407,31 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         return responsible.DisplayName;
     }
 
-    public async Task DeleteCommitmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task DeleteCommitmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default, bool deleteSeries = false)
     {
+        actor.RequirePermission("work", "view");
         var commitment = await db.AgendaCommitments.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
             ?? throw new DomainException("Compromisso não encontrado.", 404);
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
-        await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
-        if (!string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) && commitment.ResponsibleUserId != actorUser.Id && !CanManage(actor))
-            throw new DomainException("Apenas o criador, responsável ou coordenador pode excluir o compromisso.", 403);
-        db.AgendaCommitmentParticipants.RemoveRange(db.AgendaCommitmentParticipants.Where(entry => entry.CommitmentId == id));
-        db.AgendaCommitments.Remove(commitment);
-        AddAudit(actor, "Delete", "agenda_commitment", id.ToString(), new { commitment.Title });
+        if (!string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("Apenas quem criou o compromisso pode excluí-lo.", 403);
+        if (deleteSeries && !commitment.RecurrenceGroupId.HasValue)
+            throw new DomainException("Este compromisso não pertence a uma série recorrente.", 409);
+        var entries = deleteSeries
+            ? await db.AgendaCommitments.Where(entry => entry.RecurrenceGroupId == commitment.RecurrenceGroupId).ToArrayAsync(cancellationToken)
+            : [commitment];
+        // Authorize every occurrence before changing tracked data, including moved occurrences.
+        foreach (var entry in entries)
+        {
+            if (!string.Equals(entry.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase))
+                throw new DomainException("A série contém compromissos de outro criador e não pode ser excluída.", 403);
+            await RequireCalendarAccessAsync(entry.AgendaId, actorUser.Id, actor, cancellationToken);
+        }
+        var ids = entries.Select(entry => entry.Id).ToArray();
+        db.AgendaCommitmentParticipants.RemoveRange(db.AgendaCommitmentParticipants.Where(entry => ids.Contains(entry.CommitmentId)));
+        db.AgendaCommitments.RemoveRange(entries);
+        foreach (var entry in entries)
+            AddAudit(actor, "Delete", "agenda_commitment", entry.Id.ToString(), new { entry.Title, entry.RecurrenceGroupId, DeleteSeries = deleteSeries, Count = entries.Length });
         await db.SaveChangesAsync(cancellationToken);
     }
 

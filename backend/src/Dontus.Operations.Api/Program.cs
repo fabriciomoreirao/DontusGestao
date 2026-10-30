@@ -478,10 +478,24 @@ app.MapPost("/api/public-surveys/{token}", async (string token, PublicSurveyResp
     return Results.Problem(statusCode: 404, title: "Pesquisa não encontrada", detail: "Este link não existe ou a pesquisa não está mais ativa.");
 }).RequireRateLimiting("operations");
 
-app.MapGet("/api/public-service-requests", (HttpContext context, IConfiguration configuration) =>
+app.MapGet("/api/public-service-requests", async (HttpContext context, IConfiguration configuration, OperationsDbContext db, CancellationToken cancellationToken) =>
 {
     if (!ValidServiceRequestKey(context, configuration))
         return Results.Problem(statusCode: 401, title: "Chave inválida", detail: "Informe a chave da integração no cabeçalho X-API-Key.");
+    if (context.Request.Query.TryGetValue("clientId", out var queryId))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var clientId = queryId.ToString();
+        if (!Regex.IsMatch(clientId, "^[0-9]{6}$"))
+            return Results.Problem(statusCode: 400, detail: "Informe os seis dígitos do ID do cliente.");
+        var candidates = await db.Customers.AsNoTracking()
+            .Select(customer => new { customer.DocumentMasked, customer.TradeName, customer.LegalName, customer.Phone })
+            .ToListAsync(cancellationToken);
+        var matches = candidates.Where(customer => PublicCustomerCode(customer.DocumentMasked) == clientId).Take(2).ToArray();
+        if (matches.Length != 1) return Results.Ok(new { matched = false });
+        var match = matches[0];
+        return Results.Ok(new { matched = true, companyName = string.IsNullOrWhiteSpace(match.TradeName) ? match.LegalName : match.TradeName, whatsapp = match.Phone });
+    }
     return Results.Ok(new
     {
         endpoint = "/api/public-service-requests",
@@ -1303,7 +1317,8 @@ operations.MapPost("", async (
             break;
 
         case "deleteAgendaCommitment":
-            await agendaService.DeleteCommitmentAsync(request.Id ?? throw new DomainException("Compromisso obrigatório."), actor, cancellationToken);
+        case "deleteAgendaCommitmentSeries":
+            await agendaService.DeleteCommitmentAsync(request.Id ?? throw new DomainException("Compromisso obrigatório."), actor, cancellationToken, deleteSeries: request.Action == "deleteAgendaCommitmentSeries");
             break;
 
         case "saveSuggestionPriority":
@@ -1401,7 +1416,7 @@ operations.MapPost("", async (
 
         case "saveEmployeeDepartment":
             id = await accessControl.SaveEmployeeDepartmentAsync(
-                new SaveEmployeeDepartmentCommand(request.Id, request.Name ?? "", request.Description, request.Active ?? true), actor, cancellationToken);
+                new SaveEmployeeDepartmentCommand(request.Id, request.Name ?? "", request.Description, request.Active ?? true, request.CoordinatorUserIds), actor, cancellationToken);
             break;
 
         case "saveEmployeeLevel":

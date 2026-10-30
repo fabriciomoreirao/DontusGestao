@@ -359,7 +359,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             .Join(db.Users.AsNoTracking(), membership => membership.UserId, appUser => appUser.Id,
                 (membership, appUser) => new { membership, appUser })
             .Where(entry => entry.membership.DepartmentId == task.CurrentDepartmentId
-                && entry.membership.IsCoordinator && entry.appUser.Active)
+                && entry.membership.IsCoordinator && entry.appUser.Active && entry.appUser.BlockedAt == null)
             .OrderBy(entry => entry.appUser.DisplayName)
             .Select(entry => (Guid?)entry.appUser.Id)
             .FirstOrDefaultAsync(cancellationToken);
@@ -761,7 +761,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         RequireCatalogManagement(actor);
         if (string.IsNullOrWhiteSpace(command.Name)) throw new DomainException("Nome do setor é obrigatório.");
         var name = command.Name.Trim();
-        if (await db.Users.CountAsync(x => command.CoordinatorUserIds.Contains(x.Id) && x.Active, cancellationToken) != command.CoordinatorUserIds.Distinct().Count())
+        if (await db.Users.CountAsync(x => command.CoordinatorUserIds.Contains(x.Id) && x.Active && x.BlockedAt == null, cancellationToken) != command.CoordinatorUserIds.Distinct().Count())
             throw new DomainException("Selecione coordenadores ativos e válidos.");
         var normalizedName = name.ToUpperInvariant();
         TaskDepartment? entity = command.Id.HasValue

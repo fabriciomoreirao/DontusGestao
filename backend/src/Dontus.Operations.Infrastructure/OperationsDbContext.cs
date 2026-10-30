@@ -255,6 +255,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.Description).HasColumnType("text");
             entity.Property(x => x.CreatedBy).HasMaxLength(254);
             entity.HasIndex(x => new { x.AgendaId, x.StartsAt });
+            entity.HasIndex(x => x.RecurrenceGroupId);
             entity.HasIndex(x => new { x.ResponsibleUserId, x.StartsAt, x.EndsAt });
             entity.HasOne<AgendaCalendar>().WithMany().HasForeignKey(x => x.AgendaId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<AgendaType>().WithMany().HasForeignKey(x => x.AgendaTypeId).OnDelete(DeleteBehavior.Restrict);

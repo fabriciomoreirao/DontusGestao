@@ -85,6 +85,14 @@ Em **Repetir compromisso → Escolher datas**, marque os dias no calendário; na
 
 Cada setor recebe uma agenda automaticamente, tanto nos cadastros de Colaboradores quanto em Tarefas. Em **Colaboradores → Acesso às agendas**, selecione as agendas individuais de cada usuário. O vínculo funcional com um setor não concede acesso automático. Administradores e gestores de agenda mantêm acesso geral. A migração AgendaCalendarPermissions preserva uma única vez os acessos anteriores como permissões por agenda; alterações futuras de setor não modificam essas permissões.
 
+Em **Compromisso**, o status aparece uma única vez. Somente o criador pode excluir o compromisso, inclusive quando outro usuário é responsável ou administra a agenda. Para repetições, **Excluir compromisso** remove apenas a ocorrência aberta e **Excluir série** remove todas as ocorrências vinculadas, após confirmação. As séries antigas consecutivas até o fim do mês são identificadas quando os detalhes coincidem e os registros foram criados juntos; registros ambíguos permanecem individuais. As visões **Dia** e **Semana** mostram uma régua de 30 minutos, com compromissos simultâneos lado a lado.
+
+Nos quadros operacionais, o mês fica no filtro compacto da barra superior. Os cabeçalhos foram reduzidos para ampliar a área útil. Filtros nativos acompanham o tema escuro. Os avisos de erro ficam acima das janelas e permanecem até serem fechados.
+
+Em **Chamados → Configurar IA**, o campo de modelo oferece **gpt-6-luna** e permite informar outros modelos. Os cards de chamados e acompanhamentos podem ser excluídos por usuários com permissão de edição. No formulário público, informar os seis dígitos de um ID cadastrado preenche empresa e WhatsApp; ambos continuam editáveis. Ao mudar o ID, os dados anteriores são limpos.
+
+Em **Cadastros → Setores** e **Colaboradores → Setores**, selecione os coordenadores/aprovadores do setor. A coordenação fica vinculada automaticamente às novas tarefas. Participantes usam um seletor compacto com busca e múltiplas caixas de seleção. Anotações públicas de outros colaboradores abrem em modo de leitura. No acompanhamento de CS, o card mantém apenas a conferência e a escolha do responsável; as informações de rodízio ficam em **Indicadores de rodízio**, sem exigir versão ou posição na fila para encaminhar.
+
 ## Módulo de Tarefas
 
 Em **Nova tarefa**, informe o **ID do cliente** com os seis dígitos do ID Dontus. Um ID cadastrado vincula o cliente automaticamente; alterar para um ID sem correspondência remove o vínculo anterior. O protocolo aparece no título e no cabeçalho assim que o card é aberto.
@@ -175,6 +183,8 @@ No detalhe do cliente, use **Gerar link de formulário**, escolha um modelo ativ
 O card indica se os formulários foram respondidos; **Ver respostas** abre uma nova página autenticada com todos os formulários desse acompanhamento e seus horários em Brasília. A lista atualiza ao voltar à janela, a cada 30 segundos ou pelo botão de atualização. Gerar links exige editar a LIA; consultar respostas exige visualizar a LIA. Tokens são aleatórios e armazenados com hash e uma cópia protegida pela chave persistente de Data Protection. As tabelas são criadas pela migration LiaClientForms.
 
 ## Atendimento omnichannel
+
+No **Chat interno**, enviar por Enter ou pelo botão mantém o cursor no campo e permite preparar a próxima mensagem durante o envio. Clicar em outro campo muda o foco normalmente, sem o chat recuperá-lo ao terminar. Rascunhos ficam separados por conversa; em caso de falha, o texto não enviado é preservado junto ao que foi digitado durante a espera. A janela **Avisar cliente**, nas tarefas, apresenta protocolo, cliente e responsável, com orientação em um campo maior e indicação de que o aviso é interno.
 
 No **Chat interno**, cole imagens com **Ctrl+V** no campo de mensagem. As imagens aparecem em uma prévia, podem ser removidas e são enviadas ao clicar em **Enviar mensagem**, com ou sem texto. Cada conversa mantém suas próprias imagens pendentes; uma falha de envio permite tentar novamente. Colar texto continua funcionando normalmente. O limite é de dez imagens por envio, com até 50 MB cada.
 

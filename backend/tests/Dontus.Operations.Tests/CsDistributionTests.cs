@@ -9,6 +9,20 @@ namespace Dontus.Operations.Tests;
 
 public sealed class CsDistributionTests
 {
+    [Fact]
+    public async Task Manual_forwarding_without_a_version_or_queue_expectation_preserves_distribution_indicators()
+    {
+        var f = await Setup(); await using var db = f.Db;
+        var item = Journey(""); db.WorkItems.Add(item); await db.SaveChangesAsync();
+        var command = Command(item, f.Users[1], "", Guid.NewGuid()) with { DistributionVersion = null, ExpectedNextResponsibleUserId = null };
+        await f.Service.UpdateWorkItemAsync(command, f.Actor);
+        Assert.Equal("Bruno", item.Owner);
+        Assert.Equal("onboarding", JsonNode.Parse(item.Description)!["phase"]!.ToString());
+        var board = await Board(f);
+        Assert.Equal(1, board.Collaborators.Single(user => user.UserId == f.Users[1].Id).TotalClients);
+        Assert.Single(db.AuditEvents.Where(entry => entry.Action == "DistributeCustomer"));
+    }
+
     private sealed record Fixture(OperationsDbContext Db, OperationsService Service, ActorContext Actor, AppUser[] Users, AccessGroup Group);
     private static async Task<Fixture> Setup()
     {

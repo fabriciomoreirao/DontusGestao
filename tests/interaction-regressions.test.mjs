@@ -468,7 +468,8 @@ test("integra chamados públicos, competência mensal e rolagem do chat", async 
   ]);
   assert.match(app, /label: "Chamados"/);
   assert.match(app, /label: "Acompanhamento de chamados"/);
-  assert.match(app, /kanban-month-filter/);
+  assert.match(app, /topbar-month-filter/);
+  assert.doesNotMatch(app, /Competência do Kanban/);
   assert.match(app, /brasiliaMonthKey/);
   assert.match(app, /label: "Chamados", count: serviceRequests\.length/);
   assert.match(requests, /TRIAGE_STAGES/);

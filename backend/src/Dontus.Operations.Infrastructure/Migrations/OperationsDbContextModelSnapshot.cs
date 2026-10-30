@@ -198,6 +198,9 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("EndsAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("RecurrenceGroupId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("ResponsibleUserId")
                         .HasColumnType("uuid");
 
@@ -221,6 +224,8 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.HasIndex("AgendaStatusId");
 
                     b.HasIndex("AgendaTypeId");
+
+                    b.HasIndex("RecurrenceGroupId");
 
                     b.HasIndex("AgendaId", "StartsAt");
 

@@ -414,6 +414,28 @@ public sealed class TaskServiceTests
         await Assert.ThrowsAsync<DomainException>(() => service.SaveTypeAsync(new(null, "Tipo compartilhado", "", null, null, scoped, departments, [scoped], true), actor));
     }
 
+    [Fact]
+    public async Task A_coordinator_selected_in_employee_departments_becomes_the_task_approver_and_survives_catalog_toggles()
+    {
+        await using var db = CreateContext(); var (tasks, actor) = await InitializeAsync(db);
+        var support = await db.TaskDepartments.SingleAsync(entry => entry.Name == "Suporte");
+        var coordinator = new AppUser { Email = "coordinator@test.local", DisplayName = "Coordenação escolhida", CreatedBy = "tests" };
+        db.Users.Add(coordinator); await db.SaveChangesAsync();
+        var access = new AccessControlService(db, new ConfigurationBuilder().Build(), new RecordingPasswordEmailSender());
+        await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, [coordinator.Id]), actor);
+        Assert.Contains((await access.GetManagementAsync(actor)).Departments.Single(entry => entry.Id == support.Id).CoordinatorUserIds!, id => id == coordinator.Id);
+        await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, false), actor);
+        await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true), actor);
+        Assert.True((await db.UserDepartments.SingleAsync(entry => entry.UserId == coordinator.Id && entry.DepartmentId == support.Id)).IsCoordinator);
+        var type = await db.TaskTypes.SingleAsync();
+        var created = await tasks.CreateAsync(new("Nova solicitação", "Descrição", type.Id, null, null, support.Id, support.Id, null,
+            null, "123456", "Clínica", "5511999999999", null, null, null, null, false, [coordinator.Id], []), actor);
+        Assert.Contains(await db.TaskComments.Where(entry => entry.TaskId == created.Id).ToArrayAsync(), entry => entry.Body == $"[APROVADOR:{coordinator.Id}]");
+        Assert.Contains(await db.TaskParticipants.Where(entry => entry.TaskId == created.Id).ToArrayAsync(), entry => entry.UserId == coordinator.Id);
+        await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, []), actor);
+        Assert.False((await db.UserDepartments.SingleAsync(entry => entry.UserId == coordinator.Id && entry.DepartmentId == support.Id)).IsCoordinator);
+    }
+
     private static async Task<(TaskService Service, ActorContext Actor)> InitializeAsync(
         OperationsDbContext db,
         ITaskFileStorage? storage = null)
