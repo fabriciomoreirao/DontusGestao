@@ -7,6 +7,7 @@ namespace Dontus.Operations.Infrastructure;
 public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> options) : DbContext(options)
 {
     public DbSet<ServiceRequestProtocolCounter> ServiceRequestProtocolCounters => Set<ServiceRequestProtocolCounter>();
+    public DbSet<CancellationProtocolCounter> CancellationProtocolCounters => Set<CancellationProtocolCounter>();
     public DbSet<CommissionConfirmation> CommissionConfirmations => Set<CommissionConfirmation>();
     public DbSet<LiaForm> LiaForms => Set<LiaForm>();
     public DbSet<LiaFormRequest> LiaFormRequests => Set<LiaFormRequest>();
@@ -75,6 +76,11 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<CancellationProtocolCounter>(entity => {
+            entity.ToTable("cancellation_protocol_counters");
+            entity.HasKey(x => x.Year);
+            entity.Property(x => x.Year).ValueGeneratedNever();
+        });
         modelBuilder.Entity<ServiceRequestProtocolCounter>(entity => {
             entity.ToTable("service_request_protocol_counters");
             entity.HasKey(x => x.Year);

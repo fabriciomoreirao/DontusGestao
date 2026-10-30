@@ -596,6 +596,19 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("audit_events", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.CancellationProtocolCounter", b =>
+                {
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("LastNumber")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Year");
+
+                    b.ToTable("cancellation_protocol_counters", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.ChatChannel", b =>
                 {
                     b.Property<Guid>("Id")

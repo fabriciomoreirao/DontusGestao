@@ -7817,6 +7817,12 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
 .lia-card-form-state{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:10px}.lia-card-form-state .lia-form-status{margin:0}.lia-card-form-state>a{color:var(--primary);font-size:.67rem;font-weight:800;white-space:nowrap;text-decoration:none}
 
 .task-header-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;color:var(--muted);font-size:.68rem}.task-header-meta .task-header-subtitle{margin-right:0!important}.task-header-meta>:is(.task-header-status,.task-client-state){min-height:28px!important;height:28px!important}.lia-responses-page .external-experience-header{text-align:left}.lia-responses-page .external-experience-header>div{min-width:0}
+.task-header-protocol,.cancellation-protocol{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 9px;border:1px solid color-mix(in srgb,var(--primary) 25%,var(--border));border-radius:8px;color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,var(--surface));font-size:.72rem}
+.task-header-protocol strong,.cancellation-protocol strong{font-weight:900;letter-spacing:.04em}
+.cancellation-card-main>.cancellation-protocol{justify-self:start;margin-bottom:8px}
+.cancellation-drawer>header .cancellation-protocol{margin-top:8px}
+.task-form-section-grid>.task-customer-code-field{padding:10px;border:1px solid color-mix(in srgb,var(--primary) 40%,var(--border));border-radius:10px;background:color-mix(in srgb,var(--primary) 5%,var(--surface))}
+.task-customer-code-field>small{color:var(--muted);font-size:.65rem;line-height:1.4}
 .modal.survey-builder { max-height: calc(100dvh - 32px); overflow: hidden; }
 .content .modal.survey-builder:not(.modal-side-panel):not(.suggestion-side-panel) > form { display: flex; flex-direction: column; min-height: 0; overflow: hidden !important; padding: 0 !important; gap: 0; }
 .survey-builder-body { flex: 1 1 auto; min-width: 0; min-height: 0; padding: 20px 24px; overflow-y: auto; overflow-x: hidden; display: grid; gap: 18px; scrollbar-gutter: stable; }

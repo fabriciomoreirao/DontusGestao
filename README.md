@@ -49,7 +49,7 @@ regras de negócio nem pela auditoria da aplicação e podem ser irreversíveis.
 
 ### Anexos privados na AWS
 
-Os protocolos são gerados automaticamente no formato `DON-AAAAMMDD-NNNNNN`.
+Os protocolos das tarefas são gerados automaticamente no formato `TAA0001` (por exemplo, `T260001`).
 Os anexos são armazenados em bucket S3 privado e acessados por links temporários
 de 10 minutos. Antes de iniciar os contêineres, preencha no arquivo `.env` as
 variáveis `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` com credenciais novas,
@@ -86,6 +86,10 @@ Em **Repetir compromisso → Escolher datas**, marque os dias no calendário; na
 Cada setor recebe uma agenda automaticamente, tanto nos cadastros de Colaboradores quanto em Tarefas. Em **Colaboradores → Acesso às agendas**, selecione as agendas individuais de cada usuário. O vínculo funcional com um setor não concede acesso automático. Administradores e gestores de agenda mantêm acesso geral. A migração AgendaCalendarPermissions preserva uma única vez os acessos anteriores como permissões por agenda; alterações futuras de setor não modificam essas permissões.
 
 ## Módulo de Tarefas
+
+Em **Nova tarefa**, informe o **ID do cliente** com os seis dígitos do ID Dontus. Um ID cadastrado vincula o cliente automaticamente; alterar para um ID sem correspondência remove o vínculo anterior. O protocolo aparece no título e no cabeçalho assim que o card é aberto.
+
+Os cancelamentos exibem o protocolo no card e no cabeçalho dos detalhes, com busca pelo número. A sequência própria começa em `C260001`, `C260002` e assim por diante, com ano e reinício anual pelo horário de Brasília. O servidor gera e preserva o protocolo; edições não o alteram e exclusões não reutilizam números. A migration `CancellationAnnualProtocols` numera solicitações antigas em ordem de criação e continua após protocolos já existentes. O contador de cancelamentos é independente do contador de Chamados.
 
 As seleções operacionais utilizam apenas opções cadastradas e ativas. Opções fixas de exemplo e valores encontrados somente no histórico não são acrescentados às listas. Os registros históricos continuam preservados, e os cadastros administrativos permitem consultar e reativar opções inativas. Reiniciar o sistema não reativa prioridades bloqueadas nem recria cadastros excluídos do RH e etapas excluídas de Tarefas.
 

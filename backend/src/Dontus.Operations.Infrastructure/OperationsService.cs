@@ -990,6 +990,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
         var commissionDecisionData = await CommissionDecisionPolicy.PrepareAsync(db, item.Module, item.Description, null, item.AmountCents, actor, cancellationToken, item.CreatedBy);
         item.Description = commissionDecisionData.Description; item.AmountCents = commissionDecisionData.Amount;
+        if (item.Module == "cancellations")
+        {
+            await new CancellationProtocolService(db).CreateAsync(item, actor, cancellationToken);
+            return item.Id;
+        }
         db.WorkItems.Add(item);
         db.Activities.Add(new Activity
         {
@@ -1326,7 +1331,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         item.Title = command.Title.Trim();
         item.Owner = string.IsNullOrWhiteSpace(command.Owner) ? item.Owner : command.Owner.Trim();
         item.AmountCents = Math.Max(0, command.AmountCents);
-        item.Description = command.Description?.Trim() ?? "";
+        item.Description = item.Module == "cancellations"
+            ? CancellationProtocolService.PreserveProtocol(item.Description, command.Description)
+            : command.Description?.Trim() ?? "";
         if (item.Module == "commissions" && CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "decision") is "approved" or "rejected")
             item.Status = CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "decision") == "approved" ? "Aprovada" : "Reprovada";
         if (item.Module == "cs" && CustomerSuccessJourneyStatus(item.Description) is { } journeyStatus)

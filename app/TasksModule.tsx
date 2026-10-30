@@ -279,13 +279,13 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
   const selectedDepartment = module.departments.find((department) => department.id === departmentId);
   const sectorCoordinators = module.collaborators.filter((item) => item.active && item.coordinatorDepartmentIds.includes(departmentId));
   const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
-  const [customerCode, setCustomerCode] = useState(initial?.customerCode ?? "");
+  const [customerCode, setCustomerCode] = useState(initial?.customerCode ?? publicCustomerCode(customers.find(customer => customer.id === initial?.customerId)));
   const [files, setFiles] = useState<File[]>([]);
   const resolveCustomerCode = (value: string) => {
     setCustomerCode(value);
     const digits = value.replace(/\D/g, "");
     const customer = customers.find((item) => digits.length === 6 && publicCustomerCode(item) === digits);
-    if (customer) setCustomerId(customer.id);
+    setCustomerId(customer?.id ?? "");
   };
   const selectCustomer = (id: string) => {
     setCustomerId(id);
@@ -298,7 +298,7 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
       title: f.get("title"), description: f.get("description"),
       typeId: f.get("typeId"), priorityId: null, statusId: null,
       sourceDepartmentId: departmentId, currentDepartmentId: departmentId, assigneeUserId: null,
-      customerId: customerId || null, customerCode,
+      customerId: customerId || null, customerCode, customerName: customers.find(customer => customer.id === customerId)?.trade_name ?? "",
       clientWhatsApp: f.get("clientWhatsApp"), internalNotes: "", dueAt: null, slaPolicyId: null,
       cancellationRequest: false,
       participantUserIds: f.getAll("participantUserIds"),
@@ -309,8 +309,8 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
       <header><span>01</span><div><h3>Solicitação</h3><p>Descreva de forma simples o que precisa ser analisado.</p></div></header>
       <div className="task-form-section-grid">
         <label className="wide">Título *<input name="title" required defaultValue={initial?.title} placeholder="Resuma a demanda em uma frase" /></label>
+        <label className="task-customer-code-field">ID do cliente *<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" /><small className={customerId ? "task-customer-linked" : undefined}>{customerId ? "Cliente vinculado pelo ID Dontus" : "Informe os 6 dígitos do ID Dontus do cliente."}</small></label>
         <label>Cliente<select name="customerId" value={customerId} onChange={(event) => selectCustomer(event.target.value)}><option value="">Sem cliente vinculado</option>{customers.map((c) => <option value={c.id} key={c.id}>{c.trade_name}</option>)}</select></label>
-        <label>ID do cliente<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
         <label>WhatsApp do cliente *<input name="clientWhatsApp" type="tel" required minLength={10} defaultValue={initial?.clientWhatsApp} placeholder="(11) 99999-9999" /></label>
         <label>Setor responsável *<select name="departmentId" required value={departmentId} onChange={event => { setDepartmentId(event.target.value); setRequestedTypeId(""); }}><option value="">Selecione o setor</option>{module.departments.filter(department => department.active && departmentIds.includes(department.id)).map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select>{!departmentIds.length && <small>Nenhum setor ativo disponível para seu usuário. Confira os vínculos ou as permissões de Tarefas.</small>}</label>
         <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators.map((item) => item.name).join(", ") || "Coordenador do setor não cadastrado"}</strong><small>A conclusão ficará pendente até a aprovação do coordenador.</small></div>
@@ -338,14 +338,14 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
     setCustomerCode(value);
     const digits = value.replace(/\D/g, "");
     const customer = customers.find((item) => digits.length === 6 && publicCustomerCode(item) === digits);
-    if (customer) setCustomerId(customer.id);
+    setCustomerId(customer?.id ?? "");
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     onSubmit({
       title: form.get("title"), description: form.get("description"), typeId: form.get("typeId"),
-      customerId: customerId || null, customerCode,
+      customerId: customerId || null, customerCode, customerName: customers.find(customer => customer.id === customerId)?.trade_name ?? "",
       clientWhatsApp: form.get("clientWhatsApp"), cancellationRequest: false,
       participantUserIds: form.getAll("participantUserIds"), version: task.version,
     });
@@ -413,7 +413,8 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
       setFileInputKey((value) => value + 1);
     }
   };
-  return <Overlay title={`#${task.number} — ${task.title}`} eyebrow="DETALHES DA TAREFA" onClose={onClose} wide side detail headerMeta={<>
+  return <Overlay title={`${task.protocol} — ${task.title}`} eyebrow="DETALHES DA TAREFA" onClose={onClose} wide side detail headerMeta={<>
+    <span className="task-header-protocol"><Clipboard size={14} /> Protocolo: <strong>{task.protocol}</strong></span>
     <span className="task-header-status"><CircleDot size={14} /> {task.statusName}</span>
     <TaskClientStateBadge state={task.clientNotificationState}/>
     <span className="task-header-subtitle">{task.departmentName} · Atualizada em {dt(task.updatedAt)}</span>
