@@ -1399,7 +1399,6 @@ export default function OperationsApp() {
       <aside id="workspace-sidebar" className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
         <div className="brand">
           <Image src="/dontus-logo.png" alt="Dontus Gestão Odontológica" width={184} height={52} priority unoptimized />
-          <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed(current => { const next = !current; window.localStorage.setItem("dontus.sidebar-collapsed", String(next)); return next; })} title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"} aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}>{sidebarCollapsed ? <PanelLeftOpen size={17}/> : <PanelLeftClose size={17}/>}</button>
         </div>
         <nav aria-label="Navegação principal">
           {navigationGroups.map((group) => {
