@@ -1855,6 +1855,38 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("customer_catalog_options", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.CustomerDontusLink", b =>
+                {
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("ExternalClientId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Identification")
+                        .IsRequired()
+                        .HasMaxLength(19)
+                        .HasColumnType("character varying(19)");
+
+                    b.Property<DateTimeOffset>("LinkedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LinkedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("CustomerId");
+
+                    b.HasIndex("Identification")
+                        .IsUnique();
+
+                    b.ToTable("customer_dontus_links", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.DecisionItem", b =>
                 {
                     b.Property<string>("Code")
@@ -3652,6 +3684,15 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("StrategicNetworkId")
                         .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.CustomerDontusLink", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Dontus.Operations.Domain.EmployeeSupervision", b =>

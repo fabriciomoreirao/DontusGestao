@@ -50,12 +50,17 @@ services:
       Authentication__BootstrapPassword: ${LOCAL_ADMIN_PASSWORD:-dontus_teste_2026}
       AccessControl__BootstrapAdminEmail: ${LOCAL_USER_EMAIL:-gestor@dontus.local}
       AccessControl__BootstrapAdminName: ${LOCAL_USER_NAME:-Gestor Dontus}
+      Email__AppUrl: ${APP_PUBLIC_URL:-http://localhost:3000}
       Email__Smtp__Host: ${SMTP_HOST:-}
       Email__Smtp__Port: ${SMTP_PORT:-587}
       Email__Smtp__UseSsl: ${SMTP_USE_SSL:-true}
       Email__Smtp__Username: ${SMTP_USERNAME:-}
       Email__Smtp__Password: ${SMTP_PASSWORD:-}
       Email__Smtp__From: ${SMTP_FROM:-}
+      DontusIntegration__ClientsToken: ${DONTUS_CLIENTS_TOKEN:-}
+      DontusIntegration__UsersToken: ${DONTUS_USERS_TOKEN:-}
+      DontusIntegration__ClientsBaseUrl: ${DONTUS_CLIENTS_BASE_URL:-https://ambiente.dontus.com.br}
+      DontusIntegration__UsersBaseUrl: ${DONTUS_USERS_BASE_URL:-https://sistema.dontus.com.br}
       TaskFiles__BucketName: ${AWS_S3_BUCKET:-controle-prod}
       TaskFiles__Region: ${AWS_REGION:-us-east-1}
       Chat__DataProtectionKeysPath: /app/data-protection-keys

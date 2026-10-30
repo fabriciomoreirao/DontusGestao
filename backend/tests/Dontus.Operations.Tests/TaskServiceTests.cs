@@ -118,6 +118,7 @@ public sealed class TaskServiceTests
 
         var readOnly = admin with
         {
+            FullAccess = false,
             Permissions =
             [
                 new EffectivePermission("tasks", true, false, true, false, false, [])
@@ -290,6 +291,100 @@ public sealed class TaskServiceTests
         Assert.False(await db.CorporateTasks.AnyAsync(x => x.Id == task.Id));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(30)]
+    public async Task Sla_days_can_be_saved_and_changed_without_losing_the_deadline(int days)
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
+        var department = await db.TaskDepartments.FirstAsync(x => x.Active);
+        var command = new SaveTaskSlaPolicyCommand(null, $"{days} dias úteis", department.Id, null, null, 0, 0, days * 480,
+            [1,2,3,4,5], "08:00", "16:00", 0, 0, true, [], true);
+        var id = await service.SaveSlaPolicyAsync(command, actor);
+        Assert.Equal(days * 480, (await db.TaskSlaPolicies.SingleAsync(x => x.Id == id)).CompletionMinutes);
+        await service.SaveSlaPolicyAsync(command with { Id = id, Name = "Prazo alterado", CompletionMinutes = (days + 1) * 480 }, actor);
+        Assert.Equal((days + 1) * 480, (await service.GetModuleAsync(actor)).SlaPolicies.Single(x => x.Id == id).CompletionMinutes);
+    }
+
+    [Fact]
+    public async Task Startup_preserves_inactive_priorities_and_does_not_restore_deleted_status_options()
+    {
+        await using var db = CreateContext(); var (service, _) = await InitializeAsync(db);
+        var priority = await db.TaskPriorities.SingleAsync(x => x.Name == "Não definida"); priority.Active = false;
+        var status = await db.TaskStatuses.SingleAsync(x => x.Name == "Aguardando aprovação");
+        db.TaskTypeStatuses.RemoveRange(await db.TaskTypeStatuses.Where(x => x.StatusId == status.Id).ToListAsync());
+        db.TaskSlaPauseStatuses.RemoveRange(await db.TaskSlaPauseStatuses.Where(x => x.StatusId == status.Id).ToListAsync());
+        db.TaskStatuses.Remove(status); await db.SaveChangesAsync(); await service.InitializeAsync();
+        Assert.False(priority.Active); Assert.False(await db.TaskStatuses.AnyAsync(x => x.Name == "Aguardando aprovação"));
+    }
+
+    [Fact]
+    public async Task Employee_department_type_and_stages_are_available_to_a_full_access_user_without_memberships()
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
+        var access = new AccessControlService(db, new ConfigurationBuilder().Build(), new RecordingPasswordEmailSender());
+        var departmentId = await access.SaveEmployeeDepartmentAsync(new(null, "Setor criado em Colaboradores", "Compartilhado com tarefas", true), actor);
+        db.UserDepartments.RemoveRange(await db.UserDepartments.ToListAsync()); await db.SaveChangesAsync();
+        var initialId = await service.SaveStatusAsync(new(null, "Pendente configurada", null, 1, "Pendente configurada", true, false, true, true, false, true), actor);
+        var finalId = await service.SaveStatusAsync(new(null, "Final configurada", null, 2, "Final configurada", false, true, false, true, false, true), actor);
+        var typeId = await service.SaveTypeAsync(new(null, "Backup configurado", "", null, null, initialId, [departmentId], [initialId, finalId], true), actor);
+        var module = await service.GetModuleAsync(actor);
+        Assert.Contains(module.Departments, department => department.Id == departmentId && department.Active);
+        var type = Assert.Single(module.Types, type => type.Id == typeId);
+        Assert.Contains(departmentId, type.DepartmentIds); Assert.Equal(initialId, type.InitialStatusId); Assert.Contains(finalId, type.AllowedStatusIds);
+        var created = await service.CreateAsync(new("Tarefa no novo setor", "Contexto", typeId, null, null, departmentId, departmentId, null,
+            null, "150001", null, "5511999990000", null, null, null, null, false, [], []), actor);
+        var task = Assert.Single((await service.GetModuleAsync(actor)).Tasks, task => task.Id == created.Id);
+        Assert.Equal("Backup configurado", task.TypeName); Assert.Equal("Pendente configurada", task.StatusName);
+        Assert.Equal("Setor criado em Colaboradores", task.DepartmentName);
+    }
+
+    [Fact]
+    public async Task A_retired_initial_reference_is_repaired_to_the_unique_configured_initial_without_moving_existing_tasks()
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
+        var type = await db.TaskTypes.SingleAsync(); var departmentId = (await db.TaskTypeDepartments.SingleAsync()).DepartmentId;
+        var existing = await service.CreateAsync(new("Histórico preservado", "Contexto", type.Id, null, null, departmentId, departmentId, null,
+            null, "150001", null, "5511999990000", null, null, null, null, false, [], []), actor);
+        var oldId = type.InitialStatusId; (await db.TaskStatuses.SingleAsync(status => status.Id == oldId)).Active = false;
+        await db.SaveChangesAsync();
+        var configured = await service.SaveStatusAsync(new(null, "Pendente", null, 1, "Pendente", true, false, true, true, false, true), actor);
+        await service.InitializeAsync();
+        Assert.Equal(configured, type.InitialStatusId);
+        Assert.True(await db.TaskTypeStatuses.AnyAsync(link => link.TaskTypeId == type.Id && link.StatusId == configured));
+        Assert.Equal(oldId, (await db.CorporateTasks.SingleAsync(task => task.Id == existing.Id)).StatusId);
+        Assert.False((await db.TaskStatuses.SingleAsync(status => status.Id == oldId)).Active);
+        Assert.Single(db.AuditEvents.Where(entry => entry.Action == "RepairTaskTypeInitialStatus"));
+        var version = type.Version; await service.InitializeAsync(); Assert.Equal(version, type.Version);
+        Assert.Single(db.AuditEvents.Where(entry => entry.Action == "RepairTaskTypeInitialStatus"));
+        var created = await service.CreateAsync(new("Novo fluxo", "Contexto", type.Id, null, null, departmentId, departmentId, null,
+            null, "150001", null, "5511999990000", null, null, null, null, false, [], []), actor);
+        Assert.Equal(configured, (await db.CorporateTasks.SingleAsync(task => task.Id == created.Id)).StatusId);
+    }
+
+    [Fact]
+    public async Task An_ambiguous_initial_configuration_is_not_guessed_or_reactivated()
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
+        var type = await db.TaskTypes.SingleAsync(); var oldId = type.InitialStatusId;
+        (await db.TaskStatuses.SingleAsync(status => status.Id == oldId)).Active = false; await db.SaveChangesAsync();
+        foreach (var name in new[] { "Inicial A", "Inicial B" })
+            await service.SaveStatusAsync(new(null, name, null, 1, name, true, false, true, true, false, true), actor);
+        await service.InitializeAsync(); Assert.Equal(oldId, type.InitialStatusId);
+        Assert.False((await db.TaskStatuses.SingleAsync(status => status.Id == oldId)).Active);
+        Assert.Empty(db.AuditEvents.Where(entry => entry.Action == "RepairTaskTypeInitialStatus"));
+    }
+
+    [Fact]
+    public async Task A_type_for_multiple_departments_requires_a_shared_initial_stage()
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
+        var departments = await db.TaskDepartments.Where(department => department.Active).Take(2).Select(department => department.Id).ToArrayAsync();
+        var scoped = await service.SaveStatusAsync(new(null, "Inicial restrita", departments[0], 1, "Inicial restrita", true, false, true, true, false, true), actor);
+        await Assert.ThrowsAsync<DomainException>(() => service.SaveTypeAsync(new(null, "Tipo compartilhado", "", null, null, scoped, departments, [scoped], true), actor));
+    }
+
     private static async Task<(TaskService Service, ActorContext Actor)> InitializeAsync(
         OperationsDbContext db,
         ITaskFileStorage? storage = null)
@@ -300,7 +395,7 @@ public sealed class TaskServiceTests
                 ["AccessControl:BootstrapAdminEmail"] = "gestor@dontus.local",
                 ["AccessControl:BootstrapAdminName"] = "Gestor Dontus",
             }).Build();
-        var access = new AccessControlService(db, configuration);
+        var access = new AccessControlService(db, configuration, new RecordingPasswordEmailSender());
         await access.InitializeAsync();
         var service = new TaskService(db, storage);
         await service.InitializeAsync();

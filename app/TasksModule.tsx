@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { createContext, FormEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
 import MediaUploadField from "@/app/MediaUploadField";
+import { availableTaskDepartments, initialTaskStatuses, taskInitialSelection, taskTypesForDepartment } from "@/lib/task-catalogs";
 
 export type TaskModuleData = {
   tasks: CorporateTask[];
@@ -97,10 +98,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   const reminderFilter = useReminderFilter("tasks");
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const currentCollaborator = module.collaborators.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
-  const responsibleDepartmentIds = currentCollaborator?.coordinatorDepartmentIds.length
-    ? currentCollaborator.coordinatorDepartmentIds
-    : currentCollaborator?.departmentIds ?? [];
-  const availableDepartments = module.departments.filter((item) => item.active && (!currentCollaborator || responsibleDepartmentIds.includes(item.id)));
+  const availableDepartments = availableTaskDepartments(module.departments, currentCollaborator, has("viewOtherDepartments"));
   const departmentFilter = availableDepartments.some((item) => item.id === department) ? department : "";
   const priorityFilter = module.priorities.some((item) => item.id === priority && item.active) ? priority : "";
   const assigneeFilter = module.collaborators.some((item) => item.id === assignee && item.active) ? assignee : "";
@@ -193,7 +191,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
       </div>
     </section>
 
-    {creating && <CreateTaskModal module={module} customers={customers} user={user} departmentIds={availableDepartments.map((item) => item.id)} busy={busy} onClose={() => setCreating(false)} onSubmit={async (payload, files) => {
+    {creating && <CreateTaskModal module={module} customers={customers} user={user} departmentIds={availableDepartments.map((item) => item.id)} initialDepartmentId={departmentFilter} busy={busy} onClose={() => setCreating(false)} onSubmit={async (payload, files) => {
       const result = await operate({ action: "createTask", ...payload }, "Tarefa criada, protocolo e SLA calculados.");
       if (!result) return;
       setCreating(false);
@@ -268,11 +266,16 @@ function TaskClientStateBadge({state}:{state:string}){
   return <span className={`task-client-state ${tone}`}>{normalized==="Cliente Informado"?<CheckCircle2 size={12}/>:normalized==="Sem Necessidade"?<Check size={12}/>:<Bell size={12}/>} {normalized}</span>
 }
 
-export function CreateTaskModal({ module, customers, user, departmentIds, busy, initial, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; busy: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
-  const originDepartment = module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.name.toLocaleLowerCase("pt-BR") === user.department.toLocaleLowerCase("pt-BR"))
+export function CreateTaskModal({ module, customers, user, departmentIds, initialDepartmentId, busy, initial, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; initialDepartmentId?: string; busy: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
+  const originDepartment = module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.id === initialDepartmentId)
+    ?? module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.name.toLocaleLowerCase("pt-BR") === user.department.toLocaleLowerCase("pt-BR"))
     ?? module.departments.find((department) => department.active && departmentIds.includes(department.id));
   const [departmentId, setDepartmentId] = useState(originDepartment?.id ?? "");
-  const validTypes = module.types.filter((t) => t.active && t.departmentIds.includes(departmentId));
+  const [requestedTypeId, setRequestedTypeId] = useState("");
+  const validTypes = taskTypesForDepartment(module.types, departmentId);
+  const selectedType = validTypes.find(type => type.id === requestedTypeId);
+  const initialStatus = module.statuses.find(status => status.id === selectedType?.initialStatusId && status.active && status.acceptsNewTasks && !status.isFinal
+    && (!status.departmentId || status.departmentId === departmentId));
   const selectedDepartment = module.departments.find((department) => department.id === departmentId);
   const sectorCoordinators = module.collaborators.filter((item) => item.active && item.coordinatorDepartmentIds.includes(departmentId));
   const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
@@ -309,9 +312,10 @@ export function CreateTaskModal({ module, customers, user, departmentIds, busy, 
         <label>Cliente<select name="customerId" value={customerId} onChange={(event) => selectCustomer(event.target.value)}><option value="">Sem cliente vinculado</option>{customers.map((c) => <option value={c.id} key={c.id}>{c.trade_name}</option>)}</select></label>
         <label>ID do cliente<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
         <label>WhatsApp do cliente *<input name="clientWhatsApp" type="tel" required minLength={10} defaultValue={initial?.clientWhatsApp} placeholder="(11) 99999-9999" /></label>
-        <div className="task-readonly-field"><span>Setor responsável</span><strong>{selectedDepartment?.name ?? "Setor não configurado"}</strong></div>
+        <label>Setor responsável *<select name="departmentId" required value={departmentId} onChange={event => { setDepartmentId(event.target.value); setRequestedTypeId(""); }}><option value="">Selecione o setor</option>{module.departments.filter(department => department.active && departmentIds.includes(department.id)).map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select>{!departmentIds.length && <small>Nenhum setor ativo disponível para seu usuário. Confira os vínculos ou as permissões de Tarefas.</small>}</label>
         <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators.map((item) => item.name).join(", ") || "Coordenador do setor não cadastrado"}</strong><small>A conclusão ficará pendente até a aprovação do coordenador.</small></div>
-        <label className="wide">Tipo de tarefa *<select name="typeId" required><option value="">Selecionar...</option>{validTypes.map((t) => <option value={t.id} key={t.id}>{t.name}</option>)}</select></label>
+        <label className="wide">Tipo de tarefa *<select name="typeId" required value={selectedType?.id ?? ""} onChange={event => setRequestedTypeId(event.target.value)}><option value="">Selecionar...</option>{validTypes.map((t) => <option value={t.id} key={t.id}>{t.name}</option>)}</select>{departmentId && !validTypes.length && <small>Nenhum tipo ativo vinculado a este setor. Configure o vínculo em Cadastros → Tipos de tarefa.</small>}</label>
+        {selectedType && <div className="task-readonly-field wide"><span>Etapa inicial</span><strong>{initialStatus?.name ?? "Este tipo precisa de uma etapa inicial ativa. Revise o cadastro do tipo."}</strong></div>}
         <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={initial?.description} placeholder="Explique o problema, o resultado esperado e as informações necessárias para a análise." /></label>
       </div>
     </section>
@@ -322,7 +326,7 @@ export function CreateTaskModal({ module, customers, user, departmentIds, busy, 
         <MediaUploadField className="wide" label="Imagens e vídeos" name="files" accept="image/*,video/*" multiple selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada." onChange={(event) => setFiles((current) => mergeSelectedFiles(current, Array.from(event.currentTarget.files ?? [])))} />
       </div>
     </section>
-    <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? "Salvando..." : "Criar tarefa"}</button></div>
+    <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !departmentId || !selectedType || !initialStatus}>{busy ? "Salvando..." : "Criar tarefa"}</button></div>
   </form></Overlay>;
 }
 
@@ -544,7 +548,6 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
   const department = module.departments.find((item) => item.id === editingId);
   const priority = module.priorities.find((item) => item.id === editingId);
   const status = module.statuses.find((item) => item.id === editingId);
-  const type = module.types.find((item) => item.id === editingId);
   const removeCatalog = async (catalog: string, id: string, label: string) => {
     await operate({ action: "deleteTaskCatalog", catalog, id }, `${label} desativado com histórico preservado.`);
     setEditingId(null);
@@ -565,7 +568,7 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
       <label className="catalog-field"><span>Setor</span><select name="departmentId" defaultValue={status?.departmentId ?? ""}><option value="">Todos os setores</option>{module.departments.filter((department) => department.active || department.id === status?.departmentId).map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}</select></label>
       <label className="catalog-field"><span>Posição no Kanban</span><input name="displayOrder" type="number" min="0" required defaultValue={status?.displayOrder ?? Math.max(0, ...module.statuses.map(s => s.displayOrder)) + 1} /></label>
       <label><input name="isInitial" type="checkbox" defaultChecked={status?.isInitial} /> Primeira etapa</label><label><input name="isFinal" type="checkbox" defaultChecked={status?.isFinal} /> Etapa final</label><label><input name="acceptsNewTasks" type="checkbox" defaultChecked={status?.acceptsNewTasks ?? true} /> Recebe novas tarefas</label><label><input name="manualMovement" type="checkbox" defaultChecked={status?.manualMovement ?? true} /> Permite movimentação</label><label><input name="requiresJustification" type="checkbox" defaultChecked={status?.requiresJustification} /> Exige justificativa</label><ActiveField value={status?.active} /><FormButtons editing={!!status} busy={busy} onCancel={() => setEditingId(null)} label="etapa" /></form></Catalog>}
-        {tab === "types" && <Catalog title="Tipos de tarefa" editingId={editingId} onEdit={setEditingId} items={module.types.map((t) => ({ id: t.id, title: t.name, subtitle: t.description, active: t.active }))}><form key={editingId ?? "new"} className="catalog-complex-form" onSubmit={async (e) => { e.preventDefault(); const f = new FormData(e.currentTarget); if (await operate({ action: "saveTaskType", id: editingId, name: f.get("name"), catalogDescription: f.get("catalogDescription"), departmentIds: f.getAll("departmentIds"), initialStatusId: f.get("initialStatusId"), allowedStatusIds: [...new Set([...f.getAll("allowedStatusIds"), f.get("initialStatusId")])], defaultPriorityId: f.get("defaultPriorityId") || null, defaultSlaPolicyId: f.get("defaultSlaPolicyId") || null, active: f.has("active") }, "Tipo salvo.")) setEditingId(null); }}><input name="name" required placeholder="Nome" defaultValue={type?.name} /><input name="catalogDescription" placeholder="Descrição" defaultValue={type?.description} /><select name="defaultPriorityId" defaultValue={type?.defaultPriorityId ?? ""}><option value="">Prioridade padrão</option>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select><select name="defaultSlaPolicyId" defaultValue={type?.defaultSlaPolicyId ?? ""}><option value="">SLA padrão</option>{module.slaPolicies.filter((s) => s.active).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select><select name="initialStatusId" required defaultValue={type?.initialStatusId ?? ""}><option value="">Etapa inicial</option>{module.statuses.filter((s) => s.active && s.acceptsNewTasks && !s.isFinal).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select><CheckGroup legend="Setores disponíveis" name="departmentIds" values={module.departments.filter((d) => d.active).map((d) => ({ id: d.id, label: d.name }))} selected={type?.departmentIds ?? []} /><CheckGroup legend="Etapas permitidas" name="allowedStatusIds" values={module.statuses.filter((s) => s.active).map((s) => ({ id: s.id, label: s.name }))} selected={type?.allowedStatusIds ?? []} /><ActiveField value={type?.active} /><FormButtons editing={!!type} busy={busy} onCancel={() => setEditingId(null)} label="tipo" /></form></Catalog>}
+        {tab === "types" && <TaskTypeEditor module={module} editingId={editingId} setEditingId={setEditingId} busy={busy} operate={operate} />}
     {tab === "people" && <div className="catalog-page-content">
       <div className="catalog-form collaborator-create-card">
         <div className="catalog-card-heading"><span>NOVO COLABORADOR</span><h2>Cadastrar colaborador</h2><p>Inclua os dados de contato e defina em quais setores o colaborador poderá receber tarefas.</p></div>
@@ -639,6 +642,48 @@ function Catalog({ title, items, editingId, onEdit, children }: { title: string;
   </div>;
 }
 
+function TaskTypeEditor({ module, editingId, setEditingId, busy, operate }: { module: TaskModuleData; editingId: string | null | undefined; setEditingId: (id: string | null | undefined) => void; busy: boolean; operate: Props["operate"] }) {
+  const type = module.types.find(entry => entry.id === editingId);
+  return <Catalog title="Tipos de tarefa" editingId={editingId} onEdit={setEditingId} items={module.types.map(entry => ({ id: entry.id, title: entry.name, subtitle: entry.description, active: entry.active }))}>
+    <TaskTypeForm key={editingId ?? "new"} module={module} type={type} busy={busy} onCancel={() => setEditingId(null)} onSave={async payload => {
+      if (await operate({ action: "saveTaskType", id: editingId, ...payload }, "Tipo de tarefa e etapas salvos.")) setEditingId(null);
+    }} />
+  </Catalog>;
+}
+
+function TaskTypeForm({ module, type, busy, onCancel, onSave }: { module: TaskModuleData; type?: TaskType; busy: boolean; onCancel: () => void; onSave: (payload: Record<string, unknown>) => Promise<void> }) {
+  const [departmentIds, setDepartmentIds] = useState(type?.departmentIds ?? []);
+  const [requestedInitial, setRequestedInitial] = useState(type?.initialStatusId ?? "");
+  const [selectedStatuses, setSelectedStatuses] = useState(type?.allowedStatusIds ?? []);
+  const [error, setError] = useState("");
+  const departments = module.departments.filter(entry => entry.active);
+  const selectedDepartments = departmentIds.filter(id => departments.some(entry => entry.id === id));
+  const statuses = module.statuses.filter(entry => entry.active && (!entry.departmentId || selectedDepartments.includes(entry.departmentId)));
+  const initialOptions = initialTaskStatuses(statuses, selectedDepartments);
+  const initialId = taskInitialSelection(initialOptions, requestedInitial);
+  const toggle = (ids: string[], id: string) => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id];
+  return <form className="catalog-complex-form task-type-form" onSubmit={async event => {
+    event.preventDefault();
+    if (!selectedDepartments.length || !initialId) { setError("Selecione ao menos um setor e uma etapa inicial ativa que receba novas tarefas."); return; }
+    const form = new FormData(event.currentTarget); setError("");
+    await onSave({ name: form.get("name"), catalogDescription: form.get("catalogDescription"),
+      defaultPriorityId: form.get("defaultPriorityId") || null, defaultSlaPolicyId: form.get("defaultSlaPolicyId") || null,
+      departmentIds: selectedDepartments, initialStatusId: initialId,
+      allowedStatusIds: [...new Set([...selectedStatuses.filter(id => statuses.some(entry => entry.id === id)), initialId])], active: form.has("active") });
+  }}>
+    <label className="catalog-field wide"><span>Nome do tipo *</span><input name="name" required defaultValue={type?.name} autoFocus /></label>
+    <label className="catalog-field wide"><span>Descrição</span><input name="catalogDescription" defaultValue={type?.description} /></label>
+    <label className="catalog-field"><span>Prioridade padrão</span><select name="defaultPriorityId" defaultValue={type?.defaultPriorityId ?? ""}><option value="">Sem prioridade padrão</option>{module.priorities.filter(entry => entry.active).map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
+    <label className="catalog-field"><span>SLA padrão</span><select name="defaultSlaPolicyId" defaultValue={type?.defaultSlaPolicyId ?? ""}><option value="">Sem SLA padrão</option>{module.slaPolicies.filter(entry => entry.active).map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
+    <fieldset className="catalog-check-group wide"><legend>Setores disponíveis *</legend>{departments.map(entry => <label key={entry.id}><input type="checkbox" checked={selectedDepartments.includes(entry.id)} onChange={() => setDepartmentIds(current => toggle(current, entry.id))} /> {entry.name}</label>)}{!departments.length && <p>Cadastre um setor ativo em Colaboradores → Setores.</p>}</fieldset>
+    <label className="catalog-field wide"><span>Etapa inicial *</span><select name="initialStatusId" required value={initialId} onChange={event => { setRequestedInitial(event.target.value); setSelectedStatuses(current => [...new Set([...current, event.target.value])]); }}><option value="">Selecione a etapa inicial</option>{initialOptions.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select><small>{initialOptions.length ? "A etapa inicial é incluída automaticamente nas etapas permitidas." : "Cadastre uma etapa ativa, não final, com Recebe novas tarefas habilitado."}</small></label>
+    <fieldset className="catalog-check-group wide"><legend>Etapas permitidas</legend>{statuses.map(entry => <label key={entry.id}><input type="checkbox" checked={entry.id === initialId || selectedStatuses.includes(entry.id)} disabled={entry.id === initialId} onChange={() => setSelectedStatuses(current => toggle(current, entry.id))} /> {entry.name}</label>)}</fieldset>
+    <ActiveField value={type?.active} />
+    {error && <p className="wide" role="alert">{error}</p>}
+    <FormButtons editing={Boolean(type)} busy={busy || !selectedDepartments.length || !initialId} onCancel={onCancel} label="tipo de tarefa" />
+  </form>;
+}
+
 function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { module: TaskModuleData; editingId: string | null | undefined; setEditingId: (id: string | null | undefined) => void; busy: boolean; operate: Props["operate"] }) {
   const sla = module.slaPolicies.find((item) => item.id === editingId);
   const defaultDepartmentId = sla?.departmentId ?? module.departments.find((department) => department.active)?.id ?? "";
@@ -649,7 +694,7 @@ function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { m
     subtitle: `${Math.max(1, Math.ceil(item.completionMinutes / 480))} dia(s) útil(eis)`,
     active: item.active,
   }))}>
-    <form key={editingId ?? "new"} className="catalog-complex-form" onSubmit={async (event) => {
+    <form key={editingId ?? "new"} className="catalog-complex-form task-sla-form" onSubmit={async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const businessDays = Number(form.get("businessDays"));
@@ -657,7 +702,7 @@ function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { m
       const saved = await operate({
         action: "saveTaskSla",
         id: editingId,
-        name: `${businessDays} dia${businessDays === 1 ? "" : "s"} útil${businessDays === 1 ? "" : "eis"}`,
+        name: businessDays === 1 ? "1 dia útil" : `${businessDays} dias úteis`,
         departmentId: defaultDepartmentId,
         typeId: sla?.taskTypeId ?? null,
         priorityId: sla?.priorityId ?? null,
@@ -675,8 +720,8 @@ function SimpleSlaEditor({ module, editingId, setEditingId, busy, operate }: { m
       }, "Prazo de SLA salvo.");
       if (saved) setEditingId(null);
     }}>
-      <label className="wide">Prazo para conclusão (dias úteis) *
-        <input name="businessDays" type="number" min="1" step="1" required defaultValue={initialDays} />
+      <label className="catalog-field wide" htmlFor="task-sla-days"><span>Prazo para conclusão (dias úteis) *</span>
+        <input id="task-sla-days" name="businessDays" type="number" min="1" step="1" required defaultValue={initialDays} autoFocus />
         <small>A contagem começa no momento da criação da tarefa e considera apenas dias úteis.</small>
       </label>
       {!defaultDepartmentId && <p role="alert">Cadastre ou reative um setor para configurar o SLA.</p>}

@@ -26,6 +26,16 @@ exigem reconstruir o contêiner web.
 
 A API aplica automaticamente as migrations do Entity Framework na inicialização. Na primeira tela, use a ação administrativa de carga demonstrativa para inserir dados de exemplo; nada é carregado silenciosamente.
 
+### Atualização em tempo real
+
+O workspace mantém uma conexão WebSocket autenticada em `/api/realtime`, na mesma origem da aplicação (`wss` em HTTPS). O chat e o snapshot operacional atualizam após mudanças, sem as antigas consultas a cada 1,5 e 10–15 segundos. Avisos de chat chegam somente às conexões dos participantes; o socket não transporta mensagens, arquivos ou credenciais. As projeções HTTP continuam aplicando as permissões de cada usuário. Rajadas de avisos são agrupadas, e uma atualização operacional já inclui o chat.
+
+Uma conexão PostgreSQL `LISTEN/NOTIFY` por instância da API recebe mudanças após o commit, inclusive de outras instâncias e integrações. A migration `RealtimeNotifications` instala os gatilhos; sessões, auditoria e histórico não geram recargas gerais. As capas dos perfis ficam na consulta dedicada do perfil. Os registros de RH ainda podem conter anexos grandes, mas deixam de ser baixados periodicamente.
+
+Docker e `npm start` usam `server/start.mjs`, que inicia o servidor Vinext e encaminha o upgrade do WebSocket à API com a sessão existente. O modo `npm run dev` usa o mesmo encaminhamento pelo Vite. Proxies externos devem preservar `Host` e encaminhar `Upgrade`/`Connection` para a porta web, com timeout acima de 75 segundos. Não é necessário publicar a porta da API nem configurar outro domínio ou token no navegador.
+
+O cliente reconecta com espera progressiva, verifica heartbeat e recupera o estado após reconectar. Se o proxy não permitir WebSocket, há recuperação por HTTP a cada 60 segundos para a operação e 15 segundos para o chat, apenas com a aba visível. Conexões saudáveis não fazem essas consultas periódicas. O indicador superior mostra **Em tempo real** quando conectado. Validação de sessão ocorre também durante a conexão; logout/expiração encerram o acesso.
+
 ### Acesso ao PostgreSQL pelo pgAdmin
 
 O Compose inicia o pgAdmin em `http://localhost:5050`. O login padrão é
@@ -57,7 +67,11 @@ Na tela **Administração**:
 3. cadastre o usuário com o mesmo e-mail utilizado no login;
 4. associe um ou mais grupos ao usuário.
 
+A opção **Acesso total ao sistema** concede todas as telas, ações, capacidades e configurações, incluindo o cadastro de links do Portal e novos cadastros. A autorização é resolvida no servidor pelo vínculo ativo com o grupo de sistema Administradores e atualizada a cada requisição; nomes de cargo ou de outros grupos não concedem acesso total.
+
 As permissões disponíveis por tela são visualizar, criar, editar, aprovar e administrar. Um usuário em vários grupos recebe a união das permissões. Usuários não cadastrados ou inativos recebem acesso negado pela API.
+
+No menu da conta, **Perfil** abre os dados do próprio colaborador e permite alterar capa, biografia e frase, mesmo sem permissão de Administração ou de escrita no Chat interno. A capa aceita PNG, JPEG e WebP de até 2 MB; a biografia aceita 900 caracteres e a frase, 180. **Salvar perfil** confirma o resultado na própria janela. O conteúdo permanece ao fechar e reabrir, incluindo perfis cadastrados anteriormente. A consulta de colegas pelo chat abre o perfil em modo de leitura; somente o titular pode editar o próprio conteúdo. Falhas de carregamento exibem **Tentar novamente**.
 
 Na tela de grupos, o módulo **Tarefas** também oferece permissões específicas para cancelar, alterar status, prioridade ou SLA, encaminhar, assumir, transferir responsabilidade, consultar outros usuários/setores, administrar cadastros e registrar comunicação com o cliente.
 
@@ -73,9 +87,19 @@ Cada setor recebe uma agenda automaticamente, tanto nos cadastros de Colaborador
 
 ## Módulo de Tarefas
 
+As seleções operacionais utilizam apenas opções cadastradas e ativas. Opções fixas de exemplo e valores encontrados somente no histórico não são acrescentados às listas. Os registros históricos continuam preservados, e os cadastros administrativos permitem consultar e reativar opções inativas. Reiniciar o sistema não reativa prioridades bloqueadas nem recria cadastros excluídos do RH e etapas excluídas de Tarefas.
+
+Em **Cadastros → Políticas de SLA**, informe um número inteiro de dias úteis no campo **Prazo para conclusão**. O prazo pode ser cadastrado e alterado no mesmo formulário.
+
+Na **Gestão RH → Ficha do colaborador → Gestão de férias**, cada período aquisitivo pendente oferece **Finalizar sem datas**. A ação registra somente o saldo restante para completar os 30 dias, sem preencher início ou fim das férias. Uma observação é opcional. A conclusão exige editar RH, verifica a versão do histórico e registra usuário, horário do servidor e auditoria; um período já concluído não pode ser finalizado novamente.
+
 Em **Diário de Bordo**, coordenadores podem escolher **Meu diário** ou um de seus coordenados no seletor ao lado de **Nova atividade**. A consulta inclui atividades manuais e compromissos sob responsabilidade do colaborador, em modo de leitura. Somente vínculos diretos de coordenação com colaboradores ativos e não bloqueados são disponibilizados; os vínculos são mantidos em **Administração → Colaboradores**.
 
 Em **Tarefas** e **Atendimentos**, escolha um setor na lista suspensa para filtrar os registros, ou selecione **Todos os setores** para a visão consolidada. A logo do menu acompanha o tema claro ou escuro independentemente da cor escolhida para os controles do sistema.
+
+Os setores cadastrados em **Colaboradores → Setores** são os mesmos utilizados em Tarefas. Usuários com acesso total, administração de Tarefas ou consulta de outros setores veem todos os setores ativos, mesmo sem vínculos pessoais. Os demais veem os setores em que possuem vínculo ou coordenação. Em **Nova tarefa**, o campo **Setor responsável** permite selecionar o setor autorizado e carrega seus tipos ativos; a etapa inicial do tipo escolhido aparece logo abaixo.
+
+Em **Tipos de tarefa**, selecione os setores e a etapa inicial ativa. A etapa inicial entra automaticamente nas etapas permitidas. Para tipos compartilhados entre vários setores, a etapa inicial deve ser geral. Na inicialização, referências antigas a etapas desativadas são corrigidas somente quando existe uma primeira etapa cadastrada, compatível e inequívoca; a correção é auditada e preserva os status das tarefas existentes.
 
 Agenda e Tarefas são módulos separados. Em **Tarefas** estão disponíveis:
 
@@ -90,11 +114,31 @@ Agenda e Tarefas são módulos separados. Em **Tarefas** estão disponíveis:
 
 O envio externo por e-mail, WhatsApp ou SMS permanece desativado até a configuração de um provedor. A ação “Notificar cliente” registra a tentativa e informa que a integração está pendente.
 
-Com a autenticação local habilitada, as senhas são armazenadas como hash e não podem ser consultadas. Em **Administração → Colaboradores → Editar**, a ação **Gerar nova senha e enviar por e-mail** exige permissão administrativa, envia os dados ao e-mail salvo, substitui a senha e encerra as sessões anteriores. Colaboradores inativos precisam ser reativados antes da redefinição. A ação fica registrada na auditoria sem a senha.
+Ao cadastrar um usuário ou colaborador, o sistema gera uma senha temporária e envia diretamente ao e-mail cadastrado o nome, o endereço do sistema, o e-mail de login e a senha. O cadastro só é concluído se o envio for aceito pelo SMTP; em caso de falha, nenhum usuário ou vínculo parcial é salvo e o formulário permite tentar novamente. A senha não é exibida na tela nem retornada pela API. As senhas são armazenadas como hash e não podem ser consultadas.
 
-Configure no arquivo .env as variáveis SMTP_HOST, SMTP_PORT, SMTP_USE_SSL, SMTP_USERNAME, SMTP_PASSWORD e SMTP_FROM e recrie o serviço api para habilitar o envio. Se o envio falhar ou não estiver configurado, a senha atual é preservada. O e-mail contém o endereço de acesso e a nova senha temporária; o colaborador pode alterá-la no menu da conta. A autorização é resolvida no PostgreSQL.
+Em **Administração → Colaboradores → Editar**, a ação **Gerar nova senha e enviar por e-mail** exige permissão administrativa, envia os dados ao e-mail salvo, substitui a senha e encerra as sessões anteriores. Colaboradores inativos precisam ser reativados antes da redefinição. A ação fica registrada na auditoria sem a senha. Se o envio falhar ou não estiver configurado, a senha atual é preservada.
+
+Configure no arquivo `.env` as variáveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_USE_SSL`, `SMTP_USERNAME`, `SMTP_PASSWORD` e `SMTP_FROM`, além de `APP_PUBLIC_URL` com o endereço completo usado pelos colaboradores (por exemplo, `https://gestao.suaempresa.com.br`). Recrie o serviço `api` para aplicar a configuração. O padrão `http://localhost:3000` atende apenas ao acesso local. Credenciais reais devem permanecer somente no `.env` do servidor.
+
+O colaborador pode alterar a própria senha no menu da conta, informando a senha atual e confirmando uma nova senha com ao menos 10 caracteres. A operação retorna **Senha alterada com sucesso.**, preserva a sessão atual e funciona independentemente do SMTP. A autorização é resolvida no PostgreSQL.
+
+## Integrações com o Ambiente Dontus
+
+Na ficha do cliente, abra **Dados ambiente Dontus**, informe o **ID do cliente no Ambiente Dontus** e clique em **Vincular e consultar**. A API é percorrida por completo até encontrar o campo `ID` exatamente igual ao informado, relacionando esse cadastro ao campo `Ident` do sisteminha. Os dois identificadores ficam visíveis na ficha. O vínculo é salvo no PostgreSQL e a aba consulta os dados atuais ao ser aberta. **Atualizar consulta** realiza uma nova leitura. O campo `Ident` da API corresponde à identificação do sisteminha; o campo `ID` é o identificador do registro no Ambiente Dontus. Na ficha, novas consultas usam o `ID` do Ambiente salvo no vínculo; no Acesso, a busca usa a identificação `Ident` do sisteminha. O filtro `busca` da API não pesquisa o campo `ID`, por isso a ficha utiliza a listagem geral paginada.
+
+Os campos disponíveis na API são apresentados em Cadastro e identificação, Endereço e Demais informações do ambiente, incluindo campos adicionais, estruturas e valores não informados. O cadastro local é preservado. Uma identificação pode ser vinculada a apenas um cliente. Consultar exige visualizar Clientes; vincular exige também editar Clientes.
+
+Em **Acesso**, informe a identificação do cliente e clique em **Pesquisar**. A lista apresenta nome, usuário, e-mail, tipo **Supervisor / Comum** e status. A lista exibe **10 usuários por página**, com botões Anterior e Próxima. A busca por nome, usuário, e-mail ou ID e o filtro de tipo são aplicados a todos os usuários retornados, antes da paginação; mudar os filtros retorna à primeira página. O botão de casinha **Acessar** consulta novamente a permissão/status do usuário no Dontus e abre o endereço retornado em uma nova aba. Usuários inativos e links não autorizados permanecem sem acesso. O navegador precisa permitir novas abas para o sistema.
+
+Configure `DONTUS_CLIENTS_TOKEN` e `DONTUS_USERS_TOKEN` somente no `.env` do servidor. O Compose encaminha essas variáveis exclusivamente à API C#. Os endereços padrão são `https://ambiente.dontus.com.br/api/APICliente/GetAllClientes` (GET com `skip`, `take`, `busca` e cabeçalho `Token`) e `https://sistema.dontus.com.br/api/Ambiente/listarUsuarios` (POST com `identificacao`, `schema` e token). Para outro servidor Dontus, ajuste `DONTUS_USERS_BASE_URL` e configure explicitamente `DontusIntegration:AllowedLoginHosts` na API com os hosts de login autorizados; o padrão permite `sistema.dontus.com.br`. Redirecionamentos HTTP nas chamadas externas são recusados.
+
+Todas as rotas exigem autenticação e as permissões locais de Clientes ou Acesso, conforme a operação. Vínculos, consultas de usuários e abertura de acesso são auditados sem senhas, tokens ou URLs de login. A lista enviada à tela não contém senhas ou links de entrada; o link é obtido apenas ao clicar em Acessar. As credenciais de integração nunca são enviadas ao navegador.
 
 ## CRM e lembretes de contato
+
+Os seletores de vendedor e responsável do CRM utilizam somente colaboradores ativos, não bloqueados e vinculados ao setor ativo **Comercial**, inclusive por vínculo adicional. A lista também está disponível para operadores sem acesso à Administração. Responsáveis antigos permanecem no histórico dos cards; eles não são oferecidos para novas atribuições quando deixam de pertencer ao Comercial.
+
+Valores monetários exibem sempre duas casas decimais: `R$ 129,90` permanece `R$ 129,90`. Os valores unitários podem ser editados ao cadastrar e editar os produtos do lead e da venda direta. Os campos aceitam vírgula ou ponto decimal, inclusive `R$ 1.234,56`; totais e descontos são calculados mantendo os centavos.
 
 Os cards do CRM comercial e de retenção mostram os dias sem interação desde o cadastro ou o último comentário/follow-up de contato. Movimentações de etapa e alterações gerais não reiniciam a contagem. Etapas finais de ganho ou perda e status finalizados mostram zero e interrompem a contagem. Cada card com lembrete pendente exibe um sino; o indicador desaparece após a confirmação ou exclusão do lembrete.
 
@@ -202,7 +246,9 @@ A geração e os testes dos PDFs assinados usam `DejaVuSans.ttf` e `DejaVuSans-B
 
 A navegação oferece **Ctrl+K** (ou **⌘K** no macOS) para localizar ferramentas, favoritos e acessos recentes. O atalho **/** posiciona o cursor na busca de clientes, colaboradores, IDs e protocolos. A busca desconsidera acentos. Favoritos ficam salvos por usuário neste navegador e respeitam as permissões disponíveis na sessão.
 
-O caminho da tela aparece acima do conteúdo, com botões de voltar e avançar. Módulos e subáreas mantêm seus endereços ao recarregar e ao percorrer o histórico. **Foco** amplia a área operacional ocultando o menu lateral; **Esc** restaura a navegação. Nos formulários compartilhados, **Tab** permanece dentro da janela e **Esc** fecha o formulário, retornando o foco ao controle que o abriu.
+O caminho da tela e a navegação rápida ficam na mesma barra da pesquisa, com botões de voltar e avançar nas telas maiores. Em notebooks menores e celulares, o botão ao lado da busca abre o menu sobre o conteúdo, sem reduzir a área de trabalho. Módulos e subáreas mantêm seus endereços ao recarregar e ao percorrer o histórico. **Foco** amplia a área operacional ocultando o menu lateral; **Esc** restaura a navegação. Nos formulários compartilhados, **Tab** permanece dentro da janela e **Esc** fecha o formulário, retornando o foco ao controle que o abriu.
+
+O **Chat interno** ocupa a altura disponível, com rolagem nas mensagens e campo de envio sempre visível. No celular, selecione uma conversa para abri-la em toda a largura; a seta **Voltar às conversas** retorna à lista. A navegação entre a lista e a conversa preserva o texto ainda não enviado.
 
 O indicador de atualização mostra o horário de Brasília da última leitura bem-sucedida da API. Quando uma atualização em segundo plano falha, a interface identifica os dados como pendentes de atualização, mantendo a última leitura disponível. O painel da Fila de espera considera os encaminhamentos operacionais em espera.
 

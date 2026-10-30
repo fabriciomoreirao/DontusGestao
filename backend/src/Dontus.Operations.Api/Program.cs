@@ -89,11 +89,15 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 }));
 
 app.UseAuthentication();
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20), KeepAliveTimeout = TimeSpan.FromSeconds(20) });
 app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapOpenApi();
 app.MapLiaForms();
+app.MapEmployeeProfiles();
+app.MapRealtime();
+app.MapDontusIntegration();
 app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken cancellationToken) =>
@@ -401,7 +405,7 @@ localAuth.MapPost("/change-password", async (
         request.CurrentPassword ?? "",
         request.NewPassword ?? "",
         cancellationToken);
-    return Results.NoContent();
+    return Results.Ok(new { message = "Senha alterada com sucesso." });
 }).RequireAuthorization();
 
 // Links públicos de pesquisa usam tokens individuais e não expõem o restante
@@ -677,6 +681,8 @@ var operations = app.MapGroup("/api/operations")
     .RequireRateLimiting("operations");
 
 operations.MapGet("", async (
+    HttpContext context,
+    RealtimeBroker realtime,
     ClaimsPrincipal principal,
     IOperationsService service,
     IAgendaService agendaService,
@@ -687,6 +693,7 @@ operations.MapGet("", async (
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
+    context.Response.Headers["x-dontus-realtime-cursor"] = realtime.Cursor;
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);
     if (actor.HasPermission("diary", "view"))
@@ -1075,7 +1082,6 @@ operations.MapPost("", async (
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     Guid? id = null;
-    string? temporaryPassword = null;
     string? createdProtocol = null;
 
     switch (request.Action?.Trim())
@@ -1167,6 +1173,11 @@ operations.MapPost("", async (
                 request.ResponsibleUserId,
                 request.DistributionVersion,
                 request.ExpectedNextResponsibleUserId), actor, cancellationToken);
+            break;
+
+        case "completeHrVacationPeriod":
+            await service.CompleteHrVacationPeriodAsync(request.Id ?? throw new DomainException("Colaborador obrigatório."),
+                request.EntitlementYear ?? throw new DomainException("Período aquisitivo obrigatório."), request.Version ?? 0, request.Description, actor, cancellationToken);
             break;
 
         case "deleteWorkItem":
@@ -1367,7 +1378,6 @@ operations.MapPost("", async (
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
                 request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds), actor, cancellationToken);
             id = createdEmployee.Id;
-            temporaryPassword = createdEmployee.TemporaryPassword;
             break;
 
         case "resetEmployeePassword":
@@ -1793,7 +1803,7 @@ operations.MapPost("", async (
     var access = actor.HasPermission("admin", "manage")
         ? await accessControl.GetManagementAsync(actor, cancellationToken)
         : null;
-    var response = snapshot with { Ok = true, Id = id, TemporaryPassword = temporaryPassword, CreatedProtocol = createdProtocol, Access = access };
+    var response = snapshot with { Ok = true, Id = id, CreatedProtocol = createdProtocol, Access = access };
     return id.HasValue ? Results.Json(response, statusCode: StatusCodes.Status201Created) : Results.Ok(response);
 });
 
@@ -2180,6 +2190,7 @@ public sealed class OperationsRequest
     public Guid? OriginId { get; init; }
     public string? NextStatus { get; init; }
     public long? Version { get; init; }
+    public int? EntitlementYear { get; init; }
     public bool? Confirmed { get; init; }
     public bool? BoardMove { get; init; }
     public string? Kind { get; init; }

@@ -17,10 +17,12 @@ public sealed record ActorContext(
     string DisplayName,
     string Role,
     string Department,
-    IReadOnlyCollection<EffectivePermission>? Permissions = null)
+    IReadOnlyCollection<EffectivePermission>? Permissions = null,
+    bool FullAccess = false)
 {
     public bool HasPermission(string screen, string action)
     {
+        if (FullAccess && action is "view" or "create" or "edit" or "approve" or "manage") return true;
         var permission = Permissions?.FirstOrDefault(entry =>
             string.Equals(entry.Screen, screen, StringComparison.OrdinalIgnoreCase));
         return action switch
@@ -43,7 +45,7 @@ public sealed record ActorContext(
     }
 
     public bool HasCapability(string screen, string capability) =>
-        Permissions?.FirstOrDefault(entry =>
+        FullAccess || Permissions?.FirstOrDefault(entry =>
             string.Equals(entry.Screen, screen, StringComparison.OrdinalIgnoreCase))
             ?.Capabilities?.Contains(capability, StringComparer.OrdinalIgnoreCase) == true;
 
@@ -180,7 +182,8 @@ public sealed record UserDto(
     string PhotoDataUrl,
     string JobTitle,
     bool IsCoordinator,
-    IReadOnlyCollection<EffectivePermission> Permissions);
+    IReadOnlyCollection<EffectivePermission> Permissions,
+    bool FullAccess = false);
 
 public sealed record CustomerDto(
     Guid Id,
@@ -332,9 +335,11 @@ public sealed record NoticesModuleDto(IReadOnlyCollection<CompanyNoticeDto> Noti
 public sealed record CustomerCatalogOptionDto(Guid Id, string Catalog, string Name, string Description, bool Active);
 public sealed record CollaboratorSummaryDto(Guid Id, string Email, string DisplayName, string DepartmentName,
     IReadOnlyCollection<string> DepartmentNames, string PhotoDataUrl, bool Active);
+public sealed record CommercialSellerDto(Guid Id, string DisplayName);
 public sealed record CustomerModuleDto(IReadOnlyCollection<CustomerCatalogOptionDto> Catalogs)
 {
     public IReadOnlyCollection<CollaboratorSummaryDto> Collaborators { get; init; } = [];
+    public IReadOnlyCollection<CommercialSellerDto> CommercialSellers { get; init; } = [];
     public IReadOnlyCollection<CsDistributionDto> CsDistribution { get; init; } = [];
 }
 
@@ -350,7 +355,6 @@ public sealed record OperationsSnapshot(
 {
     public bool? Ok { get; init; }
     public Guid? Id { get; init; }
-    public string? TemporaryPassword { get; init; }
     public string? CreatedProtocol { get; init; }
     public AccessManagementDto? Access { get; init; }
     public AgendaModuleDto? AgendaModule { get; init; }
@@ -390,6 +394,7 @@ public interface IOperationsService
     Task UpdateCustomerAsync(UpdateCustomerCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateWorkItemAsync(CreateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateWorkItemAsync(UpdateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task CompleteHrVacationPeriodAsync(Guid id, int entitlementYear, long version, string? observation, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteWorkItemAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task TransitionWorkItemAsync(TransitionWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateAppointmentAsync(CreateAppointmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);

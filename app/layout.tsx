@@ -8,6 +8,8 @@ import "./analytics-experience.css";
 import "./client-distribution.css";
 import "./workflow-refinements.css";
 import "./quality-foundation.css";
+import "./dontus-integration.css";
+import "./responsive-workspace.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

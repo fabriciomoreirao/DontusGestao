@@ -96,6 +96,62 @@ public sealed class AccessControlServiceTests
     }
 
     [Fact]
+    public async Task Full_access_grants_all_actions_and_portal_links_even_with_incomplete_permission_rows()
+    {
+        await using var db = CreateContext();
+        var access = CreateService(db); await access.InitializeAsync();
+        var group = await db.AccessGroups.Include(x => x.Permissions).SingleAsync(x => x.Name == "Administradores");
+        db.GroupPermissions.RemoveRange(group.Permissions); await db.SaveChangesAsync();
+        var actor = await access.ResolveActorAsync(new("gestor@dontus.local", "Gestor"));
+        Assert.True(actor.FullAccess);
+        foreach (var screen in ScreenCatalog.All)
+            foreach (var action in new[] { "view", "create", "edit", "approve", "manage" }) Assert.True(actor.HasPermission(screen.Code, action));
+        Assert.True(actor.HasPermission("futureModule", "manage"));
+        Assert.True(actor.HasCapability("futureModule", "futureAction"));
+        var operations = new OperationsService(db);
+        var linkId = await operations.SaveCustomerCatalogAsync(null, "portalLink", "Portal de teste", "{\"url\":\"https://sistema.dontus.com.br\"}", true, actor);
+        await operations.SaveCustomerCatalogAsync(linkId, "portalLink", "Portal atualizado", "{\"url\":\"https://ambiente.dontus.com.br\"}", true, actor);
+        Assert.Equal("Portal atualizado", (await db.CustomerCatalogOptions.SingleAsync(x => x.Id == linkId)).Name);
+        Assert.True((await operations.GetSnapshotAsync(actor)).User.FullAccess);
+        await operations.DeleteCustomerCatalogAsync(linkId, actor);
+        Assert.False(await db.CustomerCatalogOptions.AnyAsync(x => x.Id == linkId));
+    }
+
+    [Fact]
+    public async Task Employee_full_access_checkbox_is_effective_and_removing_it_revokes_the_grant()
+    {
+        await using var db = CreateContext(); var access = CreateService(db); await access.InitializeAsync();
+        var admin = await access.ResolveActorAsync(new("gestor@dontus.local", "Gestor"));
+        var department = await access.SaveEmployeeDepartmentAsync(new(null, "Teste de acesso", "", true), admin);
+        var level = await access.SaveEmployeeLevelAsync(new(null, "Nível teste", "", true), admin);
+        var created = await access.CreateEmployeeAsync(new("Usuário total", "total@test.local", new DateOnly(1990, 1, 1), new DateOnly(2025, 1, 1),
+            [department], level, null, "Analista", false, [], FullAccess: true), admin);
+        var actor = await access.ResolveActorAsync(new("total@test.local", "Usuário total"));
+        Assert.True(actor.FullAccess);
+        var operations = new OperationsService(db);
+        await operations.SaveCustomerCatalogAsync(null, "portalLink", "Atalho", "https://sistema.dontus.com.br", true, actor);
+        var ordinaryGroup = await db.AccessGroups.SingleAsync(x => x.Name == "Colaboradores");
+        await access.UpdateEmployeeAsync(new(created.Id, "Usuário total", "total@test.local", new DateOnly(1990, 1, 1), new DateOnly(2025, 1, 1),
+            [department], level, null, "Analista", false, [], true, [ordinaryGroup.Id], FullAccess: false), admin);
+        var restricted = await access.ResolveActorAsync(new("total@test.local", "Usuário total"));
+        Assert.False(restricted.FullAccess);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => operations.SaveCustomerCatalogAsync(null, "portalLink", "Negado", "https://sistema.dontus.com.br", true, restricted))).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_group_with_an_administrator_display_name_does_not_grant_full_access()
+    {
+        await using var db = CreateContext(); var access = CreateService(db); await access.InitializeAsync();
+        var admin = await access.ResolveActorAsync(new("gestor@dontus.local", "Gestor"));
+        var group = await access.CreateGroupAsync(new("Administradores externos", "", true), admin);
+        await access.UpdateGroupAsync(new(group, "Administradores externos", "", true, [new("notes", true, true, true, false, false)]), admin);
+        await access.CreateUserAsync(new("limited@test.local", "Administrador", "Gestão", true, [group]), admin);
+        var restricted = await access.ResolveActorAsync(new("limited@test.local", "Administrador"));
+        Assert.False(restricted.FullAccess); Assert.False(restricted.HasPermission("admin", "manage"));
+        Assert.False(restricted.HasPermission("futureModule", "manage"));
+    }
+
+    [Fact]
     public async Task Applies_group_permissions_to_registered_user()
     {
         await using var db = CreateContext();
@@ -207,7 +263,8 @@ public sealed class AccessControlServiceTests
     public async Task Persists_coordinator_hierarchy_and_blocks_login_with_the_current_date()
     {
         await using var db = CreateContext();
-        var service = CreateService(db);
+        var sender = new RecordingPasswordEmailSender();
+        var service = CreateService(db, sender);
         await service.InitializeAsync();
         var admin = await service.ResolveActorAsync(new AuthenticatedIdentity("gestor@dontus.local", "Gestor"));
         var departmentId = await service.SaveEmployeeDepartmentAsync(
@@ -246,7 +303,7 @@ public sealed class AccessControlServiceTests
         Assert.NotNull((await db.LocalAuthSessions.SingleAsync(entry => entry.UserId == coordinator.Id)).RevokedAt);
         await Assert.ThrowsAsync<DomainException>(() =>
             new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender())
-                .LoginAsync("coordenador@dontus.local", coordinator.TemporaryPassword));
+                .LoginAsync("coordenador@dontus.local", sender.Messages.Single(message => message.Email == "coordenador@dontus.local").Password));
     }
 
     [Fact]
@@ -294,7 +351,7 @@ public sealed class AccessControlServiceTests
         Assert.Empty((await new AgendaService(db).GetModuleAsync(actor)).Calendars);
     }
 
-    private static AccessControlService CreateService(OperationsDbContext db)
+    private static AccessControlService CreateService(OperationsDbContext db, IPasswordRecoveryEmailSender? sender = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -303,7 +360,7 @@ public sealed class AccessControlServiceTests
                 ["AccessControl:BootstrapAdminName"] = "Gestor Dontus",
             })
             .Build();
-        return new AccessControlService(db, configuration);
+        return new AccessControlService(db, configuration, sender ?? new RecordingPasswordEmailSender());
     }
 
     private static CreateWorkItemCommand WorkItemCommand(string module, string title) =>

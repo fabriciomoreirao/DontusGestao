@@ -12,7 +12,7 @@ public sealed class CommissionsAndReferralsAccessTests
 {
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-    private static AccessControlService Access(OperationsDbContext db) => new(db, new ConfigurationBuilder().Build());
+    private static AccessControlService Access(OperationsDbContext db) => new(db, new ConfigurationBuilder().Build(), new RecordingPasswordEmailSender());
 
     private static async Task<(ActorContext Actor, AppUser User, AppUser Other)> Profile(
         OperationsDbContext db, bool coordinator = false, bool supervisor = false)

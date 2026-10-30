@@ -17,7 +17,7 @@ As decisões abaixo não foram inventadas. Enquanto pendentes, o sistema usa com
 | V-011 | Portal externo | Fluxo permanece interno |
 | V-012 | Canais/consentimentos | Envio externo desativado |
 | V-013 | Sicoob/CelCash | Emissão externa bloqueada |
-| V-014 | API Dontus | Evidência manual até contrato de integração |
+| V-014 | API Dontus | Relação de clientes por ID do Ambiente e Ident do sisteminha; acesso assistido aos usuários; tokens no servidor, permissões e auditoria |
 | V-015 | Retenção/RPO/RTO | Exclusão física desativada |
 | V-016 | Migração | Apenas dry-run/reconciliação |
 | V-017 | Configurações por papel | Menor privilégio |

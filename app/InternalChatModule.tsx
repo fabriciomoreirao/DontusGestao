@@ -3,7 +3,7 @@
 import { useReminderFilter } from "@/app/ReminderFilters";
 
 import {
-  Archive, ArchiveRestore, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
+  Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
   Gift, MessageCircleMore, Palette, Paperclip, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -258,7 +258,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
       <div className="module-page-actions"><button type="button" className="secondary-button chat-appearance-open" onClick={() => setAppearanceOpen(true)}><Palette size={17}/>Personalizar chat</button>{canCreateGroup && <button className="primary-button" onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button>}</div>
     </header>
 
-    <section className="internal-chat-shell">
+    <section className={`internal-chat-shell ${selectedKey ? "show-conversation" : ""}`}>
       <aside className="internal-chat-sidebar">
         <div className="internal-chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar colaboradores ou grupos..." /></div><div className="internal-chat-reminder-filter">{reminderFilter.control}</div>
         <div className="internal-chat-view-tabs">
@@ -282,10 +282,11 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
       <main className="internal-chat-conversation">
         {!selectedConversation ? <div className="internal-chat-welcome"><div><MessageCircleMore size={38} /></div><h2>Escolha um colaborador</h2><p>A conversa será criada automaticamente ao enviar a primeira mensagem.</p></div> : <>
           <header className="internal-chat-conversation-head" data-reminder-entity-id={selectedConversation.user ? `user:${selectedConversation.user.id}` : selectedConversation.key}>
-            <span className="internal-chat-group-photo-wrap" role={selectedConversation.user?"button":undefined} tabIndex={selectedConversation.user?0:undefined} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)}><Avatar name={selectedConversation.name} photo={selectedConversation.photoDataUrl} group={selectedConversation.isGroup} coordinator={selectedConversation.user?.isCoordinator} />
+            <button type="button" className="internal-chat-back internal-chat-head-tool" onClick={() => setSelectedKey("")} aria-label="Voltar às conversas" title="Voltar às conversas"><ArrowLeft size={19}/></button>
+            <span className="internal-chat-group-photo-wrap" role={selectedConversation.user?"button":undefined} tabIndex={selectedConversation.user?0:undefined} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)} onKeyDown={event=>{if(selectedConversation.user&&(event.key==="Enter"||event.key===" ")){event.preventDefault();onOpenProfile(selectedConversation.user.id)}}}><Avatar name={selectedConversation.name} photo={selectedConversation.photoDataUrl} group={selectedConversation.isGroup} coordinator={selectedConversation.user?.isCoordinator} />
               {selectedRoom?.isGroup && selectedRoom.canManage && canEdit && <><input ref={groupPhotoInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void updateGroupPhoto(event.target.files?.[0])} /><button type="button" onClick={() => groupPhotoInput.current?.click()} aria-label="Alterar foto do grupo" title="Alterar foto do grupo"><Camera size={11} /></button></>}
             </span>
-            <div className={selectedConversation.user?"internal-chat-profile-link":selectedRoom?.isGroup?"internal-chat-group-profile-link":""} onClick={()=>selectedConversation.user?onOpenProfile(selectedConversation.user.id):selectedRoom?.isGroup&&setParticipantsOpen(value=>!value)}><h2>{userHasBirthdayToday(selectedConversation.user) && <BirthdayGift name={selectedConversation.name} />}{selectedConversation.name}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · clique para visualizar` : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}</p></div>
+            <div role={selectedConversation.user||selectedRoom?.isGroup?"button":undefined} tabIndex={selectedConversation.user||selectedRoom?.isGroup?0:undefined} onKeyDown={event=>{if(event.target!==event.currentTarget)return;if(event.key==="Enter"||event.key===" "){event.preventDefault();if(selectedConversation.user)onOpenProfile(selectedConversation.user.id);else if(selectedRoom?.isGroup)setParticipantsOpen(value=>!value)}}} className={selectedConversation.user?"internal-chat-profile-link":selectedRoom?.isGroup?"internal-chat-group-profile-link":""} onClick={()=>selectedConversation.user?onOpenProfile(selectedConversation.user.id):selectedRoom?.isGroup&&setParticipantsOpen(value=>!value)}><h2>{userHasBirthdayToday(selectedConversation.user) && <BirthdayGift name={selectedConversation.name} />}{selectedConversation.name}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · clique para visualizar` : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}</p></div>
             <span className="internal-chat-secure"><LockKeyhole size={13} /> Privado</span>
             <button type="button" className={`internal-chat-head-tool ${pinnedConversationKeys.includes(selectedConversation.key)?"active":""}`} onClick={toggleConversationPin} title={pinnedConversationKeys.includes(selectedConversation.key)?"Desafixar conversa":"Fixar conversa"}>{pinnedConversationKeys.includes(selectedConversation.key)?<PinOff size={16}/>:<Pin size={16}/>}</button>
             {selectedRoom?.isGroup && <button type="button" className={`internal-chat-head-tool ${pinnedOpen ? "active" : ""}`} onClick={() => setPinnedOpen((value) => !value)} title="Mensagens fixadas"><Pin size={16} />{pinnedMessages.length > 0 && <b>{pinnedMessages.length}</b>}</button>}

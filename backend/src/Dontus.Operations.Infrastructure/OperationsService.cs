@@ -25,7 +25,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         ("V-011", "Portal externo do cliente", "Médio", "Fluxos permanecem internos"),
         ("V-012", "Canais e consentimentos", "Alto", "Envio externo desativado até validação"),
         ("V-013", "APIs Sicoob e CelCash", "Crítico", "Somente simulação; emissão bloqueada"),
-        ("V-014", "Integração Dontus", "Alto", "Adaptador desativado; evidência manual"),
+        ("V-014", "Integração Dontus", "Alto", "Consulta de clientes e acesso assistido via API; tokens somente no servidor"),
         ("V-015", "Retenção, anonimização, RPO e RTO", "Crítico", "Exclusão física desativada"),
         ("V-016", "Escopo de migração do legado", "Alto", "Apenas dry-run e reconciliação"),
         ("V-017", "Configurações por papel", "Alto", "Menor privilégio e autorização explícita"),
@@ -50,6 +50,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 Title = x.Title,
                 Risk = x.Risk,
                 DefaultBehavior = x.Behavior,
+                Status = x.Code == "V-014" ? "Implementado" : "Pendente",
             });
         await db.DecisionItems.AddRangeAsync(missing, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -110,6 +111,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var registeredAt = registeredUser?.CreatedAt ?? DateTimeOffset.MinValue;
         var items = await db.WorkItems.AsNoTracking()
             .Where(x => visibleModules.Contains(x.Module)
+                && x.RecordType != "Perfil de colaborador"
                 && (directlyVisibleModules.Contains(x.Module) || canManageCommissions || x.Owner == actor.DisplayName)
                 && (x.Module != "reminders" || x.CreatedAt >= registeredAt)
                 && (x.Module != "reminders" || x.CustomerName == actor.Email || x.CreatedBy == actor.Email || actor.HasPermission("reminders", "manage"))
@@ -187,7 +189,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         return new OperationsSnapshot(
             new UserDto(actor.Email, actor.DisplayName, actor.Role, actor.Department,
                 currentUserProfile is null ? "" : ProfilePhotoUrls.For(currentUserProfile.Id, currentUserProfile.UpdatedAt, currentUserProfile.PhotoDataUrl), currentUserProfile?.JobTitle ?? "",
-                currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? []),
+                currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? [], actor.FullAccess),
             customers, items, appointments, approvals, decisions, audit, moduleCounts);
     }
 
@@ -746,7 +748,16 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             collaborators = users.Select(user => new CollaboratorSummaryDto(user.Id, user.Email, user.DisplayName,
                 user.Department, [user.Department], ProfilePhotoUrls.For(user), user.Active && !user.BlockedAt.HasValue)).ToList();
         }
-        return new CustomerModuleDto(entries) { Collaborators = collaborators,
+        var commercialSellers = actor.HasPermission("commercial", "view")
+            ? await db.Users.AsNoTracking()
+                .Where(user => user.Active && !user.BlockedAt.HasValue && db.UserDepartments.Any(membership =>
+                    membership.UserId == user.Id && membership.Department.Active &&
+                    membership.Department.Name.Trim().ToLower() == "comercial"))
+                .OrderBy(user => user.DisplayName)
+                .Select(user => new CommercialSellerDto(user.Id, user.DisplayName))
+                .ToListAsync(cancellationToken)
+            : [];
+        return new CustomerModuleDto(entries) { Collaborators = collaborators, CommercialSellers = commercialSellers,
             CsDistribution = actor.HasPermission("cs", "view") ? await new CsDistributionService(db).GetAsync(actor, cancellationToken) : [] };
     }
 
@@ -769,13 +780,14 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     private static void RequireCustomerCatalogManagement(string catalog, ActorContext actor)
     {
-        if (actor.HasPermission("catalogs", "manage")) return;
+        if (actor.FullAccess || actor.HasPermission("catalogs", "manage")) return;
         var key = catalog.ToLowerInvariant();
         var module = key switch
         {
             "status" or "project" or "version" or "subscription" or "server" or "paymentmethod" or "dueday" or "gracedays" or "duedays" or "invoicecompany" => "customers",
             "temperature" or "funnelstage" or "acquisitionchannel" or "followuptype" or "lossreason" => "commercial",
             "employeerole" => "hr",
+            "portallink" => "admin",
             "commissionrule" => "commissions",
             "referralmodule" or "referralusagestatus" or "referralcommission" => "referrals",
             _ when key.StartsWith("commercial") || key.StartsWith("retention") => "commercial",
@@ -882,6 +894,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
+        EmployeeProfileService.RequireDedicatedEditor(command.RecordType, command.Description);
         var cancellationRoute = string.Equals(command.OriginType, "cancellations", StringComparison.OrdinalIgnoreCase)
             && (string.Equals(command.Module, "cs", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(command.Module, "lia", StringComparison.OrdinalIgnoreCase))
@@ -1033,6 +1046,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     private static void RequirePersonalRecordScope(WorkItem item, ActorContext actor, bool deleting = false)
     {
+        EmployeeProfileService.RequireDedicatedEditor(item.RecordType, item.Description);
         if (item.Module == "referrals" && !CanSuperviseReferrals(actor) &&
             !(string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrEmpty(item.CreatedBy) && string.Equals(item.Owner, actor.DisplayName, StringComparison.OrdinalIgnoreCase)))
@@ -1197,6 +1211,44 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                string.Equals(kind, "csJourney", StringComparison.OrdinalIgnoreCase);
     }
 
+    public async Task CompleteHrVacationPeriodAsync(Guid id, int entitlementYear, long version, string? observation, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("hr", "edit");
+        var item = await db.WorkItems.SingleOrDefaultAsync(x => x.Id == id && x.Module == "hr", cancellationToken)
+            ?? throw new DomainException("Colaborador não encontrado na Gestão RH.", 404);
+        if (item.Version != version) throw new DomainException("O histórico foi alterado. Atualize a ficha antes de finalizar o período.", 409);
+        if (item.Status != "Ativos") throw new DomainException("A conclusão de férias está disponível para colaboradores ativos.");
+        JsonObject profile;
+        try { profile = JsonNode.Parse(item.Description) as JsonObject ?? throw new JsonException(); }
+        catch (JsonException) { throw new DomainException("O cadastro de RH possui um histórico inválido."); }
+        var at = DateTimeOffset.UtcNow;
+        var localToday = DateOnly.FromDateTime(at.ToOffset(TimeSpan.FromHours(-3)).DateTime);
+        if (profile["kind"]?.ToString() != "hrEmployee" || !DateOnly.TryParse(profile["startedAt"]?.ToString(), out var started))
+            throw new DomainException("Informe a data de admissão do colaborador.");
+        if (entitlementYear < 1 || entitlementYear > localToday.Year - started.Year || started.AddYears(entitlementYear) > localToday)
+            throw new DomainException("Selecione um período aquisitivo já completado pelo colaborador.");
+        if ((observation?.Length ?? 0) > 2000) throw new DomainException("A observação deve ter até 2.000 caracteres.");
+        var vacations = profile["vacations"] as JsonArray ?? new JsonArray();
+        profile["vacations"] = vacations.Parent is null ? vacations : vacations.DeepClone();
+        vacations = (JsonArray)profile["vacations"]!;
+        foreach (var entry in vacations.OfType<JsonObject>())
+            if (entry["entitlementYear"]?.ToString() == entitlementYear.ToString() && entry["status"]?.ToString() == "Planejada" && DateOnly.TryParse(entry["endDate"]?.ToString(), out var end) && end < localToday)
+            { entry["status"] = "Concluída"; entry["updatedAt"] = at.ToString("O"); }
+        var completed = vacations.OfType<JsonObject>().Where(entry => entry["entitlementYear"]?.ToString() == entitlementYear.ToString()
+            && entry["status"]?.ToString() == "Concluída").Sum(entry => int.TryParse(entry["days"]?.ToString(), out var days) ? days : 0);
+        if (completed >= 30) throw new DomainException("Este período aquisitivo já está concluído.", 409);
+        var remaining = 30 - Math.Max(0, completed);
+        var entryId = Guid.NewGuid();
+        vacations.Add(new JsonObject { ["id"] = entryId.ToString(), ["entitlementYear"] = entitlementYear, ["startDate"] = "", ["endDate"] = "",
+            ["days"] = remaining, ["status"] = "Concluída", ["manualCompletion"] = true, ["observation"] = observation?.Trim() ?? "",
+            ["createdAt"] = at.ToString("O"), ["updatedAt"] = at.ToString("O"), ["author"] = actor.DisplayName, ["authorEmail"] = actor.Email });
+        item.Description = profile.ToJsonString(); item.UpdatedAt = at; item.Version++;
+        db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = "hr", Kind = "Período de férias finalizado",
+            Summary = $"{entitlementYear}º período aquisitivo finalizado manualmente, sem datas: {remaining} dia(s) de saldo.", Actor = actor.Email });
+        AddAudit(actor, "CompleteVacationPeriod", "work_item", item.Id.ToString(), "hr", new { entitlementYear, remainingDays = remaining, entryId, manualCompletion = true });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task UpdateWorkItemAsync(
         UpdateWorkItemCommand command,
         ActorContext actor,
@@ -1231,6 +1283,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor);
         RequireReferralUpdate(item, command, actor);
+        EmployeeProfileService.RequireDedicatedEditor(command.RecordType, command.Description);
         await RequireCommissionScopeAsync(item, actor, false, cancellationToken);
         if (item.Module == "reminders" && !actor.HasPermission("reminders", "manage") &&
             !string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) &&

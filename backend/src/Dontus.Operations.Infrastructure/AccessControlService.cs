@@ -8,7 +8,8 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class AccessControlService(
     OperationsDbContext db,
-    IConfiguration configuration) : IAccessControlService
+    IConfiguration configuration,
+    IPasswordRecoveryEmailSender passwordEmailSender) : IAccessControlService
 {
     private const string AdministratorsGroup = "Administradores";
     private const string CollaboratorsGroup = "Colaboradores";
@@ -166,23 +167,6 @@ public sealed class AccessControlService(
             .ToListAsync(cancellationToken);
         foreach (var employee in employeesWithoutHrCard)
             db.WorkItems.Add(CreateHrWorkItem(employee, employee.CreatedBy));
-        var defaultCatalogs = new Dictionary<string, string[]>
-        {
-            ["cancellationCommunicationType"] = ["Ligação", "WhatsApp", "E-mail", "Reunião", "Análise"],
-            ["hrCommunicationType"] = ["Feedback", "Acompanhamento", "Advertência", "Reconhecimento", "Reunião"],
-            ["hrDocumentType"] = ["Documento pessoal", "Contrato", "Atestado", "Certificado", "Termo"],
-            ["hrTerminationReason"] = ["Desempenho", "Conduta", "Reestruturação", "Término de contrato", "Pedido do colaborador"],
-        };
-        var existingCatalogs = await db.CustomerCatalogOptions.AsNoTracking()
-            .Where(entry => defaultCatalogs.Keys.Contains(entry.Catalog) || entry.Catalog == "employeeRole")
-            .Select(entry => new { entry.Catalog, entry.Name })
-            .ToListAsync(cancellationToken);
-        foreach (var (catalog, names) in defaultCatalogs)
-            foreach (var name in names.Where(name => !existingCatalogs.Any(entry => entry.Catalog == catalog && entry.Name == name)))
-                db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog = catalog, Name = name });
-        var employeeRoles = await db.Users.AsNoTracking().Where(entry => entry.Active && entry.JobTitle != "").Select(entry => entry.JobTitle).Distinct().ToListAsync(cancellationToken);
-        foreach (var role in employeeRoles.Where(role => !existingCatalogs.Any(entry => entry.Catalog == "employeeRole" && entry.Name == role)))
-            db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog = "employeeRole", Name = role });
         if (employeesWithoutHrCard.Count > 0 || db.ChangeTracker.HasChanges())
             await db.SaveChangesAsync(cancellationToken);
     }
@@ -206,10 +190,12 @@ public sealed class AccessControlService(
             .Select(membership => new
             {
                 membership.Group.Name,
+                membership.Group.IsSystem,
                 Permissions = membership.Group.Permissions,
             })
             .ToListAsync(cancellationToken);
 
+        var fullAccess = groups.Any(group => group.IsSystem && group.Name == AdministratorsGroup);
         var permissions = groups
             .SelectMany(group => group.Permissions)
             .GroupBy(permission => permission.Screen, StringComparer.OrdinalIgnoreCase)
@@ -227,6 +213,10 @@ public sealed class AccessControlService(
             .OrderBy(permission => permission.Screen)
             .ToList();
 
+        if (fullAccess)
+            permissions = ScreenCatalog.All.Select(screen => new EffectivePermission(
+                screen.Code, true, true, true, true, true, AdministratorCapabilities(screen))).ToList();
+
         // Coordination is a trusted employee flag; supervision is granted by the
         // module's approval/management permissions, never by a role's display name.
         foreach (var screen in new[] { "commissions", "referrals" })
@@ -242,7 +232,8 @@ public sealed class AccessControlService(
             string.IsNullOrWhiteSpace(user.DisplayName) ? identity.DisplayName : user.DisplayName,
             groups.Count == 0 ? "Sem grupo" : string.Join(", ", groups.Select(group => group.Name).Order()),
             user.Department,
-            permissions);
+            permissions,
+            fullAccess);
     }
 
     public async Task<AccessManagementDto> GetManagementAsync(
@@ -363,6 +354,7 @@ public sealed class AccessControlService(
             throw new DomainException("Já existe um usuário cadastrado com este e-mail.", 409);
 
         var groupIds = await ValidateGroupsAsync(command.GroupIds, cancellationToken);
+        var temporaryPassword = PasswordSecurity.GenerateTemporaryPassword();
         var user = new AppUser
         {
             Email = email,
@@ -370,11 +362,13 @@ public sealed class AccessControlService(
             Department = CleanDepartment(command.Department),
             Active = command.Active,
             BlockedAt = command.Active ? null : DateTimeOffset.UtcNow,
+            PasswordHash = PasswordSecurity.Hash(temporaryPassword),
             CreatedBy = actor.Email,
         };
         foreach (var groupId in groupIds)
             user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = groupId });
 
+        await passwordEmailSender.SendAsync(user.Email, user.DisplayName, temporaryPassword, cancellationToken);
         db.Users.Add(user);
         AddAudit(actor, "Create", "user", user.Id.ToString(), new { user.Email, Groups = groupIds });
         await db.SaveChangesAsync(cancellationToken);
@@ -511,6 +505,7 @@ public sealed class AccessControlService(
                 : [await db.AccessGroups.Where(group => group.Name == CollaboratorsGroup).Select(group => group.Id).SingleAsync(cancellationToken)];
         foreach (var groupId in groupIds)
             user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = groupId });
+        await passwordEmailSender.SendAsync(user.Email, user.DisplayName, temporaryPassword, cancellationToken);
         db.Users.Add(user);
         db.WorkItems.Add(CreateHrWorkItem(user, actor.Email));
         foreach (var departmentId in departmentIds)
@@ -527,7 +522,7 @@ public sealed class AccessControlService(
         }));
         AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name });
         await db.SaveChangesAsync(cancellationToken);
-        return new CreateEmployeeResult(user.Id, temporaryPassword);
+        return new CreateEmployeeResult(user.Id);
     }
 
     public async Task UpdateEmployeeAsync(
