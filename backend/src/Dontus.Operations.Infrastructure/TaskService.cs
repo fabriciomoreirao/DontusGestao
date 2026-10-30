@@ -483,12 +483,12 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         else
         {
             var sla = await db.TaskSlaPolicies.SingleOrDefaultAsync(
-                x => x.Id == command.SlaPolicyId && x.Active && x.DepartmentId == task.CurrentDepartmentId, cancellationToken)
-                ?? throw new DomainException("SLA inválido, inativo ou incompatível com o setor.");
+                x => x.Id == command.SlaPolicyId && x.Active, cancellationToken)
+                ?? throw new DomainException("SLA inválido ou inativo.");
             task.SlaPolicyId = sla.Id;
-            task.FirstResponseDueAt = AddBusinessMinutes(DateTimeOffset.UtcNow, sla.FirstResponseMinutes, sla);
-            task.ServiceStartDueAt = AddBusinessMinutes(DateTimeOffset.UtcNow, sla.ServiceStartMinutes, sla);
-            task.SlaDueAt = AddBusinessMinutes(DateTimeOffset.UtcNow, sla.CompletionMinutes, sla);
+            task.FirstResponseDueAt = AddBusinessMinutes(task.CreatedAt, sla.FirstResponseMinutes, sla);
+            task.ServiceStartDueAt = AddBusinessMinutes(task.CreatedAt, sla.ServiceStartMinutes, sla);
+            task.SlaDueAt = AddBusinessMinutes(task.CreatedAt, sla.CompletionMinutes, sla);
         }
         task.UpdatedAt = DateTimeOffset.UtcNow;
         task.Version++;

@@ -6,9 +6,10 @@ import {
   Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
   Gift, MessageCircleMore, Palette, Paperclip, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties } from "react";
 import ChatAppearanceModal from "@/app/ChatAppearanceModal";
 import { chatAppearanceKey, chatAppearanceStyle, parseChatAppearance } from "@/lib/chat-appearance";
+import { clipboardImages } from "@/lib/clipboard-images";
 
 export type InternalChatUser = {
   id: string; name: string; email: string; departmentName: string; photoDataUrl: string;
@@ -51,6 +52,8 @@ type Conversation = {
   room?: InternalChatRoom; user?: InternalChatUser;
 };
 
+type ImageDraft = { id: string; file: File };
+
 const stickers = ["😀", "😂", "😍", "🥳", "👏", "👍", "🙏", "🔥", "💙", "🎉", "✅", "🚀"];
 const messageTime = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const roomTime = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -66,7 +69,7 @@ const brasiliaMonthDay = () => {
 export default function InternalChatModule({ module, employees = [], busy, canCreate, canEdit, operate, markRead, uploadAttachments, onOpenProfile, initialRoomId }: Props) {
   const [selection, setSelection] = useState({ requestedRoomId: initialRoomId, key: initialRoomId ?? "" });
   const selectedKey = selection.requestedRoomId === initialRoomId ? selection.key : initialRoomId ?? "";
-  const setSelectedKey = (key: string) => setSelection({ requestedRoomId: initialRoomId, key });
+  const setSelectedKey = (key: string) => { setSelection({ requestedRoomId: initialRoomId, key }); setSendError(""); };
   const [search, setSearch] = useState("");
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [appearance, setAppearance] = useState(() => { try { return parseChatAppearance(typeof localStorage === "undefined" ? null : localStorage.getItem(chatAppearanceKey(module.currentUserId))); } catch { return parseChatAppearance(null); } });
@@ -76,6 +79,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const [historyExhausted, setHistoryExhausted] = useState<Record<string, boolean>>({});
   const [historyDays, setHistoryDays] = useState<Record<string, number>>({});
   const [message, setMessage] = useState("");
+  const [imageDrafts, setImageDrafts] = useState<Record<string, ImageDraft[]>>({});
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
   const [stickersOpen, setStickersOpen] = useState(false);
@@ -101,6 +105,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const effectiveSelectedKey = conversations.some((entry) => entry.key === selectedKey) ? selectedKey : conversations[0]?.key ?? "";
   const selectedConversation = conversations.find((entry) => entry.key === effectiveSelectedKey);
   const selectedRoom = selectedConversation?.room;
+  const pastedImages = imageDrafts[effectiveSelectedKey] ?? [];
   const visibleMessages = [...new Map([...(olderMessages[selectedRoom?.id || ""] || []), ...(selectedRoom?.messages || [])].map(message => [message.id, message])).values()].sort((a,b) => a.createdAt.localeCompare(b.createdAt));
   const loadOlderMessages = async () => {
     if (!selectedRoom || historyLoading) return;
@@ -177,6 +182,14 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
       memberUserIds: [selectedConversation.user.id],
     }, "Conversa iniciada com sucesso.");
     if (!result || !result.id) return "";
+    const roomId = result.id;
+    setImageDrafts(current => {
+      const drafts = current[effectiveSelectedKey];
+      if (!drafts?.length) return current;
+      const next = { ...current, [roomId]: [...(current[roomId] ?? []), ...drafts] };
+      delete next[effectiveSelectedKey];
+      return next;
+    });
     setSelectedKey(result.id);
     return result.id;
   };
@@ -184,14 +197,46 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault();
     const body = message.trim();
-    if (!canCreate || !selectedConversation || !body || sendingRef.current) return;
+    if (!canCreate || !selectedConversation || (!body && !pastedImages.length) || sendingRef.current) return;
+    const conversationKey = effectiveSelectedKey;
     sendingRef.current = true;
+    setSendError("");
     try {
     const roomId = await ensureRoom();
     if (!roomId) return;
-    const result = await operate({ action: "sendInternalChatMessage", roomId, body, messageType: "text" }, "Mensagem enviada.");
-    if (result) setMessage("");
+    if (pastedImages.length) {
+      if (!await uploadAttachments(roomId, pastedImages.map(image => image.file))) {
+        setSendError("Não foi possível enviar as imagens. Elas continuam selecionadas para tentar novamente.");
+        return;
+      }
+      const sent = new Set(pastedImages.map(image => image.id));
+      setImageDrafts(current => ({ ...current,
+        [conversationKey]: (current[conversationKey] ?? []).filter(image => !sent.has(image.id)),
+        [roomId]: (current[roomId] ?? []).filter(image => !sent.has(image.id)),
+      }));
+    }
+    if (body) {
+      const result = await operate({ action: "sendInternalChatMessage", roomId, body, messageType: "text" }, "Mensagem enviada.");
+      if (result) setMessage(current => current === message ? "" : current);
+    }
+    } catch {
+      setSendError("Não foi possível enviar a mensagem. Tente novamente.");
     } finally { sendingRef.current = false; }
+  };
+
+  const pasteImages = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = clipboardImages(event.clipboardData);
+    if (!images.length) return;
+    event.preventDefault();
+    if (!canCreate || busy || sendingRef.current) return;
+    const accepted = images.filter(file => file.size > 0 && file.size <= 50 * 1024 * 1024);
+    const capacity = Math.max(0, 10 - pastedImages.length);
+    setSendError(accepted.length !== images.length ? "Imagens vazias ou maiores que 50 MB não podem ser enviadas."
+      : accepted.length > capacity ? "É permitido preparar até 10 imagens por envio." : "");
+    const drafts = accepted.slice(0, capacity).map((file, index) => ({
+      id: typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : `pasted-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`, file,
+    }));
+    setImageDrafts(current => ({ ...current, [effectiveSelectedKey]: [...(current[effectiveSelectedKey] ?? []), ...drafts].slice(0, 10) }));
   };
 
   const sendSticker = async (sticker: string) => {
@@ -302,13 +347,14 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
             <div aria-hidden="true" />
           </div>
           {!canCreate && <p className="module-access-note" role="status"><LockKeyhole size={14}/>Seu perfil permite consultar as conversas. O envio de mensagens está bloqueado.</p>}
+          {pastedImages.length > 0 && <section className="internal-chat-pasted-images" aria-label="Imagens para enviar"><header><strong>{pastedImages.length} imagem(ns) para enviar</strong><span>Clique em Enviar mensagem para confirmar.</span></header><div>{pastedImages.map(image => <PastedImagePreview key={image.id} image={image} disabled={busy} onRemove={() => setImageDrafts(current => ({ ...current, [effectiveSelectedKey]: (current[effectiveSelectedKey] ?? []).filter(entry => entry.id !== image.id) }))} />)}</div></section>}
           <form className="internal-chat-composer" onSubmit={sendMessage}>
             <input ref={fileInput} hidden type="file" multiple accept="image/*,video/*,.pdf,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={(event) => void upload(event.target.files)} />
             <button type="button" className="internal-chat-tool" onClick={() => fileInput.current?.click()} disabled={busy || !canCreate} aria-label="Anexar arquivo"><Paperclip size={19} /></button>
             <div className="internal-chat-sticker-wrap"><button type="button" className="internal-chat-tool" onClick={() => setStickersOpen((value) => !value)} disabled={busy || !canCreate} aria-label="Enviar figurinha"><SmilePlus size={19} /></button>{stickersOpen && <div className="internal-chat-stickers">{stickers.map((sticker) => <button type="button" key={sticker} disabled={busy || !canCreate} onClick={() => void sendSticker(sticker)}>{sticker}</button>)}</div>}</div>
             {selectedRoom?.isGroup && <button type="button" className="internal-chat-tool poll" onClick={() => setPollOpen(true)} disabled={busy || !canCreate} aria-label="Criar enquete" title="Criar enquete"><BarChart3 size={19} /></button>}
-            <textarea rows={1} disabled={busy || !canCreate} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Escreva uma mensagem..." maxLength={4000} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
-            <button className="internal-chat-send" disabled={busy || !canCreate || !message.trim()} aria-label="Enviar mensagem"><Send size={18} /></button>
+            <textarea rows={1} disabled={busy || !canCreate} value={message} onChange={(event) => setMessage(event.target.value)} onPaste={pasteImages} placeholder="Escreva uma mensagem..." maxLength={4000} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
+            <button className="internal-chat-send" disabled={busy || !canCreate || (!message.trim() && !pastedImages.length)} aria-label="Enviar mensagem"><Send size={18} /></button>
           </form>
         </>}
       </main>
@@ -318,6 +364,16 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     {pollOpen && selectedRoom?.isGroup && <CreatePollModal busy={busy} onClose={() => setPollOpen(false)} onCreate={createPoll} />}
     {mediaPreview && <div className="internal-chat-media-backdrop" onMouseDown={(event)=>event.currentTarget===event.target&&setMediaPreview(null)}><section className="internal-chat-media-preview" role="dialog" aria-modal="true"><header><strong>{mediaPreview.name}</strong><button type="button" onClick={()=>setMediaPreview(null)} aria-label="Fechar"><X size={18}/></button></header>{mediaPreview.video?<video controls autoPlay><source src={mediaPreview.url}/></video>:<img src={mediaPreview.url} alt={mediaPreview.name}/>}<a href={mediaPreview.url} target="_blank" rel="noreferrer">Abrir em nova guia</a></section></div>}
   </div>;
+}
+
+function PastedImagePreview({ image, disabled, onRemove }: { image: ImageDraft; disabled: boolean; onRemove: () => void }) {
+  const preview = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const url = URL.createObjectURL(image.file);
+    if (preview.current) preview.current.src = url;
+    return () => URL.revokeObjectURL(url);
+  }, [image.file]);
+  return <article><img ref={preview} alt={image.file.name} /><span>{image.file.name}</span><button type="button" disabled={disabled} onClick={onRemove} aria-label={`Remover imagem ${image.file.name}`}><X size={14} /></button></article>;
 }
 
 function buildConversations(module: InternalChatModuleData, archived: boolean): Conversation[] {

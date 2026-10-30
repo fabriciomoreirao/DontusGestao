@@ -930,6 +930,7 @@ export default function OperationsApp() {
 
   const uploadTaskAttachments = async (taskId: string, files: File[], commentId?: string) => {
     if (files.length === 0) return true;
+    mutationRevision.current += 1;
     setBusy(true);
     try {
       const form = new FormData();
@@ -943,6 +944,7 @@ export default function OperationsApp() {
       let result: { detail?: string } = {};
       try { result = rawResult ? JSON.parse(rawResult) : {}; } catch { result = { detail: rawResult || "Falha no envio do anexo." }; }
       if (!response.ok) throw new Error(result.detail ?? "Os anexos não foram enviados.");
+      mutationRevision.current += 1;
       await load(true);
       setToast({ kind: "success", message: files.length === 1 ? "Arquivo anexado à tarefa." : `${files.length} arquivos anexados à tarefa.` });
       window.setTimeout(() => setToast(null), 3500);

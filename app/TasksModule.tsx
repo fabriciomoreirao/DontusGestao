@@ -94,6 +94,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   const [selected, setSelected] = useState<CorporateTask | null>(null);
   const [editRequested, setEditRequested] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [createdTaskPendingUpload, setCreatedTaskPendingUpload] = useState<{ id?: string; createdProtocol?: string } | null>(null);
   const [createdProtocol, setCreatedProtocol] = useState("");
   const reminderFilter = useReminderFilter("tasks");
   const has = (capability: string) => canManage || capabilities.includes(capability);
@@ -191,11 +192,15 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
       </div>
     </section>
 
-    {creating && <CreateTaskModal module={module} customers={customers} user={user} departmentIds={availableDepartments.map((item) => item.id)} initialDepartmentId={departmentFilter} busy={busy} onClose={() => setCreating(false)} onSubmit={async (payload, files) => {
-      const result = await operate({ action: "createTask", ...payload }, "Tarefa criada, protocolo e SLA calculados.");
+    {creating && <CreateTaskModal module={module} customers={customers} user={user} departmentIds={availableDepartments.map((item) => item.id)} initialDepartmentId={departmentFilter} busy={busy} attachmentsOnly={!!createdTaskPendingUpload} onClose={() => { setCreating(false); setCreatedTaskPendingUpload(null); }} onSubmit={async (payload, files) => {
+      const result = createdTaskPendingUpload ?? await operate({ action: "createTask", ...payload }, "Tarefa criada, protocolo e SLA calculados.");
       if (!result) return;
+      if (result.id && files.length > 0 && !await uploadAttachments(result.id, files)) {
+        setCreatedTaskPendingUpload(result);
+        return;
+      }
       setCreating(false);
-      if (result.id && files.length > 0) await uploadAttachments(result.id, files);
+      setCreatedTaskPendingUpload(null);
       setCreatedProtocol(result.createdProtocol ?? "");
     }} />}
     {selected && <TaskDetail task={module.tasks.find((t) => t.id === selected.id) ?? selected} module={module} customers={customers} user={user} canManage={canManage} canEdit={canEdit} startEditing={editRequested} has={has} busy={busy} onClose={closeTask} operate={operate} onSendToDevelopment={onSendToDevelopment} uploadAttachments={uploadAttachments} deleteAttachment={deleteAttachment} />}
@@ -266,7 +271,7 @@ function TaskClientStateBadge({state}:{state:string}){
   return <span className={`task-client-state ${tone}`}>{normalized==="Cliente Informado"?<CheckCircle2 size={12}/>:normalized==="Sem Necessidade"?<Check size={12}/>:<Bell size={12}/>} {normalized}</span>
 }
 
-export function CreateTaskModal({ module, customers, user, departmentIds, initialDepartmentId, busy, initial, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; initialDepartmentId?: string; busy: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
+export function CreateTaskModal({ module, customers, user, departmentIds, initialDepartmentId, busy, initial, attachmentsOnly = false, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; initialDepartmentId?: string; busy: boolean; attachmentsOnly?: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
   const originDepartment = module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.id === initialDepartmentId)
     ?? module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.name.toLocaleLowerCase("pt-BR") === user.department.toLocaleLowerCase("pt-BR"))
     ?? module.departments.find((department) => department.active && departmentIds.includes(department.id));
@@ -304,8 +309,9 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
       participantUserIds: f.getAll("participantUserIds"),
     }, files);
   };
-  return <Overlay title="Nova tarefa" eyebrow="TAREFAS" subtitle="Informe a solicitação. A coordenação fará a classificação após o cadastro." onClose={onClose}><form className="task-form task-create-form" onSubmit={submit}>
-    <section className="task-form-section wide">
+  return <Overlay title={attachmentsOnly ? "Enviar anexos da tarefa" : "Nova tarefa"} eyebrow="TAREFAS" subtitle="Informe a solicitação. A coordenação fará a classificação após o cadastro." onClose={onClose}><form className="task-form task-create-form" onSubmit={submit}>
+    {attachmentsOnly && <p className="wide" role="alert">A tarefa foi criada, mas os anexos não foram enviados. Reenvie os arquivos para concluir.</p>}
+    {!attachmentsOnly && <section className="task-form-section wide">
       <header><span>01</span><div><h3>Solicitação</h3><p>Descreva de forma simples o que precisa ser analisado.</p></div></header>
       <div className="task-form-section-grid">
         <label className="wide">Título *<input name="title" required defaultValue={initial?.title} placeholder="Resuma a demanda em uma frase" /></label>
@@ -318,15 +324,15 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
         {selectedType && <div className="task-readonly-field wide"><span>Etapa inicial</span><strong>{initialStatus?.name ?? "Este tipo precisa de uma etapa inicial ativa. Revise o cadastro do tipo."}</strong></div>}
         <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={initial?.description} placeholder="Explique o problema, o resultado esperado e as informações necessárias para a análise." /></label>
       </div>
-    </section>
+    </section>}
     <section className="task-form-section wide">
       <header><span>02</span><div><h3>Acesso e evidências</h3><p>Inclua participantes e arquivos somente quando forem necessários.</p></div></header>
       <div className="task-form-section-grid">
-        <fieldset className="wide task-participants"><legend>Colaboradores participantes</legend><p>Somente participantes, criador, responsável e coordenação terão acesso.</p>{module.collaborators.filter((item) => item.active).map((item) => <label key={item.id}><input type="checkbox" name="participantUserIds" value={item.id} /> <CollaboratorAvatar collaborator={item} /> {item.name}</label>)}</fieldset>
-        <MediaUploadField className="wide" label="Imagens e vídeos" name="files" accept="image/*,video/*" multiple selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada." onChange={(event) => setFiles((current) => mergeSelectedFiles(current, Array.from(event.currentTarget.files ?? [])))} />
+        {!attachmentsOnly && <fieldset className="wide task-participants"><legend>Colaboradores participantes</legend><p>Somente participantes, criador, responsável e coordenação terão acesso.</p>{module.collaborators.filter((item) => item.active).map((item) => <label key={item.id}><input type="checkbox" name="participantUserIds" value={item.id} /> <CollaboratorAvatar collaborator={item} /> {item.name}</label>)}</fieldset>}
+        <MediaUploadField className="wide" label="Imagens e vídeos" name="files" disabled={busy} accept="image/*,video/*" multiple selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada." onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); setFiles(current => mergeSelectedFiles(current, selectedFiles)); }} />
       </div>
     </section>
-    <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !departmentId || !selectedType || !initialStatus}>{busy ? "Salvando..." : "Criar tarefa"}</button></div>
+    <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || (!attachmentsOnly && (!departmentId || !selectedType || !initialStatus))}>{busy ? "Salvando..." : attachmentsOnly ? "Reenviar anexos" : "Criar tarefa"}</button></div>
   </form></Overlay>;
 }
 
@@ -462,7 +468,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
           if (!target?.requiresJustification || justification) await operate({ action: "changeTaskStatus", taskId: task.id, statusId: e.target.value, justification, version: task.version }, "Status atualizado.");
         }}>{availableStatuses.map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select></label>}
         {canEdit && has("changePriority") && <label className="priority-control"><span>Prioridade</span><select value={task.priorityId} onChange={(e) => void operate({ action: "changeTaskPriority", taskId: task.id, priorityId: e.target.value, version: task.version }, "Prioridade atualizada.")}>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select></label>}
-        {canEdit && has("changeSla") && <label className="sla-control"><span>Política de SLA</span><select value={task.slaPolicyId ?? ""} onChange={(e) => void operate({ action: "changeTaskSla", taskId: task.id, slaPolicyId: e.target.value || null, version: task.version }, "SLA recalculado.")}><option value="">Sem SLA</option>{module.slaPolicies.filter((s) => s.active && s.departmentId === task.currentDepartmentId).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select></label>}
+        {canEdit && has("changeSla") && <label className="sla-control"><span>Política de SLA</span><select value={task.slaPolicyId ?? ""} onChange={(e) => void operate({ action: "changeTaskSla", taskId: task.id, slaPolicyId: e.target.value || null, version: task.version }, "SLA recalculado.")}><option value="">Sem SLA</option>{module.slaPolicies.filter((s) => s.active).map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}</select></label>}
       </div>
       <div className="task-action-buttons">
         {canEdit && has("assume") && !task.assigneeUserId && <button className="assume-action" disabled={busy} onClick={() => operate({ action: "assignTask", taskId: task.id, version: task.version }, "Tarefa assumida.")}><Check size={15} /> Assumir tarefa</button>}

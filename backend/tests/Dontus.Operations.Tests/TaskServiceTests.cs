@@ -169,8 +169,11 @@ public sealed class TaskServiceTests
         Assert.Contains("só pode coordenar", exception.Message);
     }
 
-    [Fact]
-    public async Task Uploads_private_attachment_and_records_metadata_and_history()
+    [Theory]
+    [InlineData("evidencia.pdf", "application/pdf")]
+    [InlineData("gravacao.webm", "video/webm")]
+    [InlineData("gravacao.mp4", "video/mp4")]
+    public async Task Uploads_private_attachment_and_records_metadata_and_history(string fileName, string contentType)
     {
         await using var db = CreateContext();
         var storage = new FakeTaskFileStorage();
@@ -184,16 +187,42 @@ public sealed class TaskServiceTests
 
         var attachmentId = await service.UploadAttachmentAsync(
             new UploadTaskAttachmentCommand(
-                taskId, null, "evidencia.pdf", "application/pdf", content.Length, content), actor);
+                taskId, null, fileName, contentType, content.Length, content), actor);
 
         var attachment = await db.TaskAttachments.SingleAsync(x => x.Id == attachmentId);
         var download = await service.GetAttachmentDownloadAsync(attachmentId, actor);
-        Assert.Equal("evidencia.pdf", attachment.FileName);
+        Assert.Equal(fileName, attachment.FileName);
         Assert.Equal(content.Length, attachment.SizeBytes);
         Assert.Equal(attachment.StorageKey, storage.StoredKey);
         Assert.Contains(attachment.StorageKey, download.Url);
         Assert.Contains(await db.TaskHistory.ToListAsync(),
             entry => entry.TaskId == taskId && entry.EventType == "attachment_added");
+        var saved = Assert.Single((await service.GetModuleAsync(actor)).Tasks.Single(task => task.Id == taskId).Attachments);
+        Assert.Equal(fileName, saved.FileName);
+        Assert.Equal($"/api/task-files/{attachmentId}", saved.Url);
+    }
+
+    [Theory]
+    [InlineData(1, "2026-10-26T16:00:00Z")]
+    [InlineData(5, "2026-10-30T16:00:00Z")]
+    [InlineData(15, "2026-11-13T16:00:00Z")]
+    public async Task Registered_sla_days_can_be_selected_in_other_departments_and_start_at_task_creation(int days, string deadline)
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
+        var support = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte");
+        var other = new TaskDepartment { Name = "Outro setor" }; db.TaskDepartments.Add(other); await db.SaveChangesAsync();
+        var type = await db.TaskTypes.SingleAsync();
+        var id = (await service.CreateAsync(new("Demanda", "Contexto", type.Id, null, null, support.Id, support.Id,
+            null, null, null, null, "5511999990000", null, null, null, null, false, [], []), actor)).Id;
+        var task = await db.CorporateTasks.SingleAsync(x => x.Id == id);
+        task.CreatedAt = DateTimeOffset.Parse("2026-10-26T08:00:00Z"); await db.SaveChangesAsync();
+        var slaId = await service.SaveSlaPolicyAsync(new(null, $"{days} dias úteis", other.Id, null, null, 0, 0, days * 480,
+            [1,2,3,4,5], "08:00", "16:00", 0, 0, true, [], true), actor);
+        await service.ChangeSlaAsync(new(id, slaId, task.Version), actor);
+        var saved = (await service.GetModuleAsync(actor)).Tasks.Single(x => x.Id == id);
+        Assert.Equal(slaId, saved.SlaPolicyId); Assert.Equal(DateTimeOffset.Parse(deadline), saved.SlaDueAt);
+        (await db.TaskSlaPolicies.SingleAsync(x => x.Id == slaId)).Active = false; await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<DomainException>(() => service.ChangeSlaAsync(new(id, slaId, task.Version), actor));
     }
 
     [Fact]

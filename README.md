@@ -89,6 +89,10 @@ Cada setor recebe uma agenda automaticamente, tanto nos cadastros de Colaborador
 
 Em **Nova tarefa**, informe o **ID do cliente** com os seis dígitos do ID Dontus. Um ID cadastrado vincula o cliente automaticamente; alterar para um ID sem correspondência remove o vínculo anterior. O protocolo aparece no título e no cabeçalho assim que o card é aberto.
 
+Imagens e vídeos selecionados na criação são enviados com a sessão do usuário e aparecem em **Anexos** ao reabrir a tarefa. Se o envio falhar, os arquivos permanecem selecionados e a ação **Reenviar anexos** conclui o envio para a tarefa já criada. A reprodução de vídeos preserva os intervalos de bytes necessários para avançar e retroceder.
+
+O seletor **Política de SLA** apresenta todos os prazos ativos cadastrados, inclusive aqueles criados no cadastro simplificado de dias úteis. A escolha não depende do vínculo técnico antigo com um setor. Ao aplicar um prazo, a contagem parte da criação da tarefa.
+
 Os cancelamentos exibem o protocolo no card e no cabeçalho dos detalhes, com busca pelo número. A sequência própria começa em `C260001`, `C260002` e assim por diante, com ano e reinício anual pelo horário de Brasília. O servidor gera e preserva o protocolo; edições não o alteram e exclusões não reutilizam números. A migration `CancellationAnnualProtocols` numera solicitações antigas em ordem de criação e continua após protocolos já existentes. O contador de cancelamentos é independente do contador de Chamados.
 
 As seleções operacionais utilizam apenas opções cadastradas e ativas. Opções fixas de exemplo e valores encontrados somente no histórico não são acrescentados às listas. Os registros históricos continuam preservados, e os cadastros administrativos permitem consultar e reativar opções inativas. Reiniciar o sistema não reativa prioridades bloqueadas nem recria cadastros excluídos do RH e etapas excluídas de Tarefas.
@@ -171,6 +175,8 @@ No detalhe do cliente, use **Gerar link de formulário**, escolha um modelo ativ
 O card indica se os formulários foram respondidos; **Ver respostas** abre uma nova página autenticada com todos os formulários desse acompanhamento e seus horários em Brasília. A lista atualiza ao voltar à janela, a cada 30 segundos ou pelo botão de atualização. Gerar links exige editar a LIA; consultar respostas exige visualizar a LIA. Tokens são aleatórios e armazenados com hash e uma cópia protegida pela chave persistente de Data Protection. As tabelas são criadas pela migration LiaClientForms.
 
 ## Atendimento omnichannel
+
+No **Chat interno**, cole imagens com **Ctrl+V** no campo de mensagem. As imagens aparecem em uma prévia, podem ser removidas e são enviadas ao clicar em **Enviar mensagem**, com ou sem texto. Cada conversa mantém suas próprias imagens pendentes; uma falha de envio permite tentar novamente. Colar texto continua funcionando normalmente. O limite é de dez imagens por envio, com até 50 MB cada.
 
 A tela **Atendimento** inclui caixa de entrada em três colunas, pesquisa e filtros,
 histórico de mensagens e transferências, notas internas, atribuição, etiquetas,
