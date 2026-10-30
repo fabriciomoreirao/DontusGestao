@@ -1834,7 +1834,8 @@ function GlobalImagePreview() {
     const open=(event:MouseEvent)=>{
       const target=event.target instanceof Element?event.target:null;
       if(!target||target.closest(".global-image-preview"))return;
-      if(target.closest(".employee-cover-upload,.employee-profile-close"))return;
+      // A file input inside a previewable cover must keep its native file-picker action.
+      if(target.closest('input[type="file"],.employee-cover-upload,.employee-profile-close'))return;
       const candidate=target.closest<HTMLElement>('img,a[href^="data:image/"],[data-preview-image],.has-photo,.hr-avatar[style*="background-image"],[data-collaborator-name] i[style*="background-image"]');
       if(!candidate)return;
       let src="";
