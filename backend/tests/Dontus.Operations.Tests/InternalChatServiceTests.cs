@@ -193,6 +193,51 @@ public sealed class InternalChatServiceTests
         return new InternalChatService(db, configuration);
     }
 
+    [Fact]
+    public async Task Authors_can_edit_and_delete_their_own_messages_with_server_timestamps_and_version_checks()
+    {
+        await using var db = CreateContext(); var sender = AddUser(db,"author@test.local","Autor"); var recipient = AddUser(db,"reader@test.local","Leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null,null,false,[recipient.Id]),Actor(sender));
+        var id = await service.SendMessageAsync(new(roomId,"Texto original","text"),Actor(sender)); var createdAt = (await db.InternalChatMessages.SingleAsync()).CreatedAt;
+        await service.EditMessageAsync(new(roomId,id,"Texto corrigido",1),Actor(sender));
+        var edited = Assert.Single((await service.GetModuleAsync(Actor(recipient))).Rooms).Messages.Single();
+        Assert.Equal("Texto corrigido",edited.Body); Assert.NotNull(edited.EditedAt); Assert.Equal(createdAt,edited.CreatedAt); Assert.Equal(2,edited.Version);
+        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteMessageAsync(new(roomId,id,1),Actor(sender)))).StatusCode);
+        await service.DeleteMessageAsync(new(roomId,id,2),Actor(sender));
+        var room = Assert.Single((await service.GetModuleAsync(Actor(recipient))).Rooms); var deleted = Assert.Single(room.Messages);
+        Assert.NotNull(deleted.DeletedAt); Assert.Equal("",deleted.Body); Assert.False(deleted.HasAttachment); Assert.False(deleted.IsPinned); Assert.Equal(0,room.UnreadCount);
+        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.EditMessageAsync(new(roomId,id,"Ressuscitar",3),Actor(sender)))).StatusCode);
+        Assert.Equal(new[]{"EditMessage","DeleteMessage"},await db.AuditEvents.Where(entry=>entry.Module=="internalChat" && entry.Resource=="internal_chat_message").OrderBy(entry=>entry.CreatedAt).Select(entry=>entry.Action).ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task Even_administrators_cannot_change_other_peoples_messages_or_access_removed_attachments()
+    {
+        await using var db = CreateContext(); var sender = AddUser(db,"author@test.local","Autor"); var reader = AddUser(db,"reader@test.local","Leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender)); var id = await service.SendMessageAsync(new(roomId,"Privado","text"),Actor(sender));
+        var admin = Actor(reader) with {FullAccess=true};
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.EditMessageAsync(new(roomId,id,"Alterado",1),admin))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteMessageAsync(new(roomId,id,1),admin))).StatusCode);
+        await using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("anexo"));
+        var attachmentId = await service.UploadAttachmentAsync(new(roomId,"arquivo.txt","text/plain",content.Length,content),Actor(sender));
+        await service.DeleteMessageAsync(new(roomId,attachmentId,1),Actor(sender));
+        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.GetAttachmentAsync(attachmentId,Actor(reader)))).StatusCode);
+        var attachment = (await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single(entry=>entry.Id==attachmentId);
+        Assert.Equal("",attachment.FileName); Assert.Equal("",attachment.ContentType); Assert.False(attachment.HasAttachment);
+    }
+
+    [Fact]
+    public async Task Editing_loaded_old_messages_returns_the_correction_in_the_current_snapshot()
+    {
+        await using var db = CreateContext(); var sender = AddUser(db,"author@test.local","Autor"); var reader = AddUser(db,"reader@test.local","Leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender)); var id = await service.SendMessageAsync(new(roomId,"Antiga","text"),Actor(sender));
+        foreach(var member in db.InternalChatRoomMembers)member.JoinedAt=DateTimeOffset.UtcNow.AddDays(-60);
+        (await db.InternalChatMessages.SingleAsync()).CreatedAt=DateTimeOffset.UtcNow.AddDays(-45); await db.SaveChangesAsync();
+        Assert.Empty((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
+        await service.EditMessageAsync(new(roomId,id,"Corrigida no histórico",1),Actor(sender));
+        Assert.Equal("Corrigida no histórico",(await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Body);
+    }
+
     private static AppUser AddUser(OperationsDbContext db, string email, string name)
     {
         var user = new AppUser

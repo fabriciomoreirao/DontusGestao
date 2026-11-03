@@ -26,13 +26,13 @@ public sealed class CancellationProtocolService(OperationsDbContext db, TimeProv
                 var saved = await db.WorkItems.AsNoTracking().SingleOrDefaultAsync(x => x.Id == item.Id, ct);
                 if (saved is not null) return Detail(saved.Description)["protocol"]!.ToString();
             }
-            await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+            await using var transaction = db.Database.IsRelational() && db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(ct) : null;
             long number;
             if (db.Database.IsRelational())
             {
                 // The upsert holds a row lock until the cancellation and its history are committed.
                 await using var command = db.Database.GetDbConnection().CreateCommand();
-                command.Transaction = transaction!.GetDbTransaction();
+                command.Transaction = (transaction ?? db.Database.CurrentTransaction)!.GetDbTransaction();
                 command.CommandText = """
                     INSERT INTO cancellation_protocol_counters ("Year", "LastNumber") VALUES (@year, 1)
                     ON CONFLICT ("Year") DO UPDATE

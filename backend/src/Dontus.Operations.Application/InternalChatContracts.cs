@@ -8,7 +8,7 @@ public sealed record InternalChatMessageDto(
     Guid Id, Guid RoomId, Guid SenderUserId, string SenderName, string SenderPhotoDataUrl,
     bool SenderIsCoordinator,
     string Type, string Body, string FileName, string ContentType, bool HasAttachment, bool IsPinned,
-    string ReceiptState, DateTimeOffset CreatedAt);
+    string ReceiptState, DateTimeOffset CreatedAt, DateTimeOffset? EditedAt = null, DateTimeOffset? DeletedAt = null, long Version = 1);
 
 public sealed record InternalChatRoomDto(
     Guid Id, string Name, string PhotoDataUrl, bool IsGroup, Guid CreatedByUserId, bool CanManage,
@@ -25,6 +25,8 @@ public sealed record CreateInternalChatRoomCommand(
     string? Name, string? PhotoDataUrl, bool IsGroup, IReadOnlyCollection<Guid>? MemberUserIds);
 
 public sealed record SendInternalChatMessageCommand(Guid RoomId, string? Body, string? Type);
+public sealed record EditInternalChatMessageCommand(Guid RoomId, Guid MessageId, string Body, long Version);
+public sealed record DeleteInternalChatMessageCommand(Guid RoomId, Guid MessageId, long Version);
 public sealed record CreateInternalChatPollCommand(Guid RoomId, string? Question, IReadOnlyCollection<string>? Options);
 public sealed record VoteInternalChatPollCommand(Guid RoomId, Guid MessageId, int OptionIndex);
 public sealed record SetInternalChatMessagePinnedCommand(Guid RoomId, Guid MessageId, bool Pinned);
@@ -42,6 +44,8 @@ public interface IInternalChatService
     Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30);
     Task<Guid> CreateRoomAsync(CreateInternalChatRoomCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SendMessageAsync(SendInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task EditMessageAsync(EditInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteMessageAsync(DeleteInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreatePollAsync(CreateInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task VotePollAsync(VoteInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task SetMessagePinnedAsync(SetInternalChatMessagePinnedCommand command, ActorContext actor, CancellationToken cancellationToken = default);

@@ -649,7 +649,7 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
         CustomerName = customer?.TradeName ?? fullName,
         Owner = "Triagem inteligente",
         Team = "Central de Chamados",
-        Status = "Triagem",
+        Status = classification.Stage,
         Priority = classification.Priority,
         CreatedBy = "integracao-chamados",
     };
@@ -1092,6 +1092,7 @@ operations.MapPost("", async (
     IInternalChatService internalChatService,
     ILocalAuthenticationService authentication,
     IAccessControlService accessControl,
+    ServiceRequestRoutingService serviceRequestRouting,
     CancellationToken cancellationToken) =>
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
@@ -1100,6 +1101,10 @@ operations.MapPost("", async (
 
     switch (request.Action?.Trim())
     {
+        case "routeServiceRequest":
+            id = await serviceRequestRouting.RouteAsync(request.Id ?? throw new DomainException("Chamado obrigatório."),
+                request.Version ?? 0, request.RouteTarget ?? "", request.TaskDraft, actor, cancellationToken);
+            break;
         case "createCustomer":
             id = await service.CreateCustomerAsync(new CreateCustomerCommand(
                 request.LegalName ?? "",
@@ -1635,6 +1640,12 @@ operations.MapPost("", async (
                 request.Name, request.PhotoDataUrl, request.IsGroup ?? false, request.MemberUserIds), actor, cancellationToken);
             break;
 
+        case "editInternalChatMessage":
+            await internalChatService.EditMessageAsync(new(request.RoomId ?? throw new DomainException("Conversa obrigatória."), request.Id ?? throw new DomainException("Mensagem obrigatória."), request.Body ?? "", request.Version ?? 0), actor, cancellationToken);
+            break;
+        case "deleteInternalChatMessage":
+            await internalChatService.DeleteMessageAsync(new(request.RoomId ?? throw new DomainException("Conversa obrigatória."), request.Id ?? throw new DomainException("Mensagem obrigatória."), request.Version ?? 0), actor, cancellationToken);
+            break;
         case "sendInternalChatMessage":
             id = await internalChatService.SendMessageAsync(new SendInternalChatMessageCommand(
                 request.RoomId ?? throw new DomainException("Conversa obrigatória."),
@@ -2136,6 +2147,7 @@ static async Task InitializeDatabaseAsync(WebApplication app)
             await chatService.InitializeAsync();
             var suggestionService = scope.ServiceProvider.GetRequiredService<ISuggestionService>();
             await suggestionService.InitializeAsync();
+            await ServiceRequestWorkflow.ReconcileExistingAsync(scope.ServiceProvider.GetRequiredService<OperationsDbContext>());
             return;
         }
         catch when (attempt < 10)
@@ -2154,6 +2166,8 @@ sealed record ServiceRequestClassification(string Stage, string Priority, string
 
 public sealed class OperationsRequest
 {
+    public string? RouteTarget { get; init; }
+    public CreateCorporateTaskCommand? TaskDraft { get; init; }
     public string? Action { get; init; }
     public Guid? Id { get; init; }
     public string? Module { get; init; }

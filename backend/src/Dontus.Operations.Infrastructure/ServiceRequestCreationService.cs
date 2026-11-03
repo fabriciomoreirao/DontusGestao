@@ -53,6 +53,7 @@ public sealed class ServiceRequestCreationService(OperationsDbContext db, TimePr
             detail["protocol"] = protocol; detail["submittedAt"] = now.ToString("O");
             item.Description = detail.ToJsonString();
             db.WorkItems.Add(item);
+            await ServiceRequestWorkflow.SynchronizeAsync(db, item, detail, detail["aiClassification"]?.ToString() ?? "", now, "Triagem inteligente", ct);
             db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module,
                 Kind = "Chamado recebido", Summary = $"{protocol} · {detail["aiClassification"]}", Actor = "Integração externa" });
             db.AuditEvents.Add(new AuditEvent { ActorEmail = "integracao-chamados", Action = "Create", Resource = "work_item",

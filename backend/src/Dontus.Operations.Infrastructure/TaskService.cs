@@ -1132,6 +1132,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             .SingleOrDefaultAsync(x => x.Id == attachmentId, cancellationToken)
             ?? throw new DomainException("Anexo não encontrado.", 404);
         await LoadVisibleTaskAsync(attachment.TaskId, user, actor, cancellationToken);
+        var internalPath = attachment.StorageKey.Split('/');
+        if (internalPath.Length == 5 && internalPath[0] == "" && internalPath[1] == "api" && internalPath[2] == "service-request-files"
+            && Guid.TryParse(internalPath[3], out _) && Guid.TryParse(internalPath[4], out _))
+            return new TaskAttachmentDownloadDto(attachment.StorageKey);
         if (Uri.TryCreate(attachment.StorageKey, UriKind.Absolute, out var external)
             && (external.Scheme == Uri.UriSchemeHttp || external.Scheme == Uri.UriSchemeHttps))
             return new TaskAttachmentDownloadDto(external.ToString());

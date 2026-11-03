@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Manrope } from "next/font/google";
 import { headers } from "next/headers";
+import { DesktopAppProvider } from "./DesktopAppSupport";
 import "./globals.css";
 import "./chat-experience.css";
 import "./settings-refinement.css";
@@ -25,6 +26,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
+    manifest: "/manifest.webmanifest",
+    applicationName: "Dontus",
+    appleWebApp: { capable: true, title: "Dontus", statusBarStyle: "default" },
     icons: { icon: "/dontus-mark.png", shortcut: "/dontus-mark.png" },
     openGraph: { title, description, type: "website", images: [{ url: `${origin}/og.png`, width: 1536, height: 1024, alt: "Dontus Central de Operações" }] },
     twitter: { card: "summary_large_image", title, description, images: [`${origin}/og.png`] },
@@ -32,5 +36,5 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR"><body className={`${inter.variable} ${manrope.variable}`}>{children}</body></html>;
+  return <html lang="pt-BR"><body className={`${inter.variable} ${manrope.variable}`}><DesktopAppProvider>{children}</DesktopAppProvider></body></html>;
 }
