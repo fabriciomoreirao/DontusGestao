@@ -1,3 +1,4 @@
+import { apiRequestSignal } from "@/lib/api-request";
 export const dynamic = "force-dynamic";
 
 const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
@@ -20,7 +21,7 @@ async function proxy(request: Request) {
       headers: incoming,
       body: request.method === "PUT" ? await request.text() : undefined,
       cache: "no-store",
-      signal: AbortSignal.timeout(25_000),
+      signal: apiRequestSignal(request),
     });
     return new Response(response.body, { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json; charset=utf-8" } });
   } catch {

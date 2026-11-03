@@ -73,6 +73,8 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     var (status, title, detail) = exception switch
     {
         DomainException domain => (domain.StatusCode, "Regra de negócio", domain.Message),
+        BadHttpRequestException badRequest when badRequest.StatusCode == StatusCodes.Status413PayloadTooLarge =>
+            (StatusCodes.Status413PayloadTooLarge, "Arquivo muito grande", "O envio excede o limite permitido. Envie arquivos de até 50 MB."),
         DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Conflito de concorrência", "O registro foi alterado por outro usuário."),
         _ => (StatusCodes.Status500InternalServerError, "Falha na operação", "Ocorreu um erro inesperado."),
     };
@@ -726,7 +728,7 @@ operations.MapGet("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view") || actor.HasPermission("commissions", "view") || actor.HasPermission("referrals", "view") || actor.HasPermission("cs", "view"))
+    if (OperationsProjectionPolicy.CanViewCustomerCatalogs(actor))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("admin", "manage"))
         snapshot = snapshot with { Access = await accessControl.GetManagementAsync(actor, cancellationToken) };
@@ -937,7 +939,7 @@ internalChatFiles.MapPost("/{roomId:guid}/attachments", async (
             roomId, file.FileName, file.ContentType, file.Length, content), actor, cancellationToken));
     }
     return Results.Created($"/api/internal-chats/{roomId}/attachments", new { ok = true, ids });
-}).DisableAntiforgery();
+}).WithMetadata(new RequestSizeLimitAttribute(52L * 1024 * 1024)).DisableAntiforgery();
 
 internalChatFiles.MapGet("/attachments/{messageId:guid}", async (
     Guid messageId,
@@ -1856,7 +1858,7 @@ operations.MapPost("", async (
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
         snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("customers", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("cancellations", "view") || actor.HasPermission("hr", "view") || actor.HasPermission("serviceRequests", "view") || actor.HasPermission("serviceFollowup", "view") || actor.HasPermission("commissions", "view") || actor.HasPermission("referrals", "view") || actor.HasPermission("cs", "view"))
+    if (OperationsProjectionPolicy.CanViewCustomerCatalogs(actor))
         snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
     var access = actor.HasPermission("admin", "manage")
         ? await accessControl.GetManagementAsync(actor, cancellationToken)

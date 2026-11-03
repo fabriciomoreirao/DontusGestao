@@ -78,6 +78,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             || actor.HasPermission("commercial", "view")
             || actor.HasPermission("cs", "view")
             || actor.HasPermission("lia", "view")
+            || actor.HasPermission("support", "view")
             || actor.HasPermission("tasks", "view")
             || actor.HasPermission("waitingQueue", "view")
             || actor.HasPermission("cancellations", "view")
@@ -135,7 +136,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             ? item with { AssignedAt = assignment.CreatedAt, AssignedBy = assignment.Actor } : item).ToList();
         if (!canManageCommissions)
             items = items.Where(item => item.Module != "commissions" || CommissionBelongsTo(item.Description, item.Owner, actor, registeredUser?.Id)).ToList();
-        if (!new[] { "customers", "catalogs", "commercial", "cs", "lia", "tasks", "waitingQueue", "cancellations", "serviceRequests", "serviceFollowup" }
+        if (!new[] { "customers", "catalogs", "commercial", "cs", "lia", "support", "tasks", "waitingQueue", "cancellations", "serviceRequests", "serviceFollowup" }
                 .Any(module => actor.HasPermission(module, "view")))
             customers = customers.Where(customer => items.Any(item => item.CustomerId == customer.Id ||
                 !string.IsNullOrWhiteSpace(item.CustomerName) && (item.CustomerName == customer.TradeName || item.CustomerName == customer.LegalName))).ToList();
@@ -186,7 +187,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .Select(user => new { user.Id, user.UpdatedAt, user.PhotoDataUrl, user.JobTitle, user.IsCoordinator })
             .SingleOrDefaultAsync(cancellationToken);
 
-        var directory = actor.HasPermission("waitingQueue", "view") || actor.HasPermission("reminders", "create") || actor.HasPermission("reminders", "view")
+        var canViewAssignmentDirectory = OperationsProjectionPolicy.CanViewAssignmentDirectory(actor);
+        var directory = canViewAssignmentDirectory
             ? await GetWaitingQueueDirectoryAsync(cancellationToken) : null;
         return new OperationsSnapshot(
             new UserDto(actor.Email, actor.DisplayName, actor.Role, actor.Department,
@@ -195,7 +197,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             customers, items, appointments, approvals, decisions, audit, moduleCounts)
         {
             WaitingQueueDirectory = actor.HasPermission("waitingQueue", "view") ? directory : null,
-            AssignmentDirectory = actor.HasPermission("reminders", "create") || actor.HasPermission("reminders", "view") ? directory : null,
+            AssignmentDirectory = canViewAssignmentDirectory ? directory : null,
         };
     }
 
@@ -206,7 +208,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .Select(x => new WaitingQueueDepartmentDto(x.Id, x.Name, x.Description, x.Active)).ToListAsync(ct);
         var departmentNames = departments.ToDictionary(x => x.Id, x => x.Name);
         var users = await db.Users.AsNoTracking().Where(x => x.Active && x.BlockedAt == null).OrderBy(x => x.DisplayName)
-            .Select(x => new { x.Id, x.DisplayName, x.Email, x.Department }).ToListAsync(ct);
+            .Select(x => new { x.Id, x.DisplayName, x.Email, x.Department, x.IsCoordinator }).ToListAsync(ct);
         var userIds = users.Select(x => x.Id).ToArray();
         var memberships = await db.UserDepartments.AsNoTracking().Where(x => userIds.Contains(x.UserId) && x.Department.Active)
             .OrderByDescending(x => x.IsPrimary).Select(x => new { x.UserId, x.DepartmentId }).ToListAsync(ct);
@@ -219,7 +221,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             var names = ids.Select(id => departmentNames.GetValueOrDefault(id, user.Department)).Append(user.Department)
                 .Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             return new WaitingQueuePersonDto(user.Id, user.DisplayName, user.Email, ids.Length == 0 ? null : ids[0],
-                ids.Length == 0 ? user.Department : departmentNames.GetValueOrDefault(ids[0], user.Department), ids, names, true);
+                ids.Length == 0 ? user.Department : departmentNames.GetValueOrDefault(ids[0], user.Department), ids, names, true)
+                { IsCoordinator = user.IsCoordinator };
         }).ToArray();
         return new(employees, departments);
     }
@@ -752,7 +755,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
     public async Task<CustomerModuleDto> GetCustomerModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
-        if (!actor.HasPermission("customers", "view") && !actor.HasPermission("catalogs", "view") && !actor.HasPermission("commercial", "view") && !actor.HasPermission("cs", "view") && !actor.HasPermission("lia", "view") && !actor.HasPermission("support", "view") && !actor.HasPermission("cancellations", "view") && !actor.HasPermission("hr", "view") && !actor.HasPermission("serviceRequests", "view") && !actor.HasPermission("serviceFollowup", "view") && !actor.HasPermission("commissions", "view") && !actor.HasPermission("referrals", "view"))
+        if (!OperationsProjectionPolicy.CanViewCustomerCatalogs(actor))
             throw new DomainException("Seu acesso não permite visualizar os cadastros de clientes.", 403);
         var includeInactive = actor.HasPermission("catalogs", "manage") || actor.HasPermission("customers", "manage") || actor.HasPermission("commercial", "manage") || actor.HasPermission("cs", "manage") || actor.HasPermission("lia", "manage") || actor.HasPermission("support", "manage") || actor.HasPermission("cancellations", "manage") || actor.HasPermission("hr", "manage");
         var manageCommissions = actor.HasPermission("commissions", "manage") || actor.HasPermission("commissions", "approve");

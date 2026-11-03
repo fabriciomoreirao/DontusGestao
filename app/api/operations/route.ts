@@ -1,4 +1,5 @@
-import { apiResponse } from "@/lib/api-response";
+import { apiResponse } from "../../../lib/api-response.ts";
+import { apiRequestSignal } from "../../../lib/api-request.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -6,9 +7,6 @@ const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").
 const headerValue = (value: string) => encodeURIComponent(value);
 
 async function proxy(request: Request) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
-
   try {
     const incoming = new Headers(request.headers);
     incoming.set("accept", "application/json");
@@ -25,12 +23,12 @@ async function proxy(request: Request) {
       headers: incoming,
       body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
       cache: "no-store",
-      signal: controller.signal,
+      signal: apiRequestSignal(request),
     });
 
     return apiResponse(request, response, { "x-dontus-api": "aspnet-core", "x-dontus-realtime-cursor": response.headers.get("x-dontus-realtime-cursor") ?? "" });
   } catch (error) {
-    const detail = error instanceof Error && error.name === "AbortError"
+    const detail = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")
       ? "A API C# não respondeu dentro do tempo esperado."
       : "A API C# está indisponível. Inicie o ambiente com Docker Compose.";
     return Response.json({
@@ -40,8 +38,6 @@ async function proxy(request: Request) {
       detail,
       correlationId: crypto.randomUUID(),
     }, { status: 503 });
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

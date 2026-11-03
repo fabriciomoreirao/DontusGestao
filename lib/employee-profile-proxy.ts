@@ -1,3 +1,5 @@
+import { apiRequestSignal } from "./api-request.ts";
+
 export async function proxyEmployeeProfile(request: Request, id: string) {
   if (id !== "me" && !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id))
     return Response.json({ detail: "Perfil inválido." }, { status: 400 });
@@ -14,7 +16,7 @@ export async function proxyEmployeeProfile(request: Request, id: string) {
     if (token) headers.set("x-local-session", decodeURIComponent(token));
     const base = (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
     const response = await fetch(`${base}/api/employee-profiles/${encodeURIComponent(id)}`, {
-      method: request.method, headers, cache: "no-store", signal: AbortSignal.timeout(20_000),
+      method: request.method, headers, cache: "no-store", signal: apiRequestSignal(request),
       body: request.method === "PUT" ? await request.text() : undefined,
     });
     return new Response(response.body, { status: response.status, headers: {

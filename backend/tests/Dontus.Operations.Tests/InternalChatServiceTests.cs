@@ -8,6 +8,54 @@ namespace Dontus.Operations.Tests;
 
 public sealed class InternalChatServiceTests
 {
+    [Theory]
+    [InlineData(32)]
+    [InlineData(50)]
+    public async Task Large_videos_up_to_the_file_limit_are_stored_and_available_only_to_members(int megabytes)
+    {
+        await using var db = CreateContext();
+        var sender = AddUser(db, "sender@test.local", "Remetente");
+        var recipient = AddUser(db, "recipient@test.local", "Destinatário");
+        var outsider = AddUser(db, "outsider@test.local", "Outro colaborador");
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new(null, null, false, [recipient.Id]), Actor(sender));
+        var bytes = new byte[megabytes * 1024 * 1024];
+        bytes[0] = 42; bytes[^1] = 17;
+        await using var content = new MemoryStream(bytes);
+        var id = await service.UploadAttachmentAsync(new(room, "video.mp4", "video/mp4", content.Length, content), Actor(sender));
+        var attachment = await service.GetAttachmentAsync(id, Actor(recipient));
+        try
+        {
+            Assert.Equal("video/mp4", attachment.ContentType);
+            Assert.Equal(content.Length, new FileInfo(attachment.FullPath).Length);
+            await using var stored = File.OpenRead(attachment.FullPath);
+            Assert.Equal(System.Security.Cryptography.SHA256.HashData(bytes),
+                await System.Security.Cryptography.SHA256.HashDataAsync(stored));
+            var message = Assert.Single(Assert.Single((await service.GetModuleAsync(Actor(recipient))).Rooms).Messages);
+            Assert.Equal("video", message.Type);
+            Assert.True(message.HasAttachment);
+            Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetAttachmentAsync(id, Actor(outsider)))).StatusCode);
+        }
+        finally { File.Delete(attachment.FullPath); }
+    }
+
+    [Fact]
+    public async Task Videos_over_50_MB_are_rejected_before_storing_a_message()
+    {
+        await using var db = CreateContext();
+        var sender = AddUser(db, "sender@test.local", "Remetente");
+        var recipient = AddUser(db, "recipient@test.local", "Destinatário");
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new(null, null, false, [recipient.Id]), Actor(sender));
+        await using var content = new MemoryStream([1]);
+        var error = await Assert.ThrowsAsync<DomainException>(() => service.UploadAttachmentAsync(
+            new(room, "video.mp4", "video/mp4", 50L * 1024 * 1024 + 1, content), Actor(sender)));
+        Assert.Contains("50 MB", error.Message);
+        Assert.Empty(db.InternalChatMessages);
+    }
+
     [Fact]
     public async Task Text_emoji_and_document_messages_are_sent_and_remain_unread_until_seen()
     {

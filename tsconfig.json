@@ -31,5 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "examples", "dist", ".vinext", ".wrangler", ".openai/outputs"]
+  "exclude": ["node_modules", "examples", "work", "dist", ".vinext", ".wrangler", ".openai/outputs"]
 }

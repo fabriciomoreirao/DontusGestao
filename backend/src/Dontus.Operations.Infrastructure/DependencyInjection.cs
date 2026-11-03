@@ -20,6 +20,7 @@ public static class DependencyInjection
             {
                 npgsql.MigrationsAssembly(typeof(OperationsDbContext).Assembly.FullName)
                     .EnableRetryOnFailure(5);
+                npgsql.CommandTimeout(Math.Clamp(configuration.GetValue("Database:CommandTimeoutSeconds", 90), 30, 600));
                 npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
             }));
         services.AddScoped<LiaFormService>();

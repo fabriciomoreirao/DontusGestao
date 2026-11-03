@@ -11,7 +11,7 @@ import { useState } from "react";
 import { belongsToWaitingQueueDepartment, cleanDepartmentDescription, departmentQueueMode, type DepartmentQueueMode } from "@/lib/waitingQueue";
 
 type WorkItem = { id:string; module:string; record_type:string; title:string; customer_name:string; owner:string; team:string; status:string; priority:string; description:string; version:number; created_at:string; updated_at:string; amount_cents:number };
-type Employee = { id:string; displayName:string; email:string; departmentId:string|null; departmentName:string; departmentIds:string[]; departmentNames:string[]; active:boolean; photoDataUrl?:string };
+type Employee = { id:string; displayName:string; email:string; departmentId:string|null; departmentName:string; departmentIds:string[]; departmentNames:string[]; active:boolean; photoDataUrl?:string; isCoordinator?:boolean };
 type Department = { id:string; name:string; description:string; active:boolean };
 export type WaitingQueueDirectory = {employees:Employee[];departments:Department[]};
 type Permission = { screen:string; canView:boolean; canCreate:boolean; canEdit:boolean };
