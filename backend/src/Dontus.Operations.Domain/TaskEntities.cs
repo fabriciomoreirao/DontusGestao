@@ -150,6 +150,12 @@ public sealed class TaskAttachment : Entity
     public required string StorageKey { get; set; }
 }
 
+public sealed class TaskAttachmentContent
+{
+    public Guid AttachmentId { get; set; }
+    public required byte[] Content { get; set; }
+}
+
 public sealed class TaskHistory
 {
     public Guid Id { get; set; } = Guid.NewGuid();

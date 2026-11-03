@@ -2,6 +2,29 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { uploadTaskFiles, downloadTaskFile, deleteTaskFile } from "../lib/task-files-proxy.ts";
 
+test("documentos privados no banco preservam conteúdo e intervalos no download", async t => {
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    assert.equal(options.headers.get("x-local-session"), "session");
+    assert.equal(options.headers.get("range"), "bytes=0-3");
+    return new Response("%PDF", { status: 206, headers: { "content-type": "application/pdf", "content-range": "bytes 0-3/100",
+      "content-disposition": "attachment; filename=relatorio.pdf", "accept-ranges": "bytes" } });
+  });
+  const response = await downloadTaskFile(new Request("http://localhost/api/task-files/id", { headers: {cookie:"dontus_session=session",range:"bytes=0-3"} }), "id");
+  assert.equal(response.status,206); assert.equal(await response.text(),"%PDF");
+  assert.equal(response.headers.get("content-disposition"),"attachment; filename=relatorio.pdf");
+});
+
+test("arquivos de chamados vinculados à tarefa mantêm autenticação no redirecionamento interno", async t => {
+  let calls=0;
+  t.mock.method(globalThis,"fetch",async(_url,options)=>{
+    assert.equal(options.headers.get("x-local-session"),"session");
+    return ++calls===1?new Response(null,{status:302,headers:{location:"/api/service-request-files/request/file"}})
+      :new Response("documento",{headers:{"content-type":"application/pdf"}});
+  });
+  const response=await downloadTaskFile(new Request("http://localhost/api/task-files/id",{headers:{cookie:"dontus_session=session"}}),"id");
+  assert.equal(response.status,200);assert.equal(await response.text(),"documento");assert.equal(calls,2);
+});
+
 test("envia vídeo e imagem como multipart válido com a sessão e o comentário da tarefa", async t => {
   const form = new FormData();
   form.append("files", new File(["video-webm"], "evidencia.webm", { type: "video/webm" }));

@@ -56,10 +56,23 @@ regras de negócio nem pela auditoria da aplicação e podem ser irreversíveis.
 ### Anexos privados na AWS
 
 Os protocolos das tarefas são gerados automaticamente no formato `TAA0001` (por exemplo, `T260001`).
-Os anexos são armazenados em bucket S3 privado e acessados por links temporários
-de 10 minutos. Antes de iniciar os contêineres, preencha no arquivo `.env` as
-variáveis `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` com credenciais novas,
-limitadas ao bucket definido por `AWS_S3_BUCKET`. Nunca reutilize credenciais
+Os anexos usam o bucket S3 privado e links temporários de 10 minutos. Nas tarefas,
+uma indisponibilidade ou recusa de permissão do S3 ativa a contingência na tabela
+`task_attachment_contents`, com o conteúdo e o vínculo salvos na mesma transação.
+Os downloads continuam exigindo acesso à tarefa e permitem leitura por intervalos
+para vídeos. As listas carregam somente metadados; os bytes são lidos ao abrir o
+arquivo. A migration `TaskAttachmentDatabaseFallback` cria a tabela e a exclusão
+do anexo remove também sua cópia no banco. Inclua essa tabela nos backups.
+
+Na criação, no card e nos comentários, selecione imagens, vídeos, planilhas,
+documentos e outros formatos permitidos: até dez arquivos de 25 MB cada. O envio
+é dividido em lotes, e apenas os arquivos pendentes permanecem selecionados se
+ocorrer uma falha. A tarefa e o comentário já criados são reutilizados na tentativa
+seguinte. Arquivos de tentativas antigas que falharam precisam ser reenviados.
+
+Para usar o S3 localmente, configure `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY`
+no `.env`, limitados ao bucket de `AWS_S3_BUCKET`. No ECS, utilize o task role da
+aplicação com permissão para os objetos necessários. Nunca reutilize credenciais
 publicadas em conversas, documentação ou código-fonte.
 
 ## Usuários, grupos e permissões

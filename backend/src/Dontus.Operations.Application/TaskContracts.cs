@@ -139,7 +139,12 @@ public sealed record CreateTaskCollaboratorCommand(
 public sealed record UploadTaskAttachmentCommand(
     Guid TaskId, Guid? CommentId, string FileName, string ContentType, long SizeBytes, Stream Content);
 
-public sealed record TaskAttachmentDownloadDto(string Url);
+public sealed record TaskAttachmentDownloadDto(string Url)
+{
+    public byte[]? Content { get; init; }
+    public string ContentType { get; init; } = "application/octet-stream";
+    public string FileName { get; init; } = "";
+}
 
 public interface ITaskFileStorage
 {

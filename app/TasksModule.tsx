@@ -15,6 +15,7 @@ import MediaUploadField from "@/app/MediaUploadField";
 import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import TaskClientNoticeModal from "@/app/TaskClientNoticeModal";
 import { availableTaskDepartments, initialTaskStatuses, taskInitialSelection, taskTypesForDepartment } from "@/lib/task-catalogs";
+import { taskUploadBatches } from "@/lib/task-upload";
 
 export type TaskModuleData = {
   tasks: CorporateTask[];
@@ -80,7 +81,7 @@ type Props = {
   onMonthChange: (month: string) => void;
   operate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string; createdProtocol?: string } | false>;
   onSendToDevelopment: (task: CorporateTask) => Promise<{ id?: string; createdProtocol?: string } | false>;
-  uploadAttachments: (taskId: string, files: File[], commentId?: string) => Promise<boolean>;
+  uploadAttachments: (taskId: string, files: File[], commentId?: string, onUploaded?: (files: File[]) => void) => Promise<boolean>;
   deleteAttachment: (attachmentId: string) => Promise<boolean>;
   onOpenSettings: () => void;
 };
@@ -199,10 +200,10 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
       </div>
     </section>
 
-    {creating && <CreateTaskModal module={module} customers={customers} user={user} departmentIds={availableDepartments.map((item) => item.id)} initialDepartmentId={departmentFilter} busy={busy} attachmentsOnly={!!createdTaskPendingUpload} onClose={() => { setCreating(false); setCreatedTaskPendingUpload(null); }} onSubmit={async (payload, files) => {
+    {creating && <CreateTaskModal module={module} customers={customers} user={user} departmentIds={availableDepartments.map((item) => item.id)} initialDepartmentId={departmentFilter} busy={busy} attachmentsOnly={!!createdTaskPendingUpload} onClose={() => { setCreating(false); setCreatedTaskPendingUpload(null); }} onSubmit={async (payload, files, onUploaded) => {
       const result = createdTaskPendingUpload ?? await operate({ action: "createTask", ...payload }, "Tarefa criada, protocolo e SLA calculados.");
       if (!result) return;
-      if (result.id && files.length > 0 && !await uploadAttachments(result.id, files)) {
+      if (result.id && files.length > 0 && !await uploadAttachments(result.id, files, undefined, onUploaded)) {
         setCreatedTaskPendingUpload(result);
         return;
       }
@@ -246,7 +247,7 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, busy, o
 function TaskCardFileUpload({ taskId, busy, onUpload }: { taskId: string; busy: boolean; onUpload: Props["uploadAttachments"] }) {
   return <label className={`task-card-upload${busy ? " disabled" : ""}`} title="Subir arquivos" aria-label="Subir arquivos" onClick={(event) => event.stopPropagation()}>
     <Upload size={15} />
-    <input type="file" hidden disabled={busy} multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" onClick={(event) => event.stopPropagation()} onChange={(event) => {
+    <input type="file" hidden disabled={busy} multiple onClick={(event) => event.stopPropagation()} onChange={(event) => {
       event.stopPropagation();
       const files = Array.from(event.currentTarget.files ?? []);
       event.currentTarget.value = "";
@@ -278,7 +279,7 @@ function TaskClientStateBadge({state}:{state:string}){
   return <span className={`task-client-state ${tone}`}>{normalized==="Cliente Informado"?<CheckCircle2 size={12}/>:normalized==="Sem Necessidade"?<Check size={12}/>:<Bell size={12}/>} {normalized}</span>
 }
 
-export function CreateTaskModal({ module, customers, user, departmentIds, initialDepartmentId, busy, initial, attachmentsOnly = false, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; initialDepartmentId?: string; busy: boolean; attachmentsOnly?: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[]) => void }) {
+export function CreateTaskModal({ module, customers, user, departmentIds, initialDepartmentId, busy, initial, attachmentsOnly = false, onClose, onSubmit }: { module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; departmentIds: string[]; initialDepartmentId?: string; busy: boolean; attachmentsOnly?: boolean; initial?: { title?: string; description?: string; customerId?: string; customerCode?: string; clientWhatsApp?: string }; onClose: () => void; onSubmit: (payload: Record<string, unknown>, files: File[], onUploaded: (files: File[]) => void) => void }) {
   const originDepartment = module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.id === initialDepartmentId)
     ?? module.departments.find((department) => department.active && departmentIds.includes(department.id) && department.name.toLocaleLowerCase("pt-BR") === user.department.toLocaleLowerCase("pt-BR"))
     ?? module.departments.find((department) => department.active && departmentIds.includes(department.id));
@@ -293,6 +294,7 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
   const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
   const [customerCode, setCustomerCode] = useState(initial?.customerCode ?? publicCustomerCode(customers.find(customer => customer.id === initial?.customerId)));
   const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState("");
   const resolveCustomerCode = (value: string) => {
     setCustomerCode(value);
     const digits = value.replace(/\D/g, "");
@@ -305,7 +307,10 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
     if (customer) setCustomerCode(publicCustomerCode(customer));
   };
   const submit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); const f = new FormData(e.currentTarget);
+    e.preventDefault();
+    try { taskUploadBatches(files); } catch (error) { setFileError(error instanceof Error ? error.message : "Confira os arquivos selecionados."); return; }
+    setFileError("");
+    const f = new FormData(e.currentTarget);
     onSubmit({
       title: f.get("title"), description: f.get("description"),
       typeId: f.get("typeId"), priorityId: null, statusId: null,
@@ -314,7 +319,7 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
       clientWhatsApp: f.get("clientWhatsApp"), internalNotes: "", dueAt: null, slaPolicyId: null,
       cancellationRequest: false,
       participantUserIds: f.getAll("participantUserIds"),
-    }, files);
+    }, files, sent => setFiles(current => current.filter(file => !sent.includes(file))));
   };
   return <Overlay title={attachmentsOnly ? "Enviar anexos da tarefa" : "Nova tarefa"} eyebrow="TAREFAS" subtitle="Informe a solicitação. A coordenação fará a classificação após o cadastro." onClose={onClose}><form className="task-form task-create-form" onSubmit={submit}>
     {attachmentsOnly && <p className="wide" role="alert">A tarefa foi criada, mas os anexos não foram enviados. Reenvie os arquivos para concluir.</p>}
@@ -336,9 +341,10 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
       <header><span>02</span><div><h3>Acesso e evidências</h3><p>Inclua participantes e arquivos somente quando forem necessários.</p></div></header>
       <div className="task-form-section-grid">
         {!attachmentsOnly && <CheckboxMultiSelect label="Colaboradores participantes" name="participantUserIds" options={module.collaborators.filter(item => item.active).map(item => ({ id: item.id, label: item.name }))} disabled={busy} hint="Somente participantes, criador, responsável e coordenação terão acesso." />}
-        <MediaUploadField className="wide" label="Imagens e vídeos" name="files" disabled={busy} accept="image/*,video/*" multiple selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada." onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); setFiles(current => mergeSelectedFiles(current, selectedFiles)); }} />
+        <MediaUploadField className="wide" label="Imagens, vídeos e documentos" name="files" disabled={busy} multiple selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada." onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); setFiles(current => mergeSelectedFiles(current, selectedFiles)); }} />
       </div>
     </section>
+    {fileError && <p className="wide" role="alert">{fileError}</p>}
     <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || (!attachmentsOnly && (!departmentId || !selectedType || !initialStatus))}>{busy ? "Salvando..." : attachmentsOnly ? "Reenviar anexos" : "Criar tarefa"}</button></div>
   </form></Overlay>;
 }
@@ -418,10 +424,27 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
       input?.setSelectionRange(start + emoji.length, start + emoji.length);
     });
   };
+  const [pendingCommentId, setPendingCommentId] = useState<string | null>(null);
+  const [commentError, setCommentError] = useState("");
+  const submitComment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); if (busy || !comment.trim()) return;
+    try { taskUploadBatches(commentFiles); } catch (error) { setCommentError(error instanceof Error ? error.message : "Confira os arquivos selecionados."); return; }
+    setCommentError("");
+    const result = pendingCommentId ? { id: pendingCommentId } : await operate({ action: "addTaskComment", taskId: task.id, body: comment }, "Comentário registrado.");
+    if (!result) return;
+    if (commentFiles.length) {
+      if (!result.id) { setCommentError("O comentário foi salvo, mas não foi possível vincular os arquivos. Reabra a tarefa para anexá-los."); return; }
+      setPendingCommentId(result.id);
+      if (!await uploadAttachments(task.id, commentFiles, result.id, sent => setCommentFiles(current => current.filter(file => !sent.includes(file))))) {
+        setCommentError("O comentário foi salvo. Reenvie os anexos pendentes para concluir."); return;
+      }
+    }
+    setPendingCommentId(null); setComment(""); setCommentFiles([]); setShowEmojis(false);
+  };
   const selectAndUploadAttachments = async (files: File[]) => {
     setAttachmentFiles(files);
     if (files.length === 0) return;
-    if (await uploadAttachments(task.id, files)) {
+    if (await uploadAttachments(task.id, files, undefined, sent => setAttachmentFiles(current => current.filter(file => !sent.includes(file))))) {
       setAttachmentFiles([]);
       setFileInputKey((value) => value + 1);
     }
@@ -458,7 +481,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
         ? <div className={`task-attachment-grid ${task.attachments.length > 1 ? "multiple" : "single"}`}>{task.attachments.map((attachment) => <TaskAttachmentPreview key={attachment.id} attachment={attachment} canDelete={canEdit} busy={busy} onDelete={deleteAttachment} onPreview={(preview) => setAttachmentPreview(preview)} />)}</div>
         : <p>Nenhum arquivo anexado.</p>}
       {canEdit && <div className="task-file-upload">
-        <MediaUploadField key={fileInputKey} className="compact" label="Imagens, vídeos e arquivos" inputRef={attachmentInput} accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple disabled={busy} selectedFiles={attachmentFiles} selectedText={attachmentFiles.length ? `${attachmentFiles.length} arquivo(s) selecionado(s)` : busy ? "Enviando arquivos..." : undefined} hint="Selecione os arquivos para anexar à tarefa. O envio começa automaticamente." onChange={(event) => void selectAndUploadAttachments(Array.from(event.currentTarget.files ?? []))} />
+        <MediaUploadField key={fileInputKey} className="compact" label="Imagens, vídeos e arquivos" inputRef={attachmentInput} multiple disabled={busy} selectedFiles={attachmentFiles} selectedText={attachmentFiles.length ? `${attachmentFiles.length} arquivo(s) selecionado(s)` : busy ? "Enviando arquivos..." : undefined} hint="Selecione os arquivos para anexar à tarefa. O envio começa automaticamente." onChange={(event) => void selectAndUploadAttachments(Array.from(event.currentTarget.files ?? []))} />
       </div>}
     </div>
     <section className="task-actions-panel">
@@ -489,7 +512,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
     {canEdit && has("forward") && (canManage || user.isCoordinator) && module.departments.some((department) => department.active && department.id !== task.currentDepartmentId) && <div className="task-transfer"><div><span>TRANSFERÊNCIA DE SETOR</span><h3>Encaminhar tarefa</h3><p>Ela sairá do quadro de <b>{task.departmentName}</b> e entrará na etapa inicial do setor de destino.</p></div><label>Setor de destino<select value={transferDepartment} onChange={(e) => { setTransferDepartment(e.target.value); setTransferAssignee(""); }}><option value="">Selecionar setor</option>{module.departments.filter((d) => d.active && d.id !== task.currentDepartmentId).map((d) => <option value={d.id} key={d.id}>{d.name}</option>)}</select></label><label>Novo responsável<SearchablePeopleSelect searchLabel="Novo responsável" value={transferAssignee} onChange={(e) => setTransferAssignee(e.target.value)}><option value="">Fila compartilhada</option>{availableAssignees.map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</SearchablePeopleSelect></label><label className="task-transfer-reason">Motivo<input value={transferReason} onChange={(event) => setTransferReason(event.target.value)} placeholder="Explique o encaminhamento" /></label><button disabled={busy || !transferDepartment || !transferReason.trim()} onClick={async () => { const result = await operate({ action: "transferTask", taskId: task.id, departmentId: transferDepartment, assigneeUserId: transferAssignee || null, reason: transferReason.trim(), recalculateSla: true, version: task.version }, "Tarefa encaminhada para o novo setor."); if (result) onClose(); }}>Encaminhar tarefa</button></div>}
     <div className="task-detail-grid">
       <section className="task-conversation-card"><header><h3><MessageSquareText size={17} /> Comentários</h3><span>{task.comments.length}</span></header><div className="task-comments">{task.comments.length === 0 ? <p className="task-empty-message">Nenhum comentário registrado.</p> : task.comments.map((c) => <article key={c.id} className="task-comment-entry"><CollaboratorAvatar collaborator={module.collaborators.find((item) => item.id === c.authorUserId)} /><div><header className="task-comment-head"><b>{c.authorName}</b><time>{dt(c.createdAt)}</time>{currentUserId===c.authorUserId&&editingCommentId!==c.id&&<button type="button" onClick={()=>{setEditingCommentId(c.id);setEditingCommentBody(c.body)}} aria-label="Editar comentário"><Pencil size={13}/></button>}</header>{editingCommentId===c.id?<div data-comment-composer="true" className="task-comment-editor"><textarea data-comment-input="true" value={editingCommentBody} onChange={event=>setEditingCommentBody(event.target.value)} rows={3}/><span><button type="button" onClick={()=>{setEditingCommentId("");setEditingCommentBody("")}}>Cancelar</button><button type="button" className="primary-button" disabled={busy||!editingCommentBody.trim()} onClick={async()=>{const result=await operate({action:"updateTaskComment",taskId:task.id,id:c.id,body:editingCommentBody.trim()},"Comentário atualizado.");if(result){setEditingCommentId("");setEditingCommentBody("")}}}>Salvar</button></span></div>:<p>{c.body}</p>}{c.attachments?.length > 0 && <div className="comment-attachments">{c.attachments.map((file) => isImageFile(file.fileName) || isVideoFile(file.fileName) ? <button type="button" key={file.id} onClick={() => setAttachmentPreview({ url: file.url, name: file.fileName, video: isVideoFile(file.fileName) })}><Paperclip size={13} /> Visualizar {file.fileName}</button> : <a href={file.url} target="_blank" rel="noreferrer" key={file.id}><Paperclip size={13} /> {file.fileName}</a>)}</div>}</div></article>)}</div>
-        {canEdit && <form data-comment-composer="true" onSubmit={async (e) => { e.preventDefault(); if (!comment.trim()) return; const result = await operate({ action: "addTaskComment", taskId: task.id, body: comment }, "Comentário registrado."); if (result) { if (result.id && commentFiles.length > 0) await uploadAttachments(task.id, commentFiles, result.id); setComment(""); setCommentFiles([]); setShowEmojis(false); } }}><label htmlFor="task-comment">Adicionar comentário</label><textarea data-comment-input="true" ref={commentInput} id="task-comment" rows={5} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={"Escreva a atualização aqui.\nEnter envia. Shift+Enter insere uma nova linha."} /><div className="task-comment-tools"><button className={showEmojis ? "active" : ""} type="button" onClick={() => setShowEmojis((value) => !value)} aria-label="Adicionar emoji"><Smile size={15} /> Emoji</button><label className="comment-file-picker"><Paperclip size={14} /> Anexar fotos<input type="file" accept="image/*,video/*" multiple onChange={(event) => setCommentFiles((current) => mergeSelectedFiles(current, Array.from(event.target.files ?? [])))} /></label>{showEmojis && <div className="task-emoji-picker" aria-label="Emojis rápidos">{["😀", "👍", "✅", "🎯", "🚨", "🙏", "📌", "💬", "📎", "🚀"].map((emoji) => <button type="button" onClick={() => insertEmoji(emoji)} key={emoji} aria-label={`Inserir ${emoji}`}>{emoji}</button>)}</div>}</div>{commentFiles.length > 0 && <div className="comment-selected-files">{commentFiles.map((file) => <button type="button" key={`${file.name}-${file.lastModified}`} onClick={() => setAttachmentPreview({ url: URL.createObjectURL(file), name: file.name, video: file.type.startsWith("video/"), temporary: true })}><Paperclip size={13}/>{file.name}<small>Clique para visualizar</small></button>)}</div>}<footer><small>{comment.length} caracteres · {commentFiles.length} arquivo(s)</small><button disabled={busy || !comment.trim()}><MessageSquareText size={15} /> Publicar comentário</button></footer></form>}</section>
+        {commentError && <p role="alert">{commentError}</p>}{canEdit && <form data-comment-composer="true" onSubmit={submitComment}><label htmlFor="task-comment">Adicionar comentário</label><textarea data-comment-input="true" ref={commentInput} id="task-comment" rows={5} readOnly={!!pendingCommentId} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={"Escreva a atualização aqui.\nEnter envia. Shift+Enter insere uma nova linha."} /><div className="task-comment-tools"><button className={showEmojis ? "active" : ""} type="button" onClick={() => setShowEmojis((value) => !value)} aria-label="Adicionar emoji"><Smile size={15} /> Emoji</button><label className="comment-file-picker"><Paperclip size={14} /> Anexar arquivos<input type="file" multiple onChange={(event) => setCommentFiles((current) => mergeSelectedFiles(current, Array.from(event.target.files ?? [])))} /></label>{showEmojis && <div className="task-emoji-picker" aria-label="Emojis rápidos">{["😀", "👍", "✅", "🎯", "🚨", "🙏", "📌", "💬", "📎", "🚀"].map((emoji) => <button type="button" onClick={() => insertEmoji(emoji)} key={emoji} aria-label={`Inserir ${emoji}`}>{emoji}</button>)}</div>}</div>{commentFiles.length > 0 && <div className="comment-selected-files">{commentFiles.map((file) => <button type="button" key={`${file.name}-${file.lastModified}`} onClick={() => setAttachmentPreview({ url: URL.createObjectURL(file), name: file.name, video: file.type.startsWith("video/"), temporary: true })}><Paperclip size={13}/>{file.name}<small>Clique para visualizar</small></button>)}</div>}<footer><small>{comment.length} caracteres · {commentFiles.length} arquivo(s)</small><button disabled={busy || !comment.trim()}><MessageSquareText size={15} /> Publicar comentário</button></footer></form>}</section>
       <section className="task-history-card"><header><h3><History size={17} /> Histórico</h3><span>{task.history.length}</span></header><div className="task-history">{task.history.map((h) => <article key={h.id}><i /><div><b>{h.summary}</b><small>{h.actorName} · {dt(h.createdAt)}</small>{h.justification && <p>Justificativa: {h.justification}</p>}</div></article>)}</div></section>
     </div>
     </div>
