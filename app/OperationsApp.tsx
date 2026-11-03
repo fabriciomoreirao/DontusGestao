@@ -1447,7 +1447,7 @@ export default function OperationsApp() {
             )}
           </div>
           <div className="topbar-actions">
-            {kanbanModules.has(active) && !indicatorsOpen && <label className="topbar-month-filter"><span>Mês</span><input aria-label="Filtrar mês do quadro" type="month" value={kanbanMonth} onChange={event => setKanbanMonth(event.target.value || brasiliaMonthKey())} /></label>}
+            {kanbanModules.has(active) && active !== "tasks" && !indicatorsOpen && <label className="topbar-month-filter"><span>Mês</span><input aria-label="Filtrar mês do quadro" type="month" value={kanbanMonth} onChange={event => setKanbanMonth(event.target.value || brasiliaMonthKey())} /></label>}
             <button className="icon-button background-shortcut" onClick={() => setBackgroundModalOpen(true)} aria-label="Alterar imagem de fundo" title="Alterar imagem de fundo"><Upload size={18} /></button>
             <button className="icon-button theme-toggle" onClick={() => changeTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}>
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
@@ -1540,6 +1540,8 @@ export default function OperationsApp() {
           {active === "tasks" && monthTaskModule && (
             <TasksModule
               module={monthTaskModule}
+              month={kanbanMonth}
+              onMonthChange={setKanbanMonth}
               customers={data.customers}
               user={data.user}
               canCreate={userCan(data.user, "tasks", "create")}

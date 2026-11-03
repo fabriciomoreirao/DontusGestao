@@ -1817,17 +1817,29 @@ operations.MapPost("", async (
         return Results.Ok(new { ok = true, id, internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) });
     if (request.Action is "markNoticeViewed" or "markNoticeRead")
         return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
-    if (request.Action == "markTaskNotificationRead")
-        return Results.Ok(new { ok = true, taskModule = await taskService.GetModuleAsync(actor, cancellationToken) });
-    if ((request.Action is "addTaskComment" or "updateTaskComment") && actor.HasPermission("tasks", "view"))
-        return Results.Ok(new { ok = true, id, taskModule = await taskService.GetModuleAsync(actor, cancellationToken) });
+    if ((request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus"
+        or "changeTaskPriority" or "changeTaskSla" or "transferTask" or "assignTask"
+        or "addTaskComment" or "updateTaskComment" or "communicateWithClient" or "markTaskNotificationRead")
+        && actor.HasPermission("tasks", "view"))
+    {
+        // A task mutation does not require rebuilding chats, calendars or administrative data.
+        var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
+            ["taskModule"] = await taskService.GetModuleAsync(actor, cancellationToken) };
+        if (request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus")
+        {
+            // Keep customer open-task protocols current when links or completion change.
+            var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false);
+            result["customers"] = changed.Customers;
+        }
+        return id.HasValue ? Results.Json(result, statusCode: StatusCodes.Status201Created) : Results.Ok(result);
+    }
     if ((request.Action is "addSuggestionComment" or "updateSuggestionComment") && actor.HasPermission("suggestions", "view"))
         return Results.Ok(new { ok = true, id, suggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) });
     if (request.Action is "createWorkItem" or "updateWorkItem" or "transitionWorkItem" or "deleteWorkItem")
     {
         // Generic card edits do not change chat rooms, task catalogs or administrative access.
         // Preserve those client projections instead of rebuilding all of them on every keystroke/save.
-        var changed = await service.GetSnapshotAsync(actor, cancellationToken);
+        var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false);
         var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
             ["items"] = changed.Items, ["customers"] = changed.Customers, ["approvals"] = changed.Approvals,
             ["moduleCounts"] = changed.ModuleCounts };
