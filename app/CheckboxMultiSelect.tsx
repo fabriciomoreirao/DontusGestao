@@ -9,7 +9,8 @@ export default function CheckboxMultiSelect({ label, name, options, defaultValue
 }) {
   const [selected, setSelected] = useState(defaultValue);
   const [query, setQuery] = useState("");
-  const visible = options.filter(option => option.label.toLocaleLowerCase("pt-BR").includes(query.trim().toLocaleLowerCase("pt-BR")));
+  const normalize = (value:string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const visible = options.filter(option => normalize(option.label).includes(normalize(query.trim())));
   return <div className="checkbox-multiselect wide">
     <span className="checkbox-multiselect-label">{label}</span>
     {selected.map(id => <input key={id} type="hidden" name={name} value={id} disabled={disabled} />)}

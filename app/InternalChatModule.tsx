@@ -4,7 +4,7 @@ import { useReminderFilter } from "@/app/ReminderFilters";
 
 import {
   Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
-  Gift, MessageCircleMore, Palette, Paperclip, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
+  Gift, MessageCircleMore, Palette, Paperclip, Pencil, Trash2, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties } from "react";
 import ChatAppearanceModal from "@/app/ChatAppearanceModal";
@@ -22,7 +22,7 @@ export type InternalChatMessage = {
   senderIsCoordinator: boolean;
   type: "text" | "sticker" | "image" | "video" | "file" | "poll"; body: string; fileName: string;
   contentType: string; hasAttachment: boolean; isPinned: boolean; createdAt: string;
-  receiptState?: "sent" | "delivered" | "seen";
+  receiptState?: "sent" | "delivered" | "seen"; editedAt?: string | null; deletedAt?: string | null; version?: number;
 };
 
 export type InternalChatRoom = {
@@ -132,7 +132,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     finally { setHistoryLoading(false); }
   };
   const archivedCount = module.rooms.filter((room) => room.isArchived).length;
-  const pinnedMessages = selectedRoom?.messages.filter((entry) => entry.isPinned) ?? [];
+  const pinnedMessages = selectedRoom?.messages.filter((entry) => entry.isPinned && !entry.deletedAt) ?? [];
   const employeeBirthdays = useMemo(() => {
     const values = new Map<string, string>();
     employees.forEach((employee) => {
@@ -358,7 +358,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
             {sendError && <p role="alert">{sendError}</p>}
             {selectedRoom && !historyExhausted[selectedRoom.id] && <button type="button" className="secondary-button" disabled={historyLoading} onClick={() => void loadOlderMessages()}>{historyLoading ? "Carregando..." : "Carregar mais conversas (30 dias anteriores)"}</button>}{historyError && <p role="alert">{historyError}</p>}
             {!visibleMessages.length && <div className="internal-chat-first-message"><SmilePlus size={23} /><strong>Diga olá!</strong><span>Envie a primeira mensagem para iniciar esta conversa privada.</span></div>}
-            {visibleMessages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={Boolean(selectedRoom?.isGroup)} canCreate={canCreate} canEdit={canEdit} busy={busy} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
+            {visibleMessages.map((item) => <MessageBubble key={item.id} message={item} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={Boolean(selectedRoom?.isGroup)} canCreate={canCreate} canEdit={canEdit} busy={busy} onEdit={async (message, body) => Boolean(await operate({ action:"editInternalChatMessage", roomId:message.roomId, id:message.id, body, version:message.version ?? 1 }, "Mensagem editada."))} onDelete={async message => { await operate({ action:"deleteInternalChatMessage", roomId:message.roomId, id:message.id, version:message.version ?? 1 }, "Mensagem excluída."); }} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
             <div aria-hidden="true" />
           </div>
           {!canCreate && <p className="module-access-note" role="status"><LockKeyhole size={14}/>Seu perfil permite consultar as conversas. O envio de mensagens está bloqueado.</p>}
@@ -413,19 +413,22 @@ function BirthdayGift({ name }: { name: string }) {
   return <span className="internal-chat-birthday-gift" title={`Hoje é aniversário de ${name}`} aria-label={`Aniversário de ${name}`}><Gift size={12} aria-hidden="true" /></span>;
 }
 
-function MessageBubble({ message, own, birthday, currentUserId, group, canCreate, canEdit, busy, onVote, onPin, onPreview }: { message: InternalChatMessage; own: boolean; birthday: boolean; currentUserId: string; group: boolean; canCreate: boolean; canEdit: boolean; busy: boolean; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
+function MessageBubble({ message, own, birthday, currentUserId, group, canCreate, canEdit, busy, onEdit, onDelete, onVote, onPin, onPreview }: { message: InternalChatMessage; own: boolean; birthday: boolean; currentUserId: string; group: boolean; canCreate: boolean; canEdit: boolean; busy: boolean; onEdit: (message: InternalChatMessage, body: string) => Promise<boolean>; onDelete: (message: InternalChatMessage) => Promise<void>; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState(message.body);
   const fileUrl = `/api/internal-chat-files/${message.id}`;
   return <article className={`internal-chat-message ${own ? "own" : ""}`}>
     {!own && <Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator} />}
     <div className="internal-chat-bubble-wrap">{!own && <strong>{birthday && <BirthdayGift name={message.senderName} />}{message.senderName}</strong>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
-      {group && <button type="button" className={`internal-chat-pin-message ${message.isPinned ? "active" : ""}`} disabled={busy || !canEdit} onClick={() => onPin(message)} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={13} /> : <Pin size={13} />}</button>}
-      {message.type === "text" && <p>{message.body}</p>}
-      {message.type === "sticker" && <span className="internal-chat-sticker-message">{message.body}</span>}
-      {message.type === "image" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Imagem enviada",video:false})}><img src={fileUrl} alt={message.fileName || "Imagem enviada"} loading="lazy" /></button>}
-      {message.type === "video" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Vídeo enviado",video:true})}><video muted preload="metadata"><source src={fileUrl} type={message.contentType} />Seu navegador não suporta vídeo.</video></button>}
-      {message.type === "file" && <a className="internal-chat-file" href={fileUrl} download={message.fileName}><FileText size={24} /><span><b>{message.fileName}</b><small>{message.contentType || "Arquivo"}</small></span><Download size={18} /></a>}
-      {message.type === "poll" && <PollMessage message={message} currentUserId={currentUserId} busy={busy || !canCreate} onVote={onVote} />}
-      <span className="internal-chat-message-meta"><time>{messageTime.format(new Date(message.createdAt))}</time>{own && <i className={`internal-chat-receipt ${message.receiptState||"sent"}`} title={message.receiptState==="seen"?"Visto":message.receiptState==="delivered"?"Recebido":"Enviado"}>{message.receiptState==="seen"||message.receiptState==="delivered"?<CheckCheck size={15}/>:<Check size={14}/>}</i>}</span>
+      {group && !message.deletedAt && <button type="button" className={`internal-chat-pin-message ${message.isPinned ? "active" : ""}`} disabled={busy || !canEdit} onClick={() => onPin(message)} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={13} /> : <Pin size={13} />}</button>}
+      {message.deletedAt ? <p className="internal-chat-deleted-message">Mensagem excluída</p> : editing ? <form className="internal-chat-message-editor" onSubmit={async event=>{event.preventDefault();if(editBody.trim()&&await onEdit(message,editBody.trim()))setEditing(false);}}><textarea aria-label="Editar mensagem" autoFocus rows={3} maxLength={4000} value={editBody} onChange={event=>setEditBody(event.target.value)} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setEditing(false)}}}/><div><button type="button" disabled={busy} onClick={()=>setEditing(false)}>Cancelar</button><button type="submit" disabled={busy||!editBody.trim()}>Salvar</button></div></form> : message.type === "text" && <p>{message.body}</p>}
+      {!message.deletedAt && message.type === "sticker" && <span className="internal-chat-sticker-message">{message.body}</span>}
+      {!message.deletedAt && message.type === "image" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Imagem enviada",video:false})}><img src={fileUrl} alt={message.fileName || "Imagem enviada"} loading="lazy" /></button>}
+      {!message.deletedAt && message.type === "video" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Vídeo enviado",video:true})}><video muted preload="metadata"><source src={fileUrl} type={message.contentType} />Seu navegador não suporta vídeo.</video></button>}
+      {!message.deletedAt && message.type === "file" && <a className="internal-chat-file" href={fileUrl} download={message.fileName}><FileText size={24} /><span><b>{message.fileName}</b><small>{message.contentType || "Arquivo"}</small></span><Download size={18} /></a>}
+      {!message.deletedAt && message.type === "poll" && <PollMessage message={message} currentUserId={currentUserId} busy={busy || !canCreate} onVote={onVote} />}
+      {own && canCreate && !message.deletedAt && !editing && <div className="internal-chat-message-actions">{message.type === "text" && <button type="button" disabled={busy} aria-label="Editar mensagem" title="Editar mensagem" onClick={()=>{setEditBody(message.body);setEditing(true)}}><Pencil size={13}/></button>}<button type="button" disabled={busy} aria-label="Excluir mensagem" title="Excluir mensagem para todos" onClick={()=>void onDelete(message)}><Trash2 size={13}/></button></div>}
+      <span className="internal-chat-message-meta">{message.editedAt && !message.deletedAt && <small title={new Date(message.editedAt).toLocaleString("pt-BR")}>editada</small>}<time>{messageTime.format(new Date(message.createdAt))}</time>{own && <i className={`internal-chat-receipt ${message.receiptState||"sent"}`} title={message.receiptState==="seen"?"Visto":message.receiptState==="delivered"?"Recebido":"Enviado"}>{message.receiptState==="seen"||message.receiptState==="delivered"?<CheckCheck size={15}/>:<Check size={14}/>}</i>}</span>
     </div></div>
   </article>;
 }
@@ -475,6 +478,7 @@ async function readImage(file?: File) {
 
 function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?"; }
 function messagePreview(message: InternalChatMessage) {
+  if (message.deletedAt) return "Mensagem excluída";
   if (message.type === "sticker") return `${message.body} Figurinha`;
   if (message.type === "image") return "Imagem";
   if (message.type === "video") return "Vídeo";

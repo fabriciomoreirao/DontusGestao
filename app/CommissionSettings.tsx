@@ -1,5 +1,7 @@
 "use client";
 
+import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
+
 import { Save, Settings, UsersRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { commissionScoreTiers, validScoreTiers, type CommissionRule, type CommissionScope, type ScoreTier } from "@/lib/commission-rules";
@@ -32,7 +34,7 @@ export default function CommissionSettings({ catalogs, employees, busy, operate,
   return <section className="commission-settings">
     <header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Settings /></span><span className="module-page-copy"><span className="eyebrow">COMISSÕES · CONFIGURAÇÕES</span><h1>Regras por colaborador</h1><p>Configure as comissões de cada área e a remuneração por faixa de score em CS.</p></span></div><button className="secondary-button" onClick={onBack}>← Voltar às comissões</button></header>
     <nav className="commission-tabs">{(["commercial", "cs", "lia"] as const).map(value => <button key={value} className={scope === value ? "active" : ""} onClick={() => setScope(value)}>{scopeLabel(value)}</button>)}</nav>
-    <section className="commission-rule-picker panel"><label>Colaborador<select value={employeeId} onChange={event => setEmployeeId(event.target.value)}><option value="">Selecionar colaborador</option>{employees.map(entry => <option key={entry.id} value={entry.id}>{entry.displayName} · {entry.departmentName}</option>)}</select></label><p>{scope === "cs" ? "O score do cliente determina o percentual da comissão. Configure os limites e os percentuais abaixo." : "Configure a regra geral ou um valor específico por produto. A LIA segue o valor da venda, sem score."}</p></section>
+    <section className="commission-rule-picker panel"><label>Colaborador<SearchablePeopleSelect searchLabel="Colaborador" value={employeeId} onChange={event => setEmployeeId(event.target.value)}><option value="">Selecionar colaborador</option>{employees.map(entry => <option key={entry.id} value={entry.id}>{entry.displayName} · {entry.departmentName}</option>)}</SearchablePeopleSelect></label><p>{scope === "cs" ? "O score do cliente determina o percentual da comissão. Configure os limites e os percentuais abaixo." : "Configure a regra geral ou um valor específico por produto. A LIA segue o valor da venda, sem score."}</p></section>
     {!employee ? <div className="commission-empty"><UsersRound /><h2>Selecione um colaborador</h2><p>As regras serão abertas após a seleção.</p></div> : <section className="commission-rule-list">{entries.map(product => {
       const existing = rules.find(entry => entry.rule.scope === scope && entry.rule.employeeId === employee.id && entry.rule.product === product);
       const key = `${scope}-${employee.id}-${product}-${existing?.entry.description ?? "new"}`;

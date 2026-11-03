@@ -1,5 +1,7 @@
 "use client";
 
+import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
+
 import {
   Archive, ArrowLeft, ArrowRightLeft, BarChart3, CalendarRange, Check, CheckCheck, ChevronRight, CirclePlus, Clock3,
   Hash, Headphones, Inbox, MessageCircleMore, MessageSquareText, MoreHorizontal,
@@ -311,9 +313,9 @@ function ConversationDetails({ conversation, module, busy, canEdit, has, operate
       <label>Prioridade<select disabled={!canEdit} value={conversation.priority} onChange={(event) => void operate({ action: "updateChatConversation", conversationId: conversation.id, priority: event.target.value, version: conversation.version }, "Prioridade atualizada.")}>
         {["Baixa", "Normal", "Alta", "Urgente"].map((item) => <option key={item}>{item}</option>)}
       </select></label>
-      <label>Responsável<select disabled={!canEdit || !has("assign")} value={conversation.assigneeUserId ?? ""} onChange={(event) => void operate({ action: "assignChatConversation", conversationId: conversation.id, assigneeUserId: event.target.value || null, queueId: conversation.queueId, version: conversation.version }, "Responsável atualizado.")}>
+      <label>Responsável<SearchablePeopleSelect searchLabel="Responsável" disabled={!canEdit || !has("assign")} value={conversation.assigneeUserId ?? ""} onChange={(event) => void operate({ action: "assignChatConversation", conversationId: conversation.id, assigneeUserId: event.target.value || null, queueId: conversation.queueId, version: conversation.version }, "Responsável atualizado.")}>
         <option value="">Assumir atendimento</option>{assignable.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}
-      </select></label>
+      </SearchablePeopleSelect></label>
     </div>
     <div className="detail-block"><h4>Etiquetas</h4><div className="conversation-tags">
       {module.tags.filter((tag) => tag.active && (!tag.departmentId || tag.departmentId === conversation.departmentId)).map((tag) => {
@@ -331,7 +333,7 @@ function ConversationDetails({ conversation, module, busy, canEdit, has, operate
         <select required value={toDepartmentId} onChange={(event) => setToDepartmentId(event.target.value)}><option value="">Setor de destino</option>{module.departments.filter((item) => item.id !== conversation.departmentId && item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
         <select name="toChannelId" required><option value="">Canal oficial</option>{destinationChannels.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
         <select name="toQueueId" required><option value="">Fila</option>{destinationQueues.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
-        <select name="assigneeUserId"><option value="">Fila compartilhada</option>{module.users.filter((user) => user.departmentIds.includes(toDepartmentId)).map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</select>
+        <SearchablePeopleSelect searchLabel="Responsável" name="assigneeUserId"><option value="">Fila compartilhada</option>{module.users.filter((user) => user.departmentIds.includes(toDepartmentId)).map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</SearchablePeopleSelect>
         <textarea name="reason" required rows={3} placeholder="Motivo da transferência" />
         <button disabled={busy}>Confirmar transferência</button>
       </form>}
@@ -407,7 +409,7 @@ function ChatDashboard({ module, busy, has, operate }: {
     <div className="chat-report-filters">
       <label><span>Data inicial</span><input type="date" value={dateFrom} max={dateTo} onChange={(event) => setDateFrom(event.target.value)} /></label>
       <label><span>Data final</span><input type="date" value={dateTo} min={dateFrom} onChange={(event) => setDateTo(event.target.value)} /></label>
-      <label><span>Colaborador</span><select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} disabled={!canViewAll}><option value="">Todos</option>{module.users.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</select></label>
+      <label><span>Colaborador</span><SearchablePeopleSelect searchLabel="Colaborador" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} disabled={!canViewAll}><option value="">Todos</option>{module.users.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</SearchablePeopleSelect></label>
       <label><span>Assunto</span><select value={subject} onChange={(event) => setSubject(event.target.value)}><option value="">Todos os assuntos</option>{subjects.map((item) => <option key={item}>{item}</option>)}</select></label>
       <label><span>Cliente</span><select value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="">Todos os clientes</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</select></label>
     </div>
@@ -661,6 +663,6 @@ function NewConversationModal({ module, busy, initialPhone = "", initialSubject 
   }}>
     <label className="wide chat-group-toggle"><input type="checkbox" checked={isGroup} onChange={(event) => setIsGroup(event.target.checked)} /><span><b>Atendimento em grupo</b><small>Crie uma conversa compartilhada e acompanhe os participantes ao lado.</small></span></label>
     {isGroup ? <><label className="wide">Nome do grupo<input name="groupName" required placeholder="Ex.: Implantação · Clínica Sorriso" /></label><label className="wide">Participantes<textarea name="groupParticipants" required rows={4} placeholder={'Informe nome ou telefone, um por linha\nAna · 5511999999999\nCarlos · 5511888888888'} /></label></> : <><label>Nome do contato<input name="contactName" required /></label><label>Telefone<input name="phone" required defaultValue={initialPhone} placeholder="55 11 99999-9999" /></label><label>E-mail<input name="email" type="email" /></label><label>Empresa<input name="companyName" /></label></>}
-    <label className="wide">Assunto<input name="subject" required defaultValue={initialSubject} /></label><label>Canal<select required value={channelId} onChange={(event) => setChannelId(event.target.value)}><option value="">Selecione</option>{module.channels.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.departmentName} · {item.name}</option>)}</select></label><label>Fila<select name="queueId" required><option value="">Selecione</option>{module.queues.filter((item) => item.active && item.departmentId === channel?.departmentId).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Responsável<select name="assigneeUserId"><option value="">Fila compartilhada</option>{module.users.filter((item) => item.departmentIds.includes(channel?.departmentId ?? "")).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Prioridade<select name="priority"><option>Normal</option><option>Baixa</option><option>Alta</option><option>Urgente</option></select></label><label className="wide">Mensagem inicial<textarea name="initialMessage" rows={4} placeholder="Contexto recebido do cliente" /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><CirclePlus size={16} /> Criar atendimento</button></div>
+    <label className="wide">Assunto<input name="subject" required defaultValue={initialSubject} /></label><label>Canal<select required value={channelId} onChange={(event) => setChannelId(event.target.value)}><option value="">Selecione</option>{module.channels.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.departmentName} · {item.name}</option>)}</select></label><label>Fila<select name="queueId" required><option value="">Selecione</option>{module.queues.filter((item) => item.active && item.departmentId === channel?.departmentId).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Responsável<SearchablePeopleSelect searchLabel="Responsável" name="assigneeUserId"><option value="">Fila compartilhada</option>{module.users.filter((item) => item.departmentIds.includes(channel?.departmentId ?? "")).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</SearchablePeopleSelect></label><label>Prioridade<select name="priority"><option>Normal</option><option>Baixa</option><option>Alta</option><option>Urgente</option></select></label><label className="wide">Mensagem inicial<textarea name="initialMessage" rows={4} placeholder="Contexto recebido do cliente" /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><CirclePlus size={16} /> Criar atendimento</button></div>
   </form></div></div>;
 }

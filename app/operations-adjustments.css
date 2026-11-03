@@ -38,6 +38,17 @@ body > .toast > button { display:grid; place-items:center; width:30px; height:30
 .checkbox-multiselect-options > label:hover { background:var(--surface-alt); }
 .app-shell .checkbox-multiselect-options input[type="checkbox"] { width:16px; height:16px; min-height:16px; margin:0; flex-shrink:0; accent-color:var(--primary); }
 .checkbox-multiselect-popover > button { justify-self:end; }
+.people-picker { position:relative; display:inline-block; width:100%; min-width:0; vertical-align:middle; }
+.app-shell .people-picker-native { position:absolute!important; inset:0 auto auto 0!important; width:1px!important; min-width:0!important; height:1px!important; min-height:0!important; padding:0!important; margin:0!important; opacity:0!important; pointer-events:none; }
+.app-shell .people-picker > input[role="combobox"] { width:100%; min-width:0; min-height:38px; padding:8px 32px 8px 11px; border:1px solid var(--line); border-radius:9px; color:var(--ink); background:var(--input,var(--surface)); font:inherit; font-size:12px; cursor:text; }
+.people-picker > input[role="combobox"]:focus { outline:2px solid color-mix(in srgb,var(--primary) 30%,transparent); outline-offset:1px; border-color:var(--primary); }
+.people-picker-chevron { position:absolute; top:50%; right:10px; transform:translateY(-50%); color:var(--muted); pointer-events:none; }
+.people-picker-error { display:block; margin-top:4px; color:#d94760; font-size:11px; }
+.people-picker-options { position:fixed; z-index:2147483000; overflow:auto; padding:5px; border:1px solid var(--line); border-radius:10px; color:var(--ink); background:var(--surface); box-shadow:0 12px 35px #0003; }
+.people-picker-options > button { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; min-height:35px; padding:8px 10px; border:0; border-radius:6px; color:var(--ink); background:transparent; font:inherit; font-size:12px; line-height:1.4; text-align:left; }
+.people-picker-options > button:hover,.people-picker-options > button.active { color:var(--primary); background:var(--primary-soft,var(--surface-alt)); }
+.people-picker-options > button > svg { flex-shrink:0; }
+.people-picker-options > p { margin:0; padding:10px; color:var(--muted); font-size:12px; }
 .note-view-content { padding:20px 24px; color:var(--ink); white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.65; max-height:60vh; overflow:auto; }
 .service-request-column article { position:relative; }
 .service-request-column .service-request-delete { position:absolute; top:7px; right:7px; display:grid; place-items:center; width:27px; height:27px; padding:4px; border:1px solid var(--line); border-radius:7px; color:#d94760; background:var(--surface); }
@@ -68,6 +79,15 @@ body > .toast > button { display:grid; place-items:center; width:30px; height:30
 @media(max-width:680px) { .app-shell .module-page-header { flex-wrap:wrap; } .app-shell .module-page-actions { flex-wrap:wrap; } .app-shell .topbar-month-filter input { width:115px; font-size:10px; } .agenda-time-scroll { max-height:65vh; } }
 
 /* Client contact requests use their own compact, aligned dialog. */
+.internal-chat-message-actions { display:flex; justify-content:flex-end; gap:4px; margin-top:6px; }
+.internal-chat-message-actions > button { display:grid; place-items:center; width:26px; height:26px; min-height:26px; padding:3px; border:1px solid color-mix(in srgb,var(--line) 70%,transparent); border-radius:6px; color:var(--muted); background:color-mix(in srgb,var(--surface) 45%,transparent); }
+.internal-chat-message-actions > button:hover { color:var(--primary); background:var(--surface); }
+.internal-chat-deleted-message { color:var(--muted); font-style:italic; }
+.internal-chat-message-editor { display:grid; gap:8px; width:min(360px,65vw); }
+.internal-chat-message-editor > textarea { width:100%; min-height:84px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; color:var(--ink); background:var(--input,var(--surface)); font:inherit; font-size:13px; resize:vertical; }
+.internal-chat-message-editor > div { display:flex; justify-content:flex-end; gap:7px; }
+.internal-chat-message-editor button { padding:6px 10px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:var(--surface); font-size:11px; }
+.internal-chat-message-editor button[type="submit"] { color:white; background:var(--primary); border-color:var(--primary); }
 .task-client-notice-backdrop { z-index:1200; padding:24px; }
 .task-client-notice-dialog { display:flex; flex-direction:column; width:min(680px,calc(100vw - 48px)); max-height:calc(100dvh - 48px); overflow:hidden; border:1px solid var(--line); border-radius:18px; color:var(--ink); background:var(--surface); box-shadow:0 24px 80px #0004; }
 .client-notice-header { display:flex; align-items:flex-start; gap:14px; padding:18px 22px; border-bottom:1px solid var(--line); }
@@ -95,6 +115,20 @@ body > .toast > button { display:grid; place-items:center; width:30px; height:30
 .client-notice-body > textarea { display:block; width:100%; min-height:128px; max-height:35vh; padding:13px 14px; resize:vertical; border:1px solid var(--line); border-radius:11px; color:var(--ink); background:var(--input,var(--surface)); font:inherit; font-size:13px; line-height:1.6; }
 .client-notice-body > textarea:focus { border-color:var(--primary); outline:2px solid color-mix(in srgb,var(--primary) 22%,transparent); outline-offset:1px; }
 .client-notice-body > textarea::placeholder { color:var(--muted); }
+.service-request-route-form { display:grid; gap:12px; width:100%; padding-top:12px; border-top:1px solid var(--line); }
+.service-request-route-result { display:flex; gap:10px; align-items:center; padding:12px; border:1px solid var(--line); border-radius:10px; color:var(--primary); }
+.service-request-route-result span { display:grid; gap:4px; }
+.service-request-route-result small { color:var(--muted); }
+.service-request-toolbar { flex-wrap:wrap; }
+.desktop-install-button { display:inline-flex; align-items:center; gap:6px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; color:var(--text); background:var(--surface); cursor:pointer; font:inherit; font-size:12px; }
+.desktop-install-backdrop { z-index:2147483100; }
+.desktop-install-dialog { width:min(510px,calc(100vw - 28px)); }
+.desktop-install-body { display:grid; gap:14px; padding:22px; color:var(--muted); font-size:13px; line-height:1.6; }
+.desktop-install-body p,.desktop-install-body h3 { margin:0; }
+.desktop-install-body h3 { margin-top:8px; color:var(--text); }
+.desktop-install-body button { justify-self:start; display:inline-flex; align-items:center; gap:8px; }
+.desktop-notification-success { color:#15965a; }
+@media(max-width:700px) { .desktop-install-button span { display:none; } }
 .client-notice-message-meta { display:flex; justify-content:space-between; gap:12px; margin-top:7px; color:var(--muted); font-size:10px; line-height:1.5; }
 .client-notice-message-meta > span:last-child { flex-shrink:0; }
 .client-notice-delivery { display:flex; align-items:flex-start; gap:8px; margin:12px 0 0; padding:8px 12px; border-radius:9px; color:var(--muted); background:var(--surface-alt); font-size:11px; line-height:1.5; }

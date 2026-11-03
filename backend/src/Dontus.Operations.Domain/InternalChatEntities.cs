@@ -28,4 +28,6 @@ public sealed class InternalChatMessage : Entity
     public string FileName { get; set; } = "";
     public string ContentType { get; set; } = "";
     public string StorageKey { get; set; } = "";
+    public DateTimeOffset? EditedAt { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
 }

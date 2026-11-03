@@ -41,7 +41,7 @@ public sealed class InternalChatService(
             .ToListAsync(cancellationToken);
         var historySince = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(historyDays, 30, 36500));
         var messages = await db.InternalChatMessages.AsNoTracking()
-            .Where(message => roomIds.Contains(message.RoomId) && (message.CreatedAt >= historySince || message.Type == "pin"))
+            .Where(message => roomIds.Contains(message.RoomId) && (message.CreatedAt >= historySince || message.EditedAt >= historySince || message.DeletedAt >= historySince || message.Type == "pin"))
             .OrderByDescending(message => message.CreatedAt)
             .ToListAsync(cancellationToken);
 
@@ -49,7 +49,7 @@ public sealed class InternalChatService(
         var unreadByRoom = await (from message in db.InternalChatMessages.AsNoTracking()
             join member in db.InternalChatRoomMembers.AsNoTracking() on message.RoomId equals member.RoomId
             where member.UserId == actorUser.Id && message.SenderUserId != actorUser.Id
-                && message.Type != "pin" && message.CreatedAt >= member.JoinedAt
+                && message.Type != "pin" && message.DeletedAt == null && message.CreatedAt >= member.JoinedAt
                 && message.CreatedAt > (member.LastReadAt ?? member.JoinedAt)
             group message by message.RoomId into roomMessages
             select new { RoomId = roomMessages.Key, Count = roomMessages.Count() })
@@ -97,8 +97,8 @@ public sealed class InternalChatService(
                         message.Id, message.RoomId, message.SenderUserId,
                         sender?.DisplayName ?? "Colaborador removido", userPhotos.GetValueOrDefault(message.SenderUserId, ""),
                         sender?.IsCoordinator ?? false,
-                        message.Type, message.Body, message.FileName, message.ContentType,
-                        !string.IsNullOrWhiteSpace(message.StorageKey), pinned.GetValueOrDefault(message.Id), receiptState, message.CreatedAt);
+                        message.DeletedAt.HasValue ? "text" : message.Type, message.DeletedAt.HasValue ? "" : message.Body, message.DeletedAt.HasValue ? "" : message.FileName, message.DeletedAt.HasValue ? "" : message.ContentType,
+                        !message.DeletedAt.HasValue && !string.IsNullOrWhiteSpace(message.StorageKey), !message.DeletedAt.HasValue && pinned.GetValueOrDefault(message.Id), receiptState, message.CreatedAt, message.EditedAt, message.DeletedAt, message.Version);
                 }).ToArray();
             return new InternalChatRoomDto(
                 room.Id, displayName, displayPhoto, room.IsGroup, room.CreatedByUserId,
@@ -212,6 +212,40 @@ public sealed class InternalChatService(
         return message.Id;
     }
 
+    private async Task<InternalChatMessage> OwnMessageAsync(Guid roomId, Guid messageId, long version, ActorContext actor, CancellationToken ct)
+    {
+        actor.RequirePermission("internalChat", "create");
+        var user = await GetActorUserAsync(actor, ct);
+        await GetMemberRoomAsync(roomId, user.Id, ct);
+        var message = await db.InternalChatMessages.SingleOrDefaultAsync(entry => entry.Id == messageId && entry.RoomId == roomId, ct)
+            ?? throw new DomainException("Mensagem não encontrada.", 404);
+        if (message.SenderUserId != user.Id) throw new DomainException("Você pode editar ou excluir apenas suas próprias mensagens.", 403);
+        if (message.DeletedAt.HasValue) throw new DomainException("Esta mensagem já foi excluída.", 409);
+        if (message.Type == "pin") throw new DomainException("Este registro faz parte do histórico do chat.", 403);
+        if (message.Version != version) throw new DomainException("A mensagem foi alterada. Atualize a conversa e tente novamente.", 409);
+        return message;
+    }
+
+    public async Task EditMessageAsync(EditInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var message = await OwnMessageAsync(command.RoomId, command.MessageId, command.Version, actor, cancellationToken);
+        if (message.Type != "text") throw new DomainException("Apenas mensagens de texto podem ser editadas.");
+        var body = command.Body.Trim();
+        if (body.Length is 0 or > 4000) throw new DomainException("Digite uma mensagem de até 4.000 caracteres.");
+        if (message.Body == body) return;
+        message.Body = body; message.EditedAt = DateTimeOffset.UtcNow; message.UpdatedAt = message.EditedAt.Value; message.Version++;
+        db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = "EditMessage", Resource = "internal_chat_message", ResourceId = message.Id.ToString(), Module = "internalChat", DetailsJson = JsonSerializer.Serialize(new { message.RoomId, message.EditedAt, message.SenderUserId }) });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteMessageAsync(DeleteInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var message = await OwnMessageAsync(command.RoomId, command.MessageId, command.Version, actor, cancellationToken);
+        message.DeletedAt = DateTimeOffset.UtcNow; message.UpdatedAt = message.DeletedAt.Value; message.Version++;
+        db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = "DeleteMessage", Resource = "internal_chat_message", ResourceId = message.Id.ToString(), Module = "internalChat", DetailsJson = JsonSerializer.Serialize(new { message.RoomId, message.DeletedAt, message.SenderUserId }) });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<Guid> CreatePollAsync(CreateInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("internalChat", "create");
@@ -247,7 +281,7 @@ public sealed class InternalChatService(
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
         if (!room.IsGroup) throw new DomainException("Enquetes estão disponíveis somente em grupos.");
-        var message = await db.InternalChatMessages.SingleOrDefaultAsync(entry => entry.Id == command.MessageId && entry.RoomId == room.Id, cancellationToken)
+        var message = await db.InternalChatMessages.SingleOrDefaultAsync(entry => entry.Id == command.MessageId && entry.RoomId == room.Id && entry.DeletedAt == null, cancellationToken)
             ?? throw new DomainException("Enquete não encontrada.", 404);
         if (message.Type != "poll") throw new DomainException("A mensagem selecionada não é uma enquete.");
         PollPayload poll;
@@ -269,7 +303,7 @@ public sealed class InternalChatService(
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
         if (!room.IsGroup) throw new DomainException("Mensagens podem ser fixadas somente em grupos.");
-        var exists = await db.InternalChatMessages.AsNoTracking().AnyAsync(entry => entry.Id == command.MessageId && entry.RoomId == room.Id && entry.Type != "pin", cancellationToken);
+        var exists = await db.InternalChatMessages.AsNoTracking().AnyAsync(entry => entry.Id == command.MessageId && entry.RoomId == room.Id && entry.DeletedAt == null && entry.Type != "pin", cancellationToken);
         if (!exists) throw new DomainException("Mensagem não encontrada.", 404);
         db.InternalChatMessages.Add(new InternalChatMessage
         {
@@ -408,7 +442,7 @@ public sealed class InternalChatService(
         actor.RequirePermission("internalChat", "view");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         var message = await db.InternalChatMessages.AsNoTracking()
-            .SingleOrDefaultAsync(entry => entry.Id == messageId, cancellationToken)
+            .SingleOrDefaultAsync(entry => entry.Id == messageId && entry.DeletedAt == null, cancellationToken)
             ?? throw new DomainException("Arquivo não encontrado.", 404);
         if (!await db.InternalChatRoomMembers.AsNoTracking().AnyAsync(member => member.RoomId == message.RoomId && member.UserId == actorUser.Id, cancellationToken))
             throw new DomainException("Você não participa desta conversa.", 403);

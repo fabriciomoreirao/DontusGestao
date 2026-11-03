@@ -184,6 +184,10 @@ O card indica se os formulários foram respondidos; **Ver respostas** abre uma n
 
 ## Atendimento omnichannel
 
+Nos campos de responsável e nos filtros de pessoas, digite parte do nome e escolha o resultado. A busca desconsidera acentos e mantém as opções permitidas para o setor e o usuário. Campos de participantes continuam aceitando várias pessoas.
+
+No **Chat Dontus**, os botões **Editar mensagem** e **Excluir mensagem** ficam nas próprias mensagens. A edição preserva a data original e registra a alteração no servidor; a mensagem mostra o indicador **editada**. A exclusão pede confirmação e substitui o conteúdo por **Mensagem excluída** para os participantes. O servidor impede que outra pessoa altere ou exclua a mensagem, inclusive com acesso administrativo. Arquivos de mensagens excluídas deixam de ficar disponíveis.
+
 No **Chat interno**, enviar por Enter ou pelo botão mantém o cursor no campo e permite preparar a próxima mensagem durante o envio. Clicar em outro campo muda o foco normalmente, sem o chat recuperá-lo ao terminar. Rascunhos ficam separados por conversa; em caso de falha, o texto não enviado é preservado junto ao que foi digitado durante a espera. A janela **Avisar cliente**, nas tarefas, apresenta protocolo, cliente e responsável, com orientação em um campo maior e indicação de que o aviso é interno.
 
 No **Chat interno**, cole imagens com **Ctrl+V** no campo de mensagem. As imagens aparecem em uma prévia, podem ser removidas e são enviadas ao clicar em **Enviar mensagem**, com ou sem texto. Cada conversa mantém suas próprias imagens pendentes; uma falha de envio permite tentar novamente. Colar texto continua funcionando normalmente. O limite é de dez imagens por envio, com até 50 MB cada.
@@ -284,3 +288,11 @@ O indicador de atualização mostra o horário de Brasília da última leitura b
 - histórico e auditoria gravados com a mutação;
 - decisões V-001 a V-020 registradas com comportamento seguro;
 - dados demonstrativos somente por carga explícita.
+
+### Triagem e aplicativo instalável
+
+Novos chamados recebem a classificação da IA diretamente no kanban e um acompanhamento vinculado ao setor: Desenvolvimento, Tarefa e Sugestão para Suporte; Reclamação e Elogio para Sucesso do Cliente; Cancelamento e Nova contratação para Comercial. O filtro por setor está disponível nas duas telas. Chamados anteriores são conciliados uma única vez na inicialização, preservando acompanhamentos existentes.
+
+No acompanhamento, usuários com permissão podem criar tarefas, demandas de desenvolvimento, sugestões, cancelamentos, leads comerciais ou acompanhamentos de retenção. O encaminhamento registra destino, data, horário e autor, com proteção contra criação duplicada.
+
+O botão Instalar prepara a instalação como aplicativo pelo Chrome/Edge em HTTPS ou localhost. As notificações do computador podem ser ativadas pelo usuário; o contador acompanha as notificações pendentes no ícone do aplicativo instalado, além do título e favicon em vermelho. A aparência da barra de tarefas depende do sistema operacional. O aplicativo deve permanecer aberto, inclusive minimizado, para receber novas notificações; envio push com o aplicativo completamente fechado não faz parte desta integração. O service worker armazena somente a página pública de indisponibilidade e não mantém dados autenticados em cache.

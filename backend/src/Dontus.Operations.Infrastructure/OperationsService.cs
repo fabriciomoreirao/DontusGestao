@@ -1456,6 +1456,14 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             throw new DomainException("Esta ação sensível exige confirmação explícita e evidência registrada.", 409);
 
         var previous = item.Status;
+        if (item.Module == "serviceRequests")
+        {
+            var detail = ServiceRequestWorkflow.Read(item.Description) ?? throw new DomainException("Dados do chamado inválidos.");
+            ServiceRequestWorkflow.AddHistory(detail, $"Classificação alterada de {previous} para {command.NextStatus}.", DateTimeOffset.UtcNow, actor.DisplayName);
+            await ServiceRequestWorkflow.SynchronizeAsync(db, item, detail, command.NextStatus, DateTimeOffset.UtcNow, actor.DisplayName, cancellationToken);
+        }
+        if (item.Module == "serviceFollowup" && !new[] { "Em espera", "Em processo", "Concluído", "Descartado" }.Contains(command.NextStatus))
+            throw new DomainException("Etapa inválida para acompanhamento de chamados.");
         item.Status = command.NextStatus;
         item.UpdatedAt = DateTimeOffset.UtcNow;
         item.Version++;

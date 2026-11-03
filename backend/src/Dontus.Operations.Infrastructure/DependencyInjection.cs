@@ -29,6 +29,7 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddScoped<CommissionConfirmationService>();
         services.AddScoped<ServiceRequestCreationService>();
+        services.AddScoped<ServiceRequestRoutingService>();
         services.AddScoped<EmployeeProfileService>();
         services.AddSingleton<RealtimeBroker>();
         services.AddHostedService<RealtimeListener>();
