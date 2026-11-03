@@ -190,7 +190,36 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             new UserDto(actor.Email, actor.DisplayName, actor.Role, actor.Department,
                 currentUserProfile is null ? "" : ProfilePhotoUrls.For(currentUserProfile.Id, currentUserProfile.UpdatedAt, currentUserProfile.PhotoDataUrl), currentUserProfile?.JobTitle ?? "",
                 currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? [], actor.FullAccess),
-            customers, items, appointments, approvals, decisions, audit, moduleCounts);
+            customers, items, appointments, approvals, decisions, audit, moduleCounts)
+        {
+            WaitingQueueDirectory = actor.HasPermission("waitingQueue", "view")
+                ? await GetWaitingQueueDirectoryAsync(cancellationToken) : null,
+        };
+    }
+
+    private async Task<WaitingQueueDirectoryDto> GetWaitingQueueDirectoryAsync(CancellationToken ct)
+    {
+        // Assignment choices must be available without the administrative employee projection.
+        var departments = await db.TaskDepartments.AsNoTracking().Where(x => x.Active).OrderBy(x => x.Name)
+            .Select(x => new WaitingQueueDepartmentDto(x.Id, x.Name, x.Description, x.Active)).ToListAsync(ct);
+        var departmentNames = departments.ToDictionary(x => x.Id, x => x.Name);
+        var users = await db.Users.AsNoTracking().Where(x => x.Active && x.BlockedAt == null).OrderBy(x => x.DisplayName)
+            .Select(x => new { x.Id, x.DisplayName, x.Email, x.Department }).ToListAsync(ct);
+        var userIds = users.Select(x => x.Id).ToArray();
+        var memberships = await db.UserDepartments.AsNoTracking().Where(x => userIds.Contains(x.UserId) && x.Department.Active)
+            .OrderByDescending(x => x.IsPrimary).Select(x => new { x.UserId, x.DepartmentId }).ToListAsync(ct);
+        var byUser = memberships.ToLookup(x => x.UserId);
+        var employees = users.Select(user =>
+        {
+            var ids = byUser[user.Id].Select(x => x.DepartmentId).Distinct().ToArray();
+            var fallback = departments.FirstOrDefault(x => string.Equals(x.Name.Trim(), user.Department.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (ids.Length == 0 && fallback is not null) ids = [fallback.Id];
+            var names = ids.Select(id => departmentNames.GetValueOrDefault(id, user.Department)).Append(user.Department)
+                .Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            return new WaitingQueuePersonDto(user.Id, user.DisplayName, user.Email, ids.Length == 0 ? null : ids[0],
+                ids.Length == 0 ? user.Department : departmentNames.GetValueOrDefault(ids[0], user.Department), ids, names, true);
+        }).ToArray();
+        return new(employees, departments);
     }
 
     public async Task<DiaryModuleDto> GetDiaryModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
