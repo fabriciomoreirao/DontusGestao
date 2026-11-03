@@ -14,6 +14,27 @@ public sealed class WaitingQueueDirectoryTests
         "Colaborador", user.Department, [new(module, true, false, edit, false, false)]);
 
     [Fact]
+    public async Task Mutation_snapshot_preserves_visible_records_and_customer_protocols_without_workspace_details()
+    {
+        await using var db = Context(); var user = User("Ana"); db.Users.Add(user);
+        var customer = new Customer { TradeName = "Clínica", LegalName = "Clínica teste", CreatedBy = "teste" }; db.Customers.Add(customer);
+        db.WorkItems.AddRange(new WorkItem { Module = "waitingQueue", RecordType = "Encaminhamento", Status = "Novo", CreatedBy = "teste", Title = "Contato", CustomerId = customer.Id },
+            new WorkItem { Module = "commercial", RecordType = "Lead", Status = "Novo", CreatedBy = "teste", Title = "Registro restrito" });
+        db.CorporateTasks.Add(new CorporateTask { CustomerId = customer.Id, Protocol = "T260001", Title = "Tarefa aberta" });
+        await db.SaveChangesAsync();
+        var service = new OperationsService(db);
+        var full = await service.GetSnapshotAsync(Actor(user));
+        var changed = await service.GetSnapshotAsync(Actor(user), includeWorkspaceDetails: false);
+        Assert.Equal(full.Items.Select(item => item.Id), changed.Items.Select(item => item.Id));
+        Assert.Single(changed.Items);
+        Assert.Equal(full.Customers.Select(item => item.Id), changed.Customers.Select(item => item.Id));
+        Assert.Contains("T260001", Assert.Single(changed.Customers).OpenTaskProtocols);
+        Assert.NotNull(full.WaitingQueueDirectory);
+        Assert.Null(changed.WaitingQueueDirectory); Assert.Null(changed.AssignmentDirectory);
+        Assert.Empty(changed.Appointments); Assert.Empty(changed.Decisions); Assert.Empty(changed.Audit);
+    }
+
+    [Fact]
     public async Task Queue_only_user_receives_self_and_sector_members_without_administrative_access()
     {
         await using var db = Context(); var user = User("Ana"); var support = new TaskDepartment { Name = "Suporte" };

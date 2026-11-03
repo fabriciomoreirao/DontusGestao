@@ -1104,6 +1104,9 @@ operations.MapPost("", async (
 
     switch (request.Action?.Trim())
     {
+        case "refreshOperations":
+            // Read-only synchronization; reuse the same permission-filtered workspace below.
+            break;
         case "routeServiceRequest":
             id = await serviceRequestRouting.RouteAsync(request.Id ?? throw new DomainException("Chamado obrigatório."),
                 request.Version ?? 0, request.RouteTarget ?? "", request.TaskDraft, actor, cancellationToken);
@@ -1819,20 +1822,33 @@ operations.MapPost("", async (
         return Results.Ok(new { ok = true, id, internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) });
     if (request.Action is "markNoticeViewed" or "markNoticeRead")
         return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
-    if (request.Action == "markTaskNotificationRead")
-        return Results.Ok(new { ok = true, taskModule = await taskService.GetModuleAsync(actor, cancellationToken) });
-    if ((request.Action is "addTaskComment" or "updateTaskComment") && actor.HasPermission("tasks", "view"))
-        return Results.Ok(new { ok = true, id, taskModule = await taskService.GetModuleAsync(actor, cancellationToken) });
+    if ((request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus"
+        or "changeTaskPriority" or "changeTaskSla" or "transferTask" or "assignTask"
+        or "addTaskComment" or "updateTaskComment" or "communicateWithClient" or "markTaskNotificationRead")
+        && actor.HasPermission("tasks", "view"))
+    {
+        // A task mutation does not require rebuilding chats, calendars or administrative data.
+        var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
+            ["taskModule"] = await taskService.GetModuleAsync(actor, cancellationToken) };
+        if (request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus")
+        {
+            // Keep customer open-task protocols current when links or completion change.
+            var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false);
+            result["customers"] = changed.Customers;
+        }
+        return id.HasValue ? Results.Json(result, statusCode: StatusCodes.Status201Created) : Results.Ok(result);
+    }
     if ((request.Action is "addSuggestionComment" or "updateSuggestionComment") && actor.HasPermission("suggestions", "view"))
         return Results.Ok(new { ok = true, id, suggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) });
     if (request.Action is "createWorkItem" or "updateWorkItem" or "transitionWorkItem" or "deleteWorkItem")
     {
         // Generic card edits do not change chat rooms, task catalogs or administrative access.
         // Preserve those client projections instead of rebuilding all of them on every keystroke/save.
-        var changed = await service.GetSnapshotAsync(actor, cancellationToken);
+        var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false);
         var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
-            ["items"] = changed.Items, ["customers"] = changed.Customers, ["approvals"] = changed.Approvals,
+            ["customers"] = changed.Customers, ["approvals"] = changed.Approvals,
             ["moduleCounts"] = changed.ModuleCounts };
+        OperationsResponseProjection.AddItems(result, changed.Items, request.KnownWorkItemVersions);
         if (actor.HasPermission("diary", "view")) result["diaryModule"] = await service.GetDiaryModuleAsync(actor, cancellationToken);
         if (request.ResponsibleUserId.HasValue && actor.HasPermission("work", "view"))
             result["agendaModule"] = await agendaService.GetModuleAsync(actor, cancellationToken);
@@ -1864,7 +1880,8 @@ operations.MapPost("", async (
         ? await accessControl.GetManagementAsync(actor, cancellationToken)
         : null;
     var response = snapshot with { Ok = true, Id = id, CreatedProtocol = createdProtocol, Access = access };
-    return id.HasValue ? Results.Json(response, statusCode: StatusCodes.Status201Created) : Results.Ok(response);
+    var projected = OperationsResponseProjection.Create(response, request.KnownWorkItemVersions);
+    return id.HasValue ? Results.Json(projected, statusCode: StatusCodes.Status201Created) : Results.Ok(projected);
 });
 
 await InitializeDatabaseAsync(app);
@@ -2200,6 +2217,7 @@ sealed record ServiceRequestClassification(string Stage, string Priority, string
 
 public sealed class OperationsRequest
 {
+    public Dictionary<Guid, long>? KnownWorkItemVersions { get; init; }
     public Guid? CollaboratorId { get; init; }
     public IReadOnlyCollection<ReferralCommissionRuleInput>? ReferralRules { get; init; }
     public IReadOnlyCollection<Guid>? TargetCollaboratorIds { get; init; }

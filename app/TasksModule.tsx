@@ -6,7 +6,7 @@ import { useReminderFilter } from "@/app/ReminderFilters";
 
 
 import {
-  Bell, Check, CheckCircle2, ChevronRight, CircleDot, Clipboard, Clock3, Columns3,
+  Bell, CalendarDays, Check, CheckCircle2, ChevronRight, CircleDot, Clipboard, Clock3, Columns3,
   Code2, FileText, History, List, MessageSquareText, Paperclip, Pencil, Plus, Search, Upload,
   Power, RotateCcw, Settings, Smile, Trash2, UserRound, UsersRound, X,
 } from "lucide-react";
@@ -76,6 +76,8 @@ type Props = {
   canManage: boolean;
   capabilities: string[];
   busy: boolean;
+  month: string;
+  onMonthChange: (month: string) => void;
   operate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string; createdProtocol?: string } | false>;
   onSendToDevelopment: (task: CorporateTask) => Promise<{ id?: string; createdProtocol?: string } | false>;
   uploadAttachments: (taskId: string, files: File[], commentId?: string) => Promise<boolean>;
@@ -87,7 +89,7 @@ const dt = (value?: string | null) => value
   ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value))
   : "—";
 
-export default function TasksModule({ module, customers, user, canCreate, canEdit, canManage, capabilities, busy, operate, onSendToDevelopment, uploadAttachments, deleteAttachment, onOpenSettings }: Props) {
+export default function TasksModule({ module, customers, user, canCreate, canEdit, canManage, capabilities, busy, month, onMonthChange, operate, onSendToDevelopment, uploadAttachments, deleteAttachment, onOpenSettings }: Props) {
   const [view, setView] = useState<"kanban" | "list">("kanban");
   const [query, setQuery] = useState("");
   const [department, setDepartment] = useState("");
@@ -157,6 +159,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
     <header className="tasks-heading module-page-header">
       <div className="module-page-title"><span className="module-page-title-icon"><Clipboard size={21} /></span><span className="module-page-copy"><span className="eyebrow">OPERAÇÃO CORPORATIVA</span><h1>Tarefas</h1><p>Demandas internas, responsáveis, setores e SLA em um fluxo auditável.</p></span></div>
       <div className="tasks-heading-actions module-page-actions">
+        <label className="tasks-competence-filter"><CalendarDays size={16} /><span>Competência</span><input type="month" aria-label="Filtrar tarefas por competência" value={month} onChange={event => { if (event.target.value) onMonthChange(event.target.value); }} /></label>
         <button type="button" className="task-settings-button icon-only" onClick={onOpenSettings} aria-label="Configurar opções de tarefas" title="Configurar tipos, prioridades, SLA, status e Kanban"><Settings size={17} /></button>
         {canCreate && <button className="primary-button" onClick={() => setCreating(true)}><Plus size={17} /> Nova tarefa</button>}
       </div>
