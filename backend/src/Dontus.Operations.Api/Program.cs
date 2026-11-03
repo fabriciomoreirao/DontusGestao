@@ -1102,6 +1102,9 @@ operations.MapPost("", async (
 
     switch (request.Action?.Trim())
     {
+        case "refreshOperations":
+            // Read-only synchronization; reuse the same permission-filtered workspace below.
+            break;
         case "routeServiceRequest":
             id = await serviceRequestRouting.RouteAsync(request.Id ?? throw new DomainException("Chamado obrigatório."),
                 request.Version ?? 0, request.RouteTarget ?? "", request.TaskDraft, actor, cancellationToken);
@@ -1841,8 +1844,9 @@ operations.MapPost("", async (
         // Preserve those client projections instead of rebuilding all of them on every keystroke/save.
         var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false);
         var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
-            ["items"] = changed.Items, ["customers"] = changed.Customers, ["approvals"] = changed.Approvals,
+            ["customers"] = changed.Customers, ["approvals"] = changed.Approvals,
             ["moduleCounts"] = changed.ModuleCounts };
+        OperationsResponseProjection.AddItems(result, changed.Items, request.KnownWorkItemVersions);
         if (actor.HasPermission("diary", "view")) result["diaryModule"] = await service.GetDiaryModuleAsync(actor, cancellationToken);
         if (request.ResponsibleUserId.HasValue && actor.HasPermission("work", "view"))
             result["agendaModule"] = await agendaService.GetModuleAsync(actor, cancellationToken);
@@ -1874,7 +1878,8 @@ operations.MapPost("", async (
         ? await accessControl.GetManagementAsync(actor, cancellationToken)
         : null;
     var response = snapshot with { Ok = true, Id = id, CreatedProtocol = createdProtocol, Access = access };
-    return id.HasValue ? Results.Json(response, statusCode: StatusCodes.Status201Created) : Results.Ok(response);
+    var projected = OperationsResponseProjection.Create(response, request.KnownWorkItemVersions);
+    return id.HasValue ? Results.Json(projected, statusCode: StatusCodes.Status201Created) : Results.Ok(projected);
 });
 
 await InitializeDatabaseAsync(app);
@@ -2210,6 +2215,7 @@ sealed record ServiceRequestClassification(string Stage, string Priority, string
 
 public sealed class OperationsRequest
 {
+    public Dictionary<Guid, long>? KnownWorkItemVersions { get; init; }
     public Guid? CollaboratorId { get; init; }
     public IReadOnlyCollection<ReferralCommissionRuleInput>? ReferralRules { get; init; }
     public IReadOnlyCollection<Guid>? TargetCollaboratorIds { get; init; }
