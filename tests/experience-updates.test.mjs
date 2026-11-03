@@ -35,14 +35,19 @@ test('fila compartilhada conta e notifica só o setor de destino, mesmo que o pr
   assert.equal(buildNotifications({...data,items:[{...own,description:JSON.stringify({...JSON.parse(own.description),state:'contacted'})}]},Date.now()).length,0);
 });
 test('o alerta sonoro reutiliza o áudio liberado pela interação do usuário',async()=>{
-  const previous=Object.getOwnPropertyDescriptor(globalThis,'window');let created=0,resumed=0,notes=0;
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'window');let created=0,resumed=0;const notes=[];
   class Audio{
     state='suspended';currentTime=0;destination={};constructor(){created++;}
     async resume(){resumed++;this.state='running';}
-    createOscillator(){return{frequency:{},connect:gain=>gain,start:()=>notes++,stop:()=>{},disconnect:()=>{}};}
+    createOscillator(){return{frequency:{},connect:gain=>gain,start:at=>notes.push(at),stop:()=>{},disconnect:()=>{}};}
     createGain(){return{gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){return this;},disconnect(){}};}
   }
   Object.defineProperty(globalThis,'window',{configurable:true,value:{AudioContext:Audio}});
-  try{unlockNotificationSound();await Promise.resolve();playNotificationSound(true);playNotificationSound(false);assert.equal(created,1);assert.equal(resumed,1);assert.equal(notes,5);}
+  try{
+    unlockNotificationSound();await Promise.resolve();playNotificationSound(true);
+    assert.equal(notes.length,15);
+    for(let repeat=0;repeat<5;repeat++)assert.deepEqual(notes.slice(repeat*3,repeat*3+3),[repeat*.9,repeat*.9+.16,repeat*.9+.34]);
+    playNotificationSound(false);assert.equal(created,1);assert.equal(resumed,1);assert.deepEqual(notes.slice(15),[0,.16]);
+  }
   finally{if(previous)Object.defineProperty(globalThis,'window',previous);else delete globalThis.window;}
 });

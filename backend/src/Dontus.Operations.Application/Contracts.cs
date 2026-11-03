@@ -378,7 +378,7 @@ public sealed record OperationsSnapshot(
 public interface IOperationsService
 {
     Task InitializeAsync(CancellationToken cancellationToken = default);
-    Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default);
+    Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default, bool includeWorkspaceDetails = true);
     Task<DiaryModuleDto> GetDiaryModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<NotesModuleDto> GetNotesModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SaveNoteAsync(Guid? id, string title, string? content, string? color, string? visibility, ActorContext actor, CancellationToken cancellationToken = default);

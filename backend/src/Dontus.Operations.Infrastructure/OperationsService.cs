@@ -56,7 +56,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default, bool includeWorkspaceDetails = true)
     {
         if (actor.Permissions?.All(permission => !permission.CanView) != false)
             throw new DomainException("Seu usuário não possui acesso a nenhuma tela do sistema.", 403);
@@ -97,13 +97,14 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 && !x.CompletedAt.HasValue && !x.Cancelled)
             .Select(x => new { CustomerId = x.CustomerId!.Value, x.Protocol })
             .ToListAsync(cancellationToken);
+        var taskProtocolsByCustomer = openCustomerTasks.ToLookup(task => task.CustomerId, task => task.Protocol);
         var customers = customerEntities.Select(x => new CustomerDto(
             x.Id, x.LegalName, x.TradeName, x.DocumentMasked, x.Segment, x.Status,
             x.Owner, x.CsOwner, x.SupportOwner, x.Strategic ? 1 : 0, x.StrategicNetworkId, x.ClinicsCount,
             x.MonthlyRevenueCents, x.Project, x.ProductVersion, x.DueDay, x.Server,
             x.PaymentMethod, x.InvoiceCompany, x.GraceDays, x.DueDays, x.Subscription,
             x.Email, x.Phone, x.Website, x.Notes, x.Address, x.City, x.State, x.CreatedAt,
-            openCustomerTasks.Where(task => task.CustomerId == x.Id).Select(task => task.Protocol).ToList()))
+            taskProtocolsByCustomer[x.Id].ToList()))
             .ToList();
 
         var registeredUser = await db.Users.AsNoTracking().Where(user => user.Email == actor.Email)
@@ -140,7 +141,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             customers = customers.Where(customer => items.Any(item => item.CustomerId == customer.Id ||
                 !string.IsNullOrWhiteSpace(item.CustomerName) && (item.CustomerName == customer.TradeName || item.CustomerName == customer.LegalName))).ToList();
 
-        var appointments = actor.HasPermission("work", "view")
+        var appointments = includeWorkspaceDetails && actor.HasPermission("work", "view")
             ? await db.Appointments.AsNoTracking()
             .OrderBy(x => x.StartsAt)
             .Take(100)
@@ -160,7 +161,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .ToListAsync(cancellationToken)
             : [];
 
-        var decisions = actor.HasPermission("admin", "view")
+        var decisions = includeWorkspaceDetails && actor.HasPermission("admin", "view")
             ? await db.DecisionItems.AsNoTracking()
             .OrderBy(x => x.Code)
             .Select(x => new DecisionDto(
@@ -168,7 +169,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .ToListAsync(cancellationToken)
             : [];
 
-        var audit = actor.HasPermission("admin", "view")
+        var audit = includeWorkspaceDetails && actor.HasPermission("admin", "view")
             ? await db.AuditEvents.AsNoTracking()
             .OrderByDescending(x => x.CreatedAt)
             .Take(80)
@@ -181,12 +182,12 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var moduleCounts = items.GroupBy(x => x.Module)
             .Select(x => new ModuleCountDto(x.Key, x.Count()))
             .ToArray();
-        var currentUserProfile = await db.Users.AsNoTracking()
+        var currentUserProfile = includeWorkspaceDetails ? await db.Users.AsNoTracking()
             .Where(user => user.Email == actor.Email)
             .Select(user => new { user.Id, user.UpdatedAt, user.PhotoDataUrl, user.JobTitle, user.IsCoordinator })
-            .SingleOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken) : null;
 
-        var directory = actor.HasPermission("waitingQueue", "view") || actor.HasPermission("reminders", "create") || actor.HasPermission("reminders", "view")
+        var directory = includeWorkspaceDetails && (actor.HasPermission("waitingQueue", "view") || actor.HasPermission("reminders", "create") || actor.HasPermission("reminders", "view"))
             ? await GetWaitingQueueDirectoryAsync(cancellationToken) : null;
         return new OperationsSnapshot(
             new UserDto(actor.Email, actor.DisplayName, actor.Role, actor.Department,
