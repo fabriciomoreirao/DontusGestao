@@ -5,15 +5,24 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Dontus.Operations.Application;
 
 namespace Dontus.Operations.Infrastructure;
 
 [Flags]
-public enum RealtimeChange { None = 0, Operations = 1, InternalChat = 2 }
+public enum RealtimeChange { None = 0, Operations = 1, InternalChat = 2, Presence = 4 }
 
 // Notifications carry invalidation flags only. Data continues through authorized HTTP projections.
-public sealed class RealtimeBroker
+public sealed class RealtimeBroker(TimeProvider? clock = null)
 {
+    private sealed record ConnectionPresence(Guid UserId, DateTimeOffset At, bool Connected);
+    private readonly ConcurrentDictionary<Guid, ConnectionPresence> presence = new();
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> lastSeen = new();
+    private DateTimeOffset Now => (clock ?? TimeProvider.System).GetUtcNow();
+    public UserPresenceDto GetPresence(Guid userId) => new(userId,
+        presence.Values.Any(session => session.UserId == userId && session.Connected && Now - session.At < TimeSpan.FromSeconds(75)),
+        lastSeen.TryGetValue(userId, out var at) ? at : null);
+    public UserPresenceDto[] GetPresence() => lastSeen.Keys.Select(GetPresence).ToArray();
     private readonly ConcurrentDictionary<Guid, Subscription> subscribers = new();
     private readonly string instance = Guid.NewGuid().ToString("N");
     private long revision;
@@ -38,6 +47,20 @@ public sealed class RealtimeBroker
         using var json = JsonDocument.Parse(payload);
         var topic = json.RootElement.GetProperty("topic").GetString();
         Guid? userId = json.RootElement.TryGetProperty("userId", out var id) && Guid.TryParse(id.GetString(), out var user) ? user : null;
+        if (topic == "presence")
+        {
+            if (!userId.HasValue || !json.RootElement.TryGetProperty("connectionId", out var connection) || !Guid.TryParse(connection.GetString(), out var connectionId)
+                || !json.RootElement.TryGetProperty("at", out var stamp) || !stamp.TryGetDateTimeOffset(out var at)
+                || !json.RootElement.TryGetProperty("online", out var online) || online.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return;
+            var before = GetPresence(userId.Value).IsOnline;
+            var next = new ConnectionPresence(userId.Value, at, online.GetBoolean());
+            presence.AddOrUpdate(connectionId, next, (_, previous) => at >= previous.At ? next : previous);
+            lastSeen.AddOrUpdate(userId.Value, at, (_, previous) => at > previous ? at : previous);
+            foreach (var stale in presence.Where(entry => Now - entry.Value.At > TimeSpan.FromMinutes(10))) presence.TryRemove(stale.Key, out _);
+            if (before != GetPresence(userId.Value).IsOnline)
+                foreach (var subscriber in subscribers.Values.Where(subscriber => subscriber.Chat)) subscriber.Notify(RealtimeChange.Presence);
+            return;
+        }
         if (topic != "operations" && (topic != "chat" || userId is null)) return;
         Interlocked.Increment(ref revision);
         foreach (var subscriber in subscribers.Values)

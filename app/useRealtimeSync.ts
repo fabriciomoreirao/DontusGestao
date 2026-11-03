@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createRealtimeSync } from "@/lib/realtime-sync";
+import type {ChatPresence} from "@/lib/chat-presence";
 
 export default function useRealtimeSync(options: {
   user: string | undefined; canChat: boolean; busy: boolean; cursor: () => string;
   operations: () => Promise<boolean>; chat: () => Promise<boolean>; unauthorized: () => void;
+  presence?: (users:ChatPresence[]) => void;
 }) {
   const latest = useRef(options);
   const [connected, setConnected] = useState(false);
@@ -18,6 +20,7 @@ export default function useRealtimeSync(options: {
       url: url.href, canChat: options.canChat, busy: () => latest.current.busy, hidden: () => document.hidden,
       cursor: () => latest.current.cursor(), operations: () => latest.current.operations(), chat: () => latest.current.chat(),
       status: setConnected, unauthorized: () => latest.current.unauthorized(),
+      presence: users=>latest.current.presence?.(users),
     });
     document.addEventListener("visibilitychange", sync.visible);
     window.addEventListener("online", sync.online);

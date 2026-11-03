@@ -296,3 +296,9 @@ Novos chamados recebem a classificação da IA diretamente no kanban e um acompa
 No acompanhamento, usuários com permissão podem criar tarefas, demandas de desenvolvimento, sugestões, cancelamentos, leads comerciais ou acompanhamentos de retenção. O encaminhamento registra destino, data, horário e autor, com proteção contra criação duplicada.
 
 O botão Instalar prepara a instalação como aplicativo pelo Chrome/Edge em HTTPS ou localhost. As notificações do computador podem ser ativadas pelo usuário; o contador acompanha as notificações pendentes no ícone do aplicativo instalado, além do título e favicon em vermelho. A aparência da barra de tarefas depende do sistema operacional. O aplicativo deve permanecer aberto, inclusive minimizado, para receber novas notificações; envio push com o aplicativo completamente fechado não faz parte desta integração. O service worker armazena somente a página pública de indisponibilidade e não mantém dados autenticados em cache.
+
+### Interações, presença e avisos por setor
+
+Comentários usam Enter para enviar e Shift+Enter para inserir uma nova linha. A edição e a exclusão de mensagens ficam junto ao horário, com controles compactos. O chat mostra presença online/offline com pontos verde/vermelho e destaca a supervisão em dourado. A presença acompanha conexões autenticadas, considera múltiplas abas e expira conexões perdidas sem usar a data do último login como status online.
+
+Lembretes de qualquer funcionalidade usam uma lista própria de colaboradores ativos, incluindo o usuário e seus setores, sem depender do painel administrativo. A contagem e os avisos da fila consideram apenas contatos pendentes do setor do destinatário, compartilhados ou atribuídos a ele. Novas chegadas recebem aviso visual e um alerta sonoro específico; o áudio é liberado na primeira interação no navegador. Alterações simples de cards e comentários retornam as projeções pertinentes, preservando os módulos que não foram alterados.

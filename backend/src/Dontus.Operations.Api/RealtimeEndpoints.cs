@@ -8,10 +8,11 @@ using Microsoft.EntityFrameworkCore;
 
 public static class RealtimeEndpoints
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     public static void MapRealtime(this WebApplication app)
     {
         app.MapGet("/api/realtime", async (HttpContext context, IAccessControlService access, OperationsDbContext db,
-            RealtimeBroker broker, IServiceScopeFactory scopes, IConfiguration configuration) =>
+            RealtimeBroker broker, RealtimePresencePublisher presence, IServiceScopeFactory scopes, IConfiguration configuration) =>
         {
             if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 426; return; }
             if (!broker.Available) { context.Response.StatusCode = 503; return; }
@@ -23,7 +24,9 @@ public static class RealtimeEndpoints
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, subscription.Disconnected.Token);
             try
             {
-                await Send(new { type = "ready", cursor = broker.Cursor }, lifetime.Token);
+                await presence.UpdateAsync(subscription.Id, userId, true, lifetime.Token);
+                var presenceAt = DateTimeOffset.UtcNow;
+                await Send(new { type = "ready", cursor = broker.Cursor, presence = subscription.Chat ? broker.GetPresence() : null }, lifetime.Token);
                 var receive = Receive();
                 try
                 {
@@ -35,6 +38,11 @@ public static class RealtimeEndpoints
                         try { await subscription.Signal.Reader.WaitToReadAsync(heartbeat.Token); }
                         catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { }
                         lifetime.Token.ThrowIfCancellationRequested();
+                        if (DateTimeOffset.UtcNow - presenceAt >= TimeSpan.FromSeconds(25))
+                        {
+                            await presence.UpdateAsync(subscription.Id, userId, true, lifetime.Token);
+                            presenceAt = DateTimeOffset.UtcNow;
+                        }
                         if (DateTimeOffset.UtcNow - checkedAt >= TimeSpan.FromMinutes(1))
                         {
                             checkedAt = DateTimeOffset.UtcNow;
@@ -47,7 +55,8 @@ public static class RealtimeEndpoints
                         }
                         var changes = subscription.Take();
                         await Send(new { type = changes == RealtimeChange.None ? "heartbeat" : "changed",
-                            operations = changes.HasFlag(RealtimeChange.Operations), internalChat = changes.HasFlag(RealtimeChange.InternalChat) }, lifetime.Token);
+                            operations = changes.HasFlag(RealtimeChange.Operations), internalChat = changes.HasFlag(RealtimeChange.InternalChat),
+                            presence = subscription.Chat && (changes.HasFlag(RealtimeChange.Presence) || changes == RealtimeChange.None) ? broker.GetPresence() : null }, lifetime.Token);
                     }
                 }
                 finally { await lifetime.CancelAsync(); try { await receive; } catch (OperationCanceledException) { } }
@@ -56,12 +65,14 @@ public static class RealtimeEndpoints
             finally
             {
                 broker.Remove(subscription);
+                using var presenceTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await presence.UpdateAsync(subscription.Id, userId, false, presenceTimeout.Token);
                 if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
                     try { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2)); await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Reconecte para sincronizar.", timeout.Token); }
                     catch (Exception error) when (error is OperationCanceledException or WebSocketException) { }
             }
 
-            async Task Send(object message, CancellationToken ct) => await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(message).AsMemory(), WebSocketMessageType.Text, true, ct);
+            async Task Send(object message, CancellationToken ct) => await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(message, JsonOptions).AsMemory(), WebSocketMessageType.Text, true, ct);
             async Task Receive()
             {
                 try
