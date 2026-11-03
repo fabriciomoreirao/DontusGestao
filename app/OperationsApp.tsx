@@ -1,6 +1,8 @@
 "use client";
 
 import {applyChatPresence,type ChatPresence} from "@/lib/chat-presence";
+import { knownWorkItemVersions, mergeOperationsUpdate, type OperationsChanges } from "@/lib/operations-update";
+import { recordSearchText } from "@/lib/record-search";
 import CommentEnterSupport from "@/app/CommentEnterSupport";
 import {waitingQueueNeedsContact} from "@/lib/waitingQueue";
 import {playNotificationSound,unlockNotificationSound} from "@/lib/notification-sound";
@@ -31,7 +33,7 @@ import useActivityClock from "@/app/useActivityClock";
 import DesktopAppControls from "@/app/DesktopAppSupport";
 import { showDesktopNotification } from "@/lib/desktop-notifications";
 import ChatNotifications, { type ChatAlert } from "@/app/ChatNotifications";
-import { FormEvent, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { FormEvent, lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { allowedNextStatuses, MODULES, PRIORITIES, RECORD_TYPES, STATE_MACHINES, type ModuleKey } from "@/lib/domain";
 import TasksModule, { CatalogsModule, type CatalogSection, type TaskModuleData } from "@/app/TasksModule";
@@ -69,6 +71,13 @@ import { catalogFormValue } from "@/lib/catalog-options";
 import { DontusCustomerEnvironment, DontusSupportAccess } from "@/app/DontusIntegration";
 const CommissionsModule = lazy(() => import("@/app/CommissionsModule"));
 const GoalsModule = lazy(() => import("@/app/GoalsModule"));
+const workspacePreloaders: Partial<Record<ModuleKey, () => Promise<unknown>>> = {
+  internalChat: () => import("@/app/InternalChatModule"), marketing: () => import("@/app/MarketingWorkspaceModule"),
+  cancellations: () => import("@/app/CancellationsModule"), hr: () => import("@/app/HrManagementModule"),
+  support: () => import("@/app/ServiceRecordsModule"), ti: () => import("@/app/DevelopmentModule"),
+  chat: () => import("@/app/ChatModule"), commissions: () => import("@/app/CommissionsModule"), goals: () => import("@/app/GoalsModule"),
+};
+const preloadWorkspace = async (module: ModuleKey) => { try { await workspacePreloaders[module]?.(); } catch { /* Normal module loading will retry. */ } };
 import { PortalLinksAdmin } from "@/app/PortalLinksModule";
 import SatisfactionSurveysModule, { PublicSurveyResponsePage } from "@/app/SatisfactionSurveysModule";
 import IndicatorTabs from "@/app/IndicatorTabs";
@@ -305,8 +314,9 @@ const moduleDescriptions: Record<string, string> = {
 };
 
 const kanbanModules = new Set<ModuleKey>(["commercial", "cancellations", "marketing", "support", "ti", "finance", "procurement", "waitingQueue", "referrals", "tasks", "suggestions", "serviceRequests", "serviceFollowup"]);
+const brasiliaMonthFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" });
 const brasiliaMonthKey = (value: string | Date = new Date()) => {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" }).formatToParts(typeof value === "string" ? new Date(value) : value);
+  const parts = brasiliaMonthFormatter.formatToParts(typeof value === "string" ? new Date(value) : value);
   return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}`;
 };
 
@@ -358,10 +368,29 @@ function userHasCapability(user: AppData["user"], screen: string, capability: st
 export default function OperationsApp() {
   const [active, setActive] = useState<ModuleKey>("dashboard");
   const [data, setData] = useState<AppData | null>(null);
+  const dataRef = useRef(data);
+  useEffect(() => { dataRef.current = data; }, [data]);
+  useEffect(() => {
+    if (!data?.user) return;
+    const modules = (Object.keys(workspacePreloaders) as ModuleKey[]).filter(module => userCan(data.user, module));
+    let cancelled = false, index = 0, cancelPending = () => {};
+    const schedule = () => {
+      if (cancelled || index >= modules.length) return;
+      const next = () => { if (!cancelled) void preloadWorkspace(modules[index++]).then(schedule); };
+      if (window.requestIdleCallback) {
+        const handle = window.requestIdleCallback(next, { timeout: 5000 }); cancelPending = () => window.cancelIdleCallback(handle);
+      } else {
+        const handle = window.setTimeout(next, 500); cancelPending = () => window.clearTimeout(handle);
+      }
+    };
+    schedule();
+    return () => { cancelled = true; cancelPending(); };
+  }, [data?.user]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const globalSearchInput = useRef<HTMLInputElement>(null);
   const [recordSearchOpen, setRecordSearchOpen] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
@@ -617,7 +646,11 @@ export default function OperationsApp() {
     const revision = mutationRevision.current;
     if (!background) setLoading(true);
     try {
-      const response = await fetch("/api/operations", { cache: "no-store" });
+      const current = dataRef.current;
+      const response = await fetch("/api/operations", background && current ? {
+        method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
+        body: JSON.stringify({ action: "refreshOperations", knownWorkItemVersions: knownWorkItemVersions(current.items) }),
+      } : { cache: "no-store" });
       const rawPayload = await response.text();
       let payload: AppData | { detail?: string } = {};
       if (rawPayload) {
@@ -634,9 +667,9 @@ export default function OperationsApp() {
         return true;
       }
       if (!response.ok) throw new Error((payload as { detail?: string }).detail ?? "Não foi possível carregar a operação.");
-      const appPayload = payload as AppData;
+      const appPayload = current ? mergeOperationsUpdate(current, payload as Partial<AppData> & OperationsChanges<WorkItem>) : payload as AppData;
       if (revision !== mutationRevision.current) return false;
-      realtimeCursor.current = response.headers.get("x-dontus-realtime-cursor") ?? "";
+      realtimeCursor.current = response.headers.get("x-dontus-realtime-cursor") ?? realtimeCursor.current;
       setData(appPayload.internalChatModule?{...appPayload,internalChatModule:applyChatPresence(appPayload.internalChatModule,presenceCache.current)}:appPayload);
       setLastUpdatedAt(Date.now()); setSyncError(false);
       setLoginRequired(false);
@@ -881,7 +914,7 @@ export default function OperationsApp() {
     try {
       const { requireConfirmation: _requireConfirmation, ...requestPayload } = payload;
       const response = await fetch("/api/operations", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestPayload),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestPayload, knownWorkItemVersions: knownWorkItemVersions(dataRef.current?.items ?? []) }),
       });
       if (response.status === 401) { expireSession(); return false; }
       const body = await response.text();
@@ -892,7 +925,7 @@ export default function OperationsApp() {
       }
       if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "A operação não foi concluída.");
       mutationRevision.current += 1;
-      const nextData = data ? { ...data, ...result } as AppData : result as unknown as AppData;
+      const nextData = data ? mergeOperationsUpdate(data, result as Partial<AppData> & OperationsChanges<WorkItem>) : result as unknown as AppData;
       if (data) {
         const mutedIds = ownMutationNotificationIds(policyNotifications, buildNotifications(nextData, Date.now()), payload, typeof result.id === "string" ? result.id : undefined);
         if (mutedIds.length) {
@@ -902,7 +935,7 @@ export default function OperationsApp() {
           try { localStorage.setItem(`dontus:read-operational-notifications:${data.user.email}`, JSON.stringify([...nextDismissed].slice(-2000))); } catch { /* A operação permanece válida sem armazenamento local. */ }
         }
       }
-      setData(current=>{const merged=current?{...current,...result}:nextData;return merged.internalChatModule?{...merged,internalChatModule:applyChatPresence(merged.internalChatModule,presenceCache.current)}:merged;});
+      setData(current=>{const merged=current?mergeOperationsUpdate(current,result as Partial<AppData> & OperationsChanges<WorkItem>):nextData;return merged.internalChatModule?{...merged,internalChatModule:applyChatPresence(merged.internalChatModule,presenceCache.current)}:merged;});
       setModal(null);
       setSelectedItem(null);
       setToast({ kind: "success", message: success });
@@ -988,11 +1021,13 @@ export default function OperationsApp() {
     }
   };
 
+  const workItems = data?.items;
   const kanbanItems = useMemo(() => {
-    if (!data || !kanbanModules.has(active)) return data?.items ?? [];
+    if (!workItems || !kanbanModules.has(active)) return workItems ?? [];
     const currentMonth = brasiliaMonthKey();
+    const requestedCard = new URLSearchParams(window.location.search).get("card");
     const visible = (item: WorkItem) => {
-      if (item.id === new URLSearchParams(window.location.search).get("card") || (item.module === "ti" && item.record_type === "Configuração de Kanban")) return true;
+      if (item.id === requestedCard || (item.module === "ti" && item.record_type === "Configuração de Kanban")) return true;
       if (item.module === "ti" && item.record_type === "Versão") {
         try {
           const release = JSON.parse(item.description) as { kind?: string; status?: string };
@@ -1006,8 +1041,8 @@ export default function OperationsApp() {
       }
       return matchesMonth;
     };
-    return data.items.filter((item) => item.module !== active || visible(item));
-  }, [active, commercialFlow, data, kanbanMonth]);
+    return workItems.filter((item) => item.module !== active || visible(item));
+  }, [active, commercialFlow, workItems, kanbanMonth]);
 
   useEffect(() => {
     if (kanbanModules.has(active)) setView("board");
@@ -1019,7 +1054,7 @@ export default function OperationsApp() {
   const monthSuggestionModule = useMemo(() => suggestionModule ? ({ ...suggestionModule, suggestions: suggestionModule.suggestions.filter((entry) => brasiliaMonthKey(entry.createdAt) === kanbanMonth || brasiliaMonthKey(entry.updatedAt) === kanbanMonth) }) : null, [suggestionModule, kanbanMonth]);
 
   const globalResults = useMemo(() => {
-    const query = normalizeWorkspaceSearch(search);
+    const query = normalizeWorkspaceSearch(deferredSearch);
     if (!query || !data) return [];
     const employees = (data.access?.employees ?? [])
       .filter((employee) => `${employee.displayName} ${employee.email} ${employee.jobTitle} ${employee.departmentName} ${employee.departmentNames.join(" ")}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").includes(query))
@@ -1030,7 +1065,7 @@ export default function OperationsApp() {
       .slice(0, 4)
       .map((customer) => ({ id: customer.id, label: customer.trade_name, meta: "Cliente", kind: "customer" as const }));
     const records = data.items
-      .filter((item) => `${item.customer_id ?? ""} ${item.title} ${item.customer_name} ${item.record_type} ${item.description}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").includes(query))
+      .filter((item) => recordSearchText(item).includes(query))
       .slice(0, 6)
       .map((item) => ({ id: item.id, label: item.title, meta: `${item.record_type} · ${MODULES[item.module as ModuleKey]?.short ?? item.module}`, kind: "item" as const }));
     const tasks = (data.taskModule?.tasks ?? [])
@@ -1042,7 +1077,7 @@ export default function OperationsApp() {
       .slice(0, 3)
       .map((suggestion) => ({ id: suggestion.id, label: `${suggestion.protocol} · ${suggestion.name}`, meta: `Sugestão · ${suggestion.statusName}`, kind: "suggestion" as const }));
     return [...employees, ...customers, ...records, ...tasks, ...suggestions].slice(0, 12);
-  }, [data, search]);
+  }, [data, deferredSearch]);
 
   const openEmployeeFromGlobalSearch = (employeeId: string) => {
     const employee = data?.access?.employees.find((entry) => entry.id === employeeId);
@@ -1259,6 +1294,7 @@ export default function OperationsApp() {
     && userCan(data.user, indicatorPermissionScreen, "view")
     && userHasCapability(data.user, indicatorPermissionScreen, VIEW_INDICATORS_CAPABILITY));
   const indicatorItems: WorkItem[] = (() => {
+    if (!indicatorsOpen) return [];
     const normalized: WorkItem[] = [...data.items];
     data.diaryModule?.entries.forEach((entry) => normalized.push({ id: `diary-${entry.id}`, module: "diary", record_type: entry.type || "Atividade", title: entry.title, customer_id: null, customer_name: "", owner: data.user.displayName, team: "Diário de Bordo", status: entry.status, priority: "P3", due_at: entry.occursAt, sla_due_at: null, amount_cents: 0, description: JSON.stringify({ source: entry.source, agendaStatusId: entry.agendaStatusId }), version: entry.version ?? 0, created_at: entry.occursAt, updated_at: entry.occursAt }));
     data.taskModule?.tasks.forEach((task) => normalized.push({ id: `task-${task.id}`, module: "tasks", record_type: task.typeName || "Tarefa", title: task.title, customer_id: task.customerId, customer_name: task.customerName, owner: task.assigneeName || "Não atribuído", team: task.departmentName, status: task.statusName, priority: task.priorityName, due_at: task.dueAt, sla_due_at: task.slaDueAt, amount_cents: 0, description: JSON.stringify({ protocol: task.protocol, slaState: task.slaState, cancelled: task.cancelled, comments: task.comments.length }), version: task.version, created_at: task.createdAt, updated_at: task.updatedAt }));
@@ -1349,7 +1385,7 @@ export default function OperationsApp() {
         <Icon size={iconSize} /><span>{label}</span>
       </button>
     ) : module ? (
-      <button className={itemClassName} title={label} aria-label={label} aria-current={activeItem ? "page" : undefined} onClick={() => navigate(module, itemAdminSection, itemCommercialFlow, itemCsFlow, itemReportingSection)}>
+      <button className={itemClassName} title={label} aria-label={label} aria-current={activeItem ? "page" : undefined} onPointerEnter={() => { void preloadWorkspace(module); }} onFocus={() => { void preloadWorkspace(module); }} onClick={() => navigate(module, itemAdminSection, itemCommercialFlow, itemCsFlow, itemReportingSection)}>
         <Icon size={iconSize} /><span>{label}</span>{module === "internalChat" && internalChatUnread > 0 && <b className="nav-unread-badge">{internalChatUnread > 99 ? "99+" : internalChatUnread}</b>}{module === "tasks" && assignedOpenTaskCount > 0 && <b className="nav-unread-badge">{assignedOpenTaskCount > 99 ? "99+" : assignedOpenTaskCount}</b>}{module === "notices" && noticeUnread > 0 && <b className="nav-unread-badge">{noticeUnread > 99 ? "99+" : noticeUnread}</b>}{module === "reminders" && reminderUnread > 0 && <b className="nav-unread-badge reminder">{reminderUnread > 99 ? "99+" : reminderUnread}</b>}{module === "waitingQueue" && waitingQueueCount > 0 && <b className="nav-unread-badge waiting">{waitingQueueCount > 99 ? "99+" : waitingQueueCount}</b>}
       </button>
     ) : (

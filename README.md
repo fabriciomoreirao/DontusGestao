@@ -36,6 +36,8 @@ Docker e `npm start` usam `server/start.mjs`, que inicia o servidor Vinext e enc
 
 O cliente reconecta com espera progressiva, verifica heartbeat e recupera o estado após reconectar. Se o proxy não permitir WebSocket, há recuperação por HTTP a cada 60 segundos para a operação e 15 segundos para o chat, apenas com a aba visível. Conexões saudáveis não fazem essas consultas periódicas. O indicador superior mostra **Em tempo real** quando conectado. Validação de sessão ocorre também durante a conexão; logout/expiração encerram o acesso.
 
+A carga inicial mantém o snapshot completo. Gravações e sincronizações seguintes informam as versões dos cards já carregados e recebem apenas os cards alterados e os IDs removidos, evitando retransmitir fotos, currículos e documentos sem alteração. A autorização continua sendo recalculada no servidor; registros que deixarem de ser visíveis também são retirados do navegador. Clientes sem o mapa de versões continuam recebendo o formato completo.
+
 ### Acesso ao PostgreSQL pelo pgAdmin
 
 O Compose inicia o pgAdmin em `http://localhost:5050`. O login padrão é
