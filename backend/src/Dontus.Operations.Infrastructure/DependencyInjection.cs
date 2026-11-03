@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddHttpClient<DontusApiClient>(client => client.Timeout = TimeSpan.FromSeconds(12))
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddScoped<CommissionConfirmationService>();
+        services.AddScoped<ReferralCommissionRulesService>();
         services.AddScoped<ServiceRequestCreationService>();
         services.AddScoped<ServiceRequestRoutingService>();
         services.AddScoped<EmployeeProfileService>();

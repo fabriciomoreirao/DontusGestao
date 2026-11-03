@@ -227,7 +227,7 @@ export default function AgendaModule({ module, busy, operate, currentEmail, curr
     {calendarView === "month" ? <MonthCalendar month={month} commitments={visibleCommitments} calendars={module.calendars} specialEvents={specialEventsForCalendar(month, module.celebrants ?? module.collaborators)} onPrevious={() => setMonth((value) => { const targetMonth=value.getMonth()-1; const day=Math.min(value.getDate(),new Date(value.getFullYear(),targetMonth+1,0).getDate()); return new Date(value.getFullYear(),targetMonth,day); })} onNext={() => setMonth((value) => { const targetMonth=value.getMonth()+1; const day=Math.min(value.getDate(),new Date(value.getFullYear(),targetMonth+1,0).getDate()); return new Date(value.getFullYear(),targetMonth,day); })} onOpenDay={setSelectedDay} /> : <ScheduleCalendar view={calendarView} anchor={month} commitments={visibleCommitments} calendars={module.calendars} specialEvents={specialEventsForCalendar(month, module.celebrants ?? module.collaborators)} onPrevious={() => setMonth((value) => { const next=new Date(value); next.setDate(next.getDate()-(calendarView==="week"?7:1)); return next; })} onNext={() => setMonth((value) => { const next=new Date(value); next.setDate(next.getDate()+(calendarView==="week"?7:1)); return next; })} onOpenDay={setSelectedDay} onOpenCommitment={setSelected} />}
     {creating && <CommitmentModal module={module} busy={busy} currentEmail={currentEmail} canReserveMeetingRoom={currentUserIsCoordinator} onClose={() => setCreating(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Compromisso agendado com sucesso."); if (result) setCreating(false); }} />}
     {blocking && <AvailabilityBlockForm module={module} busy={busy} onClose={() => setBlocking(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Período bloqueado para novos agendamentos do Comercial."); if (result) setBlocking(false); }} />}
-    {selectedDay && <DayCommitmentsModal date={selectedDay} commitments={visibleCommitments.filter((entry) => dateKey(entry.startsAt) === selectedDay)} statuses={module.statuses} calendars={module.calendars} busy={busy} onClose={() => setSelectedDay(null)} onOpenCommitment={(entry) => { setSelectedDay(null); setSelected(entry); }} onChangeStatus={async (commitmentId, agendaStatusId) => Boolean(await operate({ action: "changeAgendaCommitmentStatus", id: commitmentId, agendaStatusId }, "Status do compromisso atualizado com sucesso."))} />}
+    {selectedDay && <DayCommitmentsModal currentEmail={currentEmail} collaborators={module.collaborators} onDelete={async entry => Boolean(await operate({ action: "deleteAgendaCommitment", id: entry.id }, "Compromisso excluído com sucesso."))} date={selectedDay} commitments={visibleCommitments.filter((entry) => dateKey(entry.startsAt) === selectedDay)} statuses={module.statuses} calendars={module.calendars} busy={busy} onClose={() => setSelectedDay(null)} onOpenCommitment={(entry) => { setSelectedDay(null); setSelected(entry); }} onChangeStatus={async (commitmentId, agendaStatusId) => Boolean(await operate({ action: "changeAgendaCommitmentStatus", id: commitmentId, agendaStatusId }, "Status do compromisso atualizado com sucesso."))} />}
     {selected && <AgendaCommitmentModal module={module} commitment={selected} busy={busy} currentEmail={currentEmail} canReserveMeetingRoom={currentUserIsCoordinator} onClose={closeSelected} onSave={async (payload) => { const result = await operate({ action: "updateAgendaCommitment", requireConfirmation: true, id: selected.id, ...payload }, "Compromisso atualizado com sucesso."); if (result) closeSelected(); }} onDelete={async (series = false) => { const result = await operate({ action: series ? "deleteAgendaCommitmentSeries" : "deleteAgendaCommitment", id: selected.id }, series ? "Todos os compromissos da série foram excluídos." : "Compromisso excluído com sucesso."); if (result) closeSelected(); }} />}
   </>;
 }
@@ -310,11 +310,23 @@ function ScheduleCalendar({ view, anchor, commitments, calendars, specialEvents,
   </section>;
 }
 
-function DayCommitmentsModal({ date, commitments, statuses, calendars, busy, onClose, onOpenCommitment, onChangeStatus }: { date: string; commitments: AgendaCommitment[]; statuses: AgendaStatus[]; calendars: AgendaCalendar[]; busy: boolean; onClose: () => void; onOpenCommitment: (entry: AgendaCommitment) => void; onChangeStatus: (commitmentId: string, statusId: string) => Promise<boolean> }) {
+export function DayCommitmentsModal({ date, commitments, statuses, calendars, collaborators, currentEmail, busy, onClose, onOpenCommitment, onChangeStatus, onDelete }: { collaborators: AgendaCollaborator[]; currentEmail: string; onDelete: (entry: AgendaCommitment) => Promise<boolean>; date: string; commitments: AgendaCommitment[]; statuses: AgendaStatus[]; calendars: AgendaCalendar[]; busy: boolean; onClose: () => void; onOpenCommitment: (entry: AgendaCommitment) => void; onChangeStatus: (commitmentId: string, statusId: string) => Promise<boolean> }) {
   const ordered = useMemo(() => [...commitments].sort((a, b) => a.startsAt.localeCompare(b.startsAt)), [commitments]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [statusId, setStatusId] = useState("");
   const [saving, setSaving] = useState(false);
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!editingId) return;
+    const frame = requestAnimationFrame(() => list.current?.querySelector<HTMLElement>('[aria-expanded="true"]')?.closest("article")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    return () => cancelAnimationFrame(frame);
+  }, [editingId]);
+  const deleteEntry = async (entry: AgendaCommitment) => {
+    if (busy || saving) return;
+    setSaving(true);
+    try { if (await onDelete(entry)) setEditingId(null); }
+    finally { setSaving(false); }
+  };
   const formattedDate = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`));
   const startEditing = (entry: AgendaCommitment) => {
     setEditingId(entry.id);
@@ -330,7 +342,7 @@ function DayCommitmentsModal({ date, commitments, statuses, calendars, busy, onC
   return <AgendaModal title="Compromissos do dia" className="agenda-day-modal" onClose={onClose}>
     <section className="agenda-day-summary">
       <header><span className="agenda-day-summary-icon"><CalendarDays size={18} /></span><span><strong>{formattedDate}</strong><small>{ordered.length} {ordered.length === 1 ? "compromisso" : "compromissos"} no dia</small></span></header>
-      <div className="agenda-day-list">{ordered.length === 0 ? <EmptyAgenda text="Nenhum compromisso encontrado neste dia." /> : ordered.map((entry) => {
+      <div className="agenda-day-list" ref={list}>{ordered.length === 0 ? <EmptyAgenda text="Nenhum compromisso encontrado neste dia." /> : ordered.map((entry) => {
         const editing = editingId === entry.id;
         const calendar = calendars.find((item) => item.id === entry.agendaId);
         return <article key={entry.id} className={editing ? "editing" : ""} style={{ "--event-color": entry.statusColor } as CSSProperties}>
@@ -340,7 +352,10 @@ function DayCommitmentsModal({ date, commitments, statuses, calendars, busy, onC
             <span className="agenda-day-entry-status" style={{ "--status-color": entry.statusColor } as CSSProperties}><i />{entry.statusName || "Sem status"}</span>
             <ChevronRight size={17} />
           </button>
-          {editing && <div className="agenda-day-status-editor"><label><span>Editar status</span><select value={statusId} disabled={busy || saving} onChange={(event) => setStatusId(event.target.value)}><option value="" disabled>Selecione uma opção cadastrada e ativa</option>{statuses.filter((status) => status.active).map((status) => <option value={status.id} key={status.id}>{status.name}</option>)}</select></label><div><button type="button" className="secondary-button compact" disabled={busy || saving} onClick={() => onOpenCommitment(entry)}><Edit3 size={15} /> Abrir detalhes</button><button type="button" className="primary-button compact" disabled={busy || saving || !statusId} onClick={() => void saveStatus(entry)}><Save size={15} /> {saving ? "Salvando..." : "Salvar status"}</button></div></div>}
+          {editing && <div className="agenda-day-expanded">
+            <dl className="agenda-day-details"><div><dt>Compromisso</dt><dd>{entry.title}</dd></div><div><dt>Horário</dt><dd>{time(entry.startsAt)} às {time(entry.endsAt)}</dd></div><div><dt>Agenda</dt><dd>{calendar?.name || "—"}</dd></div><div><dt>Tipo</dt><dd>{entry.typeName || "—"}</dd></div><div><dt>Responsável</dt><dd>{entry.responsibleName || "—"}</dd></div><div><dt>Participantes</dt><dd>{entry.participantUserIds.map(id => collaborators.find(person => person.id === id)?.name).filter(Boolean).join(", ") || "Sem participantes adicionais"}</dd></div>{entry.description && <div className="wide"><dt>Descrição</dt><dd>{entry.description}</dd></div>}</dl>
+            <div className="agenda-day-status-editor"><label><span>Editar status</span><select value={statusId} disabled={busy || saving} onChange={(event) => setStatusId(event.target.value)}><option value="" disabled>Selecione uma opção cadastrada e ativa</option>{statuses.filter((status) => status.active).map((status) => <option value={status.id} key={status.id}>{status.name}</option>)}</select></label><div><button type="button" className="secondary-button compact" disabled={busy || saving} onClick={() => onOpenCommitment(entry)}><Edit3 size={15} /> Abrir detalhes</button><button type="button" className="primary-button compact" disabled={busy || saving || !statusId || statusId === entry.agendaStatusId} onClick={() => void saveStatus(entry)}><Save size={15} /> {saving ? "Salvando..." : "Salvar status"}</button>{entry.createdBy.toLowerCase() === currentEmail.toLowerCase() && <button type="button" className="secondary-button compact danger-action" disabled={busy || saving} onClick={() => void deleteEntry(entry)}><Trash2 size={15} /> Excluir agendamento</button>}</div></div>
+          </div>}
         </article>;
       })}</div>
     </section>

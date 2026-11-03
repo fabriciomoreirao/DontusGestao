@@ -1093,6 +1093,7 @@ operations.MapPost("", async (
     ILocalAuthenticationService authentication,
     IAccessControlService accessControl,
     ServiceRequestRoutingService serviceRequestRouting,
+    ReferralCommissionRulesService referralCommissionRules,
     CancellationToken cancellationToken) =>
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
@@ -1138,6 +1139,19 @@ operations.MapPost("", async (
         case "saveCustomerCatalog":
             id = await service.SaveCustomerCatalogAsync(request.Id, request.Catalog ?? "", request.Name ?? "", request.CatalogDescription, request.Active ?? true, actor, cancellationToken);
             break;
+
+        case "saveReferralCommissionRules":
+        {
+            var revision = await referralCommissionRules.SaveAsync(request.CollaboratorId ?? throw new DomainException("Colaborador obrigatório."),
+                request.ReferralRules ?? [], actor, cancellationToken);
+            return Results.Ok(new { ok = true, referralRulesRevision = revision, customerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) });
+        }
+        case "copyReferralCommissionRules":
+        {
+            var revision = await referralCommissionRules.CopyAsync(request.CollaboratorId ?? throw new DomainException("Colaborador obrigatório."),
+                request.TargetCollaboratorIds ?? [], request.ReferralRulesRevision ?? "", actor, cancellationToken);
+            return Results.Ok(new { ok = true, referralRulesRevision = revision, customerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) });
+        }
 
         case "deleteCustomerCatalog":
             await service.DeleteCustomerCatalogAsync(request.Id ?? throw new DomainException("Cadastro obrigatório."), actor, cancellationToken);
@@ -2184,6 +2198,10 @@ sealed record ServiceRequestClassification(string Stage, string Priority, string
 
 public sealed class OperationsRequest
 {
+    public Guid? CollaboratorId { get; init; }
+    public IReadOnlyCollection<ReferralCommissionRuleInput>? ReferralRules { get; init; }
+    public IReadOnlyCollection<Guid>? TargetCollaboratorIds { get; init; }
+    public string? ReferralRulesRevision { get; init; }
     public string? RouteTarget { get; init; }
     public CreateCorporateTaskCommand? TaskDraft { get; init; }
     public string? Action { get; init; }
