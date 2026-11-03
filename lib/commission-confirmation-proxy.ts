@@ -1,3 +1,5 @@
+import { apiRequestSignal } from "./api-request.ts";
+
 export async function commissionConfirmationProxy(request: Request, path: string, authenticated: boolean) {
   const headers = new Headers({ "content-type": "application/json", accept: "application/json" });
   headers.set("user-agent", request.headers.get("user-agent") ?? "");
@@ -11,7 +13,7 @@ export async function commissionConfirmationProxy(request: Request, path: string
   }
   try {
     const response = await fetch((process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "") + path + new URL(request.url).search, {
-      method: request.method, headers, cache: "no-store", signal: AbortSignal.timeout(20000),
+      method: request.method, headers, cache: "no-store", signal: apiRequestSignal(request),
       body: request.method === "POST" ? await request.text() : undefined,
     });
     const resultHeaders = new Headers({ "content-type": response.headers.get("content-type") ?? "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" });

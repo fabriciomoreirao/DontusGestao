@@ -40,7 +40,9 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var grants = await db.UserAgendaCalendarAccesses.AsNoTracking().Where(x => calendarIds.Contains(x.CalendarId)).ToListAsync(cancellationToken);
         var managers = await CalendarManagerIdsAsync(cancellationToken);
         if (canManage) managers = managers.Append(actorUser.Id).Distinct().ToArray();
-        var users = await db.Users.AsNoTracking().Where(user => user.Active && user.BlockedAt == null).ToDictionaryAsync(user => user.Id, cancellationToken);
+        var users = await db.Users.AsNoTracking().Where(user => user.Active && user.BlockedAt == null)
+            .Select(user => new { user.Id, user.DisplayName, user.Email, user.Department, user.BirthDate, user.StartedAt })
+            .ToDictionaryAsync(user => user.Id, cancellationToken);
         var collaborators = users.Values.Select(user =>
         {
             var ids = managers.Contains(user.Id) ? calendarIds : grants.Where(x => x.UserId == user.Id).Select(x => x.CalendarId).ToArray();

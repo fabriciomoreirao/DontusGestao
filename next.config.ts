@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       allowedOrigins,
+      // Vinext also checks multipart route uploads against this budget.
+      // Each chat batch contains at most 50 MB of files plus multipart headers.
+      bodySizeLimit: "52mb",
     },
   },
 };

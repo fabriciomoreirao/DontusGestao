@@ -3,6 +3,7 @@
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { activeCatalogEntries } from "@/lib/catalog-options";
+import { assignmentPerson } from "@/lib/assignment-people";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
@@ -21,9 +22,9 @@ type WorkItem = {
 };
 type Customer = { id: string; trade_name: string; legal_name: string; document_masked: string; phone: string; product_version: string };
 type Catalog = { id: string; catalog: string; name: string; active: boolean };
-type Employee = { id: string; displayName: string; departmentId: string | null; departmentName: string; departmentNames: string[]; photoDataUrl?: string; active: boolean };
+type Employee = { id: string; email: string; displayName: string; departmentId: string | null; departmentName: string; departmentNames: string[]; photoDataUrl?: string; active: boolean };
 type Department = { id: string; name: string; active: boolean };
-type CurrentUser = { displayName: string; department: string };
+type CurrentUser = { email: string; displayName: string; department: string };
 
 type ServiceRecord = {
   kind: "serviceRecord";
@@ -155,9 +156,10 @@ export default function ServiceRecordsModule({ items, customers, catalogs, emplo
 }
 
 function ServiceEntryModal({ mode, editing, currentUser, customers, catalogs, employees, departments, lastVersionByClientCode, busy, onClose, onSave }: { mode: "single" | "bulk"; editing: WorkItem | null; currentUser: CurrentUser; customers: Customer[]; catalogs: Catalog[]; employees: Employee[]; departments: Department[]; lastVersionByClientCode: Record<string, string>; busy: boolean; onClose: () => void; onSave: (rows: EntryRow[]) => Promise<void> }) {
-  const currentEmployee = employees.find((entry) => entry.displayName === currentUser.displayName);
+  const currentEmployee = assignmentPerson(employees, { email: currentUser.email });
   const parsed = editing ? parseRecord(editing.description) : null;
-  const initial = parsed ? [{ ...parsed, key: crypto.randomUUID(), customerId: editing?.customer_id ?? "" }] : [makeRow(currentUser, currentEmployee)];
+  const savedEmployee = parsed ? assignmentPerson(employees, { id: parsed.responsibleId, displayName: parsed.responsible }) : undefined;
+  const initial = parsed ? [{ ...parsed, responsibleId: savedEmployee?.id ?? parsed.responsibleId, key: crypto.randomUUID(), customerId: editing?.customer_id ?? "" }] : [makeRow(currentUser, currentEmployee)];
   const [rows, setRows] = useState<EntryRow[]>(initial);
   const [validationError, setValidationError] = useState("");
   const options = (catalog: string) => activeCatalogEntries(catalogs, catalog).map(entry => entry.name);
@@ -168,7 +170,7 @@ function ServiceEntryModal({ mode, editing, currentUser, customers, catalogs, em
   const contactTypes = options("serviceContactType").filter((entry) => !/mal uso|cancelamento/i.test(entry));
   const tools = options("serviceTool");
   const update = (key: string, patch: Partial<EntryRow>) => setRows((current) => current.map((row) => row.key === key ? { ...row, ...patch } : row));
-  const ready = rows.filter((row) => /^\d{6}$/.test(row.clientCode.trim()) && row.customerName.trim() && row.date && row.responsible && row.problem && row.status);
+  const ready = rows.filter((row) => /^\d{6}$/.test(row.clientCode.trim()) && row.customerName.trim() && row.date && row.responsibleId && row.responsible && row.problem && row.status);
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (ready.length !== rows.length) { setValidationError("Preencha o ID público de 6 números, cliente, data, responsável, problema e status em todos os atendimentos."); return; } setValidationError(""); void onSave(rows); };
   return <div className="modal-backdrop service-modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><section className={`modal service-entry-modal ${mode === "bulk" ? "bulk" : ""}`} role="dialog" aria-modal="true"><header className="modal-head"><div><span className="eyebrow"><Layers3 size={14} /> {editing ? "EDIÇÃO" : mode === "bulk" ? "INSERÇÃO EM MASSA" : "NOVO REGISTRO"}</span><h2>{editing ? "Editar atendimento" : mode === "bulk" ? "Inserção em Massa de Atendimentos" : "Inserir atendimento"}</h2><p>{mode === "bulk" && !editing ? "Preencha cada atendimento individualmente e crie todos de uma vez." : "Registre os dados do atendimento realizado."}</p></div><button className="icon-button" type="button" onClick={onClose}><X size={18} /></button></header><form onSubmit={submit}><div className="service-entry-scroll">{rows.map((row, index) => <ServiceEntryCard key={row.key} row={row} index={index} customers={customers} employees={employees} departments={departments} origins={origins} versions={versions} lastVersionByClientCode={lastVersionByClientCode} problems={problems} statuses={statuses} contactTypes={contactTypes} tools={tools} removable={rows.length > 1} onRemove={() => setRows((current) => current.filter((entry) => entry.key !== row.key))} onChange={(patch) => update(row.key, patch)} />)}{mode === "bulk" && !editing && <button className="service-add-entry" type="button" onClick={() => setRows((current) => [...current, makeRow(currentUser, currentEmployee)])}><Plus size={16} /> Adicionar atendimento</button>}</div>{validationError&&<p className="service-validation-error">{validationError}</p>}<footer className="service-modal-footer"><span><strong>{ready.length}</strong> de {rows.length} pronto(s) para envio</span><div><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><Save size={15} /> {editing ? "Salvar alterações" : `Criar ${rows.length} atendimento(s)`}</button></div></footer></form></section></div>;
 }

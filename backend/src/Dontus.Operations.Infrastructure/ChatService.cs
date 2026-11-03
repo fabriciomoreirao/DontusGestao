@@ -89,7 +89,8 @@ public sealed class ChatService(
         var numbers = await db.ChatWhatsAppNumbers.AsNoTracking()
             .Where(x => allDepartments || visibleDepartmentIds.Contains(x.DepartmentId))
             .OrderBy(x => x.InternalName).ToListAsync(cancellationToken);
-        var users = await db.Users.AsNoTracking().Where(x => x.Active).OrderBy(x => x.DisplayName).ToListAsync(cancellationToken);
+        var users = await db.Users.AsNoTracking().Where(x => x.Active).OrderBy(x => x.DisplayName)
+            .Select(x => new { x.Id, x.DisplayName, x.Email, x.Active }).ToListAsync(cancellationToken);
         var memberships = await db.UserDepartments.AsNoTracking().ToListAsync(cancellationToken);
         var conversations = await db.ChatConversations.AsNoTracking()
             .Where(x => (allDepartments || visibleDepartmentIds.Contains(x.DepartmentId)) &&

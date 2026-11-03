@@ -46,7 +46,7 @@ type Props = {
   canEdit: boolean;
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
   markRead: (roomId: string) => Promise<void>;
-  uploadAttachments: (roomId: string, files: File[]) => Promise<boolean>;
+  uploadAttachments: (roomId: string, files: File[], onUploaded?: (files: File[]) => void) => Promise<boolean>;
   onOpenProfile: (userId: string) => void;
   initialRoomId?: string;
 };
@@ -219,8 +219,14 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     roomId = await ensureRoom();
     if (!roomId) { setSendError("Não foi possível iniciar a conversa. Tente novamente."); return; }
     if (pastedImages.length) {
-      if (!await uploadAttachments(roomId, pastedImages.map(image => image.file))) {
-        setSendError("Não foi possível enviar as imagens. Elas continuam selecionadas para tentar novamente.");
+      if (!await uploadAttachments(roomId, pastedImages.map(image => image.file), files => {
+        const sent = new Set(pastedImages.filter(image => files.includes(image.file)).map(image => image.id));
+        setImageDrafts(current => ({ ...current,
+          [conversationKey]: (current[conversationKey] ?? []).filter(image => !sent.has(image.id)),
+          [roomId]: (current[roomId] ?? []).filter(image => !sent.has(image.id)),
+        }));
+      })) {
+        setSendError("Não foi possível concluir o envio. As imagens não enviadas continuam selecionadas para tentar novamente.");
         return;
       }
       const sent = new Set(pastedImages.map(image => image.id));

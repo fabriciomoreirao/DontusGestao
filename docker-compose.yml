@@ -44,6 +44,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      Database__CommandTimeoutSeconds: ${DATABASE_COMMAND_TIMEOUT_SECONDS:-90}
       TZ: America/Sao_Paulo
       Authentication__DevelopmentBypass: ${DEVELOPMENT_AUTH_BYPASS:-false}
       Authentication__LocalPasswordEnabled: ${LOCAL_AUTH_ENABLED:-true}
@@ -92,6 +93,7 @@ services:
         APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-ae8b-200-233-92-241.ngrok-free.app}
     environment:
       API_INTERNAL_URL: http://api:8080
+      API_REQUEST_TIMEOUT_SECONDS: ${API_REQUEST_TIMEOUT_SECONDS:-120}
       APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-ae8b-200-233-92-241.ngrok-free.app}
       LOCAL_USER_EMAIL: ${LOCAL_USER_EMAIL:-gestor@dontus.local}
       LOCAL_USER_NAME: ${LOCAL_USER_NAME:-Gestor Dontus}

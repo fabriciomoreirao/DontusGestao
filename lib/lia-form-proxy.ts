@@ -1,3 +1,5 @@
+import { apiRequestSignal } from "./api-request.ts";
+
 export async function liaFormProxy(request: Request, path: string, authenticated: boolean) {
   const headers = new Headers({ "content-type": "application/json", accept: "application/json" });
   if (authenticated) {
@@ -10,7 +12,7 @@ export async function liaFormProxy(request: Request, path: string, authenticated
   }
   try {
     const response = await fetch((process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "") + path + new URL(request.url).search, {
-      method: request.method, headers, cache: "no-store", signal: AbortSignal.timeout(20000),
+      method: request.method, headers, cache: "no-store", signal: apiRequestSignal(request),
       body: request.method === "POST" ? await request.text() : undefined,
     });
     return new Response(response.body, { status: response.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });

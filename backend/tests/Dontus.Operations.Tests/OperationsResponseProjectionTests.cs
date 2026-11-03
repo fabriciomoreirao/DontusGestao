@@ -25,6 +25,46 @@ public sealed class OperationsResponseProjectionTests
     }
 
     [Fact]
+    public async Task Known_versions_skip_large_descriptions_in_the_query_and_changed_records_keep_full_content()
+    {
+        await using var db = Context();
+        var item = Item(); item.Description = new string('a', 2_000_000);
+        var hidden = Item("hr"); hidden.Description = "Documento protegido";
+        db.WorkItems.AddRange(item, hidden); await db.SaveChangesAsync();
+        var known = new Dictionary<Guid, long> { [item.Id] = item.Version, [hidden.Id] = hidden.Version };
+        var service = new OperationsService(db);
+        var unchanged = await service.GetSnapshotAsync(Actor, knownWorkItemVersions: known);
+        Assert.Equal("", Assert.Single(unchanged.Items).Description);
+        var response = Assert.IsType<Dictionary<string, object?>>(OperationsResponseProjection.Create(unchanged, known));
+        Assert.Empty(Assert.IsType<WorkItemDto[]>(response["updatedItems"]));
+        Assert.Contains(hidden.Id, Assert.IsType<Guid[]>(response["removedItemIds"]));
+        item.Version++; item.Description += " atualizado";
+        await db.SaveChangesAsync();
+        var changed = await service.GetSnapshotAsync(Actor, knownWorkItemVersions: known);
+        Assert.Equal(item.Description, Assert.Single(changed.Items).Description);
+        Assert.Equal(item.Description, Assert.Single((await service.GetSnapshotAsync(Actor)).Items).Description);
+    }
+
+    [Fact]
+    public async Task Cached_commission_versions_cannot_skip_the_employee_identity_check()
+    {
+        await using var db = Context();
+        var user = new AppUser { Email = Actor.Email, DisplayName = Actor.DisplayName, Department = "Marketing", CreatedBy = "test" };
+        var own = Item("commissions"); own.Owner = user.DisplayName;
+        own.Description = JsonSerializer.Serialize(new { employeeId = user.Id });
+        var other = Item("commissions"); other.Owner = user.DisplayName;
+        other.Description = JsonSerializer.Serialize(new { employeeId = Guid.NewGuid() });
+        db.Users.Add(user); db.WorkItems.AddRange(own, other); await db.SaveChangesAsync();
+        var known = new Dictionary<Guid, long> { [own.Id] = own.Version, [other.Id] = other.Version };
+        var actor = Actor with { Permissions = [new("commissions", true, false, false, false, false)] };
+        var snapshot = await new OperationsService(db).GetSnapshotAsync(actor, knownWorkItemVersions: known);
+        Assert.Equal(own.Id, Assert.Single(snapshot.Items).Id);
+        var response = Assert.IsType<Dictionary<string, object?>>(OperationsResponseProjection.Create(snapshot, known));
+        Assert.Contains(other.Id, Assert.IsType<Guid[]>(response["removedItemIds"]));
+        Assert.Empty(Assert.IsType<WorkItemDto[]>(response["updatedItems"]));
+    }
+
+    [Fact]
     public async Task Versions_only_filter_authorized_records_and_remove_hidden_or_deleted_records()
     {
         await using var db = Context(); var unchanged = Item(); var updated = Item(); var created = Item(); var hidden = Item("hr");

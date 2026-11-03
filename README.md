@@ -28,6 +28,10 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 ### Atualização em tempo real
 
+A sincronização informa as versões dos registros já carregados. A API consulta somente metadados dos registros inalterados e mantém currículos, imagens e documentos fora das respostas incrementais; registros novos ou alterados continuam completos. As verificações de acesso continuam no servidor, inclusive por identidade nas comissões. Consultas de identidade, agenda, distribuição de CS e listas de colaboradores selecionam os campos necessários, sem carregar imagens e capas do banco. A carga inicial mantém os dados completos.
+
+As requisições internas da operação aguardam até **120 segundos** por padrão, incluindo o carregamento inicial, o chat e os formulários. Configure `API_REQUEST_TIMEOUT_SECONDS` (30–600 segundos) para ajustar o prazo. As consultas ao PostgreSQL usam `DATABASE_COMMAND_TIMEOUT_SECONDS` (padrão 90 segundos). Recrie os serviços web e api após alterar essas variáveis; proxies externos também precisam permitir esse prazo. A desconexão do cliente cancela a requisição pendente ao backend.
+
 O workspace mantém uma conexão WebSocket autenticada em `/api/realtime`, na mesma origem da aplicação (`wss` em HTTPS). O chat e o snapshot operacional atualizam após mudanças, sem as antigas consultas a cada 1,5 e 10–15 segundos. Avisos de chat chegam somente às conexões dos participantes; o socket não transporta mensagens, arquivos ou credenciais. As projeções HTTP continuam aplicando as permissões de cada usuário. Rajadas de avisos são agrupadas, e uma atualização operacional já inclui o chat.
 
 Uma conexão PostgreSQL `LISTEN/NOTIFY` por instância da API recebe mudanças após o commit, inclusive de outras instâncias e integrações. A migration `RealtimeNotifications` instala os gatilhos; sessões, auditoria e histórico não geram recargas gerais. As capas dos perfis ficam na consulta dedicada do perfil. Os registros de RH ainda podem conter anexos grandes, mas deixam de ser baixados periodicamente.
@@ -78,6 +82,8 @@ No menu da conta, **Perfil** abre os dados do próprio colaborador e permite alt
 Na tela de grupos, o módulo **Tarefas** também oferece permissões específicas para cancelar, alterar status, prioridade ou SLA, encaminhar, assumir, transferir responsabilidade, consultar outros usuários/setores, administrar cadastros e registrar comunicação com o cliente.
 
 O módulo **Atendimento** possui capacidades próprias para enviar mensagens, registrar notas internas, atribuir e transferir conversas, supervisionar outros setores e administrar canais, números WhatsApp e cadastros do chat.
+
+Os campos de responsável nos módulos operacionais consultam uma lista própria de colaboradores ativos e não bloqueados, com seus setores principal e secundários. A busca por nome funciona também para perfis com acesso somente ao módulo, sem exigir Administração ou acesso total. Os dados administrativos dos colaboradores continuam protegidos. Agenda, Tarefas, WhatsApp, Comissões e Indicações mantêm as suas regras específicas de seleção e acesso.
 
 O menu expansível **Cadastros** reúne os submenus Setores, Tipos de tarefa, Prioridades, Status, Políticas de SLA e Colaboradores. A tela possui permissão própria de consulta e administração por grupo.
 
@@ -193,6 +199,8 @@ No **Chat Dontus**, os botões **Editar mensagem** e **Excluir mensagem** ficam 
 No **Chat interno**, enviar por Enter ou pelo botão mantém o cursor no campo e permite preparar a próxima mensagem durante o envio. Clicar em outro campo muda o foco normalmente, sem o chat recuperá-lo ao terminar. Rascunhos ficam separados por conversa; em caso de falha, o texto não enviado é preservado junto ao que foi digitado durante a espera. A janela **Avisar cliente**, nas tarefas, apresenta protocolo, cliente e responsável, com orientação em um campo maior e indicação de que o aviso é interno.
 
 No **Chat interno**, cole imagens com **Ctrl+V** no campo de mensagem. As imagens aparecem em uma prévia, podem ser removidas e são enviadas ao clicar em **Enviar mensagem**, com ou sem texto. Cada conversa mantém suas próprias imagens pendentes; uma falha de envio permite tentar novamente. Colar texto continua funcionando normalmente. O limite é de dez imagens por envio, com até 50 MB cada.
+
+O envio de anexos no Chat interno aceita até dez arquivos, incluindo vídeos, com até 50 MB por arquivo. Seleções maiores são divididas automaticamente em lotes de até 50 MB. O servidor web e a rota de upload da API permitem 52 MB por requisição para acomodar os cabeçalhos multipart. Em caso de falha entre lotes, os arquivos já enviados aparecem na conversa e somente as imagens pendentes permanecem na prévia.
 
 A tela **Atendimento** inclui caixa de entrada em três colunas, pesquisa e filtros,
 histórico de mensagens e transferências, notas internas, atribuição, etiquetas,

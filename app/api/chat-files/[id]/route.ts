@@ -1,3 +1,4 @@
+import { apiRequestSignal } from "@/lib/api-request";
 export const dynamic = "force-dynamic";
 
 const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
@@ -12,7 +13,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   });
   try {
     const response = await fetch(`${apiBase()}/api/chats/attachments/${encodeURIComponent(id)}`, {
-      headers, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(20_000),
+      headers, redirect: "manual", cache: "no-store", signal: apiRequestSignal(request),
     });
     const location = response.headers.get("location");
     if (location) return Response.redirect(location, 302);

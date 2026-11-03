@@ -177,6 +177,7 @@ public sealed class AccessControlService(
     {
         var email = NormalizeEmail(identity.Email);
         var user = await db.Users.AsNoTracking()
+            .Select(entry => new { entry.Id, entry.Email, entry.DisplayName, entry.Department, entry.Active, entry.BlockedAt, entry.IsCoordinator })
             .SingleOrDefaultAsync(entry => entry.Email == email, cancellationToken)
             ?? throw new DomainException(
                 "Seu usuário ainda não foi cadastrado. Solicite acesso a um administrador.",
@@ -243,9 +244,11 @@ public sealed class AccessControlService(
         actor.RequirePermission("admin", "manage");
 
         var users = await db.Users.AsNoTracking()
-            .Include(user => user.Groups)
-            .ThenInclude(membership => membership.Group)
             .OrderBy(user => user.DisplayName)
+            .Select(user => new { user.Id, user.Email, user.DisplayName, user.Department, user.UpdatedAt,
+                HasPhoto = user.PhotoDataUrl != "", user.JobTitle, user.IsCoordinator, user.Active, user.BlockedAt,
+                user.LastAccessAt, user.CreatedAt, user.BirthDate, user.StartedAt, user.EmployeeLevelId,
+                Groups = user.Groups.Select(membership => new { membership.GroupId, GroupName = membership.Group.Name }).ToArray() })
             .ToListAsync(cancellationToken);
         var groups = await db.AccessGroups.AsNoTracking()
             .Include(group => group.Users)
@@ -283,13 +286,13 @@ public sealed class AccessControlService(
                 user.Email,
                 user.DisplayName,
                 user.Department,
-                ProfilePhotoUrls.For(user),
+                ProfilePhotoUrls.For(user.Id, user.UpdatedAt, user.HasPhoto),
                 user.JobTitle,
                 user.IsCoordinator,
                 user.Active,
                 user.BlockedAt,
                 user.Groups.Select(membership => membership.GroupId).ToArray(),
-                user.Groups.Select(membership => membership.Group.Name).Order().ToArray(),
+                user.Groups.Select(membership => membership.GroupName).Order().ToArray(),
                 user.LastAccessAt,
                 user.CreatedAt)).ToArray(),
             groups.Select(group => new AccessGroupDto(
@@ -328,12 +331,12 @@ public sealed class AccessControlService(
                     [],
                     user.EmployeeLevelId,
                     user.EmployeeLevelId is { } levelId ? levelNames.GetValueOrDefault(levelId, "Não informado") : "Não informado",
-                    ProfilePhotoUrls.For(user),
+                    ProfilePhotoUrls.For(user.Id, user.UpdatedAt, user.HasPhoto),
                     user.JobTitle,
                     user.IsCoordinator,
                     supervisions.Where(entry => entry.CoordinatorUserId == user.Id).Select(entry => entry.SubordinateUserId).ToArray(),
                     user.Groups.Select(membership => membership.GroupId).ToArray(),
-                    user.Groups.Select(membership => membership.Group.Name).Order().ToArray(),
+                    user.Groups.Select(membership => membership.GroupName).Order().ToArray(),
                     user.Active,
                     user.BlockedAt, employeeAgendaCalendarIds);
             }).ToArray(),

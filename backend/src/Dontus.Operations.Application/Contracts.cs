@@ -337,7 +337,10 @@ public sealed record CollaboratorSummaryDto(Guid Id, string Email, string Displa
     IReadOnlyCollection<string> DepartmentNames, string PhotoDataUrl, bool Active);
 public sealed record CommercialSellerDto(Guid Id, string DisplayName);
 public sealed record WaitingQueuePersonDto(Guid Id, string DisplayName, string Email, Guid? DepartmentId,
-    string DepartmentName, IReadOnlyCollection<Guid> DepartmentIds, IReadOnlyCollection<string> DepartmentNames, bool Active);
+    string DepartmentName, IReadOnlyCollection<Guid> DepartmentIds, IReadOnlyCollection<string> DepartmentNames, bool Active)
+{
+    public bool IsCoordinator { get; init; }
+}
 public sealed record WaitingQueueDepartmentDto(Guid Id, string Name, string Description, bool Active);
 public sealed record WaitingQueueDirectoryDto(IReadOnlyCollection<WaitingQueuePersonDto> Employees,
     IReadOnlyCollection<WaitingQueueDepartmentDto> Departments);
@@ -378,7 +381,8 @@ public sealed record OperationsSnapshot(
 public interface IOperationsService
 {
     Task InitializeAsync(CancellationToken cancellationToken = default);
-    Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default, bool includeWorkspaceDetails = true);
+    Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default, bool includeWorkspaceDetails = true,
+        IReadOnlyDictionary<Guid, long>? knownWorkItemVersions = null);
     Task<DiaryModuleDto> GetDiaryModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<NotesModuleDto> GetNotesModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SaveNoteAsync(Guid? id, string title, string? content, string? color, string? visibility, ActorContext actor, CancellationToken cancellationToken = default);

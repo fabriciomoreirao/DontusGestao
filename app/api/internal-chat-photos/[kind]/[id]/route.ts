@@ -1,3 +1,4 @@
+import { apiRequestSignal } from "@/lib/api-request";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, context: { params: Promise<{ kind: string; id: string }> }) {
@@ -11,7 +12,7 @@ export async function GET(request: Request, context: { params: Promise<{ kind: s
   const session = request.headers.get("cookie")?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
   if (session) headers.set("x-local-session", decodeURIComponent(session));
   try {
-    const response = await fetch(`${(process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "")}/api/internal-chats/photos/${kind}/${id}`, { headers, cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(`${(process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "")}/api/internal-chats/photos/${kind}/${id}`, { headers, cache: "no-store", signal: apiRequestSignal(request) });
     return new Response(response.body, { status: response.status, headers: {
       "content-type": response.headers.get("content-type") ?? "application/octet-stream",
       "cache-control": response.ok ? "private, max-age=300" : "no-store",

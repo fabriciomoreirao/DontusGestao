@@ -1,3 +1,4 @@
+import { apiRequestSignal } from "@/lib/api-request";
 import { apiResponse } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
     const response = await fetch(`${apiBase()}/api/internal-chats?historyDays=${Math.max(30, Math.min(36500, Number(new URL(request.url).searchParams.get("historyDays")) || 30))}`, {
       headers,
       cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
+      signal: apiRequestSignal(request),
     });
     return apiResponse(request, response);
   } catch {

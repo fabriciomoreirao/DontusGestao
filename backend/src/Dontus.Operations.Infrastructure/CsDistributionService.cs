@@ -62,8 +62,9 @@ internal sealed class CsDistributionService(OperationsDbContext db)
             .Where(link => link.Group.Active && link.Group.Permissions.Any(permission => permission.Screen == "cs" && permission.CanView))
             .Select(link => link.UserId).Distinct().ToListAsync(cancellationToken);
         var users = await db.Users.AsNoTracking().Where(user => user.Active && !user.BlockedAt.HasValue && eligibleIds.Contains(user.Id))
-            .OrderBy(user => user.DisplayName).ThenBy(user => user.Id).ToListAsync(cancellationToken);
-        var allUsers = await db.Users.AsNoTracking().ToListAsync(cancellationToken);
+            .OrderBy(user => user.DisplayName).ThenBy(user => user.Id)
+            .Select(user => new { user.Id, user.DisplayName, user.Department, user.UpdatedAt, HasPhoto = user.PhotoDataUrl != "" }).ToListAsync(cancellationToken);
+        var allUsers = await db.Users.AsNoTracking().Select(user => new { user.Id, user.DisplayName }).ToListAsync(cancellationToken);
         var names = allUsers.GroupBy(user => Key(user.DisplayName)).Where(group => group.Count() == 1)
             .ToDictionary(group => group.Key, group => group.Single().Id);
         var items = await db.WorkItems.AsNoTracking().Where(item => item.Module == "cs" || item.Module == "commercial").ToListAsync(cancellationToken);
@@ -121,7 +122,7 @@ internal sealed class CsDistributionService(OperationsDbContext db)
             {
                 var counts = portfolio.Where(entry => entry.UserId == user.Id).GroupBy(entry => new { entry.Phase, entry.Version })
                     .Select(group => new CsDistributionPortfolioCountDto(group.Key.Phase, group.Key.Version, group.Count())).ToArray();
-                return new CsDistributionCollaboratorDto(user.Id, user.DisplayName, user.Department, ProfilePhotoUrls.For(user),
+                return new CsDistributionCollaboratorDto(user.Id, user.DisplayName, user.Department, ProfilePhotoUrls.For(user.Id, user.UpdatedAt, user.HasPhoto),
                     clients.Count(entry => entry.RecipientUserId == user.Id), counts.Sum(entry => entry.Quantity),
                     clients.Where(entry => entry.RecipientUserId == user.Id).GroupBy(entry => entry.Version).ToDictionary(group => group.Key, group => group.Count()),
                     history.Where(entry => entry.RecipientUserId == user.Id).Select(entry => (DateTimeOffset?)entry.AssignedAt).Max()) { CurrentPortfolio = counts };
