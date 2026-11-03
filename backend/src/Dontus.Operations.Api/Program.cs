@@ -1833,7 +1833,7 @@ operations.MapPost("", async (
         if (request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus")
         {
             // Keep customer open-task protocols current when links or completion change.
-            var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false);
+            var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false, knownWorkItemVersions: request.KnownWorkItemVersions);
             result["customers"] = changed.Customers;
         }
         return id.HasValue ? Results.Json(result, statusCode: StatusCodes.Status201Created) : Results.Ok(result);
@@ -1844,7 +1844,7 @@ operations.MapPost("", async (
     {
         // Generic card edits do not change chat rooms, task catalogs or administrative access.
         // Preserve those client projections instead of rebuilding all of them on every keystroke/save.
-        var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false);
+        var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false, knownWorkItemVersions: request.KnownWorkItemVersions);
         var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
             ["customers"] = changed.Customers, ["approvals"] = changed.Approvals,
             ["moduleCounts"] = changed.ModuleCounts };
@@ -1856,8 +1856,9 @@ operations.MapPost("", async (
         return id.HasValue ? Results.Json(result, statusCode: StatusCodes.Status201Created) : Results.Ok(result);
     }
 
-    actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
-    var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);
+    if (request.Action != "refreshOperations")
+        actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    var snapshot = await service.GetSnapshotAsync(actor, cancellationToken, knownWorkItemVersions: request.KnownWorkItemVersions);
     if (actor.HasPermission("diary", "view"))
         snapshot = snapshot with { DiaryModule = await service.GetDiaryModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notes", "view"))

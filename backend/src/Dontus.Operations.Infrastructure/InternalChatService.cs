@@ -25,9 +25,11 @@ public sealed class InternalChatService(
         var users = await db.Users.AsNoTracking()
             .Where(user => user.Active && user.BlockedAt == null)
             .OrderBy(user => user.DisplayName)
+            .Select(user => new { user.Id, user.DisplayName, user.Email, user.Department, user.JobTitle,
+                user.IsCoordinator, user.UpdatedAt, HasPhoto = user.PhotoDataUrl != "" })
             .ToDictionaryAsync(user => user.Id, cancellationToken);
-        var userPhotos = users.ToDictionary(entry => entry.Key, entry => string.IsNullOrEmpty(entry.Value.PhotoDataUrl)
-            ? "" : $"/api/internal-chat-photos/user/{entry.Key}?v={entry.Value.UpdatedAt.ToUnixTimeMilliseconds()}");
+        var userPhotos = users.ToDictionary(entry => entry.Key,
+            entry => ProfilePhotoUrls.For(entry.Key, entry.Value.UpdatedAt, entry.Value.HasPhoto));
         var roomIds = await db.InternalChatRoomMembers.AsNoTracking()
             .Where(member => member.UserId == actorUser.Id)
             .Select(member => member.RoomId)

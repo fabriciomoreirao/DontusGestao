@@ -28,6 +28,8 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 ### Atualização em tempo real
 
+A sincronização informa as versões dos registros já carregados. A API consulta somente metadados dos registros inalterados e mantém currículos, imagens e documentos fora das respostas incrementais; registros novos ou alterados continuam completos. As verificações de acesso continuam no servidor, inclusive por identidade nas comissões. Consultas de identidade, agenda, distribuição de CS e listas de colaboradores selecionam os campos necessários, sem carregar imagens e capas do banco. A carga inicial mantém os dados completos.
+
 As requisições internas da operação aguardam até **120 segundos** por padrão, incluindo o carregamento inicial, o chat e os formulários. Configure `API_REQUEST_TIMEOUT_SECONDS` (30–600 segundos) para ajustar o prazo. As consultas ao PostgreSQL usam `DATABASE_COMMAND_TIMEOUT_SECONDS` (padrão 90 segundos). Recrie os serviços web e api após alterar essas variáveis; proxies externos também precisam permitir esse prazo. A desconexão do cliente cancela a requisição pendente ao backend.
 
 O workspace mantém uma conexão WebSocket autenticada em `/api/realtime`, na mesma origem da aplicação (`wss` em HTTPS). O chat e o snapshot operacional atualizam após mudanças, sem as antigas consultas a cada 1,5 e 10–15 segundos. Avisos de chat chegam somente às conexões dos participantes; o socket não transporta mensagens, arquivos ou credenciais. As projeções HTTP continuam aplicando as permissões de cada usuário. Rajadas de avisos são agrupadas, e uma atualização operacional já inclui o chat.

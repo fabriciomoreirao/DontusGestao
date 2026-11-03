@@ -197,7 +197,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
 
         var tasks = await query.OrderByDescending(x => x.UpdatedAt).Take(1000).ToListAsync(cancellationToken);
         var taskIds = tasks.Select(x => x.Id).ToList();
-        var users = await db.Users.AsNoTracking().ToDictionaryAsync(x => x.Id, cancellationToken);
+        var users = await db.Users.AsNoTracking()
+            .Select(x => new { x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, x.UpdatedAt, x.Active, HasPhoto = x.PhotoDataUrl != "" })
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
         var departments = await db.TaskDepartments.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken);
         var priorities = await db.TaskPriorities.AsNoTracking().OrderByDescending(x => x.SeverityOrder).ToListAsync(cancellationToken);
         var statuses = await db.TaskStatuses.AsNoTracking().OrderBy(x => x.DisplayOrder).ToListAsync(cancellationToken);
@@ -273,7 +275,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 x.AlertBeforeMinutes, x.EscalationMinutes, x.RecalculateOnTransfer,
                 pauseStatuses.Where(m => m.SlaPolicyId == x.Id).Select(m => m.StatusId).ToList(), x.Active)).ToList(),
             users.Values.OrderBy(x => x.DisplayName).Select(x => new TaskCollaboratorDto(
-                x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, ProfilePhotoUrls.For(x.Id, x.UpdatedAt, x.PhotoDataUrl), x.Active,
+                x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, ProfilePhotoUrls.For(x.Id, x.UpdatedAt, x.HasPhoto), x.Active,
                 userDepartments.Where(m => m.UserId == x.Id).Select(m => m.DepartmentId).ToList(),
                 userDepartments.Where(m => m.UserId == x.Id && m.IsCoordinator).Select(m => m.DepartmentId).ToList())).ToList(),
             notifications.Select(x => new TaskNotificationDto(x.Id, x.TaskId,

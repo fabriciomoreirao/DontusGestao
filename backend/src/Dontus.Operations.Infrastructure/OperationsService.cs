@@ -56,7 +56,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default, bool includeWorkspaceDetails = true)
+    public async Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default, bool includeWorkspaceDetails = true,
+        IReadOnlyDictionary<Guid, long>? knownWorkItemVersions = null)
     {
         if (actor.Permissions?.All(permission => !permission.CanView) != false)
             throw new DomainException("Seu usuário não possui acesso a nenhuma tela do sistema.", 403);
@@ -111,6 +112,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var registeredUser = await db.Users.AsNoTracking().Where(user => user.Email == actor.Email)
             .Select(user => new { user.Id, user.CreatedAt }).SingleOrDefaultAsync(cancellationToken);
         var registeredAt = registeredUser?.CreatedAt ?? DateTimeOffset.MinValue;
+        var includeAllDescriptions = knownWorkItemVersions is null;
+        var knownVersionKeys = knownWorkItemVersions?.Select(entry => $"{entry.Key}:{entry.Value}").ToArray() ?? [];
+        // Keep authorization and version metadata in SQL, without fetching unchanged embedded files.
+        // Commission descriptions still participate in the identity check below.
         var items = await db.WorkItems.AsNoTracking()
             .Where(x => visibleModules.Contains(x.Module)
                 && x.RecordType != "Perfil de colaborador"
@@ -126,7 +131,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .Select(x => new WorkItemDto(
                 x.Id, x.Module, x.RecordType, x.Title, x.CustomerId, x.CustomerName,
                 x.Owner, x.Team, x.Status, x.Priority, x.DueAt, x.SlaDueAt,
-                x.AmountCents, x.Description, x.Version, x.UpdatedAt, x.CreatedAt, x.CreatedBy, null, ""))
+                x.AmountCents, includeAllDescriptions || x.Module == "commissions" || !knownVersionKeys.Contains(x.Id.ToString() + ":" + x.Version.ToString())
+                    ? x.Description : "", x.Version, x.UpdatedAt, x.CreatedAt, x.CreatedBy, null, ""))
             .ToListAsync(cancellationToken);
         var itemIds = items.Select(item => item.Id).ToArray();
         var assignments = await db.Activities.AsNoTracking().Where(activity => itemIds.Contains(activity.EntityId)
@@ -185,7 +191,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .ToArray();
         var currentUserProfile = includeWorkspaceDetails ? await db.Users.AsNoTracking()
             .Where(user => user.Email == actor.Email)
-            .Select(user => new { user.Id, user.UpdatedAt, user.PhotoDataUrl, user.JobTitle, user.IsCoordinator })
+            .Select(user => new { user.Id, user.UpdatedAt, HasPhoto = user.PhotoDataUrl != "", user.JobTitle, user.IsCoordinator })
             .SingleOrDefaultAsync(cancellationToken) : null;
 
         var canViewAssignmentDirectory = OperationsProjectionPolicy.CanViewAssignmentDirectory(actor);
@@ -193,7 +199,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             ? await GetWaitingQueueDirectoryAsync(cancellationToken) : null;
         return new OperationsSnapshot(
             new UserDto(actor.Email, actor.DisplayName, actor.Role, actor.Department,
-                currentUserProfile is null ? "" : ProfilePhotoUrls.For(currentUserProfile.Id, currentUserProfile.UpdatedAt, currentUserProfile.PhotoDataUrl), currentUserProfile?.JobTitle ?? "",
+                currentUserProfile is null ? "" : ProfilePhotoUrls.For(currentUserProfile.Id, currentUserProfile.UpdatedAt, currentUserProfile.HasPhoto), currentUserProfile?.JobTitle ?? "",
                 currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? [], actor.FullAccess),
             customers, items, appointments, approvals, decisions, audit, moduleCounts)
         {
@@ -779,9 +785,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (actor.HasPermission("commissions", "view") || actor.HasPermission("referrals", "view"))
         {
             var users = await db.Users.AsNoTracking().Where(user => manageCommissions || manageReferrals || user.Email == actor.Email)
-                .OrderBy(user => user.DisplayName).ToListAsync(cancellationToken);
+                .OrderBy(user => user.DisplayName)
+                .Select(user => new { user.Id, user.Email, user.DisplayName, user.Department, user.UpdatedAt,
+                    HasPhoto = user.PhotoDataUrl != "", user.Active, user.BlockedAt }).ToListAsync(cancellationToken);
             collaborators = users.Select(user => new CollaboratorSummaryDto(user.Id, user.Email, user.DisplayName,
-                user.Department, [user.Department], ProfilePhotoUrls.For(user), user.Active && !user.BlockedAt.HasValue)).ToList();
+                user.Department, [user.Department], ProfilePhotoUrls.For(user.Id, user.UpdatedAt, user.HasPhoto), user.Active && !user.BlockedAt.HasValue)).ToList();
         }
         var commercialSellers = actor.HasPermission("commercial", "view")
             ? await db.Users.AsNoTracking()
