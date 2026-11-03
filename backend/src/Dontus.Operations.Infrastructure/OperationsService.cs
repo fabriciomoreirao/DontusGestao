@@ -186,14 +186,16 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .Select(user => new { user.Id, user.UpdatedAt, user.PhotoDataUrl, user.JobTitle, user.IsCoordinator })
             .SingleOrDefaultAsync(cancellationToken);
 
+        var directory = actor.HasPermission("waitingQueue", "view") || actor.HasPermission("reminders", "create") || actor.HasPermission("reminders", "view")
+            ? await GetWaitingQueueDirectoryAsync(cancellationToken) : null;
         return new OperationsSnapshot(
             new UserDto(actor.Email, actor.DisplayName, actor.Role, actor.Department,
                 currentUserProfile is null ? "" : ProfilePhotoUrls.For(currentUserProfile.Id, currentUserProfile.UpdatedAt, currentUserProfile.PhotoDataUrl), currentUserProfile?.JobTitle ?? "",
                 currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? [], actor.FullAccess),
             customers, items, appointments, approvals, decisions, audit, moduleCounts)
         {
-            WaitingQueueDirectory = actor.HasPermission("waitingQueue", "view")
-                ? await GetWaitingQueueDirectoryAsync(cancellationToken) : null,
+            WaitingQueueDirectory = actor.HasPermission("waitingQueue", "view") ? directory : null,
+            AssignmentDirectory = actor.HasPermission("reminders", "create") || actor.HasPermission("reminders", "view") ? directory : null,
         };
     }
 

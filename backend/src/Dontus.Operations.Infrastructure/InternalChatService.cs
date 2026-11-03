@@ -8,7 +8,7 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class InternalChatService(
     OperationsDbContext db,
-    IConfiguration configuration) : IInternalChatService
+    IConfiguration configuration, RealtimeBroker? realtime = null) : IInternalChatService
 {
     private sealed record PollOption(string Text, List<Guid> VoterUserIds);
     private sealed record PollPayload(string Question, List<PollOption> Options);
@@ -23,7 +23,7 @@ public sealed class InternalChatService(
         actor.RequirePermission("internalChat", "view");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         var users = await db.Users.AsNoTracking()
-            .Where(user => user.Active)
+            .Where(user => user.Active && user.BlockedAt == null)
             .OrderBy(user => user.DisplayName)
             .ToDictionaryAsync(user => user.Id, cancellationToken);
         var userPhotos = users.ToDictionary(entry => entry.Key, entry => string.IsNullOrEmpty(entry.Value.PhotoDataUrl)
@@ -112,7 +112,7 @@ public sealed class InternalChatService(
             actorUser.Id,
             users.Values.Select(user => new InternalChatUserDto(
                 user.Id, user.DisplayName, user.Email, user.Department, userPhotos.GetValueOrDefault(user.Id, ""),
-                user.JobTitle, user.IsCoordinator)).ToArray(),
+                user.JobTitle, user.IsCoordinator, realtime?.GetPresence(user.Id).IsOnline ?? false, realtime?.GetPresence(user.Id).LastSeenAt)).ToArray(),
             roomDtos);
     }
 

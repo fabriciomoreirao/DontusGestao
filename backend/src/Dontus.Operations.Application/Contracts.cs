@@ -372,6 +372,7 @@ public sealed record OperationsSnapshot(
     public NoticesModuleDto? NoticesModule { get; init; }
     public CustomerModuleDto? CustomerModule { get; init; }
     public WaitingQueueDirectoryDto? WaitingQueueDirectory { get; init; }
+    public WaitingQueueDirectoryDto? AssignmentDirectory { get; init; }
 }
 
 public interface IOperationsService

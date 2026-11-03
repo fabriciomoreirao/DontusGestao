@@ -1,3 +1,4 @@
+import {waitingQueueNeedsContact} from "./waitingQueue.ts";
 export type AppNotification = {
   id: string; title: string; meta: string; module: string; at: string;
   sourceId: string; category: "arrival" | "comment" | "task" | "chat" | "reminder" | "notice" | "agenda";
@@ -13,6 +14,7 @@ export type NotificationData = {
   items: Item[];
   customers?: Array<{id:string;owner:string;cs_owner?:string;support_owner?:string}>;
   access?: { employees: Array<{id:string;email:string;displayName:string;departmentName:string;departmentNames:string[]}>; users?:Array<{id:string;email:string;createdAt:string}> } | null;
+  waitingQueueDirectory?: {employees:Array<{id:string;email:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames:string[]}>}|null;
   internalChatModule?: {currentUserId:string;rooms:Array<{id:string;name:string;unreadCount:number;lastMessageAt:string;messages:Array<{id:string;senderUserId:string;senderName:string;body:string;type:string;createdAt:string}>}>} | null;
   taskModule?: { notifications:Array<{id:string;taskId:string;eventType:string;message:string;read:boolean;createdAt:string}>; tasks:Array<{id:string;assigneeUserId:string|null;assigneeName:string}>;collaborators:Array<{id:string;email:string}> } | null;
   noticesModule?: {notices:Array<{id:string;title:string;kind:string;authorUserId:string;active:boolean;visibleToCurrentUser:boolean;isRead:boolean;publishedAt:string}>} | null;
@@ -50,7 +52,7 @@ export function buildNotifications(data:NotificationData,now:number):AppNotifica
   const userNames=new Set(employees.flatMap(entry=>[normalize(entry.email),normalize(entry.displayName)]));
   const departments=new Set([data.user.department,...(employee?.departmentNames??[])].map(normalize).filter(Boolean));
   const owns=(owner:unknown)=>isSelf(owner);
-  const receives=(item:Item)=>owns(item.owner)||(!userNames.has(normalize(item.owner))&&(!item.owner||/^(fila|triagem|coordenacao|nao atribuido|sem responsavel)/.test(normalize(item.owner)))&&(departments.has(normalize(item.team))||/^(fila|triagem|coordenacao)/.test(normalize(item.owner))));
+  const receives=(item:Item)=>item.module==="waitingQueue"?waitingQueueNeedsContact(item,data.user,data.waitingQueueDirectory?.employees??employees):owns(item.owner)||(!userNames.has(normalize(item.owner))&&(!item.owner||/^(fila|triagem|coordenacao|nao atribuido|sem responsavel)/.test(normalize(item.owner)))&&(departments.has(normalize(item.team))||/^(fila|triagem|coordenacao)/.test(normalize(item.owner))));
   const labels:Record<string,string>={cs:"Acompanhamento",lia:"Acompanhamento LIA",waitingQueue:"Fila de espera",cancellations:"Cancelamentos",marketing:"Gestão de marketing",ti:"Desenvolvimento",serviceRequests:"Chamados",serviceFollowup:"Acompanhamento de chamados",commercial:"CRM",customers:"Clientes",admin:"Processo seletivo",hr:"Gestão RH",support:"Atendimentos",goals:"Metas",referrals:"Indicações"};
   const registeredAt=data.access?.users?.find(user=>isSelf(user.email))?.createdAt;
   const add=(entry:AppNotification)=>{if(canView(entry.module)&&validDate(entry.at)&&(!registeredAt||Date.parse(entry.at)>=Date.parse(registeredAt)))entries.push(entry)};

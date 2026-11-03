@@ -1,5 +1,6 @@
 type Socket = Pick<WebSocket, "close" | "onopen" | "onmessage" | "onclose" | "onerror">;
 type Changes = { operations?: boolean; internalChat?: boolean };
+type Presence = {userId:string;isOnline:boolean;lastSeenAt:string|null};
 type SyncOptions = {
   url: string;
   connect?: (url: string) => Socket;
@@ -11,6 +12,7 @@ type SyncOptions = {
   cursor: () => string;
   status: (connected: boolean) => void;
   unauthorized: () => void;
+  presence?: (users:Presence[]) => void;
 };
 
 // One socket and one request queue per mounted workspace. Bursts collapse into one projection fetch.
@@ -60,12 +62,13 @@ export function createRealtimeSync(options: SyncOptions) {
       lastFrame = Date.now();
       let message;
       try { message = JSON.parse(String(event.data)); } catch { return; }
+      if(options.canChat&&Array.isArray(message.presence))options.presence?.(message.presence.filter((entry:Presence)=>entry&&typeof entry.userId==="string"&&typeof entry.isOnline==="boolean"&&(entry.lastSeenAt===null||typeof entry.lastSeenAt==="string")));
       if (message.type === "ready") {
         clearTimeout(openTimer); attempts = 0; setStatus(true);
         // A cursor captured before the initial snapshot avoids downloading it twice on normal startup.
         if (hadReady || message.cursor !== options.cursor()) queue({ operations: true, internalChat: true });
         hadReady = true;
-      } else if (message.type === "changed") queue(message);
+      } else if (message.type === "changed"&&(message.operations||message.internalChat)) queue(message);
       else if (message.type === "unauthorized") { options.unauthorized(); stop(); }
     };
     current.onerror = () => current.close();

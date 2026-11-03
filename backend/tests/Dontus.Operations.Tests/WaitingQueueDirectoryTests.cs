@@ -39,6 +39,18 @@ public sealed class WaitingQueueDirectoryTests
         await using var db = Context(); var user = User("Ana"); db.Users.Add(user); await db.SaveChangesAsync();
         var snapshot = await new OperationsService(db).GetSnapshotAsync(Actor(user, "diary"));
         Assert.Null(snapshot.WaitingQueueDirectory);
+        Assert.Null(snapshot.AssignmentDirectory);
+    }
+
+    [Fact]
+    public async Task Reminder_creators_receive_assignment_choices_even_without_admin_or_queue_permissions()
+    {
+        await using var db = Context(); var user = User("Ana"); db.Users.AddRange(user, User("Bia")); await db.SaveChangesAsync();
+        var actor = new ActorContext(user.Email, user.DisplayName, "Colaborador", "Suporte", [new("cs", true, false, true, false, false), new("reminders", false, true, false, false, false)]);
+        var snapshot = await new OperationsService(db).GetSnapshotAsync(actor);
+        Assert.Null(snapshot.Access); Assert.Null(snapshot.WaitingQueueDirectory);
+        Assert.Contains(snapshot.AssignmentDirectory!.Employees, person => person.Id == user.Id);
+        Assert.Equal(2, snapshot.AssignmentDirectory.Employees.Count);
     }
 
     [Fact]

@@ -1805,6 +1805,24 @@ operations.MapPost("", async (
         return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
     if (request.Action == "markTaskNotificationRead")
         return Results.Ok(new { ok = true, taskModule = await taskService.GetModuleAsync(actor, cancellationToken) });
+    if ((request.Action is "addTaskComment" or "updateTaskComment") && actor.HasPermission("tasks", "view"))
+        return Results.Ok(new { ok = true, id, taskModule = await taskService.GetModuleAsync(actor, cancellationToken) });
+    if ((request.Action is "addSuggestionComment" or "updateSuggestionComment") && actor.HasPermission("suggestions", "view"))
+        return Results.Ok(new { ok = true, id, suggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) });
+    if (request.Action is "createWorkItem" or "updateWorkItem" or "transitionWorkItem" or "deleteWorkItem")
+    {
+        // Generic card edits do not change chat rooms, task catalogs or administrative access.
+        // Preserve those client projections instead of rebuilding all of them on every keystroke/save.
+        var changed = await service.GetSnapshotAsync(actor, cancellationToken);
+        var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
+            ["items"] = changed.Items, ["customers"] = changed.Customers, ["approvals"] = changed.Approvals,
+            ["moduleCounts"] = changed.ModuleCounts };
+        if (actor.HasPermission("diary", "view")) result["diaryModule"] = await service.GetDiaryModuleAsync(actor, cancellationToken);
+        if (request.ResponsibleUserId.HasValue && actor.HasPermission("work", "view"))
+            result["agendaModule"] = await agendaService.GetModuleAsync(actor, cancellationToken);
+        if (actor.HasPermission("cs", "view")) result["customerModule"] = await service.GetCustomerModuleAsync(actor, cancellationToken);
+        return id.HasValue ? Results.Json(result, statusCode: StatusCodes.Status201Created) : Results.Ok(result);
+    }
 
     actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);

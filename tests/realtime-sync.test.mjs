@@ -25,6 +25,12 @@ test('uma conexão saudável permanece sem polling e sem repetir a carga inicial
   sync.visible(); await tick(1000);
   assert.equal(state.status, true); assert.equal(state.operations, 0); assert.equal(state.chat, 0);
 });
+
+test('presença atualiza o chat sem GET ou recarga de operações, inclusive durante uma edição',async t=>{
+  const received=[];const{state,socket,tick}=setup(t,{presence:users=>received.push(users)});state.busy=true;
+  socket.message({type:'changed',presence:[{userId:'ana',isOnline:true,lastSeenAt:'2026-11-03T12:00:00Z'}]});await tick(1000);
+  assert.equal(received.length,1);assert.equal(received[0][0].isOnline,true);assert.equal(state.chat,0);assert.equal(state.operations,0);
+});
 test('rajadas de chat usam só a projeção do chat e operações absorvem as duas invalidações', async t => {
   const { state, socket, tick } = setup(t);
   for (let i = 0; i < 40; i++) socket.message({ type: 'changed', internalChat: true });

@@ -2,7 +2,8 @@ namespace Dontus.Operations.Application;
 
 public sealed record InternalChatUserDto(
     Guid Id, string Name, string Email, string DepartmentName, string PhotoDataUrl,
-    string JobTitle, bool IsCoordinator);
+    string JobTitle, bool IsCoordinator, bool IsOnline = false, DateTimeOffset? LastSeenAt = null);
+public sealed record UserPresenceDto(Guid UserId, bool IsOnline, DateTimeOffset? LastSeenAt);
 
 public sealed record InternalChatMessageDto(
     Guid Id, Guid RoomId, Guid SenderUserId, string SenderName, string SenderPhotoDataUrl,
