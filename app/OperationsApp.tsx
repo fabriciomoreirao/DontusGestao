@@ -55,7 +55,7 @@ const CancellationsModule = lazy(() => import("@/app/CancellationsModule"));
 const HrManagementModule = lazy(() => import("@/app/HrManagementModule"));
 const ServiceRecordsModule = lazy(() => import("@/app/ServiceRecordsModule"));
 const MarketingWorkspaceModule = lazy(() => import("@/app/MarketingWorkspaceModule"));
-import WaitingQueueModule, { parseWaitingQueue } from "@/app/WaitingQueueModule";
+import WaitingQueueModule, { parseWaitingQueue, type WaitingQueueDirectory } from "@/app/WaitingQueueModule";
 import CardLinkEnhancer from "@/app/CardLinkEnhancer";
 import PortalDontus, { DispatchModal } from "@/app/PortalDontus";
 import ReferralsModule, { ReferralSettingsPage } from "@/app/ReferralsModule";
@@ -200,6 +200,7 @@ type AppData = {
   suggestionModule: SuggestionModuleData | null;
   noticesModule: NoticesModuleData | null;
   customerModule: CustomerModuleData | null;
+  waitingQueueDirectory?: WaitingQueueDirectory | null;
 };
 
 type Toast = { kind: "success" | "error"; message: string } | null;
@@ -1499,7 +1500,7 @@ export default function OperationsApp() {
           {active === "cancellations" && data.customerModule && <CancellationsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "cancellations", "create")} canEdit={userCan(data.user, "cancellations", "edit")} canDelete={userCan(data.user, "cancellations", "edit")} operate={operate} onOpenSettings={userCan(data.user, "cancellations", "manage") ? () => openFunctionSettings("cancellationCatalogs") : undefined} />}
           {active === "hr" && data.customerModule && <HrManagementModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "hr", "edit")} operate={operate} onOpenSettings={userCan(data.user, "hr", "manage") ? () => openFunctionSettings("hrCatalogs") : undefined} />}
           {active === "support" && data.customerModule && <ServiceRecordsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "support", "create")} canEdit={userCan(data.user, "support", "edit")} canDelete={userCan(data.user, "support", "edit")} operate={operate} onOpenSettings={userCan(data.user, "support", "manage") ? () => openFunctionSettings("serviceCatalogs") : undefined} />}
-          {active === "waitingQueue" && <WaitingQueueModule items={kanbanItems} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "waitingQueue", "manage") ? () => openFunctionSettings("waitingQueueCatalogs") : undefined} />}
+          {active === "waitingQueue" && <WaitingQueueModule items={kanbanItems} employees={data.waitingQueueDirectory?.employees ?? data.access?.employees ?? []} departments={data.waitingQueueDirectory?.departments ?? data.access?.departments ?? []} currentUser={data.user} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "waitingQueue", "manage") ? () => openFunctionSettings("waitingQueueCatalogs") : undefined} />}
           {active === "referrals" && data.customerModule && <ReferralsModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={(data.customerModule.collaborators ?? data.access?.employees ?? []).filter(employee => employee.active)} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "referrals", "edit")} canManage={userCan(data.user, "referrals", "manage")} operate={operate} />}
           {active === "commissions" && data.customerModule && <CommissionsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.customerModule.collaborators ?? data.access?.employees ?? []} currentUser={data.user} busy={busy} canApprove={userCan(data.user,"commissions","approve")} canManage={userCan(data.user,"commissions","manage")} operate={operate} />}
           {active === "goals" && <GoalsModule items={data.items} taskItems={data.taskModule?.tasks ?? []} catalogs={data.customerModule?.catalogs ?? []} employees={data.access?.employees ?? []} departments={data.access?.departments ?? []} currentUser={data.user} busy={busy} canCreate={userCan(data.user,"goals","create")} canEdit={userCan(data.user,"goals","edit")} canManage={userCan(data.user,"goals","manage")} operate={operate} />}

@@ -336,6 +336,11 @@ public sealed record CustomerCatalogOptionDto(Guid Id, string Catalog, string Na
 public sealed record CollaboratorSummaryDto(Guid Id, string Email, string DisplayName, string DepartmentName,
     IReadOnlyCollection<string> DepartmentNames, string PhotoDataUrl, bool Active);
 public sealed record CommercialSellerDto(Guid Id, string DisplayName);
+public sealed record WaitingQueuePersonDto(Guid Id, string DisplayName, string Email, Guid? DepartmentId,
+    string DepartmentName, IReadOnlyCollection<Guid> DepartmentIds, IReadOnlyCollection<string> DepartmentNames, bool Active);
+public sealed record WaitingQueueDepartmentDto(Guid Id, string Name, string Description, bool Active);
+public sealed record WaitingQueueDirectoryDto(IReadOnlyCollection<WaitingQueuePersonDto> Employees,
+    IReadOnlyCollection<WaitingQueueDepartmentDto> Departments);
 public sealed record CustomerModuleDto(IReadOnlyCollection<CustomerCatalogOptionDto> Catalogs)
 {
     public IReadOnlyCollection<CollaboratorSummaryDto> Collaborators { get; init; } = [];
@@ -366,6 +371,7 @@ public sealed record OperationsSnapshot(
     public InternalChatModuleDto? InternalChatModule { get; init; }
     public NoticesModuleDto? NoticesModule { get; init; }
     public CustomerModuleDto? CustomerModule { get; init; }
+    public WaitingQueueDirectoryDto? WaitingQueueDirectory { get; init; }
 }
 
 public interface IOperationsService

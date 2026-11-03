@@ -1,5 +1,12 @@
 export type DepartmentQueueMode = "conventional" | "linked";
 
+export function belongsToWaitingQueueDepartment(person: {departmentId?:string|null;departmentIds?:string[];departmentName?:string;departmentNames?:string[]}, department:{departmentId:string;departmentName:string}) {
+  const normalize=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLocaleLowerCase("pt-BR");
+  const names=[person.departmentName??"",...(person.departmentNames??[])];
+  return Boolean(department.departmentId && [person.departmentId,...(person.departmentIds??[])].includes(department.departmentId))
+    || Boolean(department.departmentName.trim() && names.some(name=>normalize(name)===normalize(department.departmentName)));
+}
+
 const QUEUE_MODE_MARKER = /\s*\[\[dontus-fila:(conventional|linked)\]\]\s*/gi;
 
 export function departmentQueueMode(description?: string | null): DepartmentQueueMode {
