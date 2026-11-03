@@ -6,6 +6,7 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> options) : DbContext(options)
 {
+    public DbSet<TaskAttachmentContent> TaskAttachmentContents => Set<TaskAttachmentContent>();
     public DbSet<ServiceRequestProtocolCounter> ServiceRequestProtocolCounters => Set<ServiceRequestProtocolCounter>();
     public DbSet<CancellationProtocolCounter> CancellationProtocolCounters => Set<CancellationProtocolCounter>();
     public DbSet<CommissionConfirmation> CommissionConfirmations => Set<CommissionConfirmation>();
@@ -735,6 +736,14 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         });
 
         ConfigureEntity(modelBuilder.Entity<TaskAttachment>(), "task_attachments");
+        modelBuilder.Entity<TaskAttachmentContent>(entity =>
+        {
+            entity.ToTable("task_attachment_contents");
+            entity.HasKey(x => x.AttachmentId);
+            entity.Property(x => x.Content).HasColumnType("bytea");
+            entity.HasOne<TaskAttachment>().WithOne().HasForeignKey<TaskAttachmentContent>(x => x.AttachmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<TaskAttachment>(entity =>
         {
             entity.Property(x => x.FileName).HasMaxLength(260);

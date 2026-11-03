@@ -8,6 +8,78 @@ namespace Dontus.Operations.Tests;
 
 public sealed class TaskServiceTests
 {
+    [Theory]
+    [InlineData("planilha.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+    [InlineData("documento.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")]
+    [InlineData("imagem.png", "image/png")]
+    [InlineData("documento.pdf", "application/pdf")]
+    [InlineData("dados.csv", "text/csv")]
+    [InlineData("arquivos.zip", "application/zip")]
+    public async Task S3_denial_preserves_the_complete_file_in_private_storage_and_on_the_reopened_card(string name, string type)
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db, new DeniedTaskFileStorage());
+        var department = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte");
+        var taskType = await db.TaskTypes.SingleAsync();
+        var taskId = (await service.CreateAsync(new("Anexo persistente", "Teste de contingência", taskType.Id, null, null,
+            department.Id, department.Id, null, null, null, null, "5511999990000", null, null, null, null, false, [], []), actor)).Id;
+        var bytes = "conteúdo privado completo do arquivo"u8.ToArray();
+        await using var content = new MemoryStream(bytes);
+        var id = await service.UploadAttachmentAsync(new(taskId, null, name, type, bytes.Length, content), actor);
+        db.ChangeTracker.Clear();
+        var reopened = new TaskService(db, new DeniedTaskFileStorage());
+        var module = await reopened.GetModuleAsync(actor);
+        var saved = Assert.Single(module.Tasks.Single(x => x.Id == taskId).Attachments);
+        Assert.Equal(id, saved.Id); Assert.Equal(name, saved.FileName);
+        Assert.DoesNotContain(Convert.ToBase64String(bytes), System.Text.Json.JsonSerializer.Serialize(module));
+        var download = await reopened.GetAttachmentDownloadAsync(id, actor);
+        Assert.Equal(bytes, download.Content); Assert.Equal(type, download.ContentType); Assert.Equal(name, download.FileName);
+        var blockedActor = actor with { Permissions = [new("tasks", false, false, false, false, false)], FullAccess = false };
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => reopened.GetAttachmentDownloadAsync(id, blockedActor))).StatusCode);
+        await reopened.DeleteAttachmentAsync(id, actor);
+        Assert.Empty(db.TaskAttachments); Assert.Empty(db.TaskAttachmentContents);
+    }
+
+    [Fact]
+    public async Task Task_creators_can_include_files_without_permission_to_edit_other_tasks()
+    {
+        await using var db = CreateContext(); var (service, admin) = await InitializeAsync(db);
+        var actor = admin with { Permissions = [new("tasks", true, true, false, false, false)], FullAccess = false };
+        var department = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte"); var type = await db.TaskTypes.SingleAsync();
+        var id = (await service.CreateAsync(new("Arquivo na criação", "Descrição", type.Id, null, null, department.Id, department.Id,
+            null, null, null, null, "5511999990000", null, null, null, null, false, [], []), actor)).Id;
+        await using var content = new MemoryStream([1, 2, 3]);
+        var file = await service.UploadAttachmentAsync(new(id, null, "arquivo.pdf", "application/pdf", content.Length, content), actor);
+        Assert.NotNull((await service.GetAttachmentDownloadAsync(file, actor)).Content);
+        var reader = actor with { Permissions = [new("tasks", true, false, false, false, false)] };
+        content.Position = 0;
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UploadAttachmentAsync(
+            new(id, null, "outro.pdf", "application/pdf", content.Length, content), reader))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Attachment_size_mismatch_is_rejected_without_persisting_partial_content()
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db, new DeniedTaskFileStorage());
+        var department = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte"); var type = await db.TaskTypes.SingleAsync();
+        var taskId = (await service.CreateAsync(new("Anexo", "Descrição", type.Id, null, null, department.Id, department.Id,
+            null, null, null, null, "5511999990000", null, null, null, null, false, [], []), actor)).Id;
+        await using var content = new MemoryStream([1, 2, 3]);
+        await Assert.ThrowsAsync<DomainException>(() => service.UploadAttachmentAsync(new(taskId, null, "arquivo.pdf", "application/pdf", 10, content), actor));
+        Assert.Empty(db.TaskAttachments); Assert.Empty(db.TaskAttachmentContents);
+    }
+
+    private sealed class DeniedTaskFileStorage : ITaskFileStorage
+    {
+        public async Task StoreAsync(string key, Stream content, string type, long size, CancellationToken cancellationToken = default)
+        {
+            await content.ReadExactlyAsync(new byte[2], cancellationToken);
+            throw new DomainException("AccessDenied: s3:PutObject", 503);
+        }
+        public Task DeleteAsync(string key, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Database files must not call S3 delete.");
+        public string CreateDownloadUrl(string key, string name, string type) => throw new InvalidOperationException("Database files must not call S3 download.");
+    }
+
     [Fact]
     public async Task Only_the_assignee_receives_arrivals_and_comments_and_ordinary_updates_stay_silent()
     {

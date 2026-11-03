@@ -2684,6 +2684,20 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("task_attachments", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.TaskAttachmentContent", b =>
+                {
+                    b.Property<Guid>("AttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("AttachmentId");
+
+                    b.ToTable("task_attachment_contents", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.TaskClientCommunication", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3885,6 +3899,15 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("UploadedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.TaskAttachmentContent", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.TaskAttachment", null)
+                        .WithOne()
+                        .HasForeignKey("Dontus.Operations.Domain.TaskAttachmentContent", "AttachmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

@@ -5,6 +5,7 @@ using Amazon.S3.Model;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Dontus.Operations.Infrastructure;
 
@@ -12,9 +13,11 @@ public sealed class S3TaskFileStorage : ITaskFileStorage, IDisposable
 {
     private readonly string bucketName;
     private readonly Lazy<IAmazonS3> client;
+    private readonly ILogger<S3TaskFileStorage>? logger;
 
-    public S3TaskFileStorage(IConfiguration configuration)
+    public S3TaskFileStorage(IConfiguration configuration, ILogger<S3TaskFileStorage>? logger = null)
     {
+        this.logger = logger;
         bucketName = configuration["TaskFiles:BucketName"]?.Trim() ?? "";
         var regionName = configuration["TaskFiles:Region"]?.Trim() ?? "us-east-1";
         client = new Lazy<IAmazonS3>(() =>
@@ -47,13 +50,13 @@ public sealed class S3TaskFileStorage : ITaskFileStorage, IDisposable
         }
         catch (AmazonS3Exception exception)
         {
-            throw new DomainException(
-                $"Não foi possível armazenar o arquivo na AWS S3: {exception.Message}", 503);
+            logger?.LogWarning(exception, "S3 rejected attachment storage.");
+            throw new DomainException("O armazenamento S3 está temporariamente indisponível.", 503);
         }
         catch (AmazonClientException exception)
         {
-            throw new DomainException(
-                $"A integração com a AWS S3 não está configurada corretamente: {exception.Message}", 503);
+            logger?.LogWarning(exception, "S3 attachment credentials are unavailable.");
+            throw new DomainException("O armazenamento S3 está temporariamente indisponível.", 503);
         }
     }
 

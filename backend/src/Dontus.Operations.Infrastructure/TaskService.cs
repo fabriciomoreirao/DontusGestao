@@ -2,11 +2,12 @@ using System.Text.Json;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TaskStatusEntity = Dontus.Operations.Domain.TaskStatus;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileStorage = null) : ITaskService
+public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileStorage = null, ILogger<TaskService>? logger = null) : ITaskService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly HashSet<string> BlockedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -1076,9 +1077,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         ActorContext actor,
         CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("tasks", "edit");
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        if (!actor.HasPermission("tasks", "edit") && !(actor.HasPermission("tasks", "create") && task.CreatorUserId == user.Id))
+            actor.RequirePermission("tasks", "edit");
         if (command.CommentId.HasValue && !await db.TaskComments.AnyAsync(
             x => x.Id == command.CommentId && x.TaskId == task.Id, cancellationToken))
             throw new DomainException("O comentário informado não pertence a esta tarefa.");
@@ -1091,9 +1093,6 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("Cada anexo pode possuir no máximo 25 MB.");
         if (BlockedAttachmentExtensions.Contains(Path.GetExtension(fileName)))
             throw new DomainException("Este tipo de arquivo não é permitido por segurança.");
-        if (fileStorage is null)
-            throw new DomainException("O armazenamento de anexos não está configurado.", 503);
-
         var attachment = new TaskAttachment
         {
             TaskId = task.Id,
@@ -1106,12 +1105,37 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             SizeBytes = command.SizeBytes,
             StorageKey = $"tasks/{task.Id:N}/{Guid.NewGuid():N}/{Uri.EscapeDataString(fileName)}",
         };
-        await fileStorage.StoreAsync(
-            attachment.StorageKey, command.Content, attachment.ContentType,
-            attachment.SizeBytes, cancellationToken);
+        // Retain a bounded copy: S3 can consume part of a stream before rejecting its credentials.
+        await using var buffered = new MemoryStream((int)command.SizeBytes);
+        var buffer = new byte[81920];
+        int read;
+        while ((read = await command.Content.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            if (buffered.Length + read > MaximumAttachmentSizeBytes)
+                throw new DomainException("Cada anexo pode possuir no máximo 25 MB.");
+            await buffered.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+        if (buffered.Length != command.SizeBytes)
+            throw new DomainException("O tamanho do arquivo recebido não corresponde ao informado. Envie o arquivo novamente.");
+        var storedInS3 = false;
+        if (fileStorage is not null)
+        {
+            try
+            {
+                buffered.Position = 0;
+                await fileStorage.StoreAsync(attachment.StorageKey, buffered, attachment.ContentType, attachment.SizeBytes, cancellationToken);
+                storedInS3 = true;
+            }
+            catch (DomainException exception) when (exception.StatusCode == 503 && !cancellationToken.IsCancellationRequested)
+            {
+                logger?.LogWarning(exception, "S3 unavailable for task attachment {AttachmentId}; storing its content in the database.", attachment.Id);
+            }
+        }
         try
         {
             db.TaskAttachments.Add(attachment);
+            if (!storedInS3)
+                db.TaskAttachmentContents.Add(new TaskAttachmentContent { AttachmentId = attachment.Id, Content = buffered.ToArray() });
             AddHistory(task.Id, user.Id, "attachment_added", $"Anexo incluído: {fileName}",
                 null, new { attachment.Id, attachment.FileName, attachment.SizeBytes });
             await db.SaveChangesAsync(cancellationToken);
@@ -1119,7 +1143,11 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         }
         catch
         {
-            await fileStorage.DeleteAsync(attachment.StorageKey, cancellationToken);
+            if (storedInS3)
+            {
+                try { await fileStorage!.DeleteAsync(attachment.StorageKey, cancellationToken); }
+                catch (Exception exception) { logger?.LogWarning(exception, "Could not remove uncommitted task attachment {AttachmentId} from S3.", attachment.Id); }
+            }
             throw;
         }
     }
@@ -1134,6 +1162,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             .SingleOrDefaultAsync(x => x.Id == attachmentId, cancellationToken)
             ?? throw new DomainException("Anexo não encontrado.", 404);
         await LoadVisibleTaskAsync(attachment.TaskId, user, actor, cancellationToken);
+        var content = await db.TaskAttachmentContents.AsNoTracking().Where(x => x.AttachmentId == attachmentId)
+            .Select(x => x.Content).SingleOrDefaultAsync(cancellationToken);
+        if (content is not null)
+            return new TaskAttachmentDownloadDto("") { Content = content, ContentType = attachment.ContentType, FileName = attachment.FileName };
         var internalPath = attachment.StorageKey.Split('/');
         if (internalPath.Length == 5 && internalPath[0] == "" && internalPath[1] == "api" && internalPath[2] == "service-request-files"
             && Guid.TryParse(internalPath[3], out _) && Guid.TryParse(internalPath[4], out _))
@@ -1159,10 +1191,12 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var task = await LoadVisibleTaskAsync(attachment.TaskId, user, actor, cancellationToken);
         var storageKey = attachment.StorageKey;
         var fileName = attachment.FileName;
+        var databaseContent = await db.TaskAttachmentContents.SingleOrDefaultAsync(x => x.AttachmentId == attachmentId, cancellationToken);
+        if (databaseContent is not null) db.TaskAttachmentContents.Remove(databaseContent);
         db.TaskAttachments.Remove(attachment);
         AddHistory(task.Id, user.Id, "attachment_removed", $"Anexo removido: {fileName}", null, new { attachmentId, fileName });
         await db.SaveChangesAsync(cancellationToken);
-        if (fileStorage is not null && !Uri.TryCreate(storageKey, UriKind.Absolute, out _))
+        if (databaseContent is null && fileStorage is not null && !Uri.TryCreate(storageKey, UriKind.Absolute, out _))
         {
             try { await fileStorage.DeleteAsync(storageKey, cancellationToken); }
             catch { /* The database record is already removed; orphan cleanup can be retried by storage maintenance. */ }

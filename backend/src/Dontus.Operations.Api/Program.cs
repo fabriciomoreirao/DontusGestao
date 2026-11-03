@@ -765,7 +765,7 @@ taskFiles.MapPost("/{taskId:guid}/attachments", async (
             taskId, commentId, file.FileName, file.ContentType, file.Length, content), actor, cancellationToken));
     }
     return Results.Created($"/api/tasks/{taskId}/attachments", new { ok = true, ids });
-}).DisableAntiforgery();
+}).WithMetadata(new RequestSizeLimitAttribute(26L * 1024 * 1024)).DisableAntiforgery();
 
 taskFiles.MapGet("/attachments/{attachmentId:guid}", async (
     Guid attachmentId,
@@ -776,6 +776,8 @@ taskFiles.MapGet("/attachments/{attachmentId:guid}", async (
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var download = await taskService.GetAttachmentDownloadAsync(attachmentId, actor, cancellationToken);
+    if (download.Content is not null)
+        return Results.File(download.Content, download.ContentType, download.FileName, enableRangeProcessing: true);
     return Results.Redirect(download.Url);
 });
 

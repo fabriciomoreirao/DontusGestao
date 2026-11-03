@@ -2,6 +2,7 @@
 
 import {applyChatPresence,type ChatPresence} from "@/lib/chat-presence";
 import { sendInternalChatFiles } from "@/lib/internal-chat-upload";
+import { sendTaskFiles } from "@/lib/task-upload";
 import { knownWorkItemVersions, mergeOperationsUpdate, type OperationsChanges } from "@/lib/operations-update";
 import { recordSearchText } from "@/lib/record-search";
 import CommentEnterSupport from "@/app/CommentEnterSupport";
@@ -950,28 +951,21 @@ export default function OperationsApp() {
     }
   };
 
-  const uploadTaskAttachments = async (taskId: string, files: File[], commentId?: string) => {
+  const uploadTaskAttachments = async (taskId: string, files: File[], commentId?: string, onUploaded?: (files: File[]) => void) => {
     if (files.length === 0) return true;
     mutationRevision.current += 1;
     setBusy(true);
+    let uploaded = 0;
     try {
-      const form = new FormData();
-      files.forEach((file) => form.append("files", file));
-      const commentQuery = commentId ? `&commentId=${encodeURIComponent(commentId)}` : "";
-      const response = await fetch(`/api/task-files?taskId=${encodeURIComponent(taskId)}${commentQuery}`, {
-        method: "POST",
-        body: form,
-      });
-      const rawResult = await response.text();
-      let result: { detail?: string } = {};
-      try { result = rawResult ? JSON.parse(rawResult) : {}; } catch { result = { detail: rawResult || "Falha no envio do anexo." }; }
-      if (!response.ok) throw new Error(result.detail ?? "Os anexos não foram enviados.");
+      await sendTaskFiles(taskId, files, commentId, sent => { uploaded += sent.length; onUploaded?.(sent); });
       mutationRevision.current += 1;
       await load(true);
       setToast({ kind: "success", message: files.length === 1 ? "Arquivo anexado à tarefa." : `${files.length} arquivos anexados à tarefa.` });
       return true;
     } catch (caught) {
-      setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha no envio dos anexos." });
+      if (uploaded) { mutationRevision.current += 1; await load(true); }
+      const detail = caught instanceof Error ? caught.message : "Falha no envio dos anexos.";
+      setToast({ kind: "error", message: uploaded ? `${uploaded} arquivo(s) salvo(s). ${detail}` : detail });
       return false;
     } finally {
       setBusy(false);

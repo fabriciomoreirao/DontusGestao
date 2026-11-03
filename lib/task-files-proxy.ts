@@ -67,7 +67,8 @@ export async function downloadTaskFile(request: Request, id: string) {
       const url = new URL(location, apiBase());
       if (!["http:", "https:"].includes(url.protocol)) throw new Error("Endereço de arquivo inválido.");
       await response.body?.cancel();
-      response = await fetch(url, { headers: mediaHeaders, cache: "no-store", signal: AbortSignal.timeout(120_000) });
+      response = await fetch(url, { headers: url.origin === new URL(apiBase()).origin ? headers : mediaHeaders,
+        cache: "no-store", signal: AbortSignal.timeout(120_000) });
     }
     const outgoing = new Headers({ "cache-control": "private, no-store" });
     for (const name of ["content-type", "content-length", "content-disposition", "etag", "last-modified", "accept-ranges", "content-range"]) {
