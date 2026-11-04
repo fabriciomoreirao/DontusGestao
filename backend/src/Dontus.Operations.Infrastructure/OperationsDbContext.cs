@@ -66,6 +66,8 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<InternalChatRoom> InternalChatRooms => Set<InternalChatRoom>();
     public DbSet<InternalChatRoomMember> InternalChatRoomMembers => Set<InternalChatRoomMember>();
     public DbSet<InternalChatMessage> InternalChatMessages => Set<InternalChatMessage>();
+    public DbSet<InternalChatMessageReceipt> InternalChatMessageReceipts => Set<InternalChatMessageReceipt>();
+    public DbSet<InternalChatMessageReaction> InternalChatMessageReactions => Set<InternalChatMessageReaction>();
     public DbSet<SuggestionPriority> SuggestionPriorities => Set<SuggestionPriority>();
     public DbSet<SuggestionStatus> SuggestionStatuses => Set<SuggestionStatus>();
     public DbSet<Suggestion> Suggestions => Set<Suggestion>();
@@ -478,6 +480,23 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         });
 
         ConfigureEntity(modelBuilder.Entity<InternalChatMessage>(), "internal_chat_messages");
+        modelBuilder.Entity<InternalChatMessageReceipt>(entity =>
+        {
+            entity.ToTable("internal_chat_message_receipts");
+            entity.HasKey(x => new { x.MessageId, x.UserId });
+            entity.HasIndex(x => x.RoomId);
+            entity.HasOne<InternalChatMessage>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<InternalChatMessageReaction>(entity =>
+        {
+            entity.ToTable("internal_chat_message_reactions");
+            entity.HasKey(x => new { x.MessageId, x.UserId });
+            entity.Property(x => x.Emoji).HasMaxLength(16);
+            entity.HasIndex(x => x.RoomId);
+            entity.HasOne<InternalChatMessage>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<InternalChatMessage>(entity =>
         {
             entity.Property(x => x.Type).HasMaxLength(20);

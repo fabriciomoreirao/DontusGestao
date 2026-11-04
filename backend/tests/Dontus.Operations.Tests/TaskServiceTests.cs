@@ -8,6 +8,35 @@ namespace Dontus.Operations.Tests;
 
 public sealed class TaskServiceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Current_assignee_can_reassign_to_team_without_extra_capability(bool canEdit)
+    {
+        await using var db=CreateContext();var (service,admin)=await InitializeAsync(db);
+        var support=await db.TaskDepartments.SingleAsync(x=>x.Name=="Suporte");
+        var finance=await db.TaskDepartments.SingleAsync(x=>x.Name=="Financeiro");
+        var type=await db.TaskTypes.SingleAsync();
+        var ana=new AppUser{Email="ana@test",DisplayName="Ana",CreatedBy=admin.Email};
+        var bia=new AppUser{Email="bia@test",DisplayName="Bia",CreatedBy=admin.Email};
+        var outsider=new AppUser{Email="outside@test",DisplayName="Outro setor",CreatedBy=admin.Email};
+        var blocked=new AppUser{Email="blocked@test",DisplayName="Bloqueado",BlockedAt=DateTimeOffset.UtcNow,CreatedBy=admin.Email};
+        db.Users.AddRange(ana,bia,outsider,blocked);
+        db.UserDepartments.AddRange(new UserDepartment{UserId=ana.Id,DepartmentId=support.Id},new UserDepartment{UserId=bia.Id,DepartmentId=finance.Id},new UserDepartment{UserId=bia.Id,DepartmentId=support.Id},new UserDepartment{UserId=outsider.Id,DepartmentId=finance.Id},new UserDepartment{UserId=blocked.Id,DepartmentId=support.Id});
+        await db.SaveChangesAsync();
+        var id=(await service.CreateAsync(new("Trocar responsável","Contexto",type.Id,null,null,support.Id,support.Id,ana.Id,null,"123456","Clínica","5511999990000",null,null,null,null,false,[],[]),admin)).Id;
+        var task=await db.CorporateTasks.SingleAsync(x=>x.Id==id);
+        var actor=new ActorContext(ana.Email,ana.DisplayName,"Colaborador","Suporte",[new("tasks",true,false,canEdit,false,false)]);
+        await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(id,outsider.Id,task.Version),actor));
+        await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(id,blocked.Id,task.Version),actor));
+        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(id,bia.Id,task.Version+1),actor))).StatusCode);
+        await service.AssignAsync(new(id,bia.Id,task.Version),actor);
+        Assert.Equal(bia.Id,task.AssigneeUserId);
+        Assert.Contains(db.TaskHistory,x=>x.TaskId==id&&x.EventType=="assignee_changed");
+        Assert.Contains(db.TaskNotifications,x=>x.TaskId==id&&x.RecipientUserId==bia.Id&&x.EventType=="assigned");
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(id,ana.Id,task.Version),actor))).StatusCode);
+    }
+
     [Fact]
     public async Task Shared_department_queue_is_visible_and_notifies_members_without_participation_or_extra_capabilities()
     {

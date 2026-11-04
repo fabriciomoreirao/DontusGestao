@@ -523,15 +523,17 @@ test("integra campanhas de marketing com qualificação e indicadores do CRM", a
   assert.match(css, /\.commercial-campaign-fields/);
 });
 
-test("qualifica vendas diretas, acompanha metas e retorna das configurações", async () => {
+test("vendas diretas identificam o cliente sem qualificação e preservam metas e navegação", async () => {
   const [app, indicators, css] = await Promise.all([
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/OperationIndicatorsBoard.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
-  assert.match(app, /type DirectSale = \{[\s\S]*leadQualification\?: "qualified" \| "not-qualified"/);
-  assert.match(app, /Qualificação do lead \*/);
-  assert.match(app, /Lead não qualificado/);
+  assert.match(app, /type DirectSale = \{[\s\S]*clientId\?: string/);
+  const directSaleModal = app.slice(app.indexOf("function DirectSaleModal("), app.indexOf("function CommercialLeadCard("));
+  assert.doesNotMatch(directSaleModal, /Qualificação do lead|leadQualification/);
+  assert.match(directSaleModal, /ID do cliente/);
+  assert.match(app, /directSaleFollowup\(detail, sourceId/);
   assert.match(app, /openFunctionSettings/);
   assert.match(app, /ConfigurationReturnBar/);
   assert.match(app, /Voltar para \{label\}/);

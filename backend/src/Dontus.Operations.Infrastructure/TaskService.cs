@@ -574,9 +574,14 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
 
     public async Task AssignAsync(AssignTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        RequireCapabilityOrManage(actor, command.AssigneeUserId.HasValue ? "transferAssignee" : "assume");
         var user = await GetActorUserAsync(actor, cancellationToken);
-        var task = await LoadEditableTaskAsync(command.TaskId, command.Version, user, actor, cancellationToken);
+        var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        if (!command.AssigneeUserId.HasValue || task.AssigneeUserId != user.Id)
+        {
+            actor.RequirePermission("tasks", "edit");
+            RequireCapabilityOrManage(actor, command.AssigneeUserId.HasValue ? "transferAssignee" : "assume");
+        }
+        if (task.Version != command.Version) throw new DomainException("A tarefa foi alterada por outro usuário.", 409);
         var assigneeId = command.AssigneeUserId ?? user.Id;
         await ValidateAssigneeAsync(assigneeId, task.CurrentDepartmentId, cancellationToken);
         var previous = task.AssigneeUserId;
@@ -1236,7 +1241,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
 
     private async Task ValidateAssigneeAsync(Guid userId, Guid departmentId, CancellationToken cancellationToken)
     {
-        if (!await db.Users.AnyAsync(x => x.Id == userId && x.Active, cancellationToken))
+        if (!await db.Users.AnyAsync(x => x.Id == userId && x.Active && x.BlockedAt == null, cancellationToken))
             throw new DomainException("Somente colaboradores ativos podem receber tarefas.");
         if (!await db.UserDepartments.AnyAsync(x => x.UserId == userId && x.DepartmentId == departmentId, cancellationToken))
             throw new DomainException("O responsável não pertence ao setor selecionado.");

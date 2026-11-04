@@ -2092,6 +2092,57 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("internal_chat_messages", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.InternalChatMessageReaction", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Emoji")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset>("ReactedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MessageId", "UserId");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("internal_chat_message_reactions", (string)null);
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.InternalChatMessageReceipt", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MessageId", "UserId");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("internal_chat_message_receipts", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.InternalChatRoom", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3774,6 +3825,36 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.HasOne("Dontus.Operations.Domain.AppUser", null)
                         .WithMany()
                         .HasForeignKey("SenderUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.InternalChatMessageReaction", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.InternalChatMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dontus.Operations.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.InternalChatMessageReceipt", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.InternalChatMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dontus.Operations.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
