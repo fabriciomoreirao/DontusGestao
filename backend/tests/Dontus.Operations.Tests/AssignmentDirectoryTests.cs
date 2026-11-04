@@ -29,6 +29,16 @@ public sealed class AssignmentDirectoryTests
     [InlineData("finance")]
     [InlineData("procurement")]
     [InlineData("work")]
+    [InlineData("dashboard")]
+    [InlineData("tasks")]
+    [InlineData("hr")]
+    [InlineData("internalChat")]
+    [InlineData("commissions")]
+    [InlineData("referrals")]
+    [InlineData("notes")]
+    [InlineData("diary")]
+    [InlineData("notices")]
+    [InlineData("suggestions")]
     public async Task Module_only_users_receive_active_assignment_choices_without_administrative_access(string module)
     {
         await using var db = Context();
@@ -133,7 +143,7 @@ public sealed class AssignmentDirectoryTests
         await using var db = Context();
         var actor = new ActorContext("ana@test.local", "Ana", "Colaborador", "Suporte", [new("notes", true, false, false, false, false)]);
         var service = new OperationsService(db);
-        Assert.Null((await service.GetSnapshotAsync(actor)).AssignmentDirectory);
+        Assert.NotNull((await service.GetSnapshotAsync(actor)).AssignmentDirectory);
         Assert.False(OperationsProjectionPolicy.CanViewCustomerCatalogs(actor));
         var error = await Assert.ThrowsAsync<DomainException>(() => service.GetCustomerModuleAsync(actor));
         Assert.Equal(403, error.StatusCode);

@@ -116,6 +116,12 @@ Em **Cadastros → Setores** e **Colaboradores → Setores**, selecione os coord
 
 ## Módulo de Tarefas
 
+Nos acompanhamentos de **Ativação** e **Retenção**, **Inserir cliente** permite informar a **Data de início do acompanhamento**. O botão **Editar** do card reabre o formulário preenchido para ajustar data, nome, ID, telefone, responsável e status, preservando o histórico e a etapa. A contagem usa dias do calendário de Brasília; registros antigos sem data usam a criação do card, sem reiniciar após edições. Encaminhamentos gravam a data inicial automaticamente.
+
+Em **Portal Dontus → Consultar status de cliente encaminhado**, pesquise o ID completo para conferir cada setor, a situação do contato, o responsável e as datas. A consulta exige sessão autenticada e acesso ao Dashboard ou à Fila de espera.
+
+Tarefas na **Fila do setor**, sem responsável individual, ficam visíveis para todos os membros do setor, inclusive vínculos secundários, sem exigir participação ou a capacidade de visualizar tarefas de terceiros. Criação, encaminhamento e comentários geram notificações para essa fila. Ao atribuir um responsável individual, os avisos voltam a seguir esse responsável.
+
 Em **Nova tarefa**, informe o **ID do cliente** com os seis dígitos do ID Dontus. Um ID cadastrado vincula o cliente automaticamente; alterar para um ID sem correspondência remove o vínculo anterior. O protocolo aparece no título e no cabeçalho assim que o card é aberto.
 
 Imagens e vídeos selecionados na criação são enviados com a sessão do usuário e aparecem em **Anexos** ao reabrir a tarefa. Se o envio falhar, os arquivos permanecem selecionados e a ação **Reenviar anexos** conclui o envio para a tarefa já criada. A reprodução de vídeos preserva os intervalos de bytes necessários para avançar e retroceder.

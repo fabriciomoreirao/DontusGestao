@@ -15,6 +15,7 @@ export type NotificationData = {
   customers?: Array<{id:string;owner:string;cs_owner?:string;support_owner?:string}>;
   access?: { employees: Array<{id:string;email:string;displayName:string;departmentName:string;departmentNames:string[]}>; users?:Array<{id:string;email:string;createdAt:string}> } | null;
   waitingQueueDirectory?: {employees:Array<{id:string;email:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames:string[]}>}|null;
+  assignmentDirectory?: {employees:Array<{id:string;email:string;displayName:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames:string[]}>}|null;
   internalChatModule?: {currentUserId:string;rooms:Array<{id:string;name:string;unreadCount:number;lastMessageAt:string;messages:Array<{id:string;senderUserId:string;senderName:string;body:string;type:string;createdAt:string}>}>} | null;
   taskModule?: { notifications:Array<{id:string;taskId:string;eventType:string;message:string;read:boolean;createdAt:string}>; tasks:Array<{id:string;assigneeUserId:string|null;assigneeName:string}>;collaborators:Array<{id:string;email:string}> } | null;
   noticesModule?: {notices:Array<{id:string;title:string;kind:string;authorUserId:string;active:boolean;visibleToCurrentUser:boolean;isRead:boolean;publishedAt:string}>} | null;
@@ -43,12 +44,13 @@ function targetUrl(item:Item,detail:Record<string,unknown>){
 export function buildNotifications(data:NotificationData,now:number):AppNotification[]{
   const entries:AppNotification[]=[];
   const self=new Set([normalize(data.user.email),normalize(data.user.displayName)]);
-  const employee=data.access?.employees.find(entry=>normalize(entry.email)===normalize(data.user.email));
+  const directory=data.assignmentDirectory?.employees??data.access?.employees??[];
+  const employee=directory.find(entry=>normalize(entry.email)===normalize(data.user.email));
   const userId=data.internalChatModule?.currentUserId||employee?.id||data.agendaModule?.collaborators.find(entry=>normalize(entry.email)===normalize(data.user.email))?.id||data.taskModule?.collaborators.find(entry=>normalize(entry.email)===normalize(data.user.email))?.id;
   if(userId)self.add(normalize(userId));
   const isSelf=(value:unknown)=>Boolean(value)&&self.has(normalize(value));
   const canView=(screen:string)=>data.user.permissions.some(permission=>permission.screen===screen&&permission.canView);
-  const employees=data.access?.employees??[];
+  const employees=directory;
   const userNames=new Set(employees.flatMap(entry=>[normalize(entry.email),normalize(entry.displayName)]));
   const departments=new Set([data.user.department,...(employee?.departmentNames??[])].map(normalize).filter(Boolean));
   const owns=(owner:unknown)=>isSelf(owner);
@@ -100,7 +102,7 @@ export function buildNotifications(data:NotificationData,now:number):AppNotifica
   }
   for(const notification of data.taskModule?.notifications??[]){
     const task=data.taskModule?.tasks.find(task=>task.id===notification.taskId);
-    if(notification.read||!["assigned","transferred","comment_added"].includes(notification.eventType)||!task||!(owns(task.assigneeUserId)||owns(task.assigneeName)))continue;
+    if(notification.read||!["assigned","transferred","comment_added"].includes(notification.eventType)||!task||!(!task.assigneeUserId||owns(task.assigneeUserId)||owns(task.assigneeName)))continue;
     add({id:`task-${notification.id}`,sourceId:notification.taskId,category:"task",title:notification.message,meta:"Tarefa",module:"tasks",at:notification.createdAt,targetUrl:`/?mod=tasks&task=${encodeURIComponent(notification.taskId)}`});
   }
   for(const room of data.internalChatModule?.rooms??[]){

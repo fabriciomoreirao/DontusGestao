@@ -8120,3 +8120,18 @@ form:is(.modal,.modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)>
   .reminder-toolbar { flex-wrap: wrap; }
   .reminder-toolbar > label:first-child, .reminder-toolbar .reminder-date-filter { flex: 1 1 100%; width: 100%; }
 }
+.portal-dispatch-actions { display:grid; grid-template-columns:minmax(220px,1fr) minmax(0,3fr); gap:12px; align-items:stretch; }
+.portal-status-search { display:flex; align-items:end; justify-content:center; gap:16px; width:min(100%,650px); margin:28px auto; }
+.portal-status-search label { display:grid; gap:8px; flex:1; min-width:0; font-weight:600; }
+.portal-status-search input { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:12px 14px; min-height:44px; }
+.portal-status-results > header { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.portal-status-results article { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:22px; margin-bottom:14px; display:grid; gap:16px; }
+.portal-status-results article h2 { font-size:18px; margin:0 0 6px; }
+.portal-status-results article > strong { display:flex; align-items:center; gap:8px; }
+.portal-status-results .contacted { color:#16a34a; }
+.portal-status-results .waiting { color:#b77912; }
+.portal-status-results dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:0; }
+.portal-status-results dt { font-size:12px; opacity:.7; }
+.portal-status-results dd { margin:4px 0 0; }
+@media(max-width:600px) { .portal-status-search { align-items:stretch; flex-direction:column; } .portal-status-results dl { grid-template-columns:1fr; } }
+@media(max-width:620px) { .portal-dispatch-actions { grid-template-columns:1fr; } }

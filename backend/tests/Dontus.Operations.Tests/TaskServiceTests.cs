@@ -8,6 +8,41 @@ namespace Dontus.Operations.Tests;
 
 public sealed class TaskServiceTests
 {
+    [Fact]
+    public async Task Shared_department_queue_is_visible_and_notifies_members_without_participation_or_extra_capabilities()
+    {
+        await using var db=CreateContext();var (service,admin)=await InitializeAsync(db);
+        var support=await db.TaskDepartments.SingleAsync(x=>x.Name=="Suporte");
+        var finance=await db.TaskDepartments.SingleAsync(x=>x.Name=="Financeiro");
+        var type=await db.TaskTypes.SingleAsync();
+        var ana=new AppUser{Email="ana@test",DisplayName="Ana",CreatedBy=admin.Email};
+        var bia=new AppUser{Email="bia@test",DisplayName="Bia",CreatedBy=admin.Email};
+        var outsider=new AppUser{Email="outside@test",DisplayName="Outro",CreatedBy=admin.Email};
+        db.Users.AddRange(ana,bia,outsider);
+        db.UserDepartments.AddRange(new UserDepartment{UserId=ana.Id,DepartmentId=support.Id},new UserDepartment{UserId=bia.Id,DepartmentId=support.Id},new UserDepartment{UserId=bia.Id,DepartmentId=finance.Id},new UserDepartment{UserId=outsider.Id,DepartmentId=finance.Id});
+        await db.SaveChangesAsync();
+        var created=await service.CreateAsync(new("Fila compartilhada","Contexto",type.Id,null,null,support.Id,support.Id,null,null,"123456","Clínica","5511999990000",null,null,null,null,false,[],[]),admin);
+        ActorContext Actor(AppUser user)=>new(user.Email,user.DisplayName,"Colaborador","",[new("tasks",true,false,true,false,false)]);
+        foreach(var user in new[]{ana,bia})
+        {
+            var module=await service.GetModuleAsync(Actor(user));
+            Assert.Equal(created.Id,Assert.Single(module.Tasks).Id);
+            Assert.Equal("assigned",Assert.Single(module.Notifications).EventType);
+        }
+        Assert.Empty((await service.GetModuleAsync(Actor(outsider))).Tasks);
+        await service.AddCommentAsync(new(created.Id,"Comentário da fila",[]),Actor(ana));
+        Assert.Contains((await service.GetModuleAsync(Actor(bia))).Notifications,x=>x.EventType=="comment_added");
+        var task=await db.CorporateTasks.SingleAsync();
+        await service.TransferAsync(new(task.Id,finance.Id,null,"Encaminhamento para o Financeiro",false,task.Version),admin);
+        foreach(var user in new[]{bia,outsider})
+        {
+            var module=await service.GetModuleAsync(Actor(user));Assert.Single(module.Tasks);
+            Assert.Contains(module.Notifications,x=>x.EventType=="transferred");
+        }
+        Assert.Empty((await service.GetModuleAsync(Actor(ana))).Tasks);
+        Assert.Empty((await service.GetModuleAsync(Actor(ana))).Notifications);
+    }
+
     [Theory]
     [InlineData("planilha.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
     [InlineData("documento.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")]

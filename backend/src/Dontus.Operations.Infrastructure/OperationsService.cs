@@ -208,6 +208,33 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         };
     }
 
+    public async Task<IReadOnlyCollection<DispatchStatusDto>> GetDispatchStatusAsync(string clientId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        if (!actor.HasPermission("dashboard", "view") && !actor.HasPermission("waitingQueue", "view"))
+            throw new DomainException("Seu acesso não permite consultar encaminhamentos no Portal.", 403);
+        clientId = clientId.Trim();
+        if (clientId.Length is < 1 or > 64 || !clientId.All(char.IsAsciiDigit))
+            throw new DomainException("Informe o ID numérico completo do cliente.");
+        var candidates = await db.WorkItems.AsNoTracking()
+            .Where(item => item.Module == "waitingQueue" && item.Description.Contains(clientId))
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new { item.Id, item.Description }).ToListAsync(cancellationToken);
+        var result = new List<DispatchStatusDto>();
+        foreach (var item in candidates)
+        {
+            try
+            {
+                var detail = JsonNode.Parse(item.Description) as JsonObject;
+                string Text(string key) => detail?[key]?.ToString() ?? "";
+                if (Text("kind") != "waitingQueue" || Text("clientCode").Trim() != clientId) continue;
+                result.Add(new(item.Id, clientId, Text("clientName"), Text("departmentName"), Text("responsibleName"),
+                    Text("state") == "contacted" ? "contacted" : "waiting", Text("sentAt"), Text("contactedAt"), Text("contactedByName")));
+            }
+            catch (JsonException) { }
+        }
+        return result;
+    }
+
     private async Task<WaitingQueueDirectoryDto> GetWaitingQueueDirectoryAsync(CancellationToken ct)
     {
         // Assignment choices must be available without the administrative employee projection.
@@ -1031,6 +1058,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             CreatedBy = actor.Email,
         };
 
+        if (item.Module == "cs")
+        {
+            item.Description = CsJourneyTimeline.Normalize(item.Description);
+            if (CustomerSuccessJourneyStatus(item.Description) is { } status) item.Status = status;
+        }
         var commissionDecisionData = await CommissionDecisionPolicy.PrepareAsync(db, item.Module, item.Description, null, item.AmountCents, actor, cancellationToken, item.CreatedBy);
         item.Description = commissionDecisionData.Description; item.AmountCents = commissionDecisionData.Amount;
         if (item.Module == "cancellations")
@@ -1362,7 +1394,17 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         }
 
         if (item.Module == "cs")
-            command = command with { Description = CsDistributionService.PreserveMetadata(item.Description, command.Description, distribution) };
+        {
+            command = command with { Description = CsJourneyTimeline.Normalize(CsDistributionService.PreserveMetadata(item.Description, command.Description, distribution), item) };
+            if (TryReadJourneyIdentity(command.Description, out var editedKind, out var editedId, out var editedTrack) && editedKind == "csJourney" && !string.IsNullOrWhiteSpace(editedId))
+            {
+                var others = await db.WorkItems.AsNoTracking().Where(entry => entry.Module == "cs" && entry.Id != item.Id)
+                    .Select(entry => entry.Description).ToListAsync(cancellationToken);
+                if (others.Any(value => TryReadJourneyIdentity(value, out var kind, out var id, out var track)
+                    && kind == editedKind && track == editedTrack && string.Equals(id.Trim(), editedId.Trim(), StringComparison.OrdinalIgnoreCase)))
+                    throw new DomainException("ID já inserido na funcionalidade.", 409);
+            }
+        }
         if (distribution is not null) AddAudit(actor, CsDistributionService.AuditAction, "work_item", item.Id.ToString(), "cs", distribution);
 
         if (!string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -1388,7 +1430,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 throw new DomainException("Tipo de lead inv\u00e1lido.");
             item.RecordType = recordType;
         }
-        if (item.Module == "commercial" && command.CustomerName is not null)
+        if (item.Module is "commercial" or "cs" && command.CustomerName is not null)
             item.CustomerName = command.CustomerName.Trim();
         item.UpdatedAt = DateTimeOffset.UtcNow;
         item.Version++;

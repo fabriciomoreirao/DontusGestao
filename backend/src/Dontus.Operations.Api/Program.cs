@@ -510,6 +510,13 @@ app.MapGet("/api/public-service-requests", async (HttpContext context, IConfigur
     });
 }).RequireRateLimiting("public-service-requests");
 
+app.MapGet("/api/portal/dispatch-status", async (string clientId, ClaimsPrincipal principal, IOperationsService service,
+    IAccessControlService accessControl, CancellationToken cancellationToken) =>
+{
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    return Results.Ok(await service.GetDispatchStatusAsync(clientId, actor, cancellationToken));
+}).RequireAuthorization();
+
 app.MapGet("/api/service-request-ai-settings", async (
     ClaimsPrincipal principal,
     IAccessControlService accessControl,

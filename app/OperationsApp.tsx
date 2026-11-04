@@ -1052,7 +1052,7 @@ export default function OperationsApp() {
   const globalResults = useMemo(() => {
     const query = normalizeWorkspaceSearch(deferredSearch);
     if (!query || !data) return [];
-    const employees = (data.access?.employees ?? [])
+    const employees = (data.access?.employees ?? data.assignmentDirectory?.employees.map(person=>({...person,jobTitle:""})) ?? [])
       .filter((employee) => `${employee.displayName} ${employee.email} ${employee.jobTitle} ${employee.departmentName} ${employee.departmentNames.join(" ")}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").includes(query))
       .slice(0, 5)
       .map((employee) => ({ id: employee.id, label: employee.displayName, meta: `Colaborador · ${employee.jobTitle || employee.departmentName || "Dontus"}`, kind: "employee" as const }));
@@ -1076,7 +1076,7 @@ export default function OperationsApp() {
   }, [data, deferredSearch]);
 
   const openEmployeeFromGlobalSearch = (employeeId: string) => {
-    const employee = data?.access?.employees.find((entry) => entry.id === employeeId);
+    const employee = (data?.access?.employees ?? data?.assignmentDirectory?.employees ?? []).find((entry) => entry.id === employeeId);
     if (!employee) return false;
     setProfileEditable(false);
     setProfileEmployee(employee);
@@ -1088,7 +1088,7 @@ export default function OperationsApp() {
     const query = search.trim();
     if (query.length < 3 || !data) return;
     const normalized = query.toLocaleLowerCase("pt-BR");
-    const exactEmployee = (data.access?.employees ?? []).find((employee) =>
+    const exactEmployee = (data.access?.employees ?? data.assignmentDirectory?.employees ?? []).find((employee) =>
       employee.displayName.toLocaleLowerCase("pt-BR") === normalized || employee.email.toLocaleLowerCase("pt-BR") === normalized,
     );
     if (exactEmployee && openEmployeeFromGlobalSearch(exactEmployee.id)) return;
@@ -1526,8 +1526,8 @@ export default function OperationsApp() {
           {active === "hr" && data.customerModule && <HrManagementModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={data.access?.employees ?? []} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "hr", "edit")} operate={operate} onOpenSettings={userCan(data.user, "hr", "manage") ? () => openFunctionSettings("hrCatalogs") : undefined} />}
           {active === "support" && data.customerModule && <ServiceRecordsModule items={kanbanItems} customers={data.customers} catalogs={data.customerModule.catalogs} employees={assignmentEmployees} departments={assignmentDepartments} currentUser={data.user} busy={busy} canCreate={userCan(data.user, "support", "create")} canEdit={userCan(data.user, "support", "edit")} canDelete={userCan(data.user, "support", "edit")} operate={operate} onOpenSettings={userCan(data.user, "support", "manage") ? () => openFunctionSettings("serviceCatalogs") : undefined} />}
           {active === "waitingQueue" && <WaitingQueueModule items={kanbanItems} employees={data.waitingQueueDirectory?.employees ?? data.access?.employees ?? []} departments={data.waitingQueueDirectory?.departments ?? data.access?.departments ?? []} currentUser={data.user} busy={busy} operate={operate} onOpenSettings={userCan(data.user, "waitingQueue", "manage") ? () => openFunctionSettings("waitingQueueCatalogs") : undefined} />}
-          {active === "referrals" && data.customerModule && <ReferralsModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={(data.customerModule.collaborators ?? data.access?.employees ?? []).filter(employee => employee.active)} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "referrals", "edit")} canManage={userCan(data.user, "referrals", "manage")} operate={operate} />}
-          {active === "commissions" && data.customerModule && <CommissionsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={data.customerModule.collaborators ?? data.access?.employees ?? []} currentUser={data.user} busy={busy} canApprove={userCan(data.user,"commissions","approve")} canManage={userCan(data.user,"commissions","manage")} operate={operate} />}
+          {active === "referrals" && data.customerModule && <ReferralsModule items={kanbanItems} catalogs={data.customerModule.catalogs} employees={assignmentEmployees} currentUser={data.user} busy={busy} canEdit={userCan(data.user, "referrals", "edit")} canManage={userCan(data.user, "referrals", "manage")} operate={operate} />}
+          {active === "commissions" && data.customerModule && <CommissionsModule items={data.items} customers={data.customers} catalogs={data.customerModule.catalogs} employees={assignmentEmployees} currentUser={data.user} busy={busy} canApprove={userCan(data.user,"commissions","approve")} canManage={userCan(data.user,"commissions","manage")} operate={operate} />}
           {active === "goals" && <GoalsModule items={data.items} taskItems={data.taskModule?.tasks ?? []} catalogs={data.customerModule?.catalogs ?? []} employees={assignmentEmployees} departments={assignmentDepartments} currentUser={data.user} busy={busy} canCreate={userCan(data.user,"goals","create")} canEdit={userCan(data.user,"goals","edit")} canManage={userCan(data.user,"goals","manage")} operate={operate} />}
           {active === "surveys" && <SatisfactionSurveysModule items={data.items} employees={assignmentEmployees} departments={assignmentDepartments} currentUser={data.user} busy={busy} canEdit={userCan(data.user,"surveys","edit")} operate={operate} />}
           {["finance", "procurement"].includes(active) && (
@@ -1631,7 +1631,7 @@ export default function OperationsApp() {
         </div>
       </main>
 
-      {forwardRequest && <DispatchModal initial={forwardRequest} initialDepartmentId="" departments={assignmentDepartments} employees={assignmentEmployees} requestTypes={data.customerModule?.catalogs.filter(entry => entry.active && entry.catalog === "waitingQueueRequestType").map(entry => entry.name) || []} user={data.user} busy={busy} onClose={() => setForwardRequest(null)} onSend={async detail => { const result = await operate({ action: "createWorkItem", module: "waitingQueue", recordType: "Encaminhamento de chamado", title: detail.clientName, customerName: detail.clientName, owner: detail.responsibleName || detail.senderName, team: detail.departmentName, priority: detail.strategic ? "P1" : "P3", amountCents: 0, originType: "serviceFollowup", originId: forwardRequest.sourceId, description: JSON.stringify(detail) }, "Cliente encaminhado à fila de espera."); if (result) setForwardRequest(null); }} />}
+      {forwardRequest && <DispatchModal initial={forwardRequest} initialDepartmentId="" departments={assignmentDepartments} employees={assignmentEmployees} requestTypes={data.customerModule?.catalogs.filter(entry => entry.active && entry.catalog === "waitingQueueRequestType").map(entry => entry.name) || []} user={data.user} busy={busy} onClose={() => setForwardRequest(null)} onSend={async detail => { const result = await operate({ action: "createWorkItem", module: "waitingQueue", recordType: "Encaminhamento de chamado", title: detail.clientName, customerName: detail.clientName, owner: detail.responsibleName || "Fila compartilhada", team: detail.departmentName, priority: detail.strategic ? "P1" : "P3", amountCents: 0, originType: "serviceFollowup", originId: forwardRequest.sourceId, description: JSON.stringify(detail) }, "Cliente encaminhado à fila de espera."); if (result) setForwardRequest(null); }} />}
       <CardLinkEnhancer module={active} records={[...data.items, ...(data.taskModule?.tasks || []).map(task => ({id:task.id,title:task.title,protocol:task.protocol,module:"tasks"})), ...(data.suggestionModule?.suggestions || []).map(suggestion => ({id:suggestion.id,title:suggestion.name,protocol:suggestion.protocol,module:"suggestions"}))]} />
       <ReminderCardEnhancer module={active} reminders={data.items.filter((entry) => entry.module === "reminders")} checklists={data.items.filter((entry) => entry.record_type === "Checklist vinculado")} />
 

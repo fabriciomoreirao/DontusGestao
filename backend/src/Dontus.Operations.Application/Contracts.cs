@@ -378,8 +378,12 @@ public sealed record OperationsSnapshot(
     public WaitingQueueDirectoryDto? AssignmentDirectory { get; init; }
 }
 
+public sealed record DispatchStatusDto(Guid Id, string ClientId, string ClientName, string DepartmentName,
+    string ResponsibleName, string State, string SentAt, string? ContactedAt, string? ContactedByName);
+
 public interface IOperationsService
 {
+    Task<IReadOnlyCollection<DispatchStatusDto>> GetDispatchStatusAsync(string clientId, ActorContext actor, CancellationToken cancellationToken = default);
     Task InitializeAsync(CancellationToken cancellationToken = default);
     Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default, bool includeWorkspaceDetails = true,
         IReadOnlyDictionary<Guid, long>? knownWorkItemVersions = null);
