@@ -97,13 +97,14 @@ public sealed class InternalChatServiceTests
     public async Task Reactions_are_persistent_idempotent_replaceable_and_private_to_the_room()
     {
         await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");var reader=AddUser(db,"reader@test","Leitor");var outsider=AddUser(db,"other@test","Outro");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender));
+        sender.IsCoordinator=true;var secondReader=AddUser(db,"second-reader@test","Segundo leitor");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new("Equipe",null,true,[reader.Id,secondReader.Id]),Actor(sender));
         var id=await service.SendMessageAsync(new(room,"Pode conferir?","text"),Actor(sender));
         await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader));await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader));
         Assert.Single(db.InternalChatMessageReactions);
-        await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(sender));
+        await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(secondReader));
         var reaction=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Reactions);
-        Assert.Equal(2,reaction.Count);Assert.Contains(reader.Id,reaction.UserIds);Assert.Contains("Remetente",reaction.UserNames);
+        Assert.Equal(2,reaction.Count);Assert.Contains(reader.Id,reaction.UserIds);Assert.Contains("Segundo leitor",reaction.UserNames);
         await service.SetMessageReactionAsync(new(room,id,"❤️",true),Actor(reader));
         Assert.Equal(2,await db.InternalChatMessageReactions.CountAsync());
         await service.SetMessageReactionAsync(new(room,id,"👍",false),Actor(reader));
@@ -115,6 +116,23 @@ public sealed class InternalChatServiceTests
         await service.DeleteMessageAsync(new(room,id,1),Actor(sender));
         Assert.Empty((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Reactions);
         Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader)))).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reactions_are_allowed_only_on_received_messages_in_private_and_group_chats(bool group)
+    {
+        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
+        var reader=AddUser(db,"reader@test","Leitor");await db.SaveChangesAsync();var service=CreateService(db);
+        var room=await service.CreateRoomAsync(new(group?"Equipe":null,null,group,[reader.Id]),Actor(sender));
+        var id=await service.SendMessageAsync(new(room,"Mensagem enviada","text"),Actor(sender));
+        foreach(var reacted in new[]{true,false})
+            Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",reacted),Actor(sender)))).StatusCode);
+        Assert.Empty(db.InternalChatMessageReactions);
+        await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader));
+        var reaction=Assert.Single((await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single().Reactions);
+        Assert.Equal(1,reaction.Count);Assert.Equal(reader.Id,Assert.Single(reaction.UserIds));
     }
 
     [Theory]

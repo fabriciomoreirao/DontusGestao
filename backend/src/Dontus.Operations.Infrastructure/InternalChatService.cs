@@ -487,6 +487,7 @@ public sealed class InternalChatService(
         var message = await db.InternalChatMessages.AsNoTracking().SingleOrDefaultAsync(entry => entry.Id == command.MessageId && entry.RoomId == command.RoomId
             && entry.CreatedAt >= member.JoinedAt, cancellationToken) ?? throw new DomainException("Mensagem não encontrada.", 404);
         if (message.DeletedAt.HasValue || message.Type == "pin") throw new DomainException("Esta mensagem não aceita reações.", 409);
+        if (message.SenderUserId == user.Id) throw new DomainException("Você pode reagir apenas às mensagens recebidas.", 403);
         var emoji = command.Emoji.Trim();
         if (!new[] { "👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉" }.Contains(emoji)) throw new DomainException("Selecione uma reação válida.");
         var reactedAt = DateTimeOffset.UtcNow;
