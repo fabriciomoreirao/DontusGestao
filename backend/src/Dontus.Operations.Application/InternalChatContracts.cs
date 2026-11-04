@@ -5,6 +5,7 @@ public sealed record InternalChatUserDto(
     string JobTitle, bool IsCoordinator, bool IsOnline = false, DateTimeOffset? LastSeenAt = null);
 public sealed record UserPresenceDto(Guid UserId, bool IsOnline, DateTimeOffset? LastSeenAt);
 public sealed record InternalChatReactionDto(string Emoji, int Count, IReadOnlyCollection<Guid> UserIds, IReadOnlyCollection<string> UserNames);
+public sealed record InternalChatReplyDto(Guid Id, string SenderName, string Type, string Body, string FileName, DateTimeOffset? DeletedAt);
 
 public sealed record InternalChatMessageDto(
     Guid Id, Guid RoomId, Guid SenderUserId, string SenderName, string SenderPhotoDataUrl,
@@ -12,6 +13,7 @@ public sealed record InternalChatMessageDto(
     string Type, string Body, string FileName, string ContentType, bool HasAttachment, bool IsPinned,
     string ReceiptState, DateTimeOffset CreatedAt, DateTimeOffset? EditedAt = null, DateTimeOffset? DeletedAt = null, long Version = 1)
 {
+    public InternalChatReplyDto? ReplyTo { get; init; }
     public DateTimeOffset? SeenAt { get; init; }
     public int SeenByCount { get; init; }
     public int RecipientCount { get; init; }
@@ -32,10 +34,10 @@ public sealed record InternalChatModuleDto(
 public sealed record CreateInternalChatRoomCommand(
     string? Name, string? PhotoDataUrl, bool IsGroup, IReadOnlyCollection<Guid>? MemberUserIds);
 
-public sealed record SendInternalChatMessageCommand(Guid RoomId, string? Body, string? Type);
+public sealed record SendInternalChatMessageCommand(Guid RoomId, string? Body, string? Type, Guid? ReplyToMessageId = null);
 public sealed record EditInternalChatMessageCommand(Guid RoomId, Guid MessageId, string Body, long Version);
 public sealed record DeleteInternalChatMessageCommand(Guid RoomId, Guid MessageId, long Version);
-public sealed record CreateInternalChatPollCommand(Guid RoomId, string? Question, IReadOnlyCollection<string>? Options);
+public sealed record CreateInternalChatPollCommand(Guid RoomId, string? Question, IReadOnlyCollection<string>? Options, Guid? ReplyToMessageId = null);
 public sealed record VoteInternalChatPollCommand(Guid RoomId, Guid MessageId, int OptionIndex);
 public sealed record SetInternalChatMessagePinnedCommand(Guid RoomId, Guid MessageId, bool Pinned);
 public sealed record SetInternalChatMessageReactionCommand(Guid RoomId, Guid MessageId, string Emoji, bool Reacted);
@@ -44,7 +46,7 @@ public sealed record MarkInternalChatRoomReadCommand(Guid RoomId);
 public sealed record UpdateInternalChatGroupCommand(Guid RoomId, string? Name, string? PhotoDataUrl);
 
 public sealed record UploadInternalChatAttachmentCommand(
-    Guid RoomId, string FileName, string ContentType, long SizeBytes, Stream Content);
+    Guid RoomId, string FileName, string ContentType, long SizeBytes, Stream Content, Guid? ReplyToMessageId = null);
 
 public sealed record InternalChatAttachmentDto(string FullPath, string FileName, string ContentType);
 

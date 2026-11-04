@@ -22,6 +22,7 @@ public sealed class InternalChatRoomMember
 public sealed class InternalChatMessage : Entity
 {
     public Guid RoomId { get; set; }
+    public Guid? ReplyToMessageId { get; set; }
     public Guid SenderUserId { get; set; }
     public string Type { get; set; } = "text";
     public string Body { get; set; } = "";

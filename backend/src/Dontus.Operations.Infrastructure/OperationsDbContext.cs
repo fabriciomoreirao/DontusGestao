@@ -505,6 +505,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.ContentType).HasMaxLength(120);
             entity.Property(x => x.StorageKey).HasMaxLength(600);
             entity.HasIndex(x => new { x.RoomId, x.CreatedAt });
+            entity.HasOne<InternalChatMessage>().WithMany().HasForeignKey(x => x.ReplyToMessageId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne<InternalChatRoom>().WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.SenderUserId).OnDelete(DeleteBehavior.Restrict);
         });

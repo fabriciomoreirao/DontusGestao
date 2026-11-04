@@ -1,5 +1,16 @@
 export type DepartmentQueueMode = "conventional" | "linked";
 
+type QueueDepartment = { departmentId: string; departmentName: string };
+const normalizeDepartment = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
+export function waitingQueueSectorKey(detail: QueueDepartment) {
+  return detail.departmentId ? `id:${detail.departmentId}` : `name:${normalizeDepartment(detail.departmentName)}`;
+}
+export function waitingQueueSectorOptions(records: QueueDepartment[]) {
+  const options = new Map<string, string>();
+  for (const detail of records) options.set(waitingQueueSectorKey(detail), detail.departmentName.trim() || "Setor não informado");
+  return [...options].map(([value, label]) => ({value, label})).sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+}
+
 export function belongsToWaitingQueueDepartment(person: {departmentId?:string|null;departmentIds?:string[];departmentName?:string;departmentNames?:string[]}, department:{departmentId:string;departmentName:string}) {
   const normalize=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLocaleLowerCase("pt-BR");
   const names=[person.departmentName??"",...(person.departmentNames??[])];

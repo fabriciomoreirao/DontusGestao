@@ -940,12 +940,18 @@ internalChatFiles.MapPost("/{roomId:guid}/attachments", async (
     var form = await request.ReadFormAsync(cancellationToken);
     if (form.Files.Count == 0) throw new DomainException("Selecione ao menos um arquivo.");
     if (form.Files.Count > 10) throw new DomainException("É permitido enviar no máximo 10 arquivos por vez.");
+    Guid? replyToMessageId = null;
+    if (!string.IsNullOrWhiteSpace(form["replyToMessageId"]))
+    {
+        if (!Guid.TryParse(form["replyToMessageId"], out var replyId)) throw new DomainException("Mensagem de resposta inválida.");
+        replyToMessageId = replyId;
+    }
     var ids = new List<Guid>();
     foreach (var file in form.Files)
     {
         await using var content = file.OpenReadStream();
         ids.Add(await internalChatService.UploadAttachmentAsync(new UploadInternalChatAttachmentCommand(
-            roomId, file.FileName, file.ContentType, file.Length, content), actor, cancellationToken));
+            roomId, file.FileName, file.ContentType, file.Length, content, replyToMessageId), actor, cancellationToken));
     }
     return Results.Created($"/api/internal-chats/{roomId}/attachments", new { ok = true, ids });
 }).WithMetadata(new RequestSizeLimitAttribute(52L * 1024 * 1024)).DisableAntiforgery();
@@ -1677,12 +1683,12 @@ operations.MapPost("", async (
         case "sendInternalChatMessage":
             id = await internalChatService.SendMessageAsync(new SendInternalChatMessageCommand(
                 request.RoomId ?? throw new DomainException("Conversa obrigatória."),
-                request.Body, request.MessageType), actor, cancellationToken);
+                request.Body, request.MessageType, request.ReplyToMessageId), actor, cancellationToken);
             break;
 
         case "createInternalChatPoll":
             id = await internalChatService.CreatePollAsync(new CreateInternalChatPollCommand(
-                request.RoomId ?? throw new DomainException("Grupo obrigatório."), request.PollQuestion, request.PollOptions), actor, cancellationToken);
+                request.RoomId ?? throw new DomainException("Grupo obrigatório."), request.PollQuestion, request.PollOptions, request.ReplyToMessageId), actor, cancellationToken);
             break;
 
         case "voteInternalChatPoll":
