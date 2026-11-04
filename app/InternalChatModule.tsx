@@ -4,13 +4,14 @@ import { useReminderFilter } from "@/app/ReminderFilters";
 
 import {
   Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
-  Gift, MessageCircleMore, Palette, Paperclip, Pencil, Trash2, Pin, PinOff, Plus, Search, Send, SmilePlus, UsersRound, X,
+  Gift, MessageCircleMore, Palette, Paperclip, Pencil, Trash2, Pin, PinOff, Plus, Reply, Search, Send, SmilePlus, UsersRound, X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties } from "react";
 import ChatAppearanceModal from "@/app/ChatAppearanceModal";
 import { chatAppearanceKey, chatAppearanceStyle, parseChatAppearance } from "@/lib/chat-appearance";
 import {userIsOnline} from "@/lib/chat-presence";
 import useActivityClock from "@/app/useActivityClock";
+import { chatReplyPreview, type ChatReplyMessage } from "@/lib/chat-replies";
 import { CHAT_REACTIONS, chatSeenLabel } from "@/lib/chat-receipts";
 import { clipboardImages } from "@/lib/clipboard-images";
 import { moveChatDraft, restoreChatDraft, type ChatDrafts } from "@/lib/chat-drafts";
@@ -25,6 +26,7 @@ export type InternalChatMessage = {
   senderIsCoordinator: boolean;
   type: "text" | "sticker" | "image" | "video" | "file" | "poll"; body: string; fileName: string;
   contentType: string; hasAttachment: boolean; isPinned: boolean; createdAt: string;
+  replyTo?: ChatReplyMessage | null;
   seenAt?: string | null; seenByCount?: number; recipientCount?: number;
   reactions?: Array<{emoji:string;count:number;userIds:string[];userNames:string[]}>;
   receiptState?: "sent" | "delivered" | "seen"; editedAt?: string | null; deletedAt?: string | null; version?: number;
@@ -49,7 +51,7 @@ type Props = {
   canEdit: boolean;
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
   markRead: (roomId: string) => Promise<void>;
-  uploadAttachments: (roomId: string, files: File[], onUploaded?: (files: File[]) => void) => Promise<boolean>;
+  uploadAttachments: (roomId: string, files: File[], onUploaded?: (files: File[]) => void, replyToMessageId?: string) => Promise<boolean>;
   onOpenProfile: (userId: string) => void;
   initialRoomId?: string;
 };
@@ -85,6 +87,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const [historyExhausted, setHistoryExhausted] = useState<Record<string, boolean>>({});
   const [historyDays, setHistoryDays] = useState<Record<string, number>>({});
   const [messageDrafts, setMessageDrafts] = useState<ChatDrafts>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, InternalChatMessage | undefined>>({});
   const [imageDrafts, setImageDrafts] = useState<Record<string, ImageDraft[]>>({});
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
@@ -117,6 +120,14 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const selectedRoom = selectedConversation?.room;
   const pastedImages = imageDrafts[effectiveSelectedKey] ?? [];
   const visibleMessages = [...new Map([...(olderMessages[selectedRoom?.id || ""] || []), ...(selectedRoom?.messages || [])].map(message => [message.id, message])).values()].sort((a,b) => a.createdAt.localeCompare(b.createdAt));
+  const replyDraft = replyDrafts[effectiveSelectedKey];
+  const replyMessage = replyDraft ? visibleMessages.find(entry => entry.id === replyDraft.id) ?? replyDraft : undefined;
+  const replyToMessageId = replyMessage && !replyMessage.deletedAt ? replyMessage.id : undefined;
+  const clearReply = (key: string, id: string | undefined) => setReplyDrafts(current => current[key]?.id === id ? { ...current, [key]: undefined } : current);
+  const selectReply = (entry: InternalChatMessage) => {
+    setReplyDrafts(current => ({ ...current, [effectiveSelectedKey]: entry }));
+    composerInput.current?.focus({ preventScroll: true });
+  };
   const loadOlderMessages = async () => {
     if (!selectedRoom || historyLoading) return;
     const roomId = selectedRoom.id;
@@ -231,10 +242,11 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
           [conversationKey]: (current[conversationKey] ?? []).filter(image => !sent.has(image.id)),
           [roomId]: (current[roomId] ?? []).filter(image => !sent.has(image.id)),
         }));
-      })) {
+      }, replyToMessageId)) {
         setSendError("Não foi possível concluir o envio. As imagens não enviadas continuam selecionadas para tentar novamente.");
         return;
       }
+      if (!body) clearReply(conversationKey, replyToMessageId);
       const sent = new Set(pastedImages.map(image => image.id));
       setImageDrafts(current => ({ ...current,
         [conversationKey]: (current[conversationKey] ?? []).filter(image => !sent.has(image.id)),
@@ -242,8 +254,9 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
       }));
     }
     if (body) {
-      const result = await operate({ action: "sendInternalChatMessage", roomId, body, messageType: "text" }, "Mensagem enviada.");
+      const result = await operate({ action: "sendInternalChatMessage", roomId, body, messageType: "text", replyToMessageId }, "Mensagem enviada.");
       textSent = Boolean(result);
+      if (result) clearReply(conversationKey, replyToMessageId);
       if (!result) setSendError("Não foi possível enviar a mensagem. O texto foi mantido para tentar novamente.");
     }
     } catch {
@@ -275,15 +288,15 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     try {
     const roomId = await ensureRoom();
     if (!roomId) return;
-    const result = await operate({ action: "sendInternalChatMessage", roomId, body: sticker, messageType: "sticker" }, "Figurinha enviada.");
-    if (result) setStickersOpen(false);
+    const result = await operate({ action: "sendInternalChatMessage", roomId, body: sticker, messageType: "sticker", replyToMessageId }, "Figurinha enviada.");
+    if (result) { setStickersOpen(false); clearReply(effectiveSelectedKey, replyToMessageId); }
     } finally { sendingRef.current = false; }
   };
 
   const createPoll = async (question: string, options: string[]) => {
     if (!canCreate || !selectedRoom?.isGroup) return;
-    const result = await operate({ action: "createInternalChatPoll", roomId: selectedRoom.id, pollQuestion: question, pollOptions: options }, "Enquete enviada ao grupo.");
-    if (result) setPollOpen(false);
+    const result = await operate({ action: "createInternalChatPoll", roomId: selectedRoom.id, pollQuestion: question, pollOptions: options, replyToMessageId }, "Enquete enviada ao grupo.");
+    if (result) { setPollOpen(false); clearReply(effectiveSelectedKey, replyToMessageId); }
   };
 
   const votePoll = async (messageId: string, optionIndex: number) => {
@@ -305,7 +318,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     if (!roomId) return;
     const accepted = Array.from(files).filter((file) => file.size > 0 && file.size <= 50 * 1024 * 1024);
     if (accepted.length !== files.length) setSendError("Arquivos vazios ou maiores que 50 MB não podem ser enviados.");
-    if (accepted.length) await uploadAttachments(roomId, accepted);
+    if (accepted.length && await uploadAttachments(roomId, accepted, undefined, replyToMessageId)) clearReply(effectiveSelectedKey, replyToMessageId);
     } finally {
     if (fileInput.current) fileInput.current.value = "";
     sendingRef.current = false;
@@ -373,11 +386,12 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
             {sendError && <p role="alert">{sendError}</p>}
             {selectedRoom && !historyExhausted[selectedRoom.id] && <button type="button" className="secondary-button" disabled={historyLoading} onClick={() => void loadOlderMessages()}>{historyLoading ? "Carregando..." : "Carregar mais conversas (30 dias anteriores)"}</button>}{historyError && <p role="alert">{historyError}</p>}
             {!visibleMessages.length && <div className="internal-chat-first-message"><SmilePlus size={23} /><strong>Diga olá!</strong><span>Envie a primeira mensagem para iniciar esta conversa privada.</span></div>}
-            {visibleMessages.map((item) => <MessageBubble key={item.id} message={item} showSeenReceipt={item.id===lastSeenMessageId} now={presenceNow} onReact={async(message,emoji,reacted)=>{const result=await operate({action:"setInternalChatMessageReaction",roomId:message.roomId,id:message.id,emoji,reacted},reacted?"Reação adicionada.":"Reação removida.");return Boolean(result)}} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={Boolean(selectedRoom?.isGroup)} canCreate={canCreate} canEdit={canEdit} busy={busy} onEdit={async (message, body) => Boolean(await operate({ action:"editInternalChatMessage", roomId:message.roomId, id:message.id, body, version:message.version ?? 1 }, "Mensagem editada."))} onDelete={async message => { await operate({ action:"deleteInternalChatMessage", roomId:message.roomId, id:message.id, version:message.version ?? 1 }, "Mensagem excluída."); }} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
+            {visibleMessages.map((item) => <MessageBubble key={item.id} onReply={selectReply} message={item} showSeenReceipt={item.id===lastSeenMessageId} now={presenceNow} onReact={async(message,emoji,reacted)=>{const result=await operate({action:"setInternalChatMessageReaction",roomId:message.roomId,id:message.id,emoji,reacted},reacted?"Reação adicionada.":"Reação removida.");return Boolean(result)}} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={Boolean(selectedRoom?.isGroup)} canCreate={canCreate} canEdit={canEdit} busy={busy} onEdit={async (message, body) => Boolean(await operate({ action:"editInternalChatMessage", roomId:message.roomId, id:message.id, body, version:message.version ?? 1 }, "Mensagem editada."))} onDelete={async message => { await operate({ action:"deleteInternalChatMessage", roomId:message.roomId, id:message.id, version:message.version ?? 1 }, "Mensagem excluída."); }} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
             <div aria-hidden="true" />
           </div></div>
           {!canCreate && <p className="module-access-note" role="status"><LockKeyhole size={14}/>Seu perfil permite consultar as conversas. O envio de mensagens está bloqueado.</p>}
           {pastedImages.length > 0 && <section className="internal-chat-pasted-images" aria-label="Imagens para enviar"><header><strong>{pastedImages.length} imagem(ns) para enviar</strong><span>Clique em Enviar mensagem para confirmar.</span></header><div>{pastedImages.map(image => <PastedImagePreview key={image.id} image={image} disabled={busy} onRemove={() => setImageDrafts(current => ({ ...current, [effectiveSelectedKey]: (current[effectiveSelectedKey] ?? []).filter(entry => entry.id !== image.id) }))} />)}</div></section>}
+          {replyToMessageId && replyMessage && <section className="internal-chat-reply-draft" aria-label="Mensagem selecionada para responder"><Reply size={16}/><div><strong>Respondendo a {replyMessage.senderName}</strong><span>{chatReplyPreview(replyMessage)}</span></div><button type="button" aria-label="Cancelar resposta" onClick={() => clearReply(effectiveSelectedKey, replyToMessageId)}><X size={16}/></button></section>}
           <form className="internal-chat-composer" onSubmit={sendMessage}>
             <input ref={fileInput} hidden type="file" multiple accept="image/*,video/*,.pdf,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={(event) => void upload(event.target.files)} />
             <button type="button" className="internal-chat-tool" onClick={() => fileInput.current?.click()} disabled={busy || !canCreate} aria-label="Anexar arquivo"><Paperclip size={19} /></button>
@@ -431,7 +445,7 @@ function BirthdayGift({ name }: { name: string }) {
   return <span className="internal-chat-birthday-gift" title={`Hoje é aniversário de ${name}`} aria-label={`Aniversário de ${name}`}><Gift size={12} aria-hidden="true" /></span>;
 }
 
-function MessageBubble({ message, showSeenReceipt, now, onReact, own, birthday, currentUserId, group, canCreate, canEdit, busy, onEdit, onDelete, onVote, onPin, onPreview }: { message: InternalChatMessage; showSeenReceipt: boolean; now:number; onReact:(message:InternalChatMessage,emoji:string,reacted:boolean)=>Promise<boolean>; own: boolean; birthday: boolean; currentUserId: string; group: boolean; canCreate: boolean; canEdit: boolean; busy: boolean; onEdit: (message: InternalChatMessage, body: string) => Promise<boolean>; onDelete: (message: InternalChatMessage) => Promise<void>; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
+function MessageBubble({ message, onReply, showSeenReceipt, now, onReact, own, birthday, currentUserId, group, canCreate, canEdit, busy, onEdit, onDelete, onVote, onPin, onPreview }: { message: InternalChatMessage; onReply: (message: InternalChatMessage) => void; showSeenReceipt: boolean; now:number; onReact:(message:InternalChatMessage,emoji:string,reacted:boolean)=>Promise<boolean>; own: boolean; birthday: boolean; currentUserId: string; group: boolean; canCreate: boolean; canEdit: boolean; busy: boolean; onEdit: (message: InternalChatMessage, body: string) => Promise<boolean>; onDelete: (message: InternalChatMessage) => Promise<void>; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(message.body);
   const [reactionsOpen,setReactionsOpen]=useState(false);
@@ -440,10 +454,10 @@ function MessageBubble({ message, showSeenReceipt, now, onReact, own, birthday, 
   const seenLabel=chatSeenLabel(message.seenAt,now,message.seenByCount,message.recipientCount);
   const react=async(emoji:string)=>{const own=message.reactions?.some(entry=>entry.emoji===emoji&&entry.userIds.includes(currentUserId))??false;if(await onReact(message,emoji,!own))setReactionsOpen(false)};
   const fileUrl = `/api/internal-chat-files/${message.id}`;
-  return <article className={`internal-chat-message ${own ? "own" : ""}`}>
+  return <article data-chat-message-id={message.id} className={`internal-chat-message ${own ? "own" : ""}`}>
     {!own && <Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator} />}
-    <div className="internal-chat-bubble-wrap">{!own && <strong>{birthday && <BirthdayGift name={message.senderName} />}{message.senderName}</strong>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
-      {group && !message.deletedAt && <button type="button" className={`internal-chat-pin-message ${message.isPinned ? "active" : ""}`} disabled={busy || !canEdit} onClick={() => onPin(message)} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={13} /> : <Pin size={13} />}</button>}
+    <div className="internal-chat-bubble-wrap">{!own && <strong>{birthday && <BirthdayGift name={message.senderName} />}{message.senderName}</strong>}{!message.deletedAt && (canCreate || group && canEdit) && <div className="internal-chat-message-toolbar">{group && canEdit && <button type="button" className={message.isPinned ? "active" : ""} disabled={busy} onClick={() => onPin(message)} aria-label={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={11}/> : <Pin size={11}/>}</button>}{canCreate && <button type="button" disabled={busy} onClick={() => onReply(message)} aria-label="Responder mensagem" title="Responder mensagem"><Reply size={12}/></button>}</div>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
+      {!message.deletedAt && message.replyTo && <div className="internal-chat-quoted-message"><strong>{message.replyTo.senderName}</strong><span>{chatReplyPreview(message.replyTo)}</span></div>}
       {message.deletedAt ? <p className="internal-chat-deleted-message">Mensagem excluída</p> : editing ? <form className="internal-chat-message-editor" onSubmit={async event=>{event.preventDefault();if(editBody.trim()&&await onEdit(message,editBody.trim()))setEditing(false);}}><textarea aria-label="Editar mensagem" autoFocus rows={3} maxLength={4000} value={editBody} onChange={event=>setEditBody(event.target.value)} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setEditing(false)}}}/><div><button type="button" disabled={busy} onClick={()=>setEditing(false)}>Cancelar</button><button type="submit" disabled={busy||!editBody.trim()}>Salvar</button></div></form> : message.type === "text" && <p>{message.body}</p>}
       {!message.deletedAt && message.type === "sticker" && <span className="internal-chat-sticker-message">{message.body}</span>}
       {!message.deletedAt && message.type === "image" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Imagem enviada",video:false})}><img src={fileUrl} alt={message.fileName || "Imagem enviada"} loading="lazy" /></button>}

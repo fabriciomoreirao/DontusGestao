@@ -1,5 +1,7 @@
 "use client";
 
+import { crmResponsible, crmResponsibleOptions, isCsEmployee, matchesCrmResponsible } from "@/lib/crm-responsibles";
+
 import { directSaleClientId, directSaleFollowup } from "@/lib/direct-sale-routing";
 
 import {applyChatPresence,type ChatPresence} from "@/lib/chat-presence";
@@ -1150,7 +1152,7 @@ export default function OperationsApp() {
     }
   };
 
-  const uploadInternalChatAttachments = async (roomId: string, files: File[], onUploaded?: (files: File[]) => void) => {
+  const uploadInternalChatAttachments = async (roomId: string, files: File[], onUploaded?: (files: File[]) => void, replyToMessageId?: string) => {
     if (files.length === 0) return true;
     mutationRevision.current += 1;
     setBusy(true);
@@ -1159,7 +1161,7 @@ export default function OperationsApp() {
       await sendInternalChatFiles(roomId, files, batch => {
         uploaded += batch.length;
         onUploaded?.(batch);
-      });
+      }, replyToMessageId);
       mutationRevision.current += 1;
       await refreshInternalChat();
       setToast({ kind: "success", message: files.length === 1 ? "Arquivo enviado no chat." : `${files.length} arquivos enviados no chat.` });
@@ -2667,7 +2669,7 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, marketingCamp
     .filter((item) => {
       const details = parseCommercialLead(item.description);
       if (activeFunnel && activeFunnel.entry.id !== "retention-default" && details?.funnel !== activeFunnel.entry.name) return false;
-      if (owner !== "all" && item.owner !== owner) return false;
+      if (!matchesCrmResponsible(item, owner)) return false;
       if (temperature !== "all" && details?.temperature !== temperature) return false;
       const linked = remindersByLead.get(item.id) ?? [];
       if (reminderFilter === "today" && !linked.some((reminder) => isReminderForToday(reminder, now))) return false;
@@ -2685,7 +2687,8 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, marketingCamp
     ]
     : stages;
   const temperatures = activeCatalogs.filter((entry) => entry.catalog === "temperature");
-  const owners = [...new Set(sellers.map(entry => entry.displayName))];
+  const flowSellers = flow === "retention" ? employees.filter(isCsEmployee) : sellers;
+  const owners = crmResponsibleOptions(flowSellers, items.filter(item => item.module === "commercial" && item.record_type === commercialRecordType(flow)));
   const totalPipelineValue = leads.reduce((sum, lead) => sum + lead.amount_cents, 0);
   useEffect(() => {
     if (funnels.length === 0) {
@@ -2772,7 +2775,7 @@ function CommercialLeadsModule({ flow, catalogs, customers, items, marketingCamp
     }} />)}
     {flow === "retention" && retentionBulkOpen && activeFunnel && <RetentionBulkModal funnel={activeFunnel.entry} stages={stages} employees={employees} currentUser={currentUser} catalogs={activeCatalogs} busy={busy} onClose={() => setRetentionBulkOpen(false)} onCreate={async (payload) => Boolean(await operate({ action: "createWorkItem", module: "commercial", recordType: commercialRecordType(flow), ...payload }, "Cliente cadastrado no CRM de retenção."))} />}
     {creating && !activeFunnel && <ModalShell title="Funil necessário" subtitle="Crie e ative um funil antes de cadastrar um lead." onClose={() => setCreating(false)}><div className="empty-state"><p>Não há funil ativo para esta funcionalidade.</p><div className="form-actions"><button className="primary-button" type="button" onClick={() => setCreating(false)}>Entendi</button></div></div></ModalShell>}
-    {selected && <CommercialLeadDrawer sellers={sellers} item={selected} customers={customers} strategicNetworks={items.filter((entry) => entry.module === "cs" && Boolean(parseEnterpriseNetwork(entry.description)))} employees={employees} marketingCampaigns={marketingCampaigns} busy={busy} canEdit={canEdit} canDelete={canDelete} startEditing={editRequested} startLossReason={lossReasonRequested} catalogs={activeCatalogs} agendaModule={agendaModule} funnels={allFunnels} funnel={activeFunnel?.entry} details={activeFunnel?.details} onClose={closeSelectedLead} onMoveStage={(stage) => moveLeadToStage(selected, stage)} onSave={async (payload) => {
+    {selected && <CommercialLeadDrawer sellers={flowSellers} item={selected} customers={customers} strategicNetworks={items.filter((entry) => entry.module === "cs" && Boolean(parseEnterpriseNetwork(entry.description)))} employees={employees} marketingCampaigns={marketingCampaigns} busy={busy} canEdit={canEdit} canDelete={canDelete} startEditing={editRequested} startLossReason={lossReasonRequested} catalogs={activeCatalogs} agendaModule={agendaModule} funnels={allFunnels} funnel={activeFunnel?.entry} details={activeFunnel?.details} onClose={closeSelectedLead} onMoveStage={(stage) => moveLeadToStage(selected, stage)} onSave={async (payload) => {
       const result = await operate({ action: "updateWorkItem", id: selected.id, title: selected.title, owner: selected.owner, amountCents: selected.amount_cents, version: selected.version, ...payload }, "Lead atualizado com sucesso.");
       if (result && selected.customer_id) {
         const detail = parseCommercialLead(String(payload.description ?? selected.description));
@@ -2940,7 +2943,7 @@ function RetentionLeadCard({ item, stages, reminders, now, statuses, canEdit, ca
       <span className="retention-card-company" title={lead?.customer || item.title}>{lead?.customer || item.title}</span>
       <span className="retention-card-phone">{lead?.phone || "WhatsApp não informado"}</span>
       <div className="retention-card-meta"><span>{lead?.version || "Sem versão"}</span><span className={`retention-temperature ${temperature.toLocaleLowerCase("pt-BR")}`}><i />{temperature}</span></div>
-      <small className="retention-card-owner"><UserRound size={12} />{lead?.seller || item.owner || "Sem responsável"}</small>
+      <small className="retention-card-owner"><UserRound size={12} />{crmResponsible(item) || "Sem responsável"}</small>
       <CrmCardActivity item={item} lead={lead} stages={stages} reminders={reminders} now={now} />
     </div>
     {(canEdit || canDelete) && <div className="retention-card-actions">{canEdit && <button type="button" onClick={onEdit} title="Editar cliente" aria-label="Editar cliente"><Pencil size={13} /></button>}{canDelete && <button type="button" onClick={onDelete} title="Excluir cliente" aria-label="Excluir cliente"><Trash2 size={13} /></button>}</div>}

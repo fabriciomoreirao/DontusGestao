@@ -2060,6 +2060,9 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .HasMaxLength(260)
                         .HasColumnType("character varying(260)");
 
+                    b.Property<Guid?>("ReplyToMessageId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("RoomId")
                         .HasColumnType("uuid");
 
@@ -2084,6 +2087,8 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ReplyToMessageId");
 
                     b.HasIndex("SenderUserId");
 
@@ -3816,6 +3821,11 @@ namespace Dontus.Operations.Infrastructure.Migrations
 
             modelBuilder.Entity("Dontus.Operations.Domain.InternalChatMessage", b =>
                 {
+                    b.HasOne("Dontus.Operations.Domain.InternalChatMessage", null)
+                        .WithMany()
+                        .HasForeignKey("ReplyToMessageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Dontus.Operations.Domain.InternalChatRoom", null)
                         .WithMany()
                         .HasForeignKey("RoomId")

@@ -8,6 +8,59 @@ namespace Dontus.Operations.Tests;
 
 public sealed class InternalChatServiceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Replies_keep_the_original_message_in_private_and_group_chats_even_outside_the_history_window(bool group)
+    {
+        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
+        var reader=AddUser(db,"reader@test","Leitor");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new(group?"Equipe":null,null,group,[reader.Id]),Actor(sender));
+        var originalId=await service.SendMessageAsync(new(room,"Pergunta original","text"),Actor(sender));
+        foreach(var member in db.InternalChatRoomMembers)member.JoinedAt=DateTimeOffset.UtcNow.AddDays(-60);
+        var original=await db.InternalChatMessages.SingleAsync();original.CreatedAt=DateTimeOffset.UtcNow.AddDays(-45);original.UpdatedAt=original.CreatedAt;await db.SaveChangesAsync();
+        var replyId=await service.SendMessageAsync(new(room,"Minha resposta","text",originalId),Actor(reader));
+        var reply=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
+        Assert.Equal(replyId,reply.Id);Assert.Equal(originalId,reply.ReplyTo!.Id);Assert.Equal("Remetente",reply.ReplyTo.SenderName);Assert.Equal("Pergunta original",reply.ReplyTo.Body);
+        await service.DeleteMessageAsync(new(room,originalId,original.Version),Actor(sender));
+        var quoted=(await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single(message=>message.Id==replyId).ReplyTo!;
+        Assert.NotNull(quoted.DeletedAt);Assert.Empty(quoted.Body);Assert.Empty(quoted.FileName);
+    }
+
+    [Fact]
+    public async Task Replies_reject_other_rooms_deleted_messages_and_messages_from_before_joining()
+    {
+        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
+        var reader=AddUser(db,"reader@test","Leitor");var outsider=AddUser(db,"other@test","Outro");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new("Equipe",null,true,[reader.Id]),Actor(sender));
+        var other=await service.CreateRoomAsync(new(null,null,false,[outsider.Id]),Actor(sender));
+        var originalId=await service.SendMessageAsync(new(room,"Reservado","text"),Actor(sender));
+        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(other,"Incorreta","text",originalId),Actor(sender)))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(room,"Incorreta","text",originalId),Actor(outsider)))).StatusCode);
+        db.InternalChatRoomMembers.Add(new(){RoomId=room,UserId=outsider.Id,JoinedAt=DateTimeOffset.UtcNow.AddSeconds(1)});await db.SaveChangesAsync();
+        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(room,"Incorreta","text",originalId),Actor(outsider)))).StatusCode);
+        await service.DeleteMessageAsync(new(room,originalId,1),Actor(sender));
+        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(room,"Incorreta","text",originalId),Actor(reader)))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Attachment_and_poll_replies_keep_the_selected_message()
+    {
+        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
+        var reader=AddUser(db,"reader@test","Leitor");await db.SaveChangesAsync();var service=CreateService(db);
+        var room=await service.CreateRoomAsync(new("Equipe",null,true,[reader.Id]),Actor(sender));
+        var original=await service.SendMessageAsync(new(room,"Qual arquivo?","text"),Actor(sender));
+        await using var content=new MemoryStream([1,2,3]);
+        var attachment=await service.UploadAttachmentAsync(new(room,"arquivo.txt","text/plain",content.Length,content,original),Actor(reader));
+        try
+        {
+            var poll=await service.CreatePollAsync(new(room,"Concordam?",["Sim","Não"],original),Actor(reader));
+            var messages=(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages;
+            Assert.All(messages.Where(message=>message.Id==attachment||message.Id==poll),message=>Assert.Equal(original,message.ReplyTo!.Id));
+        }
+        finally {File.Delete((await service.GetAttachmentAsync(attachment,Actor(reader))).FullPath);}
+    }
+
     [Fact]
     public async Task Seen_time_is_the_first_receipt_and_stays_stable_when_the_room_is_read_again()
     {

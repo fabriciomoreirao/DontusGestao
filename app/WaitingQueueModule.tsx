@@ -8,7 +8,7 @@ import { useReminderFilter } from "@/app/ReminderFilters";
 import { BadgeCheck, CheckCircle2, Clock3, Eye, Headphones, Link2, Pencil, Save, Search, Settings, Trash2, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
-import { belongsToWaitingQueueDepartment, cleanDepartmentDescription, departmentQueueMode, type DepartmentQueueMode } from "@/lib/waitingQueue";
+import { belongsToWaitingQueueDepartment, waitingQueueSectorKey, waitingQueueSectorOptions, cleanDepartmentDescription, departmentQueueMode, type DepartmentQueueMode } from "@/lib/waitingQueue";
 
 type WorkItem = { id:string; module:string; record_type:string; title:string; customer_name:string; owner:string; team:string; status:string; priority:string; description:string; version:number; created_at:string; updated_at:string; amount_cents:number };
 type Employee = { id:string; displayName:string; email:string; departmentId:string|null; departmentName:string; departmentIds:string[]; departmentNames:string[]; active:boolean; photoDataUrl?:string; isCoordinator?:boolean };
@@ -67,6 +67,7 @@ function destinationPayload(destinationId:string, detail:WaitingQueueDetail, own
 export default function WaitingQueueModule({items,employees,departments,currentUser,busy,operate,onOpenSettings}:{items:WorkItem[];employees:Employee[];departments:Department[];currentUser:CurrentUser;busy:boolean;operate:(payload:Record<string,unknown>,success:string)=>Promise<OperationResult>;onOpenSettings?:()=>void}){
   const reminderFilter = useReminderFilter("waitingQueue");
   const [query,setQuery]=useState("");
+  const [sector,setSector]=useState("all");
   const [selected,setSelected]=useState<WorkItem|null>(null);
   const [editing,setEditing]=useState<WorkItem|null>(null);
   const [contacting,setContacting]=useState<WorkItem|null>(null);
@@ -76,7 +77,8 @@ export default function WaitingQueueModule({items,employees,departments,currentU
   const canEdit=currentUser.permissions.some(permission=>permission.screen==="waitingQueue"&&permission.canEdit);
 
   const records=items.filter(item=>item.module==="waitingQueue").map(item=>({item,detail:parseWaitingQueue(item.description)})).filter((entry):entry is {item:WorkItem;detail:WaitingQueueDetail}=>Boolean(entry.detail)).filter(({detail})=>elevated||belongsToWaitingQueueDepartment(userEmployee??{departmentName:currentUser.department},detail));
-  const visible=records.filter(({item,detail})=>reminderFilter.matches({entityId:item.id,clientId:detail.clientCode,title:detail.clientName})&&(!query.trim()||normalize(`${item.title} ${detail.clientCode} ${detail.whatsapp} ${detail.summary} ${detail.requestType} ${detail.responsibleName}`).includes(normalize(query.trim()))));
+  const sectorOptions=waitingQueueSectorOptions(records.map(({detail})=>detail));
+  const visible=records.filter(({item,detail})=>(sector==="all"||waitingQueueSectorKey(detail)===sector)&&reminderFilter.matches({entityId:item.id,clientId:detail.clientCode,title:detail.clientName})&&(!query.trim()||normalize(`${item.title} ${detail.clientCode} ${detail.whatsapp} ${detail.summary} ${detail.requestType} ${detail.responsibleName}`).includes(normalize(query.trim()))));
   const claim=async(item:WorkItem)=>{
     const detail=parseWaitingQueue(item.description);
     if(!canEdit||!detail||!userEmployee||!belongsToWaitingQueueDepartment(userEmployee,detail)||detail.responsibleUserId)return;
@@ -88,7 +90,7 @@ export default function WaitingQueueModule({items,employees,departments,currentU
     <header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Clock3 size={21}/></span><span className="module-page-copy"><span className="eyebrow">OPERAÇÃO · ATENDIMENTO</span><h1>Fila de Espera</h1><p>Encaminhamentos recebidos pelo Portal Dontus, organizados por setor e responsável.</p></span></div><div className="module-page-actions">{onOpenSettings && <button className="icon-button" onClick={onOpenSettings} title="Configurar tipos de solicitação"><Settings size={18}/></button>}</div></header>
     <section className="waiting-queue-metrics"><article><Clock3/><span><strong>{waiting.length}</strong><small>Em espera</small></span></article><article><CheckCircle2/><span><strong>{contacted.length}</strong><small>Contato feito</small></span></article><article><Headphones/><span><strong>{visible.length}</strong><small>Total visível</small></span></article></section>
     <nav className="waiting-queue-tabs" aria-label="Situação da fila"><button className={tab==="waiting"?"active":""} onClick={()=>setTab("waiting")}><Clock3 size={15}/> Em espera <b>{waiting.length}</b></button><button className={tab==="contacted"?"active":""} onClick={()=>setTab("contacted")}><CheckCircle2 size={15}/> Contato feito <b>{contacted.length}</b></button></nav>
-    <div className="reminder-filter-toolbar waiting-queue-filters"><label className="waiting-queue-search"><Search size={17}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar cliente, ID, WhatsApp, solicitação ou resumo"/></label>{reminderFilter.control}</div>
+    <div className="reminder-filter-toolbar waiting-queue-filters"><label className="waiting-queue-search"><Search size={17}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar cliente, ID, WhatsApp, solicitação ou resumo"/></label><label className="waiting-queue-sector">Setor de destino<select aria-label="Filtrar por setor de destino" value={sector} onChange={event=>setSector(event.target.value)}><option value="all">Todos os setores</option>{sectorOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>{reminderFilter.control}</div>
     <div className="waiting-queue-columns single">{tab==="waiting"?<QueueColumn title="Em espera" tone="waiting" records={waiting} canEdit={canEdit} onOpen={setSelected} onEdit={setEditing} onDelete={item=>{void operate({action:"deleteWorkItem",id:item.id},"Registro excluído da fila.")}} busy={busy} currentEmployee={userEmployee} onClaim={item=>void claim(item)} onContact={canEdit?setContacting:undefined}/>:<QueueColumn title="Contato feito" tone="contacted" records={contacted} canEdit={canEdit} onOpen={setSelected} onEdit={setEditing} onDelete={item=>{void operate({action:"deleteWorkItem",id:item.id},"Registro excluído da fila.")}}/>}</div>
     {editing&&canEdit&&<QueueEditModal detail={parseWaitingQueue(editing.description)!} busy={busy} onClose={()=>setEditing(null)} onSave={async(detail)=>{const result=await operate({action:"updateWorkItem",requireConfirmation:true,id:editing.id,title:detail.clientName,customerName:detail.clientName,owner:editing.owner,amountCents:editing.amount_cents,version:editing.version,description:JSON.stringify(detail)},"Registro da fila atualizado.");if(result)setEditing(null)}}/>}
     {selected&&<QueueDetail item={selected} detail={parseWaitingQueue(selected.description)!} onClose={()=>setSelected(null)}/>} 

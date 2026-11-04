@@ -60,6 +60,10 @@ public sealed class InternalChatService(
         var membersByRoom = members.ToLookup(member => member.RoomId);
         var messagesByRoom = messages.ToLookup(message => message.RoomId);
         var messageIds = messages.Select(message => message.Id).ToArray();
+        var replyIds = messages.Where(message => message.ReplyToMessageId.HasValue).Select(message => message.ReplyToMessageId!.Value).Distinct().ToArray();
+        var replyMessages = await db.InternalChatMessages.AsNoTracking()
+            .Where(message => replyIds.Contains(message.Id) && roomIds.Contains(message.RoomId))
+            .ToDictionaryAsync(message => message.Id, cancellationToken);
         var receiptsByMessage = (await db.InternalChatMessageReceipts.AsNoTracking()
             .Where(receipt => messageIds.Contains(receipt.MessageId)).ToListAsync(cancellationToken)).ToLookup(receipt => receipt.MessageId);
         var reactionsByMessage = (await db.InternalChatMessageReactions.AsNoTracking()
@@ -97,6 +101,7 @@ public sealed class InternalChatService(
                 .Select(message =>
                 {
                     var sender = users.GetValueOrDefault(message.SenderUserId);
+                    var original = message.ReplyToMessageId.HasValue ? replyMessages.GetValueOrDefault(message.ReplyToMessageId.Value) : null;
                     var recipients = roomMembers.Where(member => member.UserId != message.SenderUserId && member.JoinedAt <= message.CreatedAt).Select(member => member.UserId).ToHashSet();
                     var reads = receiptsByMessage[message.Id].Where(receipt => recipients.Contains(receipt.UserId)).ToArray();
                     var receiptState = recipients.Count > 0 && reads.Length == recipients.Count
@@ -109,6 +114,10 @@ public sealed class InternalChatService(
                         message.DeletedAt.HasValue ? "text" : message.Type, message.DeletedAt.HasValue ? "" : message.Body, message.DeletedAt.HasValue ? "" : message.FileName, message.DeletedAt.HasValue ? "" : message.ContentType,
                         !message.DeletedAt.HasValue && !string.IsNullOrWhiteSpace(message.StorageKey), !message.DeletedAt.HasValue && pinned.GetValueOrDefault(message.Id), receiptState, message.CreatedAt, message.EditedAt, message.DeletedAt, message.Version)
                     {
+                        ReplyTo = !message.DeletedAt.HasValue && original is not null && original.RoomId == room.Id && original.CreatedAt >= actorMembership.JoinedAt
+                            ? new InternalChatReplyDto(original.Id, users.GetValueOrDefault(original.SenderUserId)?.DisplayName ?? "Colaborador removido",
+                                original.DeletedAt.HasValue ? "text" : original.Type, original.DeletedAt.HasValue ? "" : original.Body,
+                                original.DeletedAt.HasValue ? "" : original.FileName, original.DeletedAt) : null,
                         SeenAt = reads.Select(receipt => (DateTimeOffset?)receipt.ReadAt).Max(),
                         SeenByCount = reads.Length,
                         RecipientCount = recipients.Count,
@@ -207,9 +216,11 @@ public sealed class InternalChatService(
         var maxLength = type == "sticker" ? 32 : 4000;
         if (body.Length == 0 || body.Length > maxLength)
             throw new DomainException(type == "sticker" ? "Selecione uma figurinha válida." : "Digite uma mensagem de até 4.000 caracteres.");
+        await ValidateReplyAsync(room.Id, actorUser.Id, command.ReplyToMessageId, cancellationToken);
         var message = new InternalChatMessage
         {
             RoomId = room.Id,
+            ReplyToMessageId = command.ReplyToMessageId,
             SenderUserId = actorUser.Id,
             Type = type,
             Body = body,
@@ -269,6 +280,7 @@ public sealed class InternalChatService(
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
         if (!room.IsGroup) throw new DomainException("Enquetes podem ser enviadas somente em grupos.");
+        await ValidateReplyAsync(room.Id, actorUser.Id, command.ReplyToMessageId, cancellationToken);
         var question = (command.Question ?? "").Trim();
         if (question.Length < 3 || question.Length > 240)
             throw new DomainException("Informe uma pergunta entre 3 e 240 caracteres.");
@@ -284,6 +296,7 @@ public sealed class InternalChatService(
             RoomId = room.Id,
             SenderUserId = actorUser.Id,
             Type = "poll",
+            ReplyToMessageId = command.ReplyToMessageId,
             Body = JsonSerializer.Serialize(new PollPayload(question, options.Select(option => new PollOption(option, [])).ToList()), ChatJsonOptions),
         };
         await AddVisibleMessageAsync(room, message, actorUser.Id, cancellationToken);
@@ -333,6 +346,16 @@ public sealed class InternalChatService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task ValidateReplyAsync(Guid roomId, Guid actorUserId, Guid? messageId, CancellationToken cancellationToken)
+    {
+        if (!messageId.HasValue) return;
+        var joinedAt = await db.InternalChatRoomMembers.Where(member => member.RoomId == roomId && member.UserId == actorUserId)
+            .Select(member => member.JoinedAt).SingleAsync(cancellationToken);
+        if (!await db.InternalChatMessages.AnyAsync(message => message.Id == messageId && message.RoomId == roomId
+            && message.CreatedAt >= joinedAt && message.Type != "pin" && message.DeletedAt == null, cancellationToken))
+            throw new DomainException("A mensagem escolhida para responder não está disponível nesta conversa.", 404);
+    }
+
     private async Task AddVisibleMessageAsync(InternalChatRoom room, InternalChatMessage message, Guid actorUserId, CancellationToken cancellationToken)
     {
         room.LastMessageAt = message.CreatedAt;
@@ -351,6 +374,7 @@ public sealed class InternalChatService(
         actor.RequirePermission("internalChat", "create");
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
+        await ValidateReplyAsync(room.Id, actorUser.Id, command.ReplyToMessageId, cancellationToken);
         if (command.SizeBytes <= 0 || command.SizeBytes > MaxAttachmentBytes)
             throw new DomainException("Envie um arquivo de até 50 MB.");
         var contentType = (command.ContentType ?? "application/octet-stream").Trim().ToLowerInvariant();
@@ -379,6 +403,7 @@ public sealed class InternalChatService(
             FileName = fileName,
             ContentType = contentType,
             StorageKey = storageKey,
+            ReplyToMessageId = command.ReplyToMessageId,
         };
         room.LastMessageAt = message.CreatedAt;
         room.UpdatedAt = DateTimeOffset.UtcNow;

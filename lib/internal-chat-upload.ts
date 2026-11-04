@@ -18,9 +18,10 @@ export function internalChatUploadBatches<T extends { size: number }>(files: T[]
   return batches;
 }
 
-export async function sendInternalChatFiles(roomId: string, files: File[], onUploaded?: (files: File[]) => void) {
+export async function sendInternalChatFiles(roomId: string, files: File[], onUploaded?: (files: File[]) => void, replyToMessageId?: string) {
   for (const batch of internalChatUploadBatches(files)) {
     const form = new FormData();
+    if (replyToMessageId) form.append("replyToMessageId", replyToMessageId);
     batch.forEach(file => form.append("files", file));
     const response = await fetch(`/api/internal-chat-files?roomId=${encodeURIComponent(roomId)}`, { method: "POST", body: form });
     if (!response.ok) {
