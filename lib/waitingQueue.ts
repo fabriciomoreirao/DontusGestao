@@ -18,6 +18,16 @@ export function belongsToWaitingQueueDepartment(person: {departmentId?:string|nu
     || Boolean(department.departmentName.trim() && names.some(name=>normalize(name)===normalize(department.departmentName)));
 }
 
+export function waitingQueuePendingInUserSector(item:{description:string;team?:string},user:{email:string;department:string},people:Array<{email:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames?:string[]}>) {
+  try {
+    const detail=JSON.parse(item.description);
+    if(detail.kind!=="waitingQueue"||detail.state==="contacted")return false;
+    const self=people.find(person=>person.email.trim().toLocaleLowerCase("pt-BR")===user.email.trim().toLocaleLowerCase("pt-BR"));
+    return belongsToWaitingQueueDepartment(self??{departmentName:user.department},
+      {departmentId:detail.departmentId??"",departmentName:detail.departmentName||item.team||""});
+  } catch {return false;}
+}
+
 export function waitingQueueNeedsContact(item:{description:string;team?:string;owner?:string},user:{email:string;displayName:string;department:string},people:Array<{id:string;email:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames?:string[]}>) {
   const normalize=(value:string)=>value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR");
   try {
