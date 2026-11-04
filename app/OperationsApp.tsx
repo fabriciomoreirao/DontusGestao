@@ -1050,7 +1050,8 @@ export default function OperationsApp() {
   const moduleItems = useMemo(() => kanbanItems.filter((item) => item.module === active), [active, kanbanItems]);
   const taskModule = data?.taskModule;
   const suggestionModule = data?.suggestionModule;
-  const monthTaskModule = useMemo(() => taskModule ? ({ ...taskModule, tasks: taskModule.tasks.filter((task) => brasiliaMonthKey(task.createdAt) === kanbanMonth || brasiliaMonthKey(task.updatedAt) === kanbanMonth) }) : null, [taskModule, kanbanMonth]);
+  const linkedTaskId = new URLSearchParams(locationSearch).get("task");
+  const monthTaskModule = useMemo(() => taskModule ? ({ ...taskModule, tasks: taskModule.tasks.filter((task) => Boolean(linkedTaskId && (task.id === linkedTaskId || task.protocol === linkedTaskId)) || brasiliaMonthKey(task.createdAt) === kanbanMonth || brasiliaMonthKey(task.updatedAt) === kanbanMonth) }) : null, [taskModule, kanbanMonth, linkedTaskId]);
   const monthSuggestionModule = useMemo(() => suggestionModule ? ({ ...suggestionModule, suggestions: suggestionModule.suggestions.filter((entry) => brasiliaMonthKey(entry.createdAt) === kanbanMonth || brasiliaMonthKey(entry.updatedAt) === kanbanMonth) }) : null, [suggestionModule, kanbanMonth]);
 
   const globalResults = useMemo(() => {

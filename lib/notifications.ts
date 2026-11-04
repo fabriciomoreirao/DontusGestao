@@ -102,7 +102,8 @@ export function buildNotifications(data:NotificationData,now:number):AppNotifica
   }
   for(const notification of data.taskModule?.notifications??[]){
     const task=data.taskModule?.tasks.find(task=>task.id===notification.taskId);
-    if(notification.read||!["assigned","transferred","comment_added"].includes(notification.eventType)||!task||!(!task.assigneeUserId||owns(task.assigneeUserId)||owns(task.assigneeName)))continue;
+    const workflowNotice=["client_contact_requested","approval_requested"].includes(notification.eventType);
+    if(notification.read||!["assigned","transferred","comment_added","client_contact_requested","approval_requested"].includes(notification.eventType)||!task||!workflowNotice&&!(!task.assigneeUserId||owns(task.assigneeUserId)||owns(task.assigneeName)))continue;
     add({id:`task-${notification.id}`,sourceId:notification.taskId,category:"task",title:notification.message,meta:"Tarefa",module:"tasks",at:notification.createdAt,targetUrl:`/?mod=tasks&task=${encodeURIComponent(notification.taskId)}`});
   }
   for(const room of data.internalChatModule?.rooms??[]){
