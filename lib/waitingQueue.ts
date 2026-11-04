@@ -15,6 +15,7 @@ export function waitingQueueNeedsContact(item:{description:string;team?:string;o
     const self=people.find(person=>normalize(person.email)===normalize(user.email));
     if(!belongsToWaitingQueueDepartment(self??{departmentName:user.department},{departmentId:detail.departmentId??"",departmentName:detail.departmentName||item.team||""}))return false;
     if(detail.responsibleUserId)return detail.responsibleUserId===self?.id;
+    if(typeof detail.responsibleName==="string"&&!detail.responsibleName.trim())return true;
     const name=normalize(typeof detail.responsibleName==="string"?detail.responsibleName:item.owner??"");
     return !name||/^(fila compartilhada|sem responsavel|nao atribuido)$/.test(name)||name===normalize(user.displayName);
   } catch {return false;}

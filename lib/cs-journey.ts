@@ -3,6 +3,24 @@ export type CsPhase = "validation" | "onboarding" | "tracking" | "conference" | 
 export const canResumeCsJourney = (phase: string) => ["unsuccessful", "cancelled", "cancelledWithoutTraining"].includes(phase);
 export const isClosedCsJourney = (phase: string) => phase === "finished" || canResumeCsJourney(phase);
 
+export function csDate(value: string | number = Date.now()): string {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date) : "";
+}
+
+type CsTimeline = { phase: string; startDate?: string; trackingStartedAt?: string; onboardingStartedAt?: string; conferenceConfirmedAt?: string; cancellationResolvedAt?: string };
+export function csStartDate(journey: CsTimeline, item: { created_at: string }): string {
+  return [journey.startDate, journey.trackingStartedAt, journey.onboardingStartedAt, item.created_at].map(value => value ? csDate(value) : "").find(Boolean) || "";
+}
+
+export function csTrackedDays(journey: CsTimeline, item: { created_at: string; updated_at: string }, now = Date.now()): number {
+  const start = csStartDate(journey, item);
+  const end = csDate(isClosedCsJourney(journey.phase) ? journey.conferenceConfirmedAt || journey.cancellationResolvedAt || item.updated_at : now);
+  const days = (Date.parse(end) - Date.parse(start)) / 86_400_000;
+  return Number.isFinite(days) ? Math.max(0, Math.floor(days)) : 0;
+}
+
 export function requestCsConference<T extends { phase: string }>(journey: T, requestedAt: string) {
   if (journey.phase !== "onboarding" && journey.phase !== "tracking") throw new Error("A conferência está disponível no onboarding e no acompanhamento.");
   return { ...journey, phase: "conference" as const, status: "Conferência", conferenceFromPhase: journey.phase as "onboarding" | "tracking", conferenceRequestedAt: requestedAt };
@@ -11,7 +29,7 @@ export function requestCsConference<T extends { phase: string }>(journey: T, req
 // Preserve the previous cycle and its agenda references before starting validation again.
 // The agenda entries and the complete interaction history remain available for consultation.
 const cycleFields = [
-  "scheduledAt", "checkedAt", "checkedBy", "onboardingStartedAt", "trackingStartedAt",
+  "startDate", "scheduledAt", "checkedAt", "checkedBy", "onboardingStartedAt", "trackingStartedAt",
   "firstMeetingAt", "firstMeetingTime", "firstMeetingCommitmentId", "firstMeetingCompletedAt",
   "trainingAt", "trainingTime", "trainingCommitmentId", "trainingCompletedAt",
   "singleAlignmentAt", "singleAlignmentTime", "singleAlignmentCommitmentId", "singleAlignmentCompletedAt",

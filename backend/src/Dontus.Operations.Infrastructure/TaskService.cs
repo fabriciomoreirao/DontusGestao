@@ -186,6 +186,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         else if (!manages)
         {
             query = query.Where(x => !tasksWithParticipants.Contains(x.Id)
+                || x.AssigneeUserId == null && memberDepartments.Contains(x.CurrentDepartmentId)
                 || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
                 || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId));
             if (!viewAllDepartments)
@@ -193,6 +194,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                     ? query.Where(x => memberDepartments.Contains(x.CurrentDepartmentId)
                         || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id || participantTaskIds.Contains(x.Id))
                     : query.Where(x => x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
+                        || x.AssigneeUserId == null && memberDepartments.Contains(x.CurrentDepartmentId)
                         || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId));
         }
 
@@ -221,7 +223,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var notifications = await db.TaskNotifications.AsNoTracking()
             .Where(x => x.RecipientUserId == user.Id && x.ActorUserId != user.Id
                 && (x.EventType == "assigned" || x.EventType == "transferred" || x.EventType == "comment_added")
-                && db.CorporateTasks.Any(task => task.Id == x.TaskId && task.AssigneeUserId == user.Id))
+                && taskIds.Contains(x.TaskId)
+                && db.CorporateTasks.Any(task => task.Id == x.TaskId && (task.AssigneeUserId == user.Id
+                    || task.AssigneeUserId == null && memberDepartments.Contains(task.CurrentDepartmentId))))
             .OrderByDescending(x => x.CreatedAt).Take(100).ToListAsync(cancellationToken);
         var taskNumbers = tasks.ToDictionary(x => x.Id, x => x.Number);
 
@@ -399,6 +403,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         // que tarefas recém-criadas desapareçam do fluxo de acompanhamento.
         if (task.AssigneeUserId.HasValue)
             AddNotification(task.Id, task.AssigneeUserId.Value, user.Id, "assigned", "Uma nova tarefa foi atribuída a você.");
+        else
+            await NotifyDepartmentQueueAsync(task, user.Id, "assigned", "Uma nova tarefa chegou à fila do seu setor.", cancellationToken);
         foreach (var participantId in initialParticipantIds.Where(id => id != user.Id && id != task.AssigneeUserId).Distinct())
             AddNotification(task.Id, participantId, user.Id, "participant_added", "Você foi incluído como participante de uma nova tarefa.");
         var coordinators = await db.UserDepartments.AsNoTracking()
@@ -561,6 +567,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             command.Reason);
         if (task.AssigneeUserId.HasValue && task.AssigneeUserId.Value != user.Id)
             AddNotification(task.Id, task.AssigneeUserId.Value, user.Id, "assigned", $"A tarefa #{task.Number} foi atribuída a você no setor {destination.Name}.");
+        else if (!task.AssigneeUserId.HasValue)
+            await NotifyDepartmentQueueAsync(task, user.Id, "transferred", $"A tarefa #{task.Number} chegou à fila do setor {destination.Name}.", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -680,6 +688,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         AddHistory(task.Id, user.Id, "comment_added", "Comentário incluído", null, new { comment.Id });
         if (task.AssigneeUserId is { } responsibleId)
             AddNotification(task.Id, responsibleId, user.Id, "comment_added", $"Novo comentário na tarefa #{task.Number}.");
+        else
+            await NotifyDepartmentQueueAsync(task, user.Id, "comment_added", $"Novo comentário na tarefa #{task.Number} da fila do seu setor.", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return comment.Id;
     }
@@ -1291,6 +1301,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             ?? throw new DomainException("Tarefa não encontrada.", 404);
         if (actor.HasPermission("tasks", "manage")) return task;
         if (task.CreatorUserId == user.Id || task.AssigneeUserId == user.Id) return task;
+        if (!task.AssigneeUserId.HasValue && await db.UserDepartments.AnyAsync(x => x.UserId == user.Id
+            && x.DepartmentId == task.CurrentDepartmentId, cancellationToken)) return task;
         if (await db.TaskParticipants.AnyAsync(x => x.TaskId == task.Id && x.UserId == user.Id, cancellationToken))
             return task;
         if (await db.UserDepartments.AnyAsync(x => x.UserId == user.Id
@@ -1358,6 +1370,15 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             .Distinct();
         foreach (var recipient in recipients)
             AddNotification(task.Id, recipient, actorUserId, eventType, message);
+    }
+
+    private async Task NotifyDepartmentQueueAsync(CorporateTask task, Guid actorId, string type, string message, CancellationToken ct)
+    {
+        var recipients = await db.UserDepartments.AsNoTracking()
+            .Where(link => link.DepartmentId == task.CurrentDepartmentId
+                && db.Users.Any(user => user.Id == link.UserId && user.Active && user.BlockedAt == null))
+            .Select(link => link.UserId).Distinct().ToArrayAsync(ct);
+        foreach (var recipient in recipients) AddNotification(task.Id, recipient, actorId, type, message);
     }
 
     private void AddNotification(Guid taskId, Guid recipientId, Guid actorId, string type, string message)

@@ -84,6 +84,14 @@ test('tarefas ignoram alterações gerais e notificações de quem não é respo
   assert.equal(buildNotifications(data,now).length,2);data.taskModule.tasks[0].assigneeUserId='bia-id';data.taskModule.tasks[0].assigneeName='Bia';assert.equal(buildNotifications(data,now).length,0);
 });
 
+test('avisos da fila compartilhada enviados pela API aparecem para membros sem acesso administrativo',()=>{
+  const data=base();data.access=null;data.internalChatModule=null;
+  data.assignmentDirectory={employees:[{id:'ana-id',email:'ana@test.local',displayName:'Ana',departmentName:'Suporte',departmentNames:['Suporte']}]};
+  data.taskModule={collaborators:[{id:'ana-id',email:'ana@test.local'}],tasks:[{id:'t1',assigneeUserId:null,assigneeName:'Fila do setor'}],notifications:[{id:'n1',taskId:'t1',eventType:'transferred',message:'Tarefa encaminhada ao setor',read:false,createdAt:'2026-10-22T14:00:00Z'}]};
+  assert.equal(buildNotifications(data,now).length,1);
+  data.taskModule.tasks=[];assert.equal(buildNotifications(data,now).length,0);
+});
+
 test('salvar uma inserção própria silencia só os novos eventos do registro alterado',()=>{
   const data=base();const before=buildNotifications(data,now);data.items=[item('commercial',{comments:['Comentário sem metadados']}),{...item('lia',{kind:'liaJourney'}),id:'other-arrival'}];const after=buildNotifications(data,now);
   const muted=ownMutationNotificationIds(before,after,{id:'record-1'});assert.equal(muted.length,1);assert.equal(newlyReceived([],after,new Set(muted)).length,1);

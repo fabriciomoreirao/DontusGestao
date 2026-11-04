@@ -60,7 +60,7 @@ public sealed class WaitingQueueDirectoryTests
         await using var db = Context(); var user = User("Ana"); db.Users.Add(user); await db.SaveChangesAsync();
         var snapshot = await new OperationsService(db).GetSnapshotAsync(Actor(user, "diary"));
         Assert.Null(snapshot.WaitingQueueDirectory);
-        Assert.Null(snapshot.AssignmentDirectory);
+        Assert.NotNull(snapshot.AssignmentDirectory);
     }
 
     [Fact]

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {belongsToWaitingQueueDepartment} from '../lib/waitingQueue.ts';
+import {belongsToWaitingQueueDepartment,waitingQueueNeedsContact} from '../lib/waitingQueue.ts';
+
+test('a fila compartilhada notifica todos os membros do setor sem depender do remetente salvo como owner',()=>{
+  const people=[{id:'ana',email:'ana@test',departmentId:'support',departmentName:'Suporte'},{id:'bia',email:'bia@test',departmentIds:['sales','support'],departmentName:'Comercial'}];
+  const detail={kind:'waitingQueue',state:'waiting',departmentId:'support',departmentName:'Suporte',responsibleUserId:'',responsibleName:''};
+  for(const person of people)assert.equal(waitingQueueNeedsContact({owner:'Remetente',description:JSON.stringify(detail)},{email:person.email,displayName:person.id,department:person.departmentName},people),true);
+  assert.equal(waitingQueueNeedsContact({description:JSON.stringify({...detail,responsibleUserId:'ana'})},{email:'bia@test',displayName:'bia',department:'Comercial'},people),false);
+  assert.equal(waitingQueueNeedsContact({description:JSON.stringify({...detail,state:'contacted'})},{email:'ana@test',displayName:'ana',department:'Suporte'},people),false);
+});
 
 test('responsible choices include primary and secondary sectors and legacy sector names',()=>{
   const support={departmentId:'support',departmentName:'Suporte'};
