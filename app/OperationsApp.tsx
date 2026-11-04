@@ -10,7 +10,7 @@ import { sendTaskFiles } from "@/lib/task-upload";
 import { knownWorkItemVersions, mergeOperationsUpdate, type OperationsChanges } from "@/lib/operations-update";
 import { recordSearchText } from "@/lib/record-search";
 import CommentEnterSupport from "@/app/CommentEnterSupport";
-import {waitingQueueNeedsContact} from "@/lib/waitingQueue";
+import {waitingQueueNeedsContact,waitingQueuePendingInUserSector} from "@/lib/waitingQueue";
 import {playNotificationSound,unlockNotificationSound} from "@/lib/notification-sound";
 import SearchablePeopleSelect, { PeopleDirectoryProvider } from "@/app/SearchablePeopleSelect";
 
@@ -1260,7 +1260,7 @@ export default function OperationsApp() {
     return assignedToCurrentUser && !task.completedAt && !task.cancelled && !finalTaskStatusIds.has(task.statusId);
   }).length ?? 0;
   const noticeUnread = data.noticesModule?.notices.filter((notice) => notice.active && notice.visibleToCurrentUser && !notice.isRead).length ?? 0;
-  const waitingQueueCount = data.items.filter(item=>item.module==="waitingQueue"&&waitingQueueNeedsContact(item,data.user,data.waitingQueueDirectory?.employees??data.access?.employees??[])).length;
+  const waitingQueueCount = data.items.filter(item=>item.module==="waitingQueue"&&waitingQueueNeedsContact(item,data.user,data.assignmentDirectory?.employees??data.waitingQueueDirectory?.employees??data.access?.employees??[])).length;
   const reminderItems = data.items.filter((item) => item.module === "reminders");
   const pendingReminders = reminderItems.map(item => ({ item, detail: parseReminder(item.description) })).filter((entry): entry is { item: WorkItem; detail: NonNullable<ReturnType<typeof parseReminder>> } => entry.detail !== null && entry.detail.recipientEmail === data.user.email && !entry.detail.seenAt);
   const dueReminder = pendingReminders.filter(({detail}) => new Date(detail.nextAlertAt || detail.remindAt).getTime() <= reminderClock).sort((a,b) => new Date(a.detail.nextAlertAt).getTime() - new Date(b.detail.nextAlertAt).getTime())[0];
@@ -2056,7 +2056,7 @@ function Dashboard({ data, onNavigate, onPortal }: { data: AppData; onNavigate: 
   const tasksToday = openTasks.filter((task) => Boolean(task.dueAt) && localDay(task.dueAt!) === todayKey).length;
   const unreadRooms = data.internalChatModule?.rooms.filter((room) => !room.isArchived && room.unreadCount > 0) ?? [];
   const internalUnread = unreadRooms.reduce((total, room) => total + room.unreadCount, 0);
-  const waiting = data.items.filter(item=>item.module==="waitingQueue"&&parseWaitingQueue(item.description)?.state==="waiting").length;
+  const waiting = data.items.filter(item=>item.module==="waitingQueue"&&waitingQueuePendingInUserSector(item,data.user,data.assignmentDirectory?.employees??data.waitingQueueDirectory?.employees??data.access?.employees??[])).length;
   const recentNotices = (data.noticesModule?.notices ?? [])
     .filter((notice) => notice.active && notice.visibleToCurrentUser)
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())

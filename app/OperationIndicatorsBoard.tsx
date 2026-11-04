@@ -10,6 +10,7 @@ import { customerSuccessScore } from "@/lib/commission-rules";
 import IndicatorTabs from "@/app/IndicatorTabs";
 import { csOutcome } from "@/lib/cs-journey";
 import { enterpriseUnitScore } from "@/lib/enterprise-score";
+import { scopeCommercialIndicatorItems } from "@/lib/commercial-indicators";
 
 type Item = {
   id: string; module: string; record_type: string; title: string; customer_name?: string; owner: string; team: string;
@@ -65,12 +66,7 @@ function scoreOf(detail: Detail) {
 
 function scopeItems(items: Item[], module: string, contextKey: string) {
   if (module === "recruitment") return items.filter((item) => item.module === "admin" && /processo seletivo|candidato/i.test(item.record_type));
-  if (module === "commercial") return items.filter((item) => {
-    if (item.module !== "commercial") return false;
-    const detail = parse(item.description);
-    const flow = clean(detail.flow ?? detail.crmFlow ?? detail.kind ?? item.record_type);
-    return contextKey.includes("retention") ? /retention|retencao/.test(flow) : !/retention|retencao/.test(flow);
-  });
+  if (module === "commercial") return scopeCommercialIndicatorItems(items, contextKey);
   if (module === "cs") return items.filter((item) => {
     if (item.module !== "cs") return false;
     const detail = parse(item.description);
