@@ -262,8 +262,10 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
     {
         var commitment = await db.AgendaCommitments.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Compromisso não encontrado.", 404);
-        if (!string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase))
-            throw new DomainException("Apenas quem criou o compromisso pode editá-lo.", 403);
+        actor.RequirePermission("work", "view");
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        if (!CanManage(actor) && commitment.ResponsibleUserId != actorUser.Id && !string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("Apenas o criador, o responsável ou um gestor da agenda pode editar o compromisso.", 403);
         if (string.IsNullOrWhiteSpace(command.Title) || command.Title.Trim().Length > 240 || command.EndsAt <= command.StartsAt)
             throw new DomainException("Informe título, início e término válidos.");
         var calendar = await db.AgendaCalendars.SingleOrDefaultAsync(entry => entry.Id == command.AgendaId && entry.Active, cancellationToken)
@@ -272,7 +274,6 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             ?? throw new DomainException("Selecione um tipo ativo.");
         var status = await db.AgendaStatuses.SingleOrDefaultAsync(entry => entry.Id == command.AgendaStatusId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um status ativo.");
-        var actorUser = await GetActorUserAsync(actor, cancellationToken);
         EnsureMeetingRoomReservationAllowed(calendar, actorUser);
         var actorDepartments = await AccessibleAgendaCalendarIdsAsync(actorUser.Id, cancellationToken);
         await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);

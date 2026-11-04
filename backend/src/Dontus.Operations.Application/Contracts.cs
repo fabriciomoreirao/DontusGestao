@@ -384,6 +384,7 @@ public sealed record DispatchStatusDto(Guid Id, string ClientId, string ClientNa
 public interface IOperationsService
 {
     Task<IReadOnlyCollection<DispatchStatusDto>> GetDispatchStatusAsync(string clientId, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<string?> GetServiceVersionAsync(string clientId, ActorContext actor, CancellationToken cancellationToken = default);
     Task InitializeAsync(CancellationToken cancellationToken = default);
     Task<OperationsSnapshot> GetSnapshotAsync(ActorContext actor, CancellationToken cancellationToken = default, bool includeWorkspaceDetails = true,
         IReadOnlyDictionary<Guid, long>? knownWorkItemVersions = null);

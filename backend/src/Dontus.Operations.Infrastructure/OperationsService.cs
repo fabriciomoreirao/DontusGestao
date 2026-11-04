@@ -10,6 +10,33 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class OperationsService(OperationsDbContext db) : IOperationsService
 {
+    public async Task<string?> GetServiceVersionAsync(string clientId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("support", "view");
+        clientId = clientId.Trim();
+        if (clientId.Length != 6 || clientId.Any(character => character is < '0' or > '9'))
+            throw new DomainException("Informe o ID público de 6 números do cliente.");
+        // Search the full history, independently of the workspace month and snapshot limit.
+        var candidates = db.WorkItems.AsNoTracking()
+            .Where(item => item.Module == "support" && item.RecordType == "Atendimento" && item.Description.Contains(clientId))
+            .OrderByDescending(item => item.UpdatedAt).ThenByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
+            .Select(item => item.Description).AsAsyncEnumerable();
+        await foreach (var description in candidates.WithCancellation(cancellationToken))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(description);
+                var detail = document.RootElement;
+                if (detail.ValueKind != JsonValueKind.Object || !detail.TryGetProperty("kind", out var kind) || kind.ValueKind != JsonValueKind.String || kind.GetString() != "serviceRecord"
+                    || !detail.TryGetProperty("clientCode", out var code) || code.ValueKind != JsonValueKind.String || code.GetString()?.Trim() != clientId
+                    || !detail.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.String) continue;
+                if (!string.IsNullOrWhiteSpace(version.GetString())) return version.GetString()!.Trim();
+            }
+            catch (JsonException) { /* Ignore legacy entries with invalid JSON. */ }
+        }
+        return null;
+    }
+
     private static readonly (string Code, string Title, string Risk, string Behavior)[] Decisions =
     [
         ("V-001", "Destino do Base 44", "Alto", "Manter legado ativo; migração bloqueada"),
