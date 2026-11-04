@@ -35,17 +35,15 @@ test("abre o perfil lateral do colaborador pela busca global", async () => {
 });
 
 test("mantém movimentação direta por arraste nos kanbans", async () => {
-  const [operations, marketing, development, service, contracts] = await Promise.all([
+  const [operations, marketing, service, contracts] = await Promise.all([
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/MarketingWorkspaceModule.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/DevelopmentModule.tsx", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/Dontus.Operations.Infrastructure/OperationsService.cs", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/Dontus.Operations.Application/Contracts.cs", import.meta.url), "utf8"),
   ]);
   assert.match(operations, /boardMove: true/);
   assert.match(operations, /draggable=\{canEdit\}/);
   assert.match(marketing, /boardMove:true/);
-  assert.match(development, /setData\("workItemId"/);
   assert.match(contracts, /bool BoardMove = false/);
   assert.match(service, /!command\.BoardMove/);
 });

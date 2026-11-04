@@ -441,7 +441,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("Este status não permite movimentação manual.");
         var isApprovalStatus = status.Name.Contains("aguardando aprova", StringComparison.OrdinalIgnoreCase);
         var cancelling = status.Name.Contains("cancel", StringComparison.OrdinalIgnoreCase);
-        if (task.AssigneeUserId != user.Id || !(isApprovalStatus || status.IsFinal && !cancelling))
+        if (task.AssigneeUserId != user.Id || cancelling)
         {
             actor.RequirePermission("tasks", "edit");
             RequireCapabilityOrManage(actor, "changeStatus");

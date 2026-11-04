@@ -1,5 +1,7 @@
 "use client";
 
+import { beginKanbanDrag, readKanbanDrop } from "@/lib/kanban-drag";
+
 import { BriefcaseBusiness, CalendarDays, CheckCircle2, ChevronRight, Clock3, Copy, Download, FileText, Mail, MessageSquareText, Phone, Save, X } from "lucide-react";
 import { useState } from "react";
 import { cardShareUrl } from "@/app/CardLinkEnhancer";
@@ -26,7 +28,7 @@ export function RecruitmentCandidateCard({ candidate, busy, onSelect }: { candid
   const payload = details(candidate);
   return <article className="recruitment-candidate candidate-application-card" data-reminder-entity-id={candidate.id} role="button" tabIndex={0}
     aria-label={`Ver candidatura de ${candidate.title}`} draggable={!busy}
-    onDragStart={event => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-dontus-candidate", candidate.id); }}
+    onDragStart={event => { event.dataTransfer.effectAllowed = "move"; beginKanbanDrag(event, "application/x-dontus-candidate", candidate.id); }}
     onClick={onSelect} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(); } }}>
     <div className="candidate-card-heading"><span className="candidate-avatar" aria-hidden="true">{initials(candidate.title)}</span><span className="candidate-card-identity"><strong>{candidate.title}</strong><small>{payload.vacancy || "Candidatura recebida"}</small></span><span className="candidate-card-grip" aria-hidden="true">⠿</span></div>
     <div className="candidate-card-contact"><span><Mail size={14}/><span>{candidate.customer_name || "E-mail não informado"}</span></span><span><Phone size={14}/><span>{candidate.owner || "Telefone não informado"}</span></span></div>

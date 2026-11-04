@@ -1,5 +1,7 @@
 "use client";
 
+import { beginKanbanDrag, readKanbanDrop } from "@/lib/kanban-drag";
+
 import { useReminderFilter } from "@/app/ReminderFilters";
 
 
@@ -190,12 +192,12 @@ function SuggestionKanban({ suggestions, statuses, canEdit, canDelete, canDelete
       const cards = suggestions.filter((entry) => entry.statusId === status.id);
       return <section className="suggestion-kanban-column" key={status.id} onDragOver={(event) => canEdit && event.preventDefault()} onDrop={(event) => {
         if (!canEdit) return;
-        const suggestion = suggestions.find((entry) => entry.id === event.dataTransfer.getData("text/suggestion-id"));
+        const suggestion = suggestions.find((entry) => entry.id === readKanbanDrop(event, "text/suggestion-id"));
         if (suggestion) void onChangeStatus(suggestion, status.id);
       }}>
         <header style={{ "--column-color": status.color } as CSSProperties}><span><i />{status.kanbanColumn || status.name}</span><b>{cards.length}</b></header>
         <div className="suggestion-kanban-cards">
-          {cards.map((entry) => <article key={entry.id} className={entry.cancellationRisk ? "risk-card" : ""} data-reminder-entity-id={entry.id} data-reminder-client-id={entry.customerId} data-reminder-customer-name={entry.customerName} draggable={canEdit} onDragStart={(event) => event.dataTransfer.setData("text/suggestion-id", entry.id)} onClick={() => onOpen(entry.id)}>
+          {cards.map((entry) => <article key={entry.id} className={entry.cancellationRisk ? "risk-card" : ""} data-reminder-entity-id={entry.id} data-reminder-client-id={entry.customerId} data-reminder-customer-name={entry.customerName} draggable={canEdit} onDragStart={(event) => beginKanbanDrag(event, "text/suggestion-id", entry.id)} onClick={() => onOpen(entry.id)}>
             <div className="suggestion-card-top"><span>{entry.protocol}</span><span className="suggestion-color-badge" style={{ "--badge-color": entry.priorityColor } as CSSProperties}>{entry.priorityName}</span></div>
             <h3>{entry.name}</h3><p>{entry.description || "Sem descrição informada."}</p><FlagBadges suggestion={entry} />
             <footer><span className="suggestion-owner"><Avatar name={entry.responsibleName} photo={entry.responsiblePhotoDataUrl} small /><span>{entry.responsibleName}</span></span><span className="suggestion-card-actions">{entry.comments.length > 0 && <span><MessageSquareText size={13} />{entry.comments.length}</span>}{canEdit && <button type="button" className="icon-button" aria-label={`Editar ${entry.name}`} onClick={(event) => { event.stopPropagation(); onEdit(entry); }}><Pencil size={14} /></button>}{canDelete && (entry.responsibleEmail === currentUserEmail || canDeleteOthers) && <button type="button" className="icon-button danger-action" aria-label={`Excluir ${entry.name}`} onClick={(event) => { event.stopPropagation(); onDelete(entry); }}><Trash2 size={14} /></button>}</span></footer>

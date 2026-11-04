@@ -11,7 +11,7 @@ public sealed class TaskServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Assignee_can_request_approval_complete_and_forward_without_extra_capabilities(bool canEdit)
+    public async Task Assignee_can_move_request_approval_complete_and_forward_without_extra_capabilities(bool canEdit)
     {
         await using var db=CreateContext();var (service,admin)=await InitializeAsync(db);
         var support=await db.TaskDepartments.SingleAsync(x=>x.Name=="Suporte");var development=await db.TaskDepartments.SingleAsync(x=>x.Name=="Desenvolvimento");
@@ -22,7 +22,9 @@ public sealed class TaskServiceTests
         var task=await db.CorporateTasks.SingleAsync(x=>x.Id==created.Id);
         var actor=new ActorContext(responsible.Email,responsible.DisplayName,"Colaborador","Suporte",[new("tasks",true,false,canEdit,false,false,[])]);
         var inProgress=await db.TaskStatuses.SingleAsync(x=>x.Name=="Em andamento");
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,inProgress.Id,null,task.Version),actor))).StatusCode);
+        await service.ChangeStatusAsync(new(task.Id,inProgress.Id,null,task.Version),actor);
+        Assert.Equal(inProgress.Id,task.StatusId);
+        Assert.Contains(db.TaskHistory,x=>x.TaskId==task.Id&&x.EventType=="status_changed");
         var cancelled=await db.TaskStatuses.SingleAsync(x=>x.Name=="Cancelada");
         Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,cancelled.Id,"Teste",task.Version),actor))).StatusCode);
         var approval=await db.TaskStatuses.SingleAsync(x=>x.Name=="Aguardando aprovação");
