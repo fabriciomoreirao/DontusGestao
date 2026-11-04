@@ -1065,6 +1065,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         }
         var commissionDecisionData = await CommissionDecisionPolicy.PrepareAsync(db, item.Module, item.Description, null, item.AmountCents, actor, cancellationToken, item.CreatedBy);
         item.Description = commissionDecisionData.Description; item.AmountCents = commissionDecisionData.Amount;
+        if(item.Module == "commissions") item.Status = CommissionDecisionPolicy.RecordStatus(item.Description) ?? item.Status;
         if (item.Module == "cancellations")
         {
             await new CancellationProtocolService(db).CreateAsync(item, actor, cancellationToken);
@@ -1359,7 +1360,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             ?? throw new DomainException("Registro não encontrado.", 404);
         if (!CanEditCustomerEngagement(item, actor) &&
             !CanRestartRetentionJourney(item, command.Description, actor) &&
-            !CanCoordinateCustomerSuccessJourney(item, actor))
+            !CanCoordinateCustomerSuccessJourney(item, actor) &&
+            !(item.Module == "commissions" && (actor.HasPermission("commissions","approve") || actor.HasPermission("commissions","manage"))))
             actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor);
         RequireReferralUpdate(item, command, actor);
@@ -1419,6 +1421,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         item.Description = item.Module == "cancellations"
             ? CancellationProtocolService.PreserveProtocol(item.Description, command.Description)
             : command.Description?.Trim() ?? "";
+        if(item.Module == "commissions") item.Status = CommissionDecisionPolicy.RecordStatus(item.Description) ?? item.Status;
         if (item.Module == "commissions" && CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "decision") is "approved" or "rejected")
             item.Status = CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "decision") == "approved" ? "Aprovada" : "Reprovada";
         if (item.Module == "cs" && CustomerSuccessJourneyStatus(item.Description) is { } journeyStatus)

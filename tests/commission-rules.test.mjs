@@ -1,10 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateCommission, customerSuccessScore, validScoreTiers } from "../lib/commission-rules.ts";
+import { calculateCommission, customerSuccessScore, validScoreTiers, parseCommissionRule, findCommissionRule, journeyCommissionDate, commissionDate } from "../lib/commission-rules.ts";
 import { analyticsColor, chartScale, distributionEntries, percentageChange, isCompletedAnalyticsStatus } from "../lib/analytics-charts.ts";
 
 const tiers = [{ min: 0, max: 50, percentage: 5 }, { min: 50, max: 75, percentage: 10 }, { min: 75, max: 100, percentage: 15 }];
 const rule = { kind: "commissionRule", scope: "cs", employeeId: "employee", employeeName: "Colaborador", product: "*", type: "percentage", value: 0, scoreTiers: tiers };
+
+test("regras salvas são aplicadas à área e ao colaborador corretos, inclusive cadastros antigos",()=>{
+  const saved=parseCommissionRule(JSON.stringify({...rule,kind:undefined,employeeId:"",employeeName:"  Amanda   Pérri "}));
+  assert.ok(saved);
+  assert.equal(findCommissionRule([saved],{scope:"cs",employeeId:"amanda",employeeName:"Amanda Perri",product:"Acompanhamento de ativação"}),saved);
+  assert.equal(findCommissionRule([saved],{scope:"lia",employeeId:"amanda",employeeName:"Amanda Perri",product:"Acompanhamento"}),undefined);
+  assert.equal(findCommissionRule([{...rule,employeeId:"old-id"}],{scope:"cs",employeeId:"new-id",employeeName:"Colaborador",product:"*"}),undefined);
+  assert.equal(calculateCommission(saved,200000,120)?.cents,30000);
+  assert.equal(parseCommissionRule('{"kind":"outro","scope":"cs"}'),null);
+});
+
+test("CS gera comissão no mês de início e somente depois de entrar em acompanhamento",()=>{
+  const created="2026-11-02T12:00:00Z";
+  const manual={phase:"tracking",startDate:"2026-10-15",trackingStartedAt:"2026-10-15T00:00:00-03:00"};
+  assert.equal(journeyCommissionDate("cs",manual,created),"2026-10-15");
+  assert.equal(journeyCommissionDate("cs",{...manual,phase:"onboarding"},created),null);
+  assert.equal(journeyCommissionDate("cs",{phase:"validation",startDate:"2026-10-15"},created),null);
+  assert.equal(journeyCommissionDate("cs",{...manual,trackingStartedAt:"2026-11-01T02:30:00Z"},created),"2026-10-31");
+  assert.equal(journeyCommissionDate("cs",{...manual,trackingStartedAt:"2026-11-01T03:30:00Z"},created),"2026-11-01");
+  assert.equal(journeyCommissionDate("cs",{...manual,phase:"finished"},created),"2026-10-15");
+  assert.equal(journeyCommissionDate("cs",{phase:"tracking"},created),null);
+  assert.equal(commissionDate("2026-02-30"),null);assert.equal(commissionDate("2026-02-30T12:00:00Z"),null);
+  assert.equal(journeyCommissionDate("lia",{startDate:"2026-09-20"},created),"2026-09-20");
+  assert.equal(journeyCommissionDate("lia",{startDate:"2026-02-30"},created),null);
+  assert.equal(journeyCommissionDate("cs",{...manual,trackingStartedAt:"inválida"},created),null);
+});
 
 test("comissão de CS usa o percentual correto nos limites das faixas e nos scores Plus", () => {
   for (const [score, expected] of [[0, 0], [49.99, 0], [50, 10000], [74.99, 10000], [75, 20000], [100, 20000], [100.01, 30000], [200, 30000], [350, 30000]]) {
