@@ -23,6 +23,6 @@ export function chatAppearanceStyle(appearance:ChatAppearance):Record<string,str
   if(appearance.backgroundColor)style["--chat-background"]=appearance.backgroundColor;
   if(appearance.receivedColor){style["--chat-received"]=appearance.receivedColor;style["--chat-received-text"]=chatTextColor(appearance.receivedColor)}
   if(appearance.sentColor){style["--chat-sent"]=appearance.sentColor;style["--chat-sent-text"]=chatTextColor(appearance.sentColor)}
-  if(appearance.backgroundImage){style["--chat-wallpaper"]=`url("${appearance.backgroundImage}")`;style["--chat-wallpaper-size"]="cover"}
+  if(appearance.backgroundImage){style["--chat-wallpaper"]=`url("${appearance.backgroundImage}")`;style["--chat-wallpaper-size"]="cover";style["--chat-wallpaper-repeat"]="no-repeat"}
   return style;
 }

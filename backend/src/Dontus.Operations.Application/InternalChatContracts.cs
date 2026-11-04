@@ -4,12 +4,19 @@ public sealed record InternalChatUserDto(
     Guid Id, string Name, string Email, string DepartmentName, string PhotoDataUrl,
     string JobTitle, bool IsCoordinator, bool IsOnline = false, DateTimeOffset? LastSeenAt = null);
 public sealed record UserPresenceDto(Guid UserId, bool IsOnline, DateTimeOffset? LastSeenAt);
+public sealed record InternalChatReactionDto(string Emoji, int Count, IReadOnlyCollection<Guid> UserIds, IReadOnlyCollection<string> UserNames);
 
 public sealed record InternalChatMessageDto(
     Guid Id, Guid RoomId, Guid SenderUserId, string SenderName, string SenderPhotoDataUrl,
     bool SenderIsCoordinator,
     string Type, string Body, string FileName, string ContentType, bool HasAttachment, bool IsPinned,
-    string ReceiptState, DateTimeOffset CreatedAt, DateTimeOffset? EditedAt = null, DateTimeOffset? DeletedAt = null, long Version = 1);
+    string ReceiptState, DateTimeOffset CreatedAt, DateTimeOffset? EditedAt = null, DateTimeOffset? DeletedAt = null, long Version = 1)
+{
+    public DateTimeOffset? SeenAt { get; init; }
+    public int SeenByCount { get; init; }
+    public int RecipientCount { get; init; }
+    public IReadOnlyCollection<InternalChatReactionDto> Reactions { get; init; } = [];
+}
 
 public sealed record InternalChatRoomDto(
     Guid Id, string Name, string PhotoDataUrl, bool IsGroup, Guid CreatedByUserId, bool CanManage,
@@ -31,6 +38,7 @@ public sealed record DeleteInternalChatMessageCommand(Guid RoomId, Guid MessageI
 public sealed record CreateInternalChatPollCommand(Guid RoomId, string? Question, IReadOnlyCollection<string>? Options);
 public sealed record VoteInternalChatPollCommand(Guid RoomId, Guid MessageId, int OptionIndex);
 public sealed record SetInternalChatMessagePinnedCommand(Guid RoomId, Guid MessageId, bool Pinned);
+public sealed record SetInternalChatMessageReactionCommand(Guid RoomId, Guid MessageId, string Emoji, bool Reacted);
 public sealed record SetInternalChatRoomArchivedCommand(Guid RoomId, bool Archived);
 public sealed record MarkInternalChatRoomReadCommand(Guid RoomId);
 public sealed record UpdateInternalChatGroupCommand(Guid RoomId, string? Name, string? PhotoDataUrl);
@@ -50,6 +58,7 @@ public interface IInternalChatService
     Task<Guid> CreatePollAsync(CreateInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task VotePollAsync(VoteInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task SetMessagePinnedAsync(SetInternalChatMessagePinnedCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task SetMessageReactionAsync(SetInternalChatMessageReactionCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task SetArchivedAsync(SetInternalChatRoomArchivedCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task MarkReadAsync(MarkInternalChatRoomReadCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateGroupAsync(UpdateInternalChatGroupCommand command, ActorContext actor, CancellationToken cancellationToken = default);

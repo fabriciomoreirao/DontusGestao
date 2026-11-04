@@ -28,6 +28,12 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 ### Atualização em tempo real
 
+No **Chat interno**, a última mensagem enviada com confirmação de leitura mostra **Visualizado: hoje/ontem/data às horário**, no horário de Brasília. Grupos informam leituras parciais. O primeiro registro de leitura de cada mensagem é preservado; a migration `InternalChatReceiptsAndReactions` conserva a última confirmação disponível dos registros antigos, pois o histórico anterior não armazenava horários individuais.
+
+Use **Reagir à mensagem** para escolher um emoji. Cada participante pode manter uma reação por mensagem, trocar o emoji ou clicar novamente para remover. Os totais e os nomes dos participantes acompanham a sincronização, respeitando o acesso privado à conversa. Mensagens excluídas deixam de exibir reações.
+
+O papel de parede ocupa somente a área das mensagens e se ajusta ao quadro da conversa, sem repetir ou crescer com o histórico. Em **Chat interno**, o atalho superior **Alterar imagem de fundo** também abre a personalização do chat; as demais telas mantêm seu fundo próprio.
+
 A sincronização informa as versões dos registros já carregados. A API consulta somente metadados dos registros inalterados e mantém currículos, imagens e documentos fora das respostas incrementais; registros novos ou alterados continuam completos. As verificações de acesso continuam no servidor, inclusive por identidade nas comissões. Consultas de identidade, agenda, distribuição de CS e listas de colaboradores selecionam os campos necessários, sem carregar imagens e capas do banco. A carga inicial mantém os dados completos.
 
 As requisições internas da operação aguardam até **120 segundos** por padrão, incluindo o carregamento inicial, o chat e os formulários. Configure `API_REQUEST_TIMEOUT_SECONDS` (30–600 segundos) para ajustar o prazo. As consultas ao PostgreSQL usam `DATABASE_COMMAND_TIMEOUT_SECONDS` (padrão 90 segundos). Recrie os serviços web e api após alterar essas variáveis; proxies externos também precisam permitir esse prazo. A desconexão do cliente cancela a requisição pendente ao backend.

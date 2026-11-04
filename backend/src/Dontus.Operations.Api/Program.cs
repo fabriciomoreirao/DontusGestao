@@ -1692,6 +1692,10 @@ operations.MapPost("", async (
                 request.PollOptionIndex ?? throw new DomainException("Opção obrigatória.")), actor, cancellationToken);
             break;
 
+        case "setInternalChatMessageReaction":
+            await internalChatService.SetMessageReactionAsync(new(request.RoomId ?? throw new DomainException("Conversa obrigatória."),
+                request.Id ?? throw new DomainException("Mensagem obrigatória."), request.Emoji ?? "", request.Reacted ?? true), actor, cancellationToken);
+            break;
         case "setInternalChatMessagePinned":
             await internalChatService.SetMessagePinnedAsync(new SetInternalChatMessagePinnedCommand(
                 request.RoomId ?? throw new DomainException("Grupo obrigatório."),
@@ -2390,6 +2394,8 @@ public sealed class OperationsRequest
     public IReadOnlyCollection<string>? PollOptions { get; init; }
     public int? PollOptionIndex { get; init; }
     public bool? Pinned { get; init; }
+    public string? Emoji { get; init; }
+    public bool? Reacted { get; init; }
     public string? ContactName { get; init; }
     public string? CompanyName { get; init; }
     public Guid? ChannelId { get; init; }

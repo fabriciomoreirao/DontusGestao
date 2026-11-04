@@ -43,7 +43,8 @@ public sealed class InternalChatService(
             .ToListAsync(cancellationToken);
         var historySince = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(historyDays, 30, 36500));
         var messages = await db.InternalChatMessages.AsNoTracking()
-            .Where(message => roomIds.Contains(message.RoomId) && (message.CreatedAt >= historySince || message.EditedAt >= historySince || message.DeletedAt >= historySince || message.Type == "pin"))
+            .Where(message => roomIds.Contains(message.RoomId) && (message.CreatedAt >= historySince || message.UpdatedAt >= historySince || message.EditedAt >= historySince || message.DeletedAt >= historySince || message.Type == "pin"
+                || db.InternalChatMessageReceipts.Any(receipt => receipt.MessageId == message.Id && receipt.ReadAt >= historySince)))
             .OrderByDescending(message => message.CreatedAt)
             .ToListAsync(cancellationToken);
 
@@ -58,6 +59,11 @@ public sealed class InternalChatService(
             .ToDictionaryAsync(entry => entry.RoomId, entry => entry.Count, cancellationToken);
         var membersByRoom = members.ToLookup(member => member.RoomId);
         var messagesByRoom = messages.ToLookup(message => message.RoomId);
+        var messageIds = messages.Select(message => message.Id).ToArray();
+        var receiptsByMessage = (await db.InternalChatMessageReceipts.AsNoTracking()
+            .Where(receipt => messageIds.Contains(receipt.MessageId)).ToListAsync(cancellationToken)).ToLookup(receipt => receipt.MessageId);
+        var reactionsByMessage = (await db.InternalChatMessageReactions.AsNoTracking()
+            .Where(reaction => messageIds.Contains(reaction.MessageId)).ToListAsync(cancellationToken)).ToLookup(reaction => reaction.MessageId);
 
         var roomDtos = rooms.Select(room =>
         {
@@ -91,8 +97,9 @@ public sealed class InternalChatService(
                 .Select(message =>
                 {
                     var sender = users.GetValueOrDefault(message.SenderUserId);
-                    var recipients = roomMembers.Where(member => member.UserId != message.SenderUserId).ToArray();
-                    var receiptState = recipients.Length > 0 && recipients.All(member => member.LastReadAt >= message.CreatedAt)
+                    var recipients = roomMembers.Where(member => member.UserId != message.SenderUserId && member.JoinedAt <= message.CreatedAt).Select(member => member.UserId).ToHashSet();
+                    var reads = receiptsByMessage[message.Id].Where(receipt => recipients.Contains(receipt.UserId)).ToArray();
+                    var receiptState = recipients.Count > 0 && reads.Length == recipients.Count
                         ? "seen"
                         : "delivered";
                     return new InternalChatMessageDto(
@@ -100,7 +107,15 @@ public sealed class InternalChatService(
                         sender?.DisplayName ?? "Colaborador removido", userPhotos.GetValueOrDefault(message.SenderUserId, ""),
                         sender?.IsCoordinator ?? false,
                         message.DeletedAt.HasValue ? "text" : message.Type, message.DeletedAt.HasValue ? "" : message.Body, message.DeletedAt.HasValue ? "" : message.FileName, message.DeletedAt.HasValue ? "" : message.ContentType,
-                        !message.DeletedAt.HasValue && !string.IsNullOrWhiteSpace(message.StorageKey), !message.DeletedAt.HasValue && pinned.GetValueOrDefault(message.Id), receiptState, message.CreatedAt, message.EditedAt, message.DeletedAt, message.Version);
+                        !message.DeletedAt.HasValue && !string.IsNullOrWhiteSpace(message.StorageKey), !message.DeletedAt.HasValue && pinned.GetValueOrDefault(message.Id), receiptState, message.CreatedAt, message.EditedAt, message.DeletedAt, message.Version)
+                    {
+                        SeenAt = reads.Select(receipt => (DateTimeOffset?)receipt.ReadAt).Max(),
+                        SeenByCount = reads.Length,
+                        RecipientCount = recipients.Count,
+                        Reactions = message.DeletedAt.HasValue ? [] : reactionsByMessage[message.Id].GroupBy(reaction => reaction.Emoji)
+                            .OrderBy(group => group.Min(reaction => reaction.ReactedAt)).Select(group => new InternalChatReactionDto(group.Key, group.Count(),
+                                group.Select(reaction => reaction.UserId).ToArray(), group.Select(reaction => users.GetValueOrDefault(reaction.UserId)?.DisplayName ?? "Colaborador removido").ToArray())).ToArray(),
+                    };
                 }).ToArray();
             return new InternalChatRoomDto(
                 room.Id, displayName, displayPhoto, room.IsGroup, room.CreatedByUserId,
@@ -409,9 +424,76 @@ public sealed class InternalChatService(
         var membership = await db.InternalChatRoomMembers
             .SingleOrDefaultAsync(member => member.RoomId == command.RoomId && member.UserId == actorUser.Id, cancellationToken)
             ?? throw new DomainException("Você não participa desta conversa.", 403);
-        membership.LastReadAt = DateTimeOffset.UtcNow;
+        var readAt = DateTimeOffset.UtcNow;
+        if (db.Database.ProviderName?.Contains("Npgsql") == true)
+        {
+            // Multiple open tabs can acknowledge the same message concurrently; retain its first receipt.
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO internal_chat_message_receipts ("RoomId", "MessageId", "UserId", "ReadAt")
+                SELECT message."RoomId", message."Id", {actorUser.Id}, {readAt}
+                FROM internal_chat_messages message
+                WHERE message."RoomId" = {command.RoomId} AND message."SenderUserId" <> {actorUser.Id}
+                    AND message."Type" <> 'pin' AND message."DeletedAt" IS NULL
+                    AND message."CreatedAt" >= {membership.JoinedAt} AND message."CreatedAt" <= {readAt}
+                ON CONFLICT ("MessageId", "UserId") DO NOTHING;
+                UPDATE internal_chat_room_members SET "LastReadAt" = GREATEST("LastReadAt", {readAt}), "ArchivedAt" = NULL
+                WHERE "RoomId" = {command.RoomId} AND "UserId" = {actorUser.Id};
+                """, cancellationToken);
+            return;
+        }
+        var unread = await db.InternalChatMessages.AsNoTracking().Where(message => message.RoomId == command.RoomId
+            && message.SenderUserId != actorUser.Id && message.Type != "pin" && message.DeletedAt == null
+            && message.CreatedAt >= membership.JoinedAt && message.CreatedAt <= readAt
+            && !db.InternalChatMessageReceipts.Any(receipt => receipt.MessageId == message.Id && receipt.UserId == actorUser.Id))
+            .Select(message => message.Id).ToArrayAsync(cancellationToken);
+        db.InternalChatMessageReceipts.AddRange(unread.Select(id => new InternalChatMessageReceipt
+            { RoomId = command.RoomId, MessageId = id, UserId = actorUser.Id, ReadAt = readAt }));
+        membership.LastReadAt = readAt;
         membership.ArchivedAt = null;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SetMessageReactionAsync(SetInternalChatMessageReactionCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("internalChat", "create");
+        var user = await GetActorUserAsync(actor, cancellationToken);
+        await GetMemberRoomAsync(command.RoomId, user.Id, cancellationToken);
+        var member = await db.InternalChatRoomMembers.AsNoTracking().SingleAsync(entry => entry.RoomId == command.RoomId && entry.UserId == user.Id, cancellationToken);
+        var message = await db.InternalChatMessages.AsNoTracking().SingleOrDefaultAsync(entry => entry.Id == command.MessageId && entry.RoomId == command.RoomId
+            && entry.CreatedAt >= member.JoinedAt, cancellationToken) ?? throw new DomainException("Mensagem não encontrada.", 404);
+        if (message.DeletedAt.HasValue || message.Type == "pin") throw new DomainException("Esta mensagem não aceita reações.", 409);
+        var emoji = command.Emoji.Trim();
+        if (!new[] { "👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉" }.Contains(emoji)) throw new DomainException("Selecione uma reação válida.");
+        var reactedAt = DateTimeOffset.UtcNow;
+        if (db.Database.ProviderName?.Contains("Npgsql") == true)
+        {
+            var changed = command.Reacted
+                ? await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO internal_chat_message_reactions ("RoomId", "MessageId", "UserId", "Emoji", "ReactedAt")
+                    VALUES ({message.RoomId}, {message.Id}, {user.Id}, {emoji}, {reactedAt})
+                    ON CONFLICT ("MessageId", "UserId") DO UPDATE SET "Emoji" = EXCLUDED."Emoji", "ReactedAt" = EXCLUDED."ReactedAt"
+                    WHERE internal_chat_message_reactions."Emoji" IS DISTINCT FROM EXCLUDED."Emoji";
+                    """, cancellationToken)
+                : await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    DELETE FROM internal_chat_message_reactions WHERE "MessageId" = {message.Id} AND "UserId" = {user.Id} AND "Emoji" = {emoji};
+                    """, cancellationToken);
+            if (changed > 0) await db.InternalChatMessages.Where(entry => entry.Id == message.Id)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(entry => entry.UpdatedAt, reactedAt), cancellationToken);
+            return;
+        }
+        var existing = await db.InternalChatMessageReactions.SingleOrDefaultAsync(entry => entry.MessageId == message.Id && entry.UserId == user.Id, cancellationToken);
+        if (!command.Reacted)
+        {
+            if (existing is not null && existing.Emoji == emoji) db.InternalChatMessageReactions.Remove(existing);
+        }
+        else if (existing is null) db.InternalChatMessageReactions.Add(new() { RoomId = message.RoomId, MessageId = message.Id, UserId = user.Id, Emoji = emoji });
+        else if (existing.Emoji != emoji) { existing.Emoji = emoji; existing.ReactedAt = DateTimeOffset.UtcNow; }
+        if (db.ChangeTracker.HasChanges())
+        {
+            var tracked = await db.InternalChatMessages.SingleAsync(entry => entry.Id == message.Id, cancellationToken);
+            tracked.UpdatedAt = reactedAt;
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     public async Task UpdateGroupAsync(UpdateInternalChatGroupCommand command, ActorContext actor, CancellationToken cancellationToken = default)

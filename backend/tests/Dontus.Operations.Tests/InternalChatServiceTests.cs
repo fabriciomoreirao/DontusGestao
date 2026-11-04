@@ -8,6 +8,62 @@ namespace Dontus.Operations.Tests;
 
 public sealed class InternalChatServiceTests
 {
+    [Fact]
+    public async Task Seen_time_is_the_first_receipt_and_stays_stable_when_the_room_is_read_again()
+    {
+        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");var reader=AddUser(db,"reader@test","Leitor");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender));
+        var id=await service.SendMessageAsync(new(room,"Primeira","text"),Actor(sender));
+        Assert.Null((await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single().SeenAt);
+        await service.MarkReadAsync(new(room),Actor(reader));
+        var first=(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single();
+        Assert.NotNull(first.SeenAt);Assert.Equal("seen",first.ReceiptState);Assert.Equal(1,first.SeenByCount);Assert.Equal(1,first.RecipientCount);
+        await service.SendMessageAsync(new(room,"Segunda","text"),Actor(sender));
+        await service.MarkReadAsync(new(room),Actor(reader));await service.MarkReadAsync(new(room),Actor(reader));
+        Assert.Equal(first.SeenAt,(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single(message=>message.Id==id).SeenAt);
+        Assert.Equal(2,await db.InternalChatMessageReceipts.CountAsync());
+    }
+
+    [Fact]
+    public async Task Group_receipts_distinguish_partial_reads_and_exclude_people_who_joined_after_the_message()
+    {
+        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
+        var first=AddUser(db,"first@test","Primeiro");var second=AddUser(db,"second@test","Segundo");var late=AddUser(db,"late@test","Novo");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new("Equipe",null,true,[first.Id,second.Id]),Actor(sender));
+        var id=await service.SendMessageAsync(new(room,"Mensagem anterior","text"),Actor(sender));
+        db.InternalChatRoomMembers.Add(new(){RoomId=room,UserId=late.Id,JoinedAt=DateTimeOffset.UtcNow.AddSeconds(1)});await db.SaveChangesAsync();
+        await service.MarkReadAsync(new(room),Actor(first));
+        var partial=(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single();
+        Assert.Equal(1,partial.SeenByCount);Assert.Equal(2,partial.RecipientCount);Assert.Equal("delivered",partial.ReceiptState);
+        await service.MarkReadAsync(new(room),Actor(second));
+        Assert.Equal("seen",(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single().ReceiptState);
+        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(late)))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Reactions_are_persistent_idempotent_replaceable_and_private_to_the_room()
+    {
+        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");var reader=AddUser(db,"reader@test","Leitor");var outsider=AddUser(db,"other@test","Outro");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender));
+        var id=await service.SendMessageAsync(new(room,"Pode conferir?","text"),Actor(sender));
+        await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader));await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader));
+        Assert.Single(db.InternalChatMessageReactions);
+        await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(sender));
+        var reaction=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Reactions);
+        Assert.Equal(2,reaction.Count);Assert.Contains(reader.Id,reaction.UserIds);Assert.Contains("Remetente",reaction.UserNames);
+        await service.SetMessageReactionAsync(new(room,id,"❤️",true),Actor(reader));
+        Assert.Equal(2,await db.InternalChatMessageReactions.CountAsync());
+        await service.SetMessageReactionAsync(new(room,id,"👍",false),Actor(reader));
+        Assert.Contains(db.InternalChatMessageReactions,entry=>entry.UserId==reader.Id&&entry.Emoji=="❤️");
+        await service.SetMessageReactionAsync(new(room,id,"❤️",false),Actor(reader));
+        Assert.Single(db.InternalChatMessageReactions);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(outsider)))).StatusCode);
+        await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"texto",true),Actor(reader)));
+        await service.DeleteMessageAsync(new(room,id,1),Actor(sender));
+        Assert.Empty((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Reactions);
+        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader)))).StatusCode);
+    }
+
     [Theory]
     [InlineData(32)]
     [InlineData(50)]
@@ -81,7 +137,7 @@ public sealed class InternalChatServiceTests
             member.JoinedAt = DateTimeOffset.UtcNow.AddDays(-60);
             member.LastReadAt = null;
         }
-        foreach (var message in db.InternalChatMessages) message.CreatedAt = DateTimeOffset.UtcNow.AddDays(-45);
+        foreach (var message in db.InternalChatMessages) { message.CreatedAt = DateTimeOffset.UtcNow.AddDays(-45); message.UpdatedAt = message.CreatedAt; }
         await db.SaveChangesAsync();
         var olderUnread = (await service.GetModuleAsync(Actor(recipient))).Rooms.Single();
         Assert.Empty(olderUnread.Messages);
@@ -201,7 +257,7 @@ public sealed class InternalChatServiceTests
         var roomId = await service.CreateRoomAsync(new CreateInternalChatRoomCommand(null, null, false, [peer.Id]), actor);
         foreach (var member in await db.InternalChatRoomMembers.ToListAsync()) member.JoinedAt = DateTimeOffset.UtcNow.AddDays(-90);
         var oldId = await service.SendMessageAsync(new SendInternalChatMessageCommand(roomId, "Mensagem antiga", "text"), actor);
-        (await db.InternalChatMessages.SingleAsync(message => message.Id == oldId)).CreatedAt = DateTimeOffset.UtcNow.AddDays(-45);
+        var oldMessage = await db.InternalChatMessages.SingleAsync(message => message.Id == oldId); oldMessage.CreatedAt = DateTimeOffset.UtcNow.AddDays(-45); oldMessage.UpdatedAt = oldMessage.CreatedAt;
         await db.SaveChangesAsync();
         await service.SendMessageAsync(new SendInternalChatMessageCommand(roomId, "Mensagem atual", "text"), actor);
         Assert.Single((await service.GetModuleAsync(actor)).Rooms.Single().Messages);
@@ -280,7 +336,7 @@ public sealed class InternalChatServiceTests
         await using var db = CreateContext(); var sender = AddUser(db,"author@test.local","Autor"); var reader = AddUser(db,"reader@test.local","Leitor"); await db.SaveChangesAsync();
         var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender)); var id = await service.SendMessageAsync(new(roomId,"Antiga","text"),Actor(sender));
         foreach(var member in db.InternalChatRoomMembers)member.JoinedAt=DateTimeOffset.UtcNow.AddDays(-60);
-        (await db.InternalChatMessages.SingleAsync()).CreatedAt=DateTimeOffset.UtcNow.AddDays(-45); await db.SaveChangesAsync();
+        var oldMessage = await db.InternalChatMessages.SingleAsync(); oldMessage.CreatedAt=DateTimeOffset.UtcNow.AddDays(-45); oldMessage.UpdatedAt=oldMessage.CreatedAt; await db.SaveChangesAsync();
         Assert.Empty((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
         await service.EditMessageAsync(new(roomId,id,"Corrigida no histórico",1),Actor(sender));
         Assert.Equal("Corrigida no histórico",(await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Body);

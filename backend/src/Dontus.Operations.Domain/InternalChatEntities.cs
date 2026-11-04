@@ -31,3 +31,20 @@ public sealed class InternalChatMessage : Entity
     public DateTimeOffset? EditedAt { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
 }
+
+public sealed class InternalChatMessageReceipt
+{
+    public Guid RoomId { get; set; }
+    public Guid MessageId { get; set; }
+    public Guid UserId { get; set; }
+    public DateTimeOffset ReadAt { get; set; }
+}
+
+public sealed class InternalChatMessageReaction
+{
+    public Guid RoomId { get; set; }
+    public Guid MessageId { get; set; }
+    public Guid UserId { get; set; }
+    public string Emoji { get; set; } = "";
+    public DateTimeOffset ReactedAt { get; set; } = DateTimeOffset.UtcNow;
+}

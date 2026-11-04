@@ -607,7 +607,7 @@ function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClos
 function MetricChange({value}:{value:number|null}) { return <b className={value===null?"":value>=0?"positive":"negative"}>{value===null?"Sem base":(value>=0?"+":"")+value+"%"}</b>; }
 
 function CommercialCampaignIndicators({ entries }: { entries: CommercialEntry[] }) {
-  const leads = entries.filter((entry) => !entry.direct || entry.detail.leadQualification === "qualified" || entry.detail.leadQualification === "not-qualified");
+  const leads = entries.filter((entry) => !entry.direct);
   const qualified = leads.filter((entry) => entry.detail.leadQualification === "qualified");
   const notQualified = leads.filter((entry) => entry.detail.leadQualification === "not-qualified");
   const campaigns = counted(leads.map((entry) => stringOf(entry.detail.campaignName)).filter(Boolean), 12);
