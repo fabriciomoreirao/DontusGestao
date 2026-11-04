@@ -1849,6 +1849,8 @@ operations.MapPost("", async (
         // A task mutation does not require rebuilding chats, calendars or administrative data.
         var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
             ["taskModule"] = await taskService.GetModuleAsync(actor, cancellationToken) };
+        if (request.Action == "communicateWithClient" && actor.HasPermission("notices", "view"))
+            result["noticesModule"] = await service.GetNoticesModuleAsync(actor, cancellationToken);
         if (request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus")
         {
             // Keep customer open-task protocols current when links or completion change.

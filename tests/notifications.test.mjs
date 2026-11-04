@@ -92,6 +92,15 @@ test('avisos da fila compartilhada enviados pela API aparecem para membros sem a
   data.taskModule.tasks=[];assert.equal(buildNotifications(data,now).length,0);
 });
 
+test('avisos de contato e aprovação chegam ao criador e coordenadores mesmo com outro responsável',()=>{
+  const data=base();data.taskModule={collaborators:[],tasks:[{id:'forwarded',assigneeUserId:'dev-user',assigneeName:'Desenvolvimento'}],notifications:['client_contact_requested','approval_requested','assigned'].map((eventType,index)=>({id:`workflow-${index}`,taskId:'forwarded',eventType,message:eventType,read:false,createdAt:'2026-10-22T14:00:00Z'}))};
+  const notifications=buildNotifications(data,now);
+  assert.equal(notifications.length,2);
+  assert.ok(notifications.every(entry=>entry.targetUrl==='/?mod=tasks&task=forwarded'));
+  data.taskModule.notifications.forEach(entry=>entry.read=true);assert.equal(buildNotifications(data,now).length,0);
+  data.taskModule.notifications.forEach(entry=>entry.read=false);data.taskModule.tasks=[];assert.equal(buildNotifications(data,now).length,0);
+});
+
 test('salvar uma inserção própria silencia só os novos eventos do registro alterado',()=>{
   const data=base();const before=buildNotifications(data,now);data.items=[item('commercial',{comments:['Comentário sem metadados']}),{...item('lia',{kind:'liaJourney'}),id:'other-arrival'}];const after=buildNotifications(data,now);
   const muted=ownMutationNotificationIds(before,after,{id:'record-1'});assert.equal(muted.length,1);assert.equal(newlyReceived([],after,new Set(muted)).length,1);
