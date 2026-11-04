@@ -703,6 +703,14 @@ var operations = app.MapGroup("/api/operations")
     .RequireAuthorization()
     .RequireRateLimiting("operations");
 
+operations.MapGet("/service-version", async (string clientId, ClaimsPrincipal principal, IOperationsService service,
+    IAccessControlService accessControl, HttpResponse response, CancellationToken cancellationToken) =>
+{
+    response.Headers.CacheControl = "no-store";
+    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    return Results.Ok(new { version = await service.GetServiceVersionAsync(clientId, actor, cancellationToken) });
+});
+
 operations.MapGet("", async (
     HttpContext context,
     RealtimeBroker realtime,

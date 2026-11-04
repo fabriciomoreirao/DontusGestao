@@ -7,6 +7,39 @@ namespace Dontus.Operations.Tests;
 
 public sealed class AgendaServiceTests
 {
+    [Theory]
+    [InlineData("creator",true)]
+    [InlineData("responsible",true)]
+    [InlineData("manager",true)]
+    [InlineData("participant",false)]
+    public async Task Creator_responsible_and_calendar_manager_can_edit_all_commitment_information(string role,bool allowed)
+    {
+        var (db,service,command,actor)=await RecurrenceContext();await using var context=db;
+        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));
+        var commitment=await db.AgendaCommitments.SingleAsync();
+        if(role!="creator")commitment.CreatedBy="original@test";
+        if(role is "manager" or "participant")
+        {
+            var responsible=new AppUser { Email="another@test",DisplayName="Outro responsável",CreatedBy="tests" };db.Add(responsible);
+            db.UserAgendaCalendarAccesses.Add(new UserAgendaCalendarAccess { UserId=responsible.Id,CalendarId=command.AgendaId });
+            commitment.ResponsibleUserId=responsible.Id;
+            db.AgendaCommitmentParticipants.Add(new AgendaCommitmentParticipant { CommitmentId=id,UserId=responsible.Id });
+        }
+        await db.SaveChangesAsync();
+        if(role=="manager")actor=actor with { Permissions=[new("work",true,true,true,false,true)] };
+        var update=new UpdateAgendaCommitmentCommand(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,commitment.ResponsibleUserId,
+            "Título revisado","Descrição revisada",command.StartsAt.AddHours(2),command.EndsAt.AddHours(3),[command.ResponsibleUserId]);
+        if(!allowed)
+        {
+            Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateCommitmentAsync(update,actor))).StatusCode);
+            Assert.Equal(command.Title,commitment.Title);return;
+        }
+        await service.UpdateCommitmentAsync(update,actor);
+        Assert.Equal(update.Title,commitment.Title);Assert.Equal(update.Description,commitment.Description);
+        Assert.Equal(update.StartsAt,commitment.StartsAt);Assert.Equal(update.EndsAt,commitment.EndsAt);
+        Assert.Contains(await db.AgendaCommitmentParticipants.Where(x=>x.CommitmentId==id).ToArrayAsync(),x=>x.UserId==command.ResponsibleUserId);
+    }
+
     [Fact]
     public async Task Allows_meeting_room_reservations_only_for_marked_coordinators()
     {
