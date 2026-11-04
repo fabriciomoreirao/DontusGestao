@@ -1,5 +1,8 @@
 "use client";
 
+import { beginKanbanDrag, readKanbanDrop } from "@/lib/kanban-drag";
+import { canDragTask, canMoveTask } from "@/lib/task-movement";
+
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
@@ -106,6 +109,8 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   const reminderFilter = useReminderFilter("tasks");
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const currentCollaborator = module.collaborators.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
+  const movementAccess={userId:currentCollaborator?.id,canEdit,canManage,changeStatus:has("changeStatus"),cancel:has("cancel")};
+  const canMoveTo=(task:CorporateTask,statusId:string)=>{const status=module.statuses.find(entry=>entry.id===statusId);return !busy&&Boolean(status&&canMoveTask(task,status,module.types,movementAccess));};
   const availableDepartments = availableTaskDepartments(module.departments, currentCollaborator, has("viewOtherDepartments"));
   const departmentFilter = availableDepartments.some((item) => item.id === department) ? department : "";
   const priorityFilter = module.priorities.some((item) => item.id === priority && item.active) ? priority : "";
@@ -149,7 +154,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   };
 
   const move = async (task: CorporateTask, statusId: string) => {
-    if (!canEdit || !has("changeStatus") || task.statusId === statusId) return;
+    if (busy || !canMoveTo(task,statusId) || task.statusId === statusId) return;
     const target = module.statuses.find((status) => status.id === statusId);
     const justification = target?.requiresJustification ? window.prompt("Justificativa obrigatória:") : "";
     if (target?.requiresJustification && !justification) return;
@@ -195,7 +200,7 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
         <div className="task-client-notice-tabs">{["Todos", "Avisar Cliente", "Sem Necessidade", "Cliente Informado", "Pendente"].map((state) => <button className={clientNotice === state ? "active" : ""} onClick={() => setClientNotice(state)} key={state}>{state}<b>{state === "Todos" ? module.tasks.length : module.tasks.filter((task) => task.clientNotificationState === state).length}</b></button>)}</div>
       </details>
       <div className="task-workspace-content">
-        {view === "kanban" && <Kanban tasks={filtered} statuses={module.statuses} collaborators={module.collaborators} departmentId={departmentFilter} canEdit={canEdit} busy={busy} onOpen={openTask} onEdit={task=>openTask(task,true)} onMove={move} onDelete={task=>{void operate({action:"deleteTask",taskId:task.id,version:task.version},"Tarefa excluída com sucesso.")}} onUpload={uploadAttachments} />}
+        {view === "kanban" && <Kanban tasks={filtered} statuses={module.statuses} collaborators={module.collaborators} departmentId={departmentFilter} canEdit={canEdit} canDrag={task=>canDragTask(task,movementAccess)} canMoveTo={canMoveTo} busy={busy} onOpen={openTask} onEdit={task=>openTask(task,true)} onMove={move} onDelete={task=>{void operate({action:"deleteTask",taskId:task.id,version:task.version},"Tarefa excluída com sucesso.")}} onUpload={uploadAttachments} />}
         {view === "list" && <TaskList tasks={filtered} collaborators={module.collaborators} onOpen={openTask} />}
       </div>
     </section>
@@ -216,8 +221,9 @@ export default function TasksModule({ module, customers, user, canCreate, canEdi
   </div>;
 }
 
-function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, busy, onOpen, onEdit, onMove, onDelete, onUpload }: { tasks: CorporateTask[]; statuses: Status[]; collaborators: Collaborator[]; departmentId: string; canEdit: boolean; busy: boolean; onOpen: (task: CorporateTask) => void; onEdit: (task: CorporateTask) => void; onMove: (task: CorporateTask, statusId: string) => void; onDelete: (task: CorporateTask) => void; onUpload: Props["uploadAttachments"] }) {
+function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, canDrag, canMoveTo, busy, onOpen, onEdit, onMove, onDelete, onUpload }: { tasks: CorporateTask[]; statuses: Status[]; collaborators: Collaborator[]; departmentId: string; canEdit: boolean; canDrag:(task:CorporateTask)=>boolean; canMoveTo:(task:CorporateTask,statusId:string)=>boolean; busy: boolean; onOpen: (task: CorporateTask) => void; onEdit: (task: CorporateTask) => void; onMove: (task: CorporateTask, statusId: string) => void; onDelete: (task: CorporateTask) => void; onUpload: Props["uploadAttachments"] }) {
   const [limits, setLimits] = useState<Record<string, number>>({});
+  const [draggedId,setDraggedId]=useState("");
   const visibleStatuses = statuses
     .filter((status) => status.active && (!departmentId || !status.departmentId || status.departmentId === departmentId))
     .sort((a, b) => a.displayOrder - b.displayOrder);
@@ -225,13 +231,17 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, busy, o
     const column = tasks.filter((task) => task.statusId === status.id);
     const limit = limits[status.id] ?? 10;
     const visibleTasks = column.slice(0, limit);
-    return <section className="task-column" key={status.id} onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
-      const task = tasks.find((entry) => entry.id === e.dataTransfer.getData("taskId"));
-      if (task) void onMove(task, status.id);
+    return <section className="task-column" key={status.id} onDragOver={(e) => {
+      const task=tasks.find(entry=>entry.id===draggedId);
+      if(task&&canMoveTo(task,status.id)){e.preventDefault();e.dataTransfer.dropEffect="move";e.currentTarget.classList.add("drag-over");}
+    }} onDragLeave={event=>event.currentTarget.classList.remove("drag-over")} onDrop={(e) => {
+      e.preventDefault();e.stopPropagation();e.currentTarget.classList.remove("drag-over");setDraggedId("");
+      const task = tasks.find((entry) => entry.id === readKanbanDrop(e, "taskId"));
+      if (task&&canMoveTo(task,status.id)) void onMove(task, status.id);
     }}>
       <header><span><CircleDot size={14} />{status.kanbanColumn || status.name}</span><b>{column.length}</b></header>
-      <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{visibleTasks.map((task) => <article draggable tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} key={task.id}
-        onDragStart={(e) => e.dataTransfer.setData("taskId", task.id)} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(task); } }}>
+      <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{visibleTasks.map((task) => <article draggable={!busy&&canDrag(task)} tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} key={task.id}
+        onDragStart={(e) => {beginKanbanDrag(e, "taskId", task.id);setDraggedId(task.id);}} onDragEnd={()=>{setDraggedId("");document.querySelectorAll(".task-column.drag-over").forEach(column=>column.classList.remove("drag-over"));}} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(task); } }}>
         <div className="task-card-top"><span className="task-card-code"><Clipboard size={15} /><b>{task.protocol}</b></span>{canEdit && <span className="task-card-actions"><TaskCardFileUpload taskId={task.id} busy={busy} onUpload={onUpload} />{task.canModify && <><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></>}</span>}</div>
         <strong className="task-card-title">{task.title}</strong>
         {(task.customerName || task.customerCode) && <div className="task-card-customer"><UserRound size={15}/><span>Cliente</span><b>{task.customerName || "Não informado"}</b>{task.customerCode && <small><FileText size={13}/> ID {task.customerCode}</small>}</div>}
@@ -409,8 +419,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
   const canRunWorkflow = isAssignee || canEdit && has("changeStatus");
   const canForwardTask = isAssignee || canEdit && has("forward") && (canManage || user.isCoordinator);
   const taskType = module.types.find((type) => type.id === task.typeId);
-  const allowedStatusIds = new Set(taskType?.allowedStatusIds ?? []);
-  const availableStatuses = module.statuses.filter((status) => status.active && status.manualMovement && (allowedStatusIds.size === 0 || allowedStatusIds.has(status.id) || /aguardando\s+aprova/i.test(status.name)) && (!status.departmentId || status.departmentId === task.currentDepartmentId));
+  const availableStatuses = module.statuses.filter(status=>status.id===task.statusId||canMoveTask(task,status,module.types,{userId:currentUserId,canEdit,canManage,changeStatus:has("changeStatus"),cancel:has("cancel")}));
   const finalStatus = availableStatuses.find((status) => status.isFinal && !/cancel/i.test(status.name) && /conclu|finaliz|resolvid/i.test(status.name)) ?? availableStatuses.find((status) => status.isFinal && !/cancel/i.test(status.name));
   const approvalStatus = availableStatuses.find((status) => /aguardando\s+aprova/i.test(status.name));
   const approverUserId = task.comments.map((entry) => entry.body.match(/\[APROVADOR:([^\]]+)\]/)?.[1]).find(Boolean) ?? "";
@@ -496,7 +505,7 @@ function TaskDetail({ task, module, customers, user, canManage, canEdit, startEd
       </div>}
       <div className="task-action-fields">
         {canTransferResponsible && <div className="task-responsible-transfer"><label><span>Transferir responsável</span><SearchablePeopleSelect searchLabel="Transferir responsável" value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.target.value)}><option value="">Fila compartilhada</option>{currentDepartmentAssignees.map((collaborator) => <option value={collaborator.id} key={collaborator.id}>{collaborator.name}</option>)}</SearchablePeopleSelect></label><button type="button" disabled={busy || responsibleUserId === (task.assigneeUserId ?? "")} onClick={() => void operate({ action: "assignTask", taskId: task.id, assigneeUserId: responsibleUserId || null, version: task.version }, "Responsável transferido com sucesso.")}><UsersRound size={15} /> Transferir</button></div>}
-        {canEdit && has("changeStatus") && <label className="status-control"><span>Status</span><select value={task.statusId} onChange={async (e) => {
+        {canRunWorkflow && <label className="status-control"><span>Status</span><select value={task.statusId} onChange={async (e) => {
           const target = module.statuses.find((s) => s.id === e.target.value);
           const justification = target?.requiresJustification ? window.prompt("Justificativa obrigatória:") : "";
           if (!target?.requiresJustification || justification) await operate({ action: "changeTaskStatus", taskId: task.id, statusId: e.target.value, justification, version: task.version }, "Status atualizado.");

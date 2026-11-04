@@ -1,5 +1,7 @@
 "use client";
 
+import { beginKanbanDrag, readKanbanDrop } from "@/lib/kanban-drag";
+
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
@@ -228,7 +230,7 @@ function DevelopmentListRow({ item, secondary, stage, owner, canEdit, canDelete,
 function DevelopmentColumn({ title, items, tone, canEdit = false, canDelete = false, onOpen, onDelete = () => undefined, onDropItem }: { title: string; items: WorkItem[]; tone?: string; canEdit?: boolean; canDelete?: boolean; onOpen: (item: WorkItem) => void; onDelete?: (item: WorkItem) => void; onDropItem?: (id: string, stage: string) => void }) {
   const [limit, setLimit] = useState(10);
   const visibleItems = items.slice(0, limit);
-  return <section className={`development-column ${tone ?? ""}`} onDragOver={(event) => { if (canEdit && onDropItem) { event.preventDefault(); event.currentTarget.classList.add("drag-over"); } }} onDragLeave={(event) => event.currentTarget.classList.remove("drag-over")} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove("drag-over"); const id = event.dataTransfer.getData("workItemId"); if (id) onDropItem?.(id, title); }}><header><span>{title}</span><b>{items.length}</b></header><div>{items.length ? visibleItems.map((item) => <DevelopmentCard item={item} canEdit={canEdit} canDelete={canDelete} onOpen={() => onOpen(item)} onDelete={() => void onDelete(item)} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("workItemId", item.id); }} key={item.id} />) : <p>Arraste um card para esta etapa.</p>}{items.length > visibleItems.length && <button type="button" className="development-column-more" onClick={() => setLimit((value) => value + 10)}>Ver mais ({items.length - visibleItems.length})</button>}</div></section>;
+  return <section className={`development-column ${tone ?? ""}`} onDragOver={(event) => { if (canEdit && onDropItem) { event.preventDefault(); event.currentTarget.classList.add("drag-over"); } }} onDragLeave={(event) => event.currentTarget.classList.remove("drag-over")} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove("drag-over"); const id = readKanbanDrop(event, "workItemId"); if (id) onDropItem?.(id, title); }}><header><span>{title}</span><b>{items.length}</b></header><div>{items.length ? visibleItems.map((item) => <DevelopmentCard item={item} canEdit={canEdit} canDelete={canDelete} onOpen={() => onOpen(item)} onDelete={() => void onDelete(item)} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; beginKanbanDrag(event, "workItemId", item.id); }} key={item.id} />) : <p>Arraste um card para esta etapa.</p>}{items.length > visibleItems.length && <button type="button" className="development-column-more" onClick={() => setLimit((value) => value + 10)}>Ver mais ({items.length - visibleItems.length})</button>}</div></section>;
 }
 
 function DevelopmentDrawer({ item, detail, employees, canEdit, busy, user, onClose, onSave }: { item: WorkItem; detail: DevelopmentData; employees: Props["employees"]; canEdit: boolean; busy: boolean; user: Props["user"]; onClose: () => void; onSave: (item: WorkItem, detail: DevelopmentData, success: string) => Promise<{ id?: string } | false> }) {
