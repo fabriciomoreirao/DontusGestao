@@ -4,22 +4,23 @@ import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { Save, Settings, UsersRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { commissionScoreTiers, validScoreTiers, type CommissionRule, type CommissionScope, type ScoreTier } from "@/lib/commission-rules";
+import { commissionScoreTiers, parseCommissionRule, validScoreTiers, type CommissionRule, type CommissionScope, type ScoreTier } from "@/lib/commission-rules";
 
 type Catalog = { id: string; catalog: string; name: string; description: string; active: boolean };
 type Employee = { id: string; displayName: string; departmentName: string };
 type SavedRule = { entry: Catalog; rule: CommissionRule };
 const scopeLabel = (scope: CommissionScope) => scope === "commercial" ? "Comercial" : scope === "lia" ? "LIA" : "Sucesso do Cliente";
 const parseRule = (entry: Catalog): SavedRule | null => {
-  try { const rule = JSON.parse(entry.description) as CommissionRule; return entry.catalog === "commissionRule" && rule.kind === "commissionRule" ? { entry, rule } : null; }
-  catch { return null; }
+  const rule = parseCommissionRule(entry.description);
+  return entry.catalog === "commissionRule" && rule ? { entry, rule } : null;
 };
 
-export default function CommissionSettings({ catalogs, employees, busy, operate, onBack }: {
+export default function CommissionSettings({ catalogs, employees, busy, operate, onBack, initialScope = "commercial" }: {
+  initialScope?: CommissionScope;
   catalogs: Catalog[]; employees: Employee[]; busy: boolean; onBack: () => void;
   operate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>;
 }) {
-  const [scope, setScope] = useState<CommissionScope>("commercial");
+  const [scope, setScope] = useState<CommissionScope>(initialScope);
   const [employeeId, setEmployeeId] = useState("");
   const employee = employees.find(entry => entry.id === employeeId);
   const rules = catalogs.map(parseRule).filter((entry): entry is SavedRule => Boolean(entry));
@@ -59,5 +60,5 @@ function ScoreRuleForm({ existing, busy, onSave }: { existing?: SavedRule; busy:
   const [rates,setRates]=useState(initial.map(tier=>tier.percentage));const [error,setError]=useState("");
   const labels=["Abaixo de 50%","De 50% a menos de 75%","De 75% até 100%","Acima de 100%"];
   function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const tiers=initial.map((tier,index)=>({...tier,percentage:index===0?0:rates[index]}));if(!validScoreTiers(tiers)){setError("Informe percentuais entre 0% e 100%.");return;}setError("");void onSave(tiers);}
-  return <form className="commission-score-rule" onSubmit={submit}><header><span><small>SUCESSO DO CLIENTE</small><h2>Comissão por score do cliente</h2><p>O percentual é aplicado sobre o valor do cliente. Scores de 200%, 300% ou mais usam a faixa acima de 100%.</p></span><b>{saved?"Faixas configuradas":"Configure os percentuais"}</b></header><div className="commission-score-tiers">{rates.map((rate,index)=><article key={index}><small>FAIXA {index+1}</small><strong>{labels[index]}</strong><label>Comissão (%)<input aria-label={"Comissão da faixa "+(index+1)} type="number" min="0" max="100" step="0.01" required disabled={index===0} value={index===0?0:rate} onChange={event=>setRates(values=>values.map((value,position)=>position===index?Number(event.target.value):value))}/></label><p>{index===0?"Sem comissão abaixo de 50%.":"Em uma base de R$ 1.000: "}{index>0&&<b>{new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(rate*10)}</b>}</p></article>)}</div><footer><span>{error?<strong role="alert">{error}</strong>:"50% entra na segunda faixa; 75% na terceira; 100% permanece na terceira. Acima de 100%, usa a quarta faixa."}</span><button className="primary-button" disabled={busy}><Save size={16}/>Salvar faixas de comissão</button></footer></form>;
+  return <form className="commission-score-rule" onSubmit={submit}><header><span><small>SUCESSO DO CLIENTE</small><h2>Comissão por score do cliente</h2><p>O percentual é aplicado sobre o valor do cliente. Scores de 200%, 300% ou mais usam a faixa acima de 100%.</p></span><b>{validScoreTiers(saved)?"Faixas configuradas":"Configure os percentuais"}</b></header><div className="commission-score-tiers">{rates.map((rate,index)=><article key={index}><small>FAIXA {index+1}</small><strong>{labels[index]}</strong><label>Comissão (%)<input aria-label={"Comissão da faixa "+(index+1)} type="number" min="0" max="100" step="0.01" required disabled={index===0} value={index===0?0:rate} onChange={event=>setRates(values=>values.map((value,position)=>position===index?Number(event.target.value):value))}/></label><p>{index===0?"Sem comissão abaixo de 50%.":"Em uma base de R$ 1.000: "}{index>0&&<b>{new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(rate*10)}</b>}</p></article>)}</div><footer><span>{error?<strong role="alert">{error}</strong>:"50% entra na segunda faixa; 75% na terceira; 100% permanece na terceira. Acima de 100%, usa a quarta faixa."}</span><button className="primary-button" disabled={busy}><Save size={16}/>Salvar faixas de comissão</button></footer></form>;
 }

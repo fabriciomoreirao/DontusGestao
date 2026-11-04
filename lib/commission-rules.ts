@@ -5,7 +5,44 @@ export type CommissionRule = {
   product: string; type: "percentage" | "fixed"; value: number; scoreTiers?: ScoreTier[];
 };
 
-const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+export const normalizeCommissionName = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+const normalize = normalizeCommissionName;
+
+export function parseCommissionRule(raw: string): CommissionRule | null {
+  try {
+    const value = JSON.parse(raw);
+    if (!value || value.kind && value.kind !== "commissionRule" || !["commercial", "cs", "lia"].includes(value.scope)
+      || !["percentage", "fixed"].includes(value.type) || !Number.isFinite(Number(value.value ?? 0))) return null;
+    return {...value, kind: "commissionRule", employeeId: String(value.employeeId || "").trim(),
+      employeeName: String(value.employeeName || "").trim(), product: String(value.product || "*").trim(), value: Number(value.value ?? 0)};
+  } catch { return null; }
+}
+
+export function findCommissionRule(rules: CommissionRule[], row: {scope: CommissionScope; employeeId: string; employeeName: string; product: string}) {
+  const candidates = rules.filter(rule => rule.scope === row.scope && (rule.employeeId && row.employeeId
+    ? rule.employeeId.toLowerCase() === row.employeeId.toLowerCase() : normalize(rule.employeeName) === normalize(row.employeeName)));
+  return candidates.find(rule => normalize(rule.product) === normalize(row.product))
+    ?? candidates.find(rule => rule.product === "*") ?? (row.scope === "cs" ? candidates[0] : undefined);
+}
+
+export function commissionDate(value: unknown): string | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value)) return null;
+  const day = new Date(`${value.slice(0,10)}T12:00:00Z`);
+  if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0,10) !== value.slice(0,10)) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const parsed = new Date(`${value}T12:00:00Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10) === value ? value : null;
+  }
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? new Intl.DateTimeFormat("en-CA", {timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(parsed) : null;
+}
+
+export function journeyCommissionDate(scope: "cs" | "lia", detail: Record<string, unknown>, createdAt: string): string | null {
+  if (scope === "lia") return detail.startDate ? commissionDate(detail.startDate) : detail.startedAt ? commissionDate(detail.startedAt) : commissionDate(createdAt);
+  if (["validation", "onboarding", "activation"].includes(String(detail.phase))) return null;
+  return detail.trackingStartedAt ? commissionDate(detail.trackingStartedAt)
+    : ["tracking", "evolution"].includes(String(detail.phase)) ? commissionDate(detail.startDate) : null;
+}
 const tokens = (values: unknown) => [...new Set((Array.isArray(values) ? values : [])
   .filter((value): value is string => typeof value === "string").flatMap(value => value.split(","))
   .map(value => normalize(value.trim())).filter(Boolean))];
