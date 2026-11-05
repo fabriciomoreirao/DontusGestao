@@ -702,7 +702,7 @@ test("integra redes, acesso total, alertas por ID e notificações persistentes"
   ]);
   assert.match(app, /Redes e franquias/);
   assert.match(app, /function NetworkCustomerRecord/);
-  assert.match(app, /network\?\.id \|\| context\.clientId/);
+  assert.match(app, /network\?\.id \|\| clientRecordQuery\(context, data\?\.items \?\? \[\]\)/);
   assert.match(app, /networkRecord && networkDetail/);
   assert.match(app, /network-customer-record-page/);
   assert.match(app, /Cadastro sincronizado automaticamente com Contas Estratégicas/);

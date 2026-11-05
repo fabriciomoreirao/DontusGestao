@@ -120,6 +120,10 @@ Em **Chamados → Configurar IA**, o campo de modelo oferece **gpt-6-luna** e pe
 
 Em **Cadastros → Setores** e **Colaboradores → Setores**, selecione os coordenadores/aprovadores do setor. A coordenação fica vinculada automaticamente às novas tarefas. Participantes usam um seletor compacto com busca e múltiplas caixas de seleção. Anotações públicas de outros colaboradores abrem em modo de leitura. No acompanhamento de CS, o card mantém apenas a conferência e a escolha do responsável; as informações de rodízio ficam em **Indicadores de rodízio**, sem exigir versão ou posição na fila para encaminhar.
 
+## Ficha do cliente
+
+Na ficha 360 do cliente, a aba **Comercial** reúne os leads e oportunidades, comentários, follow-ups, interações e movimentações desde a qualificação, inclusive antes do ganho. A abertura pelo card usa o registro de origem quando ainda não há cliente cadastrado. A consolidação acompanha os vínculos entre qualificação, CRM, CS e LIA e o ID informado no encaminhamento; históricos antigos sem ID são relacionados pelo nome exato ou contato único. As interações também aparecem em **Comentários** e **Linha do tempo**, respeitando os módulos disponíveis ao usuário.
+
 ## Módulo de Tarefas
 
 Nos acompanhamentos de **Ativação** e **Retenção**, **Inserir cliente** permite informar a **Data de início do acompanhamento**. O botão **Editar** do card reabre o formulário preenchido para ajustar data, nome, ID, telefone, responsável e status, preservando o histórico e a etapa. A contagem usa dias do calendário de Brasília; registros antigos sem data usam a criação do card, sem reiniciar após edições. Encaminhamentos gravam a data inicial automaticamente.
