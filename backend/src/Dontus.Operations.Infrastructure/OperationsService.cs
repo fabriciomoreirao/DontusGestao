@@ -227,7 +227,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         return new OperationsSnapshot(
             new UserDto(actor.Email, actor.DisplayName, actor.Role, actor.Department,
                 currentUserProfile is null ? "" : ProfilePhotoUrls.For(currentUserProfile.Id, currentUserProfile.UpdatedAt, currentUserProfile.HasPhoto), currentUserProfile?.JobTitle ?? "",
-                currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? [], actor.FullAccess),
+                currentUserProfile?.IsCoordinator ?? false, actor.Permissions ?? [], actor.FullAccess, actor.AccessAllowedUntil),
             customers, items, appointments, approvals, decisions, audit, moduleCounts)
         {
             WaitingQueueDirectory = actor.HasPermission("waitingQueue", "view") ? directory : null,

@@ -86,7 +86,7 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
         Status = status,
         Detail = detail,
         Instance = context.Request.Path,
-        Extensions = { ["correlationId"] = correlationId },
+        Extensions = { ["correlationId"] = correlationId, ["code"] = (exception as DomainException)?.Code },
     });
 }));
 
@@ -1438,7 +1438,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } employeeDepartmentId ? [employeeDepartmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds, request.AccessSchedule), actor, cancellationToken);
             id = createdEmployee.Id;
             break;
 
@@ -1454,7 +1454,7 @@ operations.MapPost("", async (
                 request.DepartmentIds ?? (request.DepartmentId is { } departmentId ? [departmentId] : []),
                 request.EmployeeLevelId ?? throw new DomainException("Nível obrigatório."),
                 request.PhotoDataUrl, request.JobTitle, request.IsCoordinator ?? false,
-                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds), actor, cancellationToken);
+                request.SubordinateUserIds, request.Active ?? true, request.GroupIds, request.AgendaDepartmentIds, request.FullAccess ?? false, request.AgendaCalendarIds, request.AccessSchedule), actor, cancellationToken);
             break;
 
         case "deleteEmployee":
@@ -2391,6 +2391,7 @@ public sealed class OperationsRequest
     public IReadOnlyCollection<Guid>? DepartmentIds { get; init; }
     public IReadOnlyCollection<Guid>? AgendaDepartmentIds { get; init; }
     public IReadOnlyCollection<Guid>? AgendaCalendarIds { get; init; }
+    public EmployeeAccessSchedule? AccessSchedule { get; init; }
     public IReadOnlyCollection<Guid>? AllowedStatusIds { get; init; }
     public Guid? UserId { get; init; }
     public string? Phone { get; init; }

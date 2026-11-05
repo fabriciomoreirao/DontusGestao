@@ -6,7 +6,7 @@ import type {ChatPresence} from "@/lib/chat-presence";
 
 export default function useRealtimeSync(options: {
   user: string | undefined; canChat: boolean; busy: boolean; cursor: () => string;
-  operations: () => Promise<boolean>; chat: () => Promise<boolean>; unauthorized: () => void;
+  operations: () => Promise<boolean>; chat: () => Promise<boolean>; unauthorized: (message?: string) => void;
   presence?: (users:ChatPresence[]) => void;
 }) {
   const latest = useRef(options);
@@ -19,7 +19,7 @@ export default function useRealtimeSync(options: {
     const sync = createRealtimeSync({
       url: url.href, canChat: options.canChat, busy: () => latest.current.busy, hidden: () => document.hidden,
       cursor: () => latest.current.cursor(), operations: () => latest.current.operations(), chat: () => latest.current.chat(),
-      status: setConnected, unauthorized: () => latest.current.unauthorized(),
+      status: setConnected, unauthorized: message => latest.current.unauthorized(message),
       presence: users=>latest.current.presence?.(users),
     });
     document.addEventListener("visibilitychange", sync.visible);

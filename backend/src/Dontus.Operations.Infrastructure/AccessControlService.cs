@@ -9,7 +9,7 @@ namespace Dontus.Operations.Infrastructure;
 public sealed class AccessControlService(
     OperationsDbContext db,
     IConfiguration configuration,
-    IPasswordRecoveryEmailSender passwordEmailSender) : IAccessControlService
+    IPasswordRecoveryEmailSender passwordEmailSender, TimeProvider? clock = null) : IAccessControlService
 {
     private const string AdministratorsGroup = "Administradores";
     private const string CollaboratorsGroup = "Colaboradores";
@@ -177,7 +177,7 @@ public sealed class AccessControlService(
     {
         var email = NormalizeEmail(identity.Email);
         var user = await db.Users.AsNoTracking()
-            .Select(entry => new { entry.Id, entry.Email, entry.DisplayName, entry.Department, entry.Active, entry.BlockedAt, entry.IsCoordinator })
+            .Select(entry => new { entry.Id, entry.Email, entry.DisplayName, entry.Department, entry.Active, entry.BlockedAt, entry.IsCoordinator, entry.AccessScheduleJson })
             .SingleOrDefaultAsync(entry => entry.Email == email, cancellationToken)
             ?? throw new DomainException(
                 "Seu usuário ainda não foi cadastrado. Solicite acesso a um administrador.",
@@ -185,6 +185,8 @@ public sealed class AccessControlService(
 
         if (!user.Active || user.BlockedAt.HasValue)
             throw new DomainException("Seu usuário está inativo. Solicite a reativação a um administrador.", 403);
+
+        var accessAllowedUntil = EmployeeAccessPolicy.RequireAllowed(user.AccessScheduleJson, (clock ?? TimeProvider.System).GetUtcNow());
 
         var groups = await db.UserAccessGroups.AsNoTracking()
             .Where(membership => membership.UserId == user.Id && membership.Group.Active)
@@ -234,7 +236,7 @@ public sealed class AccessControlService(
             groups.Count == 0 ? "Sem grupo" : string.Join(", ", groups.Select(group => group.Name).Order()),
             user.Department,
             permissions,
-            fullAccess);
+            fullAccess) { AccessAllowedUntil = accessAllowedUntil };
     }
 
     public async Task<AccessManagementDto> GetManagementAsync(
@@ -247,7 +249,7 @@ public sealed class AccessControlService(
             .OrderBy(user => user.DisplayName)
             .Select(user => new { user.Id, user.Email, user.DisplayName, user.Department, user.UpdatedAt,
                 HasPhoto = user.PhotoDataUrl != "", user.JobTitle, user.IsCoordinator, user.Active, user.BlockedAt,
-                user.LastAccessAt, user.CreatedAt, user.BirthDate, user.StartedAt, user.EmployeeLevelId,
+                user.LastAccessAt, user.CreatedAt, user.BirthDate, user.StartedAt, user.EmployeeLevelId, user.AccessScheduleJson,
                 Groups = user.Groups.Select(membership => new { membership.GroupId, GroupName = membership.Group.Name }).ToArray() })
             .ToListAsync(cancellationToken);
         var groups = await db.AccessGroups.AsNoTracking()
@@ -338,7 +340,7 @@ public sealed class AccessControlService(
                     user.Groups.Select(membership => membership.GroupId).ToArray(),
                     user.Groups.Select(membership => membership.GroupName).Order().ToArray(),
                     user.Active,
-                    user.BlockedAt, employeeAgendaCalendarIds);
+                    user.BlockedAt, employeeAgendaCalendarIds, EmployeeAccessPolicy.Read(user.AccessScheduleJson));
             }).ToArray(),
             departments.Select(department => new EmployeeDepartmentDto(department.Id, department.Name, department.Description, department.Active, userDepartments.Where(link => link.DepartmentId == department.Id && link.IsCoordinator).Select(link => link.UserId).ToArray())).ToArray(),
             levels.Select(level => new EmployeeLevelDto(level.Id, level.Name, level.Description, level.Active)).ToArray(),
@@ -499,6 +501,7 @@ public sealed class AccessControlService(
             JobTitle = CleanJobTitle(command.JobTitle),
             IsCoordinator = command.IsCoordinator,
             PasswordHash = PasswordSecurity.Hash(temporaryPassword),
+            AccessScheduleJson = EmployeeAccessPolicy.ValidateAndSerialize(command.AccessSchedule ?? new(false, [])),
             CreatedBy = actor.Email,
         };
         Guid[] groupIds = command.FullAccess
@@ -523,7 +526,7 @@ public sealed class AccessControlService(
             CoordinatorUserId = user.Id,
             SubordinateUserId = subordinateId,
         }));
-        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name });
+        AddAudit(actor, "Create", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name, AccessSchedule = EmployeeAccessPolicy.Read(user.AccessScheduleJson) });
         await db.SaveChangesAsync(cancellationToken);
         return new CreateEmployeeResult(user.Id);
     }
@@ -558,6 +561,8 @@ public sealed class AccessControlService(
                 : user.Groups.Select(membership => membership.GroupId).ToArray();
         await EnsureAdministrationRemainsAsync(user, command.Active, groupIds, cancellationToken);
 
+        if (command.AccessSchedule is not null)
+            user.AccessScheduleJson = EmployeeAccessPolicy.ValidateAndSerialize(command.AccessSchedule);
         user.DisplayName = command.DisplayName.Trim();
         user.Email = email;
         user.Department = primaryDepartment.Name;
@@ -616,7 +621,7 @@ public sealed class AccessControlService(
             var sessions = await db.LocalAuthSessions.Where(entry => entry.UserId == user.Id && entry.RevokedAt == null).ToListAsync(cancellationToken);
             foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
         }
-        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name });
+        AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name, AccessSchedule = EmployeeAccessPolicy.Read(user.AccessScheduleJson) });
         await db.SaveChangesAsync(cancellationToken);
     }
 

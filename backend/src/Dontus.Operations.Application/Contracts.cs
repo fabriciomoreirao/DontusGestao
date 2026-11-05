@@ -20,6 +20,7 @@ public sealed record ActorContext(
     IReadOnlyCollection<EffectivePermission>? Permissions = null,
     bool FullAccess = false)
 {
+    public DateTimeOffset? AccessAllowedUntil { get; init; }
     public bool HasPermission(string screen, string action)
     {
         if (FullAccess && action is "view" or "create" or "edit" or "approve" or "manage") return true;
@@ -183,7 +184,8 @@ public sealed record UserDto(
     string JobTitle,
     bool IsCoordinator,
     IReadOnlyCollection<EffectivePermission> Permissions,
-    bool FullAccess = false);
+    bool FullAccess = false,
+    DateTimeOffset? AccessAllowedUntil = null);
 
 public sealed record CustomerDto(
     Guid Id,

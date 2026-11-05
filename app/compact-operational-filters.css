@@ -1,0 +1,48 @@
+/* Keep operational filters in one row, or two rows on narrower workspaces. */
+.app-shell .content .compact-operational-filters {
+  display: grid !important; align-items: end; gap: 10px; min-width: 0; max-width: 100%;
+  padding: 10px 12px; overflow-x: auto; scrollbar-width: thin;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+}
+.app-shell .content .compact-operational-filters > * {
+  order: 0; grid-column: auto; grid-row: auto; min-width: 0; max-width: 100%; margin: 0;
+}
+.app-shell .content .compact-operational-filters > label:not(.mine-filter):not(.cs-pipeline-search) {
+  display: grid; gap: 5px; width: auto; height: auto; min-width: 0;
+  padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700;
+}
+.app-shell .content .compact-operational-filters > label > span { white-space: nowrap; line-height: 16px; }
+.app-shell .content .compact-operational-filters :is(select,input:not([type=checkbox])) {
+  width: 100%; min-width: 0; max-width: 100%; min-height: 42px; border-radius: 9px;
+  color: var(--ink); background-color: var(--input); font-size: 12px;
+}
+.app-shell .content .compact-operational-filters > select,
+.app-shell .content .compact-operational-filters > label > select {
+  border: 1px solid var(--border); padding: 0 10px;
+}
+.app-shell .content .compact-operational-filters > .people-picker {
+  display: inline-block; width: 100%; min-width: 0; margin: 0; align-self: end;
+}
+.app-shell .content .compact-operational-filters > .mine-filter {
+  display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 42px;
+  padding: 0; font-size: 12px; white-space: nowrap;
+}
+.app-shell .content .compact-operational-filters .mine-filter input { width: 16px; height: 16px; min-height: 16px; padding: 0; flex-shrink: 0; }
+.app-shell .content .compact-operational-filters > :is(.task-search,.cs-pipeline-search) { min-width: 0; width: 100%; align-self: end; }
+.app-shell .content .task-compact-filters { grid-template-columns: minmax(145px,1fr) minmax(190px,1.6fr) minmax(145px,1fr) minmax(135px,1fr) minmax(170px,1.2fr) auto minmax(170px,1.2fr); }
+.app-shell .content .cs-compact-filters { grid-template-columns: minmax(150px,.8fr) minmax(230px,1.6fr) minmax(180px,1.1fr) minmax(150px,.9fr) auto auto; }
+.app-shell .content .cs-compact-filters > span:not(.people-picker) { justify-self: end; white-space: nowrap; align-self: center; }
+.app-shell .content .cs-compact-filters > .cs-view-switch { justify-self: end; align-self: center; }
+.app-shell .content .lia-compact-filters { grid-template-columns: minmax(240px,1.6fr) repeat(3,minmax(150px,1fr)) auto; }
+.app-shell .content .compact-operational-filters.lia-compact-filters > label:first-child { display: flex; align-items: center; gap: 9px; height: 42px; min-width: 0; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; }
+.app-shell .content .lia-compact-filters > label:first-child input { padding: 0; border: 0; background: transparent; }
+.app-shell .content .service-compact-filters { grid-template-columns: minmax(240px,1.6fr) minmax(180px,1fr) minmax(170px,1fr) auto; }
+@media (max-width: 1380px) {
+  .app-shell .content .task-compact-filters { grid-template-columns: repeat(4,minmax(165px,1fr)); }
+}
+@media (max-width: 1100px) {
+  .app-shell .content :is(.cs-compact-filters,.lia-compact-filters) { grid-template-columns: repeat(3,minmax(180px,1fr)); }
+}
+@media (max-width: 900px) {
+  .app-shell .content .service-compact-filters { grid-template-columns: repeat(2,minmax(180px,1fr)); }
+}

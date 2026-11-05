@@ -12,6 +12,8 @@ import "./quality-foundation.css";
 import "./dontus-integration.css";
 import "./responsive-workspace.css";
 import "./operations-adjustments.css";
+import "./access-controls.css";
+import "./compact-operational-filters.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

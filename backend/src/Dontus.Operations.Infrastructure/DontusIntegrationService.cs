@@ -72,14 +72,113 @@ public sealed class DontusIntegrationService(OperationsDbContext db, DontusApiCl
     public async Task<object> LoginAsync(DontusLoginCommand command, ActorContext actor, CancellationToken ct)
     {
         actor.RequirePermission("access", "view");
+        var justification = command.Justification?.Trim() ?? "";
+        if (command.ReasonId is null || string.IsNullOrWhiteSpace(justification))
+            throw new DomainException("Selecione um motivo cadastrado e descreva o motivo do acesso à base.");
+        if (justification.Length > 2000) throw new DomainException("A descrição do acesso deve ter até 2000 caracteres.");
+        var reason = await db.SupportAccessReasons.AsNoTracking().SingleOrDefaultAsync(entry => entry.Id == command.ReasonId && entry.Active, ct)
+            ?? throw new DomainException("Selecione um motivo de acesso ativo e cadastrado.");
+        var accessibleDepartments = AccessDepartmentIds(actor);
+        if (reason.DepartmentId is not { } departmentId || !await accessibleDepartments.ContainsAsync(departmentId, ct))
+            throw new DomainException("Este motivo de acesso não pertence aos setores vinculados ao seu cadastro.", 403);
         var identification = DontusApiClient.NormalizeIdentification(command.Identification);
-        await api.FindCustomerAsync(identification, ct);
+        var customer = await api.FindCustomerAsync(identification, ct);
         var users = await api.ListUsersAsync(identification, ct);
         var user = users.FirstOrDefault(u => u.Id == command.UserId) ?? throw new DomainException("Usuário não encontrado nesta identificação.", 404);
         if (!user.Active || user.LoginUrl is null) throw new DomainException("Este usuário não possui um acesso ativo com endereço autorizado.", 403);
-        Audit(actor, "OpenDontusAccess", "access", identification, new { identification, userId = user.Id });
+        if (actor.AccessAllowedUntil is { } cutoff && DateTimeOffset.UtcNow >= cutoff)
+            throw new DomainException(EmployeeAccessPolicy.DeniedMessage, 401, EmployeeAccessPolicy.DeniedCode);
+        if (!await db.SupportAccessReasons.AnyAsync(entry => entry.Id == reason.Id && entry.Active
+                && entry.DepartmentId == departmentId && accessibleDepartments.Contains(departmentId), ct))
+            throw new DomainException("O motivo ou seu vínculo com o setor foi alterado. Atualize os motivos antes de acessar.", 403);
+        var log = new SupportAccessLog {
+            ActorEmail = actor.Email, ActorName = actor.DisplayName, Identification = identification,
+            CustomerName = DontusApiClient.Text(customer, "NomeFantasia"), TargetUserId = user.Id,
+            TargetUserName = string.IsNullOrWhiteSpace(user.Name) ? user.Username : user.Name,
+            ReasonId = reason.Id, ReasonName = reason.Name, Justification = justification,
+        };
+        db.SupportAccessLogs.Add(log);
+        Audit(actor, "OpenDontusAccess", "access", identification, new { identification, userId = user.Id, reasonId = reason.Id, reason = reason.Name, justification, accessLogId = log.Id });
         await db.SaveChangesAsync(ct);
         return new { url = user.LoginUrl };
+    }
+
+    private IQueryable<Guid> AccessDepartmentIds(ActorContext actor) => db.UserDepartments.AsNoTracking()
+        .Where(link => link.User.Email == actor.Email && link.User.Active && link.User.BlockedAt == null && link.Department.Active)
+        .Select(link => link.DepartmentId);
+
+    public async Task<IReadOnlyCollection<SupportAccessDepartmentDto>> GetAccessDepartmentsAsync(ActorContext actor, CancellationToken ct)
+    {
+        actor.RequirePermission("access", "manage");
+        return await db.TaskDepartments.AsNoTracking().OrderBy(entry => entry.Name)
+            .Select(entry => new SupportAccessDepartmentDto(entry.Id, entry.Name, entry.Active)).ToArrayAsync(ct);
+    }
+
+    public async Task<IReadOnlyCollection<SupportAccessReasonDto>> GetAccessReasonsAsync(ActorContext actor, CancellationToken ct, bool catalog = false)
+    {
+        actor.RequirePermission("access", "view");
+        if (catalog) actor.RequirePermission("access", "manage");
+        var query = db.SupportAccessReasons.AsNoTracking();
+        var accessibleDepartments = AccessDepartmentIds(actor);
+        if (!catalog) query = query.Where(entry => entry.DepartmentId.HasValue && accessibleDepartments.Contains(entry.DepartmentId.Value));
+        return await query.OrderBy(entry => entry.Department!.Name).ThenBy(entry => entry.Name)
+            .Select(entry => new SupportAccessReasonDto(entry.Id, entry.Name, entry.Active, entry.Version,
+                entry.DepartmentId, entry.Department == null ? "Sem setor" : entry.Department.Name)).ToArrayAsync(ct);
+    }
+
+    public async Task<SupportAccessReasonDto> SaveAccessReasonAsync(SaveSupportAccessReasonCommand command, ActorContext actor, CancellationToken ct)
+    {
+        actor.RequirePermission("access", "manage");
+        var name = command.Name?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 120) throw new DomainException("Informe um motivo com até 120 caracteres.");
+        var department = command.DepartmentId is { } selectedDepartment
+            ? await db.TaskDepartments.SingleOrDefaultAsync(entry => entry.Id == selectedDepartment, ct) : null;
+        if (department is null || !department.Active && (command.Active || !command.Id.HasValue))
+            throw new DomainException("Selecione um setor ativo para cadastrar o motivo de acesso.");
+        if (await db.SupportAccessReasons.AnyAsync(entry => entry.Id != command.Id && entry.DepartmentId == department.Id && entry.Name.ToUpper() == name.ToUpperInvariant(), ct))
+            throw new DomainException("Já existe um motivo com este nome neste setor.", 409);
+        var reason = command.Id is { } id
+            ? await db.SupportAccessReasons.SingleOrDefaultAsync(entry => entry.Id == id, ct) ?? throw new DomainException("Motivo não encontrado.", 404)
+            : new SupportAccessReason { Name = name };
+        if (command.Id.HasValue && command.Version != reason.Version) throw new DomainException("O motivo foi alterado. Atualize a configuração.", 409);
+        reason.Name = name;
+        reason.DepartmentId = department.Id;
+        reason.Active = command.Active;
+        reason.UpdatedAt = DateTimeOffset.UtcNow;
+        if (command.Id.HasValue) reason.Version++;
+        else db.SupportAccessReasons.Add(reason);
+        Audit(actor, "SaveSupportAccessReason", "access", reason.Id.ToString(), new { reason.Name, reason.Active, reason.DepartmentId, DepartmentName = department.Name });
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException error) when (error.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+        { throw new DomainException("Já existe um motivo com este nome neste setor.", 409); }
+        return new(reason.Id, reason.Name, reason.Active, reason.Version, department.Id, department.Name);
+    }
+
+    public async Task<object> GetAccessHistoryAsync(SupportAccessHistoryQuery filter, ActorContext actor, CancellationToken ct)
+    {
+        actor.RequirePermission("access", "view");
+        if (filter.From > filter.To) throw new DomainException("A data inicial deve ser anterior ou igual à data final.");
+        var query = db.SupportAccessLogs.AsNoTracking();
+        if (filter.From is { } from) { var start = LocalMidnight(from); query = query.Where(entry => entry.AccessedAt >= start); }
+        if (filter.To is { } to) { var end = LocalMidnight(to.AddDays(1)); query = query.Where(entry => entry.AccessedAt < end); }
+        if (!string.IsNullOrWhiteSpace(filter.Responsible)) { var email = filter.Responsible.Trim().ToLowerInvariant(); query = query.Where(entry => entry.ActorEmail == email); }
+        if (filter.ReasonId is { } reasonId) query = query.Where(entry => entry.ReasonId == reasonId);
+        if (!string.IsNullOrWhiteSpace(filter.Identification)) { var identification = DontusApiClient.NormalizeIdentification(filter.Identification); query = query.Where(entry => entry.Identification == identification); }
+        var total = await query.CountAsync(ct);
+        var page = Math.Clamp(filter.Page, 1, Math.Max(1, (int)Math.Ceiling(total / 20d)));
+        var entries = await query.OrderByDescending(entry => entry.AccessedAt).ThenByDescending(entry => entry.Id)
+            .Skip((page - 1) * 20).Take(20)
+            .Select(entry => new SupportAccessLogDto(entry.Id, entry.AccessedAt, entry.ActorEmail, entry.ActorName, entry.Identification,
+                entry.CustomerName, entry.TargetUserId, entry.TargetUserName, entry.ReasonId, entry.ReasonName, entry.Justification)).ToArrayAsync(ct);
+        var responsible = await db.SupportAccessLogs.AsNoTracking().GroupBy(entry => entry.ActorEmail)
+            .Select(group => new { Email = group.Key, Name = group.Max(entry => entry.ActorName) }).OrderBy(entry => entry.Name).ToArrayAsync(ct);
+        return new { entries, total, page, pageSize = 20, responsible };
+    }
+
+    private static DateTimeOffset LocalMidnight(DateOnly date)
+    {
+        var local = date.ToDateTime(TimeOnly.MinValue);
+        return new DateTimeOffset(local, TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo").GetUtcOffset(local)).ToUniversalTime();
     }
 
     private static DontusCustomerLinkDto LinkDto(CustomerDontusLink link) => new(link.Identification, link.ExternalClientId, link.Version);

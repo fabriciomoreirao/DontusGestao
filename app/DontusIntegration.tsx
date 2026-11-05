@@ -1,25 +1,16 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Database, Home, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { Database, History, Home, RefreshCw, Search, Settings, ShieldCheck } from "lucide-react";
 import { dontusUsersPage } from "@/lib/dontus-users";
+import { dontusIntegrationApi as api } from "@/lib/dontus-integration-api";
+import { SupportAccessHistory, SupportAccessReasonModal, SupportAccessSettings, type SupportAccessReason } from "@/app/SupportAccessPanels";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 type Link = { identification: string; externalClientId: number; version: number };
 type CustomerData = { identification: string; externalClientId: number; fetchedAt: string; data: Record<string, JsonValue> };
 type EnvironmentUser = { id: number; name: string; username: string; email: string; isSupervisor: boolean; active: boolean; canAccess: boolean };
 type UsersResult = { identification: string; customerName: string; fetchedAt: string; users: EnvironmentUser[] };
-
-async function api<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`/api/dontus-integration/${path}`, {
-    method: body === undefined ? "GET" : "POST", credentials: "same-origin", cache: "no-store",
-    headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body),
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(40000)]) : AbortSignal.timeout(40000),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.detail || "Não foi possível consultar o Ambiente Dontus.");
-  return result as T;
-}
 
 const message = (error: unknown) => error instanceof Error && error.name === "TimeoutError"
   ? "A consulta demorou para responder. Tente novamente." : error instanceof Error ? error.message : "Não foi possível concluir a consulta.";
@@ -98,7 +89,13 @@ export function DontusCustomerEnvironment({ customerId, canEdit }: { customerId:
   </section>;
 }
 
-export function DontusSupportAccess() {
+export function DontusSupportAccess({ canManage = false }: { canManage?: boolean }) {
+  const [view, setView] = useState<"access" | "history" | "settings">("access");
+  const [reasons, setReasons] = useState<SupportAccessReason[]>([]);
+  const [catalogReasons, setCatalogReasons] = useState<SupportAccessReason[]>([]);
+  const [reasonsLoading, setReasonsLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<EnvironmentUser | null>(null);
+  const [accessError, setAccessError] = useState("");
   const [identification, setIdentification] = useState("");
   const [name, setName] = useState("");
   const [type, setType] = useState("");
@@ -107,30 +104,41 @@ export function DontusSupportAccess() {
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState<number | null>(null);
   const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    setReasonsLoading(true);
+    const available = api<SupportAccessReason[]>("access/reasons", undefined, controller.signal);
+    const catalog = canManage ? api<SupportAccessReason[]>("access/reasons?catalog=true", undefined, controller.signal) : available;
+    void Promise.all([available, catalog]).then(([allowed, all]) => { if (!controller.signal.aborted) { setReasons(allowed); setCatalogReasons(all); } }).catch(error => { if (!controller.signal.aborted) { setReasons([]); setError(message(error)); } }).finally(() => { if (!controller.signal.aborted) setReasonsLoading(false); });
+    return () => controller.abort();
+  }, [canManage, view]);
   async function search(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setResult(null); setPage(1);
     try { setResult(await api<UsersResult>("users", { identification })); }
     catch (err) { setError(message(err)); }
     finally { setBusy(false); }
   }
-  async function open(user: EnvironmentUser) {
+  async function open(user: EnvironmentUser, reasonId: string, justification: string) {
     if (!result) return;
     const popup = window.open("about:blank", "_blank");
-    if (!popup) { setError("Permita abrir novas abas neste navegador e tente acessar novamente."); return; }
+    if (!popup) { setAccessError("Permita abrir novas abas neste navegador e tente acessar novamente."); return; }
     popup.opener = null;
     popup.document.title = "Abrindo Dontus";
     popup.document.body.textContent = "Preparando acesso ao sistema Dontus…";
-    setOpening(user.id); setError("");
+    setOpening(user.id); setAccessError("");
     try {
-      const login = await api<{ url: string }>("users/login", { identification: result.identification, userId: user.id });
+      const login = await api<{ url: string }>("users/login", { identification: result.identification, userId: user.id, reasonId, justification });
       if (!popup.closed) popup.location.replace(login.url);
-    } catch (err) { popup.close(); setError(message(err)); }
+      setSelectedUser(null);
+    } catch (err) { popup.close(); setAccessError(message(err)); }
     finally { setOpening(null); }
   }
   const pagination = dontusUsersPage(result?.users ?? [], name, type, page);
   const entries = pagination.items;
+  if (view === "history") return <SupportAccessHistory reasons={catalogReasons} onBack={() => setView("access")} />;
+  if (view === "settings" && canManage) return <SupportAccessSettings onUpdated={saved => setCatalogReasons(current => [...current.filter(reason => reason.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")))} onBack={() => setView("access")} />;
   return <section className="support-access-page" aria-busy={busy}>
-    <header className="dontus-integration-heading"><ShieldCheck size={26} /><div><span className="eyebrow">CENTRAL DE SUPORTE</span><h1>Acesso de Suporte</h1><p>Informe a identificação do cliente para consultar os usuários e acessar o sistema Dontus.</p></div></header>
+    <header className="dontus-integration-heading support-access-heading"><ShieldCheck size={26} /><div><span className="eyebrow">CENTRAL DE SUPORTE</span><h1>Acesso de Suporte</h1><p>Informe a identificação do cliente para consultar os usuários e acessar o sistema Dontus.</p></div><div className="support-access-heading-actions"><button className="secondary-button" type="button" onClick={() => setView("history")}><History size={17} />Histórico de acesso</button>{canManage && <button className="secondary-button" type="button" onClick={() => setView("settings")}><Settings size={17} />Configuração</button>}</div></header>
     <div className="support-access-panel"><div className="support-access-title">Usuários do ambiente Dontus</div>
       <form className="support-access-search" onSubmit={search}>
         <label>Identificação<input value={identification} inputMode="numeric" pattern="[0-9]+" maxLength={19} required disabled={busy || opening !== null} onChange={event => { setIdentification(event.target.value); setResult(null); setError(""); }} placeholder="ID do cliente no sisteminha" autoFocus /></label>
@@ -144,10 +152,11 @@ export function DontusSupportAccess() {
         <div className="support-access-row head" role="row"><span role="columnheader">Nome</span><span role="columnheader">Usuário</span><span role="columnheader">E-mail</span><span role="columnheader">Tipo</span><span role="columnheader">Status</span><span role="columnheader">Acessar</span></div>
         {busy ? <p className="support-access-empty" role="status">Buscando usuários no sistema Dontus…</p> : !result ? <p className="support-access-empty">Informe a identificação do cliente e clique em Pesquisar.</p> : entries.length === 0 ? <p className="support-access-empty">{result.users.length ? "Nenhum usuário corresponde aos filtros." : "Nenhum usuário encontrado para esta identificação."}</p> : entries.map(user => <div className="support-access-row" role="row" key={user.id}>
           <span role="cell"><b>{user.name || "Não informado"}</b></span><span role="cell">{user.username || "Não informado"}</span><span role="cell">{user.email || "Não informado"}</span><span role="cell">{user.isSupervisor ? "Supervisor" : "Comum"}</span><span role="cell"><b className={`status-pill ${user.active ? "positive" : "negative"}`}>{user.active ? "Ativo" : "Inativo"}</b></span>
-          <span role="cell"><button className="dontus-home-access" type="button" disabled={!user.canAccess || opening !== null} title={user.canAccess ? `Acessar Dontus como ${user.name || user.username}` : "Acesso inativo ou endereço indisponível"} aria-label={`Acessar Dontus como ${user.name || user.username}`} onClick={() => void open(user)}><Home size={19} />{opening === user.id ? "Abrindo…" : "Acessar"}</button></span>
+          <span role="cell"><button className="dontus-home-access" type="button" disabled={!user.canAccess || opening !== null} title={user.canAccess ? `Acessar Dontus como ${user.name || user.username}` : "Acesso inativo ou endereço indisponível"} aria-label={`Acessar Dontus como ${user.name || user.username}`} onClick={() => { setAccessError(""); setSelectedUser(user); }}><Home size={19} />{opening === user.id ? "Abrindo…" : "Acessar"}</button></span>
         </div>)}
       </div>
       {result && pagination.total > 0 && <nav className="dontus-users-pagination" aria-label="Páginas de usuários Dontus"><span>Página {pagination.page} de {pagination.totalPages} · 10 por página</span><div><button type="button" className="secondary-button" disabled={pagination.page === 1 || opening !== null} onClick={() => setPage(pagination.page - 1)}>Anterior</button><button type="button" className="secondary-button" disabled={pagination.page === pagination.totalPages || opening !== null} onClick={() => setPage(pagination.page + 1)}>Próxima</button></div></nav>}
     </div>
+    {selectedUser && result && <SupportAccessReasonModal key={selectedUser.id} userName={selectedUser.name || selectedUser.username} customerName={result.customerName} identification={result.identification} reasons={reasons} loading={reasonsLoading} busy={opening !== null} error={accessError} onClose={() => setSelectedUser(null)} onConfirm={(reasonId, justification) => void open(selectedUser, reasonId, justification)} />}
   </section>;
 }

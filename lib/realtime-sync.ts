@@ -11,7 +11,7 @@ type SyncOptions = {
   hidden: () => boolean;
   cursor: () => string;
   status: (connected: boolean) => void;
-  unauthorized: () => void;
+  unauthorized: (message?: string) => void;
   presence?: (users:Presence[]) => void;
 };
 
@@ -69,7 +69,7 @@ export function createRealtimeSync(options: SyncOptions) {
         if (hadReady || message.cursor !== options.cursor()) queue({ operations: true, internalChat: true });
         hadReady = true;
       } else if (message.type === "changed"&&(message.operations||message.internalChat)) queue(message);
-      else if (message.type === "unauthorized") { options.unauthorized(); stop(); }
+      else if (message.type === "unauthorized") { options.unauthorized(typeof message.detail === "string" ? message.detail : undefined); stop(); }
     };
     current.onerror = () => current.close();
     current.onclose = () => {

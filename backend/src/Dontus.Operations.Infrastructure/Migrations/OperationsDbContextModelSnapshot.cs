@@ -343,6 +343,10 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AccessScheduleJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<bool>("Active")
                         .HasColumnType("boolean");
 
@@ -2686,6 +2690,102 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("suggestion_statuses", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.SupportAccessLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AccessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ActorEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Identification")
+                        .IsRequired()
+                        .HasMaxLength(19)
+                        .HasColumnType("character varying(19)");
+
+                    b.Property<string>("Justification")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("ReasonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReasonName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<long>("TargetUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TargetUserName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccessedAt");
+
+                    b.HasIndex("ActorEmail", "AccessedAt");
+
+                    b.HasIndex("ReasonId", "AccessedAt");
+
+                    b.ToTable("support_access_logs", (string)null);
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.SupportAccessReason", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("support_access_reasons", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.TaskAttachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3971,6 +4071,25 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .HasForeignKey("SuggestionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.SupportAccessLog", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.SupportAccessReason", null)
+                        .WithMany()
+                        .HasForeignKey("ReasonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.SupportAccessReason", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.TaskDepartment", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Department");
                 });
 
             modelBuilder.Entity("Dontus.Operations.Domain.TaskAttachment", b =>
