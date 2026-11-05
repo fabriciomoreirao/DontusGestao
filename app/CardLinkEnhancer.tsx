@@ -19,7 +19,8 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
     const recordsById = new Map(currentRecords.map(record => [record.id, record]));
     const moduleRecords = currentRecords.filter(record => record.module === module || !record.module);
     let frame = 0;
-    let openedId = new URLSearchParams(window.location.search).get("card");
+    const params = new URLSearchParams(window.location.search);
+    let openedId = params.get("card") ?? (module === "cancellations" ? params.get("cancellation") : null);
     const remember = (event: Event) => {
       const card = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-shared-card-id]");
       if (card?.dataset.sharedCardId) openedId = card.dataset.sharedCardId;
@@ -42,8 +43,10 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
 
       });
       const opened = currentRecords.find(record => record.id === openedId && (!record.module || record.module === module));
-      if (opened && module !== "tasks") document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.journey-drawer>header,.goal-detail-modal .modal-head,.commission-decision-modal .modal-head,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
-        const actionHost = header.querySelector<HTMLElement>(".customer-drawer-actions,.lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions,.marketing-drawer-head-actions") ?? header;
+      if (module !== "tasks") document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.journey-drawer>header,.goal-detail-modal .modal-head,.commission-decision-modal .modal-head,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
+        const record = header.dataset.cardDetailId ? recordsById.get(header.dataset.cardDetailId) : opened;
+        if (!record || record.module && record.module !== module) return;
+        const actionHost = header.querySelector<HTMLElement>(".customer-drawer-actions,.lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions,.marketing-drawer-head-actions,.cancellation-header-actions") ?? header;
         if (header.querySelector(COPY_LINK_SELECTOR)) return;
         const button = document.createElement("button");
         button.type = "button"; button.className = "card-copy-link card-detail-copy";
@@ -51,7 +54,7 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
         button.addEventListener("click", async event => {
           event.preventDefault(); event.stopPropagation();
           const label = button.querySelector("b");
-          try { await navigator.clipboard.writeText(cardShareUrl(opened.module || module, opened.id)); if (label) label.textContent = "Link copiado"; }
+          try { await navigator.clipboard.writeText(cardShareUrl(record.module || module, record.id)); if (label) label.textContent = "Link copiado"; }
           catch { if (label) label.textContent = "Não foi possível copiar"; }
         });
         const closeButton = actionHost.querySelector<HTMLElement>('button[aria-label="Fechar"],.icon-button');

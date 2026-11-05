@@ -1,5 +1,13 @@
 .cancellation-role-help { color: var(--muted); font-size: .7rem; font-weight: 400; line-height: 1.4; }
-.cancellation-task-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.cancellation-drawer > header { padding: 14px 60px 10px 20px !important; gap: 8px !important; }
+.cancellation-drawer > header h2 { margin: 5px 0 3px !important; font-size: 1.3rem !important; line-height: 1.25; }
+.cancellation-drawer > header p { margin: 0 !important; line-height: 1.4; }
+.cancellation-drawer > header .cancellation-protocol { margin-top: 0 !important; margin-left: 6px; vertical-align: middle; }
+.cancellation-drawer > header .cancellation-header-actions { display: flex; flex-wrap: nowrap; gap: 7px !important; margin: 0; padding: 2px 0 !important; justify-content: flex-start !important; }
+.cancellation-header-actions:empty { display: none !important; }
+.cancellation-create-task-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--primary, #2563eb); border-radius: 8px; background: var(--primary, #2563eb); color: white; font-size: .72rem; font-weight: 750; white-space: nowrap; }
+.cancellation-create-task-button:hover { filter: brightness(1.08); }
+.cancellation-create-task-button:disabled { opacity: .6; cursor: wait; }
 .cancellation-linked-task { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 10px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--primary-soft); color: var(--primary); font-size: .75rem; font-weight: 700; text-decoration: none; }
 .cancellation-card-responsibilities { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .cancellation-card-responsibilities > span { display: grid; min-width: 0; gap: 3px; }
