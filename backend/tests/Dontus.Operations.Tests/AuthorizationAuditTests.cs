@@ -60,7 +60,7 @@ public sealed class AuthorizationAuditTests
     [InlineData("ti", "Tarefa de desenvolvimento", "{\"kind\":\"developmentTask\"}", "Desenvolvimento", false, false)]
     [InlineData("ti", "Tarefa de desenvolvimento", "{\"kind\":\"invalid\"}", "Desenvolvimento", true, false)]
     [InlineData("commissions", "Registro", "{}", "Desenvolvimento", true, false)]
-    [InlineData("cancellations", "Solicitação de cancelamento", "{\"kind\":\"cancellationJourney\"}", "Cancelamento", true, true)]
+    [InlineData("cancellations", "Solicitação de cancelamento", "{\"kind\":\"cancellationJourney\",\"reversalOwner\":\"Responsável reversão\"}", "Cancelamento", true, true)]
     [InlineData("commercial", "Lead comercial", "{\"kind\":\"commercialLead\"}", "Nova contratação", true, true)]
     [InlineData("serviceFollowup", "Acompanhamento de chamado", "{\"kind\":\"serviceRequestFollowup\"}", "Reclamação", true, true)]
     public async Task Call_routing_only_allows_the_expected_destination_with_a_real_source(string module, string type,

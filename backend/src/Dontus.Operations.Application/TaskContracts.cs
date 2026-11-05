@@ -12,7 +12,7 @@ public static class TaskCapabilities
 
 public sealed record TaskDepartmentDto(
     Guid Id, string Name, string Description, bool Active, bool RequiresAssigneeOnTransfer,
-    IReadOnlyCollection<Guid> CoordinatorUserIds);
+    IReadOnlyCollection<Guid> CoordinatorUserIds, Guid? ApproverUserId = null);
 
 public sealed record TaskPriorityDto(
     Guid Id, string Name, int SeverityOrder, string Color, int? DefaultDueMinutes, bool Active);
@@ -64,7 +64,7 @@ public sealed record CorporateTaskDto(
     bool Cancelled, bool CancellationRequest, long Version, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
     bool CanModify,
     IReadOnlyCollection<Guid> ParticipantUserIds, IReadOnlyCollection<TaskCommentDto> Comments,
-    IReadOnlyCollection<TaskHistoryDto> History, IReadOnlyCollection<TaskAttachmentDto> Attachments);
+    IReadOnlyCollection<TaskHistoryDto> History, IReadOnlyCollection<TaskAttachmentDto> Attachments, Guid? ApproverUserId = null);
 
 public sealed record TaskModuleDto(
     IReadOnlyCollection<CorporateTaskDto> Tasks,
@@ -106,7 +106,7 @@ public sealed record CreatedCorporateTaskDto(Guid Id, string Protocol);
 
 public sealed record SaveTaskDepartmentCommand(
     Guid? Id, string Name, string Description, bool Active, bool RequiresAssigneeOnTransfer,
-    IReadOnlyCollection<Guid> CoordinatorUserIds);
+    IReadOnlyCollection<Guid> CoordinatorUserIds, Guid? ApproverUserId = null);
 
 public sealed record SaveTaskPriorityCommand(
     Guid? Id, string Name, int SeverityOrder, string Color, int? DefaultDueMinutes, bool Active);

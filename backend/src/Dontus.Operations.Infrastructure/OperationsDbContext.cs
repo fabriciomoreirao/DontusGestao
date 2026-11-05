@@ -675,6 +675,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         ConfigureEntity(modelBuilder.Entity<TaskDepartment>(), "task_departments");
         modelBuilder.Entity<TaskDepartment>(entity =>
         {
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.ApproverUserId).OnDelete(DeleteBehavior.SetNull);
             entity.Property(x => x.Name).HasMaxLength(120);
             entity.Property(x => x.Description).HasMaxLength(600);
             entity.HasIndex(x => x.Name).IsUnique();

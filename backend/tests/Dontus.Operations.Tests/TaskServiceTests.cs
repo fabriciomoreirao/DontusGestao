@@ -626,7 +626,7 @@ public sealed class TaskServiceTests
         var coordinator = new AppUser { Email = "coordinator@test.local", DisplayName = "Coordenação escolhida", CreatedBy = "tests" };
         db.Users.Add(coordinator); await db.SaveChangesAsync();
         var access = new AccessControlService(db, new ConfigurationBuilder().Build(), new RecordingPasswordEmailSender());
-        await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, [coordinator.Id]), actor);
+        await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, [coordinator.Id], coordinator.Id), actor);
         Assert.Contains((await access.GetManagementAsync(actor)).Departments.Single(entry => entry.Id == support.Id).CoordinatorUserIds!, id => id == coordinator.Id);
         await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, false), actor);
         await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true), actor);
@@ -634,8 +634,18 @@ public sealed class TaskServiceTests
         var type = await db.TaskTypes.SingleAsync();
         var created = await tasks.CreateAsync(new("Nova solicitação", "Descrição", type.Id, null, null, support.Id, support.Id, null,
             null, "123456", "Clínica", "5511999999999", null, null, null, null, false, [coordinator.Id], []), actor);
-        Assert.Contains(await db.TaskComments.Where(entry => entry.TaskId == created.Id).ToArrayAsync(), entry => entry.Body == $"[APROVADOR:{coordinator.Id}]");
+        Assert.Empty(await db.TaskComments.Where(entry => entry.TaskId == created.Id).ToArrayAsync());
+        Assert.Equal(coordinator.Id, (await tasks.GetModuleAsync(actor)).Tasks.Single(entry => entry.Id == created.Id).ApproverUserId);
         Assert.Contains(await db.TaskParticipants.Where(entry => entry.TaskId == created.Id).ToArrayAsync(), entry => entry.UserId == coordinator.Id);
+        var next = new AppUser { Email = "next-approver@test.local", DisplayName = "Próximo aprovador", CreatedBy = "tests" };
+        db.Users.Add(next); await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<DomainException>(() => access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, [coordinator.Id], next.Id), actor));
+        await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, [coordinator.Id, next.Id], next.Id), actor);
+        Assert.Equal(next.Id, (await tasks.GetModuleAsync(actor)).Tasks.Single(entry => entry.Id == created.Id).ApproverUserId);
+        db.TaskComments.AddRange(new TaskComment { TaskId = created.Id, AuthorUserId = coordinator.Id, Body = $"[APROVADOR:{coordinator.Id}]" },
+            new TaskComment { TaskId = created.Id, AuthorUserId = coordinator.Id, Body = "Contato realizado com o cliente." });
+        await db.SaveChangesAsync();
+        Assert.Equal("Contato realizado com o cliente.", Assert.Single((await tasks.GetModuleAsync(actor)).Tasks.Single(entry => entry.Id == created.Id).Comments).Body);
         await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, []), actor);
         Assert.False((await db.UserDepartments.SingleAsync(entry => entry.UserId == coordinator.Id && entry.DepartmentId == support.Id)).IsCoordinator);
     }

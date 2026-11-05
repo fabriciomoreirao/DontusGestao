@@ -1095,9 +1095,13 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if(item.Module == "commissions") item.Status = CommissionDecisionPolicy.RecordStatus(item.Description) ?? item.Status;
         if (item.Module == "cancellations")
         {
+            var assignment = CancellationResponsibilityPolicy.Create(item.Description);
+            item.Description = assignment.Description;
+            item.Owner = assignment.Owner;
             await new CancellationProtocolService(db).CreateAsync(item, actor, cancellationToken);
             return item.Id;
         }
+        SalesCelebrationService.RecordWin(db, item, false, actor);
         db.WorkItems.Add(item);
         db.Activities.Add(new Activity
         {
@@ -1405,6 +1409,13 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Informe o título do registro.");
 
+        var previouslyWon = SalesCelebrationService.IsWon(item);
+        if (item.Module == "cancellations")
+        {
+            var assignment = CancellationResponsibilityPolicy.Update(item.Description, command.Description, item.Owner);
+            command = command with { Description = assignment.Description, Owner = assignment.Owner };
+        }
+
         CsDistributionService.Assignment? distribution = null;
         if (command.ResponsibleUserId.HasValue)
         {
@@ -1464,6 +1475,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             item.CustomerName = command.CustomerName.Trim();
         item.UpdatedAt = DateTimeOffset.UtcNow;
         item.Version++;
+        SalesCelebrationService.RecordWin(db, item, previouslyWon, actor);
         db.Activities.Add(new Activity
         {
             EntityType = "work_item",
@@ -1570,7 +1582,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (WorkflowPolicy.RequiresExplicitConfirmation(item.Module, command.NextStatus) && !command.Confirmed)
             throw new DomainException("Esta ação sensível exige confirmação explícita e evidência registrada.", 409);
 
+        var previouslyWon = SalesCelebrationService.IsWon(item);
         var previous = item.Status;
+        SalesCelebrationService.SynchronizeStage(item, command.NextStatus);
         if (item.Module == "serviceRequests")
         {
             var detail = ServiceRequestWorkflow.Read(item.Description) ?? throw new DomainException("Dados do chamado inválidos.");
@@ -1592,6 +1606,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             Summary = $"{previous} → {item.Status}",
             Actor = actor.DisplayName,
         });
+        SalesCelebrationService.RecordWin(db, item, previouslyWon, actor);
         AddAudit(actor, "Transition", "work_item", item.Id.ToString(), item.Module, new { From = previous, To = item.Status });
 
         var routesToCancellation = item.Module != "cancellations"
@@ -1640,6 +1655,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                     monthlyValueCents = item.AmountCents,
                     seller = item.Module == "commercial" ? item.Owner : "",
                     csOwner = item.Owner,
+                    reversalOwner = string.IsNullOrWhiteSpace(item.Owner) ? actor.DisplayName : item.Owner,
                     reason = $"Cancelamento sinalizado em {item.RecordType}",
                     notes = $"Solicitação gerada automaticamente ao mover o registro para {command.NextStatus}.",
                     sourceModule = item.Module,

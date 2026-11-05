@@ -76,6 +76,12 @@ public sealed class ServiceRequestWorkflowTests
         Assert.Equal(destination, await service.RouteAsync(id, version, target, null, actor));
         var created = await db.WorkItems.SingleAsync(x => x.Id == destination);
         Assert.Equal(module, created.Module); Assert.Equal(kind, JsonNode.Parse(created.Description)!["kind"]!.ToString());
+        if (module == "cancellations")
+        {
+            Assert.Equal(actor.DisplayName, created.Owner);
+            Assert.Equal(actor.DisplayName, JsonNode.Parse(created.Description)!["reversalOwner"]!.ToString());
+            Assert.Equal(source.Owner, JsonNode.Parse(created.Description)!["csOwner"]!.ToString());
+        }
         Assert.Equal(id, created.OriginId); Assert.Single(db.WorkItems.Where(x => x.Module == module));
         var result = await db.WorkItems.SingleAsync(x => x.Id == id); var detail = JsonNode.Parse(result.Description)!;
         Assert.Equal("Em processo", result.Status); Assert.Equal(actor.DisplayName, detail["routedBy"]!.ToString());

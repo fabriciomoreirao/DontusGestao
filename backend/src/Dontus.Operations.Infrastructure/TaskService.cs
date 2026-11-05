@@ -201,7 +201,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var tasks = await query.OrderByDescending(x => x.UpdatedAt).Take(1000).ToListAsync(cancellationToken);
         var taskIds = tasks.Select(x => x.Id).ToList();
         var users = await db.Users.AsNoTracking()
-            .Select(x => new { x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, x.UpdatedAt, x.Active, HasPhoto = x.PhotoDataUrl != "" })
+            .Select(x => new { x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, x.UpdatedAt, x.Active, x.BlockedAt, HasPhoto = x.PhotoDataUrl != "" })
             .ToDictionaryAsync(x => x.Id, cancellationToken);
         var departments = await db.TaskDepartments.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken);
         var priorities = await db.TaskPriorities.AsNoTracking().OrderByDescending(x => x.SeverityOrder).ToListAsync(cancellationToken);
@@ -252,7 +252,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 task.CreatedAt, task.UpdatedAt,
                 task.CreatorUserId == user.Id || task.AssigneeUserId == user.Id,
                 participants.Where(x => x.TaskId == task.Id).Select(x => x.UserId).ToList(),
-                comments.Where(x => x.TaskId == task.Id).Select(x =>
+                comments.Where(x => x.TaskId == task.Id && !TaskApproverPolicy.IsLegacyMarker(x.Body)).Select(x =>
                     new TaskCommentDto(x.Id, x.AuthorUserId, UserName(x.AuthorUserId), x.Body, x.Internal, x.CreatedAt,
                         attachments.Where(a => a.CommentId == x.Id).Select(a =>
                             new TaskAttachmentDto(a.Id, a.CommentId, a.FileName, $"/api/task-files/{a.Id}", a.CreatedAt)).ToList())).ToList(),
@@ -260,14 +260,15 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                     new TaskHistoryDto(x.Id, x.EventType, x.Summary, UserName(x.ActorUserId),
                         x.PreviousValueJson, x.NewValueJson, x.Source, x.Justification, x.CreatedAt)).ToList(),
                 attachments.Where(x => x.TaskId == task.Id && x.CommentId == null).Select(x =>
-                    new TaskAttachmentDto(x.Id, x.CommentId, x.FileName, $"/api/task-files/{x.Id}", x.CreatedAt)).ToList());
+                    new TaskAttachmentDto(x.Id, x.CommentId, x.FileName, $"/api/task-files/{x.Id}", x.CreatedAt)).ToList(),
+                TaskApproverPolicy.Resolve(departments.First(x => x.Id == task.CurrentDepartmentId), users.Values.Where(x => x.Active && x.BlockedAt == null).Select(x => x.Id), userDepartments));
         }).ToList();
 
         return new TaskModuleDto(
             taskDtos,
             departments.Select(x => new TaskDepartmentDto(x.Id, x.Name, x.Description, x.Active,
                 x.RequiresAssigneeOnTransfer,
-                userDepartments.Where(m => m.DepartmentId == x.Id && m.IsCoordinator).Select(m => m.UserId).ToList())).ToList(),
+                userDepartments.Where(m => m.DepartmentId == x.Id && m.IsCoordinator).Select(m => m.UserId).ToList(), x.ApproverUserId)).ToList(),
             types.Select(x => new TaskTypeDto(x.Id, x.Name, x.Description, x.DefaultPriorityId,
                 x.DefaultSlaPolicyId, x.InitialStatusId,
                 typeDepartments.Where(m => m.TaskTypeId == x.Id).Select(m => m.DepartmentId).ToList(),
@@ -364,21 +365,6 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             SlaDueAt = sla is null ? null : AddBusinessMinutes(now, sla.CompletionMinutes, sla),
         };
         db.CorporateTasks.Add(task);
-        var approverId = await db.UserDepartments.AsNoTracking()
-            .Join(db.Users.AsNoTracking(), membership => membership.UserId, appUser => appUser.Id,
-                (membership, appUser) => new { membership, appUser })
-            .Where(entry => entry.membership.DepartmentId == task.CurrentDepartmentId
-                && entry.membership.IsCoordinator && entry.appUser.Active && entry.appUser.BlockedAt == null)
-            .OrderBy(entry => entry.appUser.DisplayName)
-            .Select(entry => (Guid?)entry.appUser.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (approverId.HasValue)
-            db.TaskComments.Add(new TaskComment
-            {
-                TaskId = task.Id,
-                AuthorUserId = user.Id,
-                Body = $"[APROVADOR:{approverId.Value}]",
-            });
         var initialParticipantIds = (command.ParticipantUserIds ?? []).Distinct().ToArray();
         foreach (var participantId in initialParticipantIds)
                 db.TaskParticipants.Add(new() { TaskId = task.Id, UserId = participantId });
@@ -823,6 +809,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var name = command.Name.Trim();
         if (await db.Users.CountAsync(x => command.CoordinatorUserIds.Contains(x.Id) && x.Active && x.BlockedAt == null, cancellationToken) != command.CoordinatorUserIds.Distinct().Count())
             throw new DomainException("Selecione coordenadores ativos e válidos.");
+        if (command.ApproverUserId.HasValue && !command.CoordinatorUserIds.Contains(command.ApproverUserId.Value))
+            throw new DomainException("Selecione um dos coordenadores do setor como aprovador.");
         var normalizedName = name.ToUpperInvariant();
         TaskDepartment? entity = command.Id.HasValue
             ? await db.TaskDepartments.SingleOrDefaultAsync(x => x.Id == command.Id, cancellationToken)
@@ -849,6 +837,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         entity ??= new TaskDepartment { Name = name };
         entity.Name = name; entity.Description = command.Description?.Trim() ?? "";
         entity.Active = command.Active; entity.RequiresAssigneeOnTransfer = command.RequiresAssigneeOnTransfer;
+        entity.ApproverUserId = command.ApproverUserId;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         if (!command.Id.HasValue && duplicate is null) db.TaskDepartments.Add(entity);
         if (entity.Active && !await db.AgendaCalendars.AnyAsync(x => x.DepartmentId == entity.Id, cancellationToken))

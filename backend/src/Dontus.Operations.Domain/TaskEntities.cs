@@ -6,6 +6,7 @@ public sealed class TaskDepartment : Entity
     public string Description { get; set; } = "";
     public bool Active { get; set; } = true;
     public bool RequiresAssigneeOnTransfer { get; set; }
+    public Guid? ApproverUserId { get; set; }
 }
 
 public sealed class UserDepartment

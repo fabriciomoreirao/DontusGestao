@@ -342,7 +342,7 @@ public sealed class AccessControlService(
                     user.Active,
                     user.BlockedAt, employeeAgendaCalendarIds, EmployeeAccessPolicy.Read(user.AccessScheduleJson));
             }).ToArray(),
-            departments.Select(department => new EmployeeDepartmentDto(department.Id, department.Name, department.Description, department.Active, userDepartments.Where(link => link.DepartmentId == department.Id && link.IsCoordinator).Select(link => link.UserId).ToArray())).ToArray(),
+            departments.Select(department => new EmployeeDepartmentDto(department.Id, department.Name, department.Description, department.Active, userDepartments.Where(link => link.DepartmentId == department.Id && link.IsCoordinator).Select(link => link.UserId).ToArray(), department.ApproverUserId)).ToArray(),
             levels.Select(level => new EmployeeLevelDto(level.Id, level.Name, level.Description, level.Active)).ToArray(),
             agendaCalendars.Select(calendar => new AgendaCalendarDto(calendar.Id, calendar.Name, calendar.Description, calendar.DepartmentId, departmentNames.GetValueOrDefault(calendar.DepartmentId, "Setor"), calendar.Active)).ToArray());
     }
@@ -674,6 +674,8 @@ public sealed class AccessControlService(
         var coordinatorIds = command.CoordinatorUserIds?.Distinct().ToArray();
         if (coordinatorIds is not null && await db.Users.CountAsync(user => coordinatorIds.Contains(user.Id) && user.Active && user.BlockedAt == null, cancellationToken) != coordinatorIds.Length)
             throw new DomainException("Selecione coordenadores ativos e válidos.");
+        if (command.ApproverUserId.HasValue && (coordinatorIds is null || !coordinatorIds.Contains(command.ApproverUserId.Value)))
+            throw new DomainException("Selecione um dos coordenadores do setor como aprovador.");
         var department = command.Id.HasValue
             ? await db.TaskDepartments.SingleOrDefaultAsync(entry => entry.Id == command.Id.Value, cancellationToken)
                 ?? throw new DomainException("Setor não encontrado.", 404)
@@ -687,6 +689,7 @@ public sealed class AccessControlService(
                 throw new DomainException("Já existe um setor ativo com este nome.", 409);
             await SetDepartmentCoordinatorsAsync(existingWithName.Id, coordinatorIds, cancellationToken);
             existingWithName.Description = CleanCatalogDescription(command.Description);
+            if (coordinatorIds is not null) existingWithName.ApproverUserId = command.ApproverUserId;
             existingWithName.Active = true;
             existingWithName.UpdatedAt = DateTimeOffset.UtcNow;
             if (!await db.AgendaCalendars.AnyAsync(entry => entry.DepartmentId == existingWithName.Id, cancellationToken))
@@ -698,6 +701,7 @@ public sealed class AccessControlService(
         await SetDepartmentCoordinatorsAsync(department.Id, coordinatorIds, cancellationToken);
         department.Name = name;
         department.Description = CleanCatalogDescription(command.Description);
+        if (coordinatorIds is not null) department.ApproverUserId = command.ApproverUserId;
         department.Active = command.Active;
         department.UpdatedAt = DateTimeOffset.UtcNow;
         if (!command.Id.HasValue) db.TaskDepartments.Add(department);
