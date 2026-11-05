@@ -4,6 +4,7 @@ import { Trophy, Sparkles } from "lucide-react";
 import { createPortal } from "react-dom";
 import { enqueueSales, PUBLIC_SALE_DURATION_MS, SALE_WON_EVENT, type SaleCelebration } from "@/lib/sales-celebration";
 import { playNotificationSound, unlockNotificationSound } from "@/lib/notification-sound";
+import { createConfetti, advanceConfetti } from "@/lib/confetti-motion";
 
 function Confetti({ eventId }: { eventId: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -14,16 +15,15 @@ function Confetti({ eventId }: { eventId: string }) {
     let width = window.innerWidth, height = window.innerHeight, frame = 0, last = 0;
     const resize = () => { width = window.innerWidth; height = window.innerHeight; const scale = Math.min(2, window.devicePixelRatio || 1); element.width = width * scale; element.height = height * scale; context.setTransform(scale, 0, 0, scale, 0, 0); };
     resize(); window.addEventListener("resize", resize);
-    const colors = ["#37d6fd", "#a78bfa", "#f9cc55", "#ff6d9f", "#57e5ac", "#ffffff"];
-    const pieces = Array.from({ length: reduced ? 32 : 180 }, (_, i) => ({ x: reduced ? Math.random() * width : width * .5 + (Math.random() - .5) * 100, y: reduced ? Math.random() * height : height * .45, speed: -7 - Math.random() * 10, drift: (Math.random() * 2 - 1) * 11, rotation: Math.random() * Math.PI, spin: Math.random() * .08 - .04, size: 4 + Math.random() * 7, color: colors[i % colors.length] }));
+    const pieces = createConfetti(width, height, reduced ? 90 : 220);
     const draw = (time: number) => {
-      const delta = Math.min(2, (time - last) / 16.67 || 1); last = time;
+      const elapsed = last ? (time - last) / 1000 : 1 / 60; last = time;
+      advanceConfetti(pieces, elapsed, width, height, reduced);
       context.clearRect(0, 0, width, height);
       for (const piece of pieces) {
-        if (!reduced) { piece.speed = Math.min(4, piece.speed + .15 * delta); piece.y += piece.speed * delta; piece.x += piece.drift * delta; piece.drift *= .995; piece.rotation += piece.spin * delta; if (piece.y > height + 20 || piece.x < -30 || piece.x > width + 30) { piece.y = -20; piece.x = Math.random() * width; piece.speed = 2 + Math.random() * 2; piece.drift = Math.random() * 2 - 1; } }
-        context.save(); context.translate(piece.x, reduced ? Math.abs(piece.y) : piece.y); context.rotate(piece.rotation); context.fillStyle = piece.color; context.fillRect(-piece.size / 2, -piece.size / 2, piece.size, piece.size * .5); context.restore();
+        context.save(); context.translate(piece.x, piece.y); context.rotate(piece.rotation); context.fillStyle = piece.color; context.fillRect(-piece.size / 2, -piece.size / 2, piece.size, piece.size * .5); context.restore();
       }
-      if (!reduced) frame = requestAnimationFrame(draw);
+      frame = requestAnimationFrame(draw);
     };
     frame = requestAnimationFrame(draw);
     return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", resize); };
