@@ -86,6 +86,7 @@ public sealed class ServiceRequestRoutingService(OperationsDbContext db, IOperat
                         payload["requestMonth"] = at.ToOffset(TimeSpan.FromHours(-3)).ToString("yyyy-MM"); payload["customerName"] = name;
                         payload["requesterPhone"] = phone; payload["reason"] = summary; payload["notes"] = linkedSummary;
                         payload["csOwner"] = source.Owner; payload["attachments"] = new JsonArray();
+                        owner = actor.DisplayName; payload["reversalOwner"] = owner;
                         payload["history"] = JsonSerializer.SerializeToNode(new[] { new { id = Guid.NewGuid(), type = "Abertura", text = linkedSummary, at, author = actor.DisplayName } });
                         break;
                     case "Nova contratação":

@@ -18,7 +18,7 @@ public sealed class CancellationProtocolTests
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static WorkItem Item() => new() { Module = "cancellations", RecordType = "Solicitação de cancelamento",
-        Title = "Clínica", Status = "Fila de espera", Description = """{"kind":"cancellationJourney","clientId":"123456","protocol":"C269999"}""", CreatedBy = Actor.Email };
+        Title = "Clínica", Status = "Fila de espera", Description = """{"kind":"cancellationJourney","clientId":"123456","protocol":"C269999","reversalOwner":"Responsável reversão"}""", CreatedBy = Actor.Email };
     private static CancellationProtocolService Service(OperationsDbContext db, string time = "2026-10-30T12:00:00Z") => new(db, new Clock(DateTimeOffset.Parse(time)));
     private static string Protocol(WorkItem item) => JsonNode.Parse(item.Description)!["protocol"]!.ToString();
 

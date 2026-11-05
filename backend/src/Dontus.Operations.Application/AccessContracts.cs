@@ -73,7 +73,7 @@ public sealed record EmployeeDto(
     IReadOnlyCollection<Guid>? AgendaCalendarIds = null,
     EmployeeAccessSchedule? AccessSchedule = null);
 
-public sealed record EmployeeDepartmentDto(Guid Id, string Name, string Description, bool Active, IReadOnlyCollection<Guid>? CoordinatorUserIds = null);
+public sealed record EmployeeDepartmentDto(Guid Id, string Name, string Description, bool Active, IReadOnlyCollection<Guid>? CoordinatorUserIds = null, Guid? ApproverUserId = null);
 public sealed record EmployeeLevelDto(Guid Id, string Name, string Description, bool Active);
 
 public sealed record CreateEmployeeCommand(
@@ -113,7 +113,7 @@ public sealed record UpdateEmployeeCommand(
     EmployeeAccessSchedule? AccessSchedule = null);
 
 public sealed record CreateEmployeeResult(Guid Id);
-public sealed record SaveEmployeeDepartmentCommand(Guid? Id, string Name, string? Description, bool Active, IReadOnlyCollection<Guid>? CoordinatorUserIds = null);
+public sealed record SaveEmployeeDepartmentCommand(Guid? Id, string Name, string? Description, bool Active, IReadOnlyCollection<Guid>? CoordinatorUserIds = null, Guid? ApproverUserId = null);
 public sealed record SaveEmployeeLevelCommand(Guid? Id, string Name, string? Description, bool Active);
 
 public sealed record CreateAccessUserCommand(

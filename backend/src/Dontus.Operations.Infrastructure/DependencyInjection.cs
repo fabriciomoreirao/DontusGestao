@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<ReferralCommissionRulesService>();
         services.AddScoped<ServiceRequestCreationService>();
         services.AddScoped<ServiceRequestRoutingService>();
+        services.AddScoped<CancellationTaskService>();
         services.AddScoped<EmployeeProfileService>();
         services.AddSingleton<RealtimeBroker>();
         services.AddScoped<RealtimePresencePublisher>();

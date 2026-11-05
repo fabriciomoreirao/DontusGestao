@@ -6,6 +6,9 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import SalesCelebration from "./SalesCelebration";
+import type { SaleCelebration } from "@/lib/sales-celebration";
+import { unlockNotificationSound } from "@/lib/notification-sound";
 
 type PublicCollaborator = { id: string; name: string; role: string; photo: string; solutions: number };
 type PublicRanking = { name: string; count: number; department?: string; photo?: string };
@@ -25,6 +28,7 @@ type PublicDepartment = {
   topCollaborators: PublicCollaborator[]; activityByDay: PublicDay[]; commercial: PublicCommercial;
 };
 type PublicOverviewData = {
+  saleEvents?: SaleCelebration[];
   generatedAt: string; month: string; monthLabel: string; refreshAfterSeconds: number;
   overview: {
     departments: number; commitments: number; tasks: number; activeTasks: number; completedTasks: number;
@@ -115,10 +119,12 @@ export default function PublicOperationsOverview() {
   const completionRate = percentage(data.overview.completedTasks, data.overview.tasks);
   const solutionRate = percentage(data.overview.solvedAttendances, data.overview.attendances);
   return <main className={`public-ops-page public-bi-page public-bi-${theme}`}>
+    <SalesCelebration publicBoard events={data.saleEvents} />
     <header className="public-ops-header public-bi-header">
       <Image src="/dontus-logo.png" alt="Dontus Gestão Odontológica" width={158} height={46} unoptimized />
       <span><small>COMMAND CENTER – OPERAÇÕES</small><h1>Dontus BI em tempo real</h1><p>Dados que impulsionam o crescimento da sua clínica</p></span>
       <div className="public-bi-controls">
+        <button type="button" onClick={unlockNotificationSound}><Sparkles /><span>Ativar som das vendas</span></button>
         <div className="public-bi-theme-switch" role="group" aria-label="Tema do BI público"><button type="button" aria-pressed={theme === "light"} onClick={() => chooseTheme("light")}><Sun size={16}/>Claro</button><button type="button" aria-pressed={theme === "dark"} onClick={() => chooseTheme("dark")}><Moon size={16}/>Escuro</button></div>
         <label><CalendarDays /><span>Competência</span><input type="month" value={month} onChange={(event) => { setMonth(event.target.value); setTab("overview"); }} /></label>
         <button className={autoRotate ? "active" : ""} onClick={() => setAutoRotate((current) => !current)}>{autoRotate ? <Pause /> : <Play />}<span>{autoRotate ? "Pausar rotação" : "Retomar rotação"}</span></button>

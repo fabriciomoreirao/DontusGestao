@@ -102,6 +102,11 @@ app.MapRealtime();
 app.MapDontusIntegration();
 app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/api/public-sale-events", async (HttpResponse response, OperationsDbContext db, CancellationToken ct) =>
+{
+    response.Headers.CacheControl = "no-store";
+    return Results.Ok(await SalesCelebrationService.RecentAsync(db, ct));
+});
 app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken cancellationToken) =>
     await db.Database.CanConnectAsync(cancellationToken)
         ? Results.Ok(new { status = "ready" })
@@ -309,6 +314,7 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
     return Results.Ok(new
     {
         generatedAt = DateTimeOffset.UtcNow,
+        saleEvents = await SalesCelebrationService.RecentAsync(db, cancellationToken),
         month = localStart.ToString("yyyy-MM"),
         monthLabel = localStart.ToString("MMMM 'de' yyyy", new System.Globalization.CultureInfo("pt-BR")),
         refreshAfterSeconds = 15,
@@ -1118,6 +1124,7 @@ operations.MapPost("", async (
     ILocalAuthenticationService authentication,
     IAccessControlService accessControl,
     ServiceRequestRoutingService serviceRequestRouting,
+    CancellationTaskService cancellationTasks,
     ReferralCommissionRulesService referralCommissionRules,
     CancellationToken cancellationToken) =>
 {
@@ -1463,7 +1470,7 @@ operations.MapPost("", async (
 
         case "saveEmployeeDepartment":
             id = await accessControl.SaveEmployeeDepartmentAsync(
-                new SaveEmployeeDepartmentCommand(request.Id, request.Name ?? "", request.Description, request.Active ?? true, request.CoordinatorUserIds), actor, cancellationToken);
+                new SaveEmployeeDepartmentCommand(request.Id, request.Name ?? "", request.Description, request.Active ?? true, request.CoordinatorUserIds, request.ApproverUserId), actor, cancellationToken);
             break;
 
         case "saveEmployeeLevel":
@@ -1519,6 +1526,16 @@ operations.MapPost("", async (
                 request.ParticipantUserIds, request.AttachmentLinks), actor, cancellationToken);
             id = createdTask.Id;
             createdProtocol = createdTask.Protocol;
+            break;
+
+        case "createCancellationTask":
+            var cancellationTask = await cancellationTasks.CreateAsync(
+                request.Id ?? throw new DomainException("Cancelamento obrigatório."),
+                request.Version ?? throw new DomainException("Versão do cancelamento obrigatória."),
+                request.TaskCreationId ?? throw new DomainException("Identificação da criação de tarefa obrigatória."),
+                request.TaskDraft ?? throw new DomainException("Preencha os dados da tarefa."), actor, cancellationToken);
+            id = cancellationTask.Id;
+            createdProtocol = cancellationTask.Protocol;
             break;
 
         case "changeTaskStatus":
@@ -1617,7 +1634,7 @@ operations.MapPost("", async (
         case "saveTaskDepartment":
             id = await taskService.SaveDepartmentAsync(new SaveTaskDepartmentCommand(
                 request.Id, request.Name ?? "", request.CatalogDescription ?? "", request.Active ?? true,
-                request.RequiresAssigneeOnTransfer ?? false, request.CoordinatorUserIds ?? []), actor, cancellationToken);
+                request.RequiresAssigneeOnTransfer ?? false, request.CoordinatorUserIds ?? [], request.ApproverUserId), actor, cancellationToken);
             break;
 
         case "saveTaskPriority":
@@ -2254,6 +2271,7 @@ public sealed class OperationsRequest
     public string? ReferralRulesRevision { get; init; }
     public string? RouteTarget { get; init; }
     public CreateCorporateTaskCommand? TaskDraft { get; init; }
+    public Guid? TaskCreationId { get; init; }
     public string? Action { get; init; }
     public Guid? Id { get; init; }
     public string? Module { get; init; }
@@ -2364,6 +2382,7 @@ public sealed class OperationsRequest
     public string? Catalog { get; init; }
     public bool? RequiresAssigneeOnTransfer { get; init; }
     public IReadOnlyCollection<Guid>? CoordinatorUserIds { get; init; }
+    public Guid? ApproverUserId { get; init; }
     public int? SeverityOrder { get; init; }
     public string? Color { get; init; }
     public string? Recurrence { get; init; }

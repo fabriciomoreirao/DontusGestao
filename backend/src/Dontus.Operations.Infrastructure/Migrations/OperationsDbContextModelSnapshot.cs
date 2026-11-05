@@ -2948,6 +2948,9 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.Property<bool>("Active")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid?>("ApproverUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2974,6 +2977,8 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Active");
+
+                    b.HasIndex("ApproverUserId");
 
                     b.HasIndex("Name")
                         .IsUnique();
@@ -4149,6 +4154,14 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .HasForeignKey("TaskId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.TaskDepartment", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("ApproverUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Dontus.Operations.Domain.TaskHistory", b =>
