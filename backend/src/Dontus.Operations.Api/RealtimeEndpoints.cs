@@ -34,10 +34,17 @@ public static class RealtimeEndpoints
                     while (!lifetime.IsCancellationRequested)
                     {
                         using var heartbeat = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-                        heartbeat.CancelAfter(TimeSpan.FromSeconds(25));
+                        var untilCutoff = actor.AccessAllowedUntil - DateTimeOffset.UtcNow;
+                        heartbeat.CancelAfter(untilCutoff is { } remaining && remaining < TimeSpan.FromSeconds(25)
+                            ? remaining > TimeSpan.Zero ? remaining : TimeSpan.FromMilliseconds(1) : TimeSpan.FromSeconds(25));
                         try { await subscription.Signal.Reader.WaitToReadAsync(heartbeat.Token); }
                         catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { }
                         lifetime.Token.ThrowIfCancellationRequested();
+                        if (actor.AccessAllowedUntil is { } cutoff && DateTimeOffset.UtcNow >= cutoff)
+                        {
+                            await Send(new { type = "unauthorized", detail = EmployeeAccessPolicy.DeniedMessage }, lifetime.Token);
+                            break;
+                        }
                         if (DateTimeOffset.UtcNow - presenceAt >= TimeSpan.FromSeconds(25))
                         {
                             await presence.UpdateAsync(subscription.Id, userId, true, lifetime.Token);
@@ -48,10 +55,18 @@ public static class RealtimeEndpoints
                             checkedAt = DateTimeOffset.UtcNow;
                             await using var scope = scopes.CreateAsyncScope();
                             var authentication = scope.ServiceProvider.GetRequiredService<ILocalAuthenticationService>();
-                            var valid = !configuration.GetValue("Authentication:LocalPasswordEnabled", false)
-                                || await authentication.ResolveSessionAsync(context.Request.Headers["X-Local-Session"].ToString(), lifetime.Token) is not null;
-                            if (!valid) { await Send(new { type = "unauthorized" }, lifetime.Token); break; }
-                            await scope.ServiceProvider.GetRequiredService<IAccessControlService>().ResolveActorAsync(identity, lifetime.Token);
+                            try
+                            {
+                                var valid = !configuration.GetValue("Authentication:LocalPasswordEnabled", false)
+                                    || await authentication.ResolveSessionAsync(context.Request.Headers["X-Local-Session"].ToString(), lifetime.Token) is not null;
+                                if (!valid) { await Send(new { type = "unauthorized" }, lifetime.Token); break; }
+                                actor = await scope.ServiceProvider.GetRequiredService<IAccessControlService>().ResolveActorAsync(identity, lifetime.Token);
+                            }
+                            catch (DomainException error)
+                            {
+                                await Send(new { type = "unauthorized", detail = error.Code == EmployeeAccessPolicy.DeniedCode ? error.Message : null }, lifetime.Token);
+                                break;
+                            }
                         }
                         var changes = subscription.Take();
                         await Send(new { type = changes == RealtimeChange.None ? "heartbeat" : "changed",

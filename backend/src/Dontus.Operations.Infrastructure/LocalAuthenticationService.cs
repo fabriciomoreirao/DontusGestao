@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class LocalAuthenticationService(OperationsDbContext db, IPasswordRecoveryEmailSender passwordRecoveryEmailSender) : ILocalAuthenticationService
+public sealed class LocalAuthenticationService(OperationsDbContext db, IPasswordRecoveryEmailSender passwordRecoveryEmailSender, TimeProvider? clock = null) : ILocalAuthenticationService
 {
     public async Task<LocalLoginResult> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
     {
@@ -13,6 +13,8 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
         var user = await db.Users.SingleOrDefaultAsync(entry => entry.Email == normalizedEmail, cancellationToken);
         if (user is null || !user.Active || user.BlockedAt.HasValue || !PasswordSecurity.Verify(password, user.PasswordHash))
             throw new DomainException("E-mail ou senha inválidos.", 401);
+
+        EmployeeAccessPolicy.RequireAllowed(user.AccessScheduleJson, (clock ?? TimeProvider.System).GetUtcNow());
 
         var token = PasswordSecurity.GenerateToken();
         db.LocalAuthSessions.Add(new LocalAuthSession
@@ -33,9 +35,11 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
         var tokenHash = PasswordSecurity.HashToken(token);
         var session = await db.LocalAuthSessions.AsNoTracking()
             .Where(entry => entry.TokenHash == tokenHash && entry.RevokedAt == null && entry.ExpiresAt > DateTimeOffset.UtcNow)
-            .Join(db.Users.AsNoTracking(), entry => entry.UserId, user => user.Id, (entry, user) => new { user.Email, user.DisplayName, user.Active, user.BlockedAt })
+            .Join(db.Users.AsNoTracking(), entry => entry.UserId, user => user.Id, (entry, user) => new { user.Email, user.DisplayName, user.Active, user.BlockedAt, user.AccessScheduleJson })
             .SingleOrDefaultAsync(cancellationToken);
-        return session is null || !session.Active || session.BlockedAt.HasValue ? null : new AuthenticatedIdentity(session.Email, session.DisplayName);
+        if (session is null || !session.Active || session.BlockedAt.HasValue) return null;
+        EmployeeAccessPolicy.RequireAllowed(session.AccessScheduleJson, (clock ?? TimeProvider.System).GetUtcNow());
+        return new AuthenticatedIdentity(session.Email, session.DisplayName);
     }
 
     public async Task ChangePasswordAsync(string email, string currentPassword, string newPassword, CancellationToken cancellationToken = default)

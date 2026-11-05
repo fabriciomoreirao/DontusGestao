@@ -100,6 +100,10 @@ public sealed class DontusIntegrationTests
     public async Task Users_are_normalized_without_passwords_or_login_tokens_and_access_is_revalidated()
     {
         await using var db = Context();
+        var department = LinkDepartment(db, "Suporte");
+        var reason = new SupportAccessReason { Name = "Atendimento de suporte", DepartmentId = department.Id };
+        db.SupportAccessReasons.Add(reason);
+        await db.SaveChangesAsync();
         var userCalls = 0;
         var api = Client(async request =>
         {
@@ -123,15 +127,140 @@ public sealed class DontusIntegrationTests
         Assert.False(users[1].GetProperty("CanAccess").GetBoolean());
         Assert.False(users[2].GetProperty("CanAccess").GetBoolean());
         Assert.DoesNotContain("never-expose", result.GetRawText()); Assert.DoesNotContain("login-secret", result.GetRawText());
-        var login = JsonSerializer.SerializeToElement(await service.LoginAsync(new("150001", 1), Admin, default));
+        var login = JsonSerializer.SerializeToElement(await service.LoginAsync(new("150001", 1, reason.Id, "Verificar relato do atendimento"), Admin, default));
         Assert.StartsWith("https://sistema.dontus.com.br/", login.GetProperty("url").GetString());
         Assert.Equal(2, userCalls);
-        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 2), Admin, default))).StatusCode);
-        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 3), Admin, default))).StatusCode);
-        Assert.Equal(404, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 99), Admin, default))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 2, reason.Id, "Verificar relato"), Admin, default))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 3, reason.Id, "Verificar relato"), Admin, default))).StatusCode);
+        Assert.Equal(404, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 99, reason.Id, "Verificar relato"), Admin, default))).StatusCode);
         var denied = Admin with { Permissions = [] };
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.ListUsersAsync("150001", denied, default))).StatusCode);
         Assert.DoesNotContain("login-secret", string.Join(" ", db.AuditEvents.Select(x => x.DetailsJson)));
+        var log = Assert.Single(db.SupportAccessLogs);
+        Assert.Equal(reason.Id, log.ReasonId); Assert.Equal(reason.Name, log.ReasonName);
+        Assert.Equal(Admin.Email, log.ActorEmail); Assert.Equal(Admin.DisplayName, log.ActorName);
+        Assert.Equal("Verificar relato do atendimento", log.Justification);
+        Assert.DoesNotContain("login-secret", JsonSerializer.Serialize(log));
+        var expired = Admin with { AccessAllowedUntil = DateTimeOffset.UtcNow.AddSeconds(-1) };
+        Assert.Equal("access_outside_hours", (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 1, reason.Id, "Sessão encerrada"), expired, default))).Code);
+        Assert.Single(db.SupportAccessLogs);
+    }
+
+    [Fact]
+    public async Task Access_requires_an_active_registered_reason_and_nonempty_description_before_any_upstream_call()
+    {
+        await using var db = Context();
+        var active = new SupportAccessReason { Name = "Suporte" };
+        var inactive = new SupportAccessReason { Name = "Motivo antigo", Active = false };
+        db.SupportAccessReasons.AddRange(active, inactive); await db.SaveChangesAsync();
+        var service = new DontusIntegrationService(db, Client(_ => throw new InvalidOperationException("Não deve consultar a base sem motivo válido")));
+        foreach (var command in new DontusLoginCommand[] { new("150001", 1), new("150001", 1, active.Id, "  "), new("150001", 1, inactive.Id, "Teste"), new("150001", 1, Guid.NewGuid(), "Teste"), new("150001", 1, active.Id, new string('x', 2001)) })
+            Assert.Equal(400, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(command, Admin, default))).StatusCode);
+        Assert.Empty(db.SupportAccessLogs);
+    }
+
+    [Fact]
+    public async Task Reason_configuration_requires_management_and_history_filters_use_Brasilia_dates_and_preserve_reason_snapshots()
+    {
+        await using var db = Context();
+        var service = new DontusIntegrationService(db, Client(_ => throw new InvalidOperationException("Sem consulta externa neste teste")));
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SaveAccessReasonAsync(new(null, "Suporte", true), Admin, default))).StatusCode);
+        var manager = Admin with { Permissions = [new("access", true, true, true, false, true)] };
+        var department = LinkDepartment(db, "Suporte"); await db.SaveChangesAsync();
+        var reason = await service.SaveAccessReasonAsync(new(null, "Suporte", true, DepartmentId: department.Id), manager, default);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.SaveAccessReasonAsync(new(null, "suporte", true, DepartmentId: department.Id), manager, default))).StatusCode);
+        var log = new SupportAccessLog { AccessedAt = DateTimeOffset.Parse("2026-11-06T02:59:59Z"), ActorEmail = Admin.Email, ActorName = Admin.DisplayName,
+            Identification = "150001", CustomerName = "Clínica", TargetUserId = 1, TargetUserName = "Supervisor", ReasonId = reason.Id, ReasonName = reason.Name, Justification = "Atendimento inicial" };
+        db.SupportAccessLogs.Add(log);
+        db.SupportAccessLogs.Add(new SupportAccessLog { AccessedAt = DateTimeOffset.Parse("2026-11-06T03:00:00Z"), ActorEmail = "outro@test.local", ActorName = "Outro responsável",
+            Identification = "150002", CustomerName = "Outra clínica", TargetUserId = 2, TargetUserName = "Comum", ReasonId = reason.Id, ReasonName = reason.Name, Justification = "Outro atendimento" });
+        await db.SaveChangesAsync();
+        await service.SaveAccessReasonAsync(new(reason.Id, "Novo nome", false, reason.Version, department.Id), manager, default);
+        Assert.Equal("Suporte", log.ReasonName);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.SaveAccessReasonAsync(new(reason.Id, "Antigo", true, reason.Version, department.Id), manager, default))).StatusCode);
+        var filtered = JsonSerializer.SerializeToElement(await service.GetAccessHistoryAsync(new(new(2026, 11, 5), new(2026, 11, 5), Admin.Email, reason.Id, "150001"), Admin, default));
+        Assert.Equal(1, filtered.GetProperty("total").GetInt32());
+        Assert.Single(filtered.GetProperty("entries").EnumerateArray());
+        Assert.Equal(log.Id, filtered.GetProperty("entries")[0].GetProperty("Id").GetGuid());
+        Assert.Equal(400, (await Assert.ThrowsAsync<DomainException>(() => service.GetAccessHistoryAsync(new(new(2026, 11, 6), new(2026, 11, 5)), Admin, default))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetAccessHistoryAsync(new(), Admin with { Permissions = [] }, default))).StatusCode);
+        Assert.False(Assert.Single(await service.GetAccessReasonsAsync(Admin, default)).Active);
+    }
+
+    [Fact]
+    public async Task Reasons_follow_all_employee_departments_and_reject_forged_reason_ids_without_bypassing_for_administrators()
+    {
+        await using var db = Context();
+        var support = LinkDepartment(db, "Suporte");
+        var cs = new TaskDepartment { Name = "Sucesso do Cliente" };
+        db.TaskDepartments.Add(cs);
+        var supportReason = new SupportAccessReason { Name = "Motivo 01", DepartmentId = support.Id };
+        var csReason = new SupportAccessReason { Name = "Motivo 01", DepartmentId = cs.Id };
+        var legacyReason = new SupportAccessReason { Name = "Motivo antigo sem setor" };
+        db.SupportAccessReasons.AddRange(supportReason, csReason, legacyReason); await db.SaveChangesAsync();
+        var service = new DontusIntegrationService(db, Client(_ => throw new InvalidOperationException("Não deve consultar bases com um motivo de outro setor")));
+        Assert.Equal(supportReason.Id, Assert.Single(await service.GetAccessReasonsAsync(Admin, default)).Id);
+        Assert.Equal(supportReason.Id, Assert.Single(await service.GetAccessReasonsAsync(Admin with { FullAccess = true }, default)).Id);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 1, csReason.Id, "Teste de setor"), Admin, default))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 1, legacyReason.Id, "Teste de legado"), Admin, default))).StatusCode);
+        var user = await db.Users.SingleAsync();
+        db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = cs.Id, IsPrimary = false }); await db.SaveChangesAsync();
+        Assert.Equal(2, (await service.GetAccessReasonsAsync(Admin, default)).Count);
+        db.UserDepartments.Remove(await db.UserDepartments.SingleAsync(link => link.DepartmentId == support.Id)); await db.SaveChangesAsync();
+        Assert.Equal(csReason.Id, Assert.Single(await service.GetAccessReasonsAsync(Admin, default)).Id);
+        cs.Active = false; await db.SaveChangesAsync();
+        Assert.Empty(await service.GetAccessReasonsAsync(Admin, default));
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 1, csReason.Id, "Setor inativo"), Admin, default))).StatusCode);
+        Assert.Empty(await service.GetAccessReasonsAsync(Admin with { Email = "semvinculo@test.local", Department = "Suporte" }, default));
+        Assert.Empty(db.SupportAccessLogs);
+    }
+
+    [Fact]
+    public async Task Sector_catalog_is_dynamic_names_are_unique_per_sector_and_legacy_reasons_can_be_assigned_without_losing_identity()
+    {
+        await using var db = Context();
+        var support = LinkDepartment(db, "Suporte");
+        var cs = new TaskDepartment { Name = "Sucesso do Cliente" }; db.TaskDepartments.Add(cs); await db.SaveChangesAsync();
+        var service = new DontusIntegrationService(db, Client(_ => throw new InvalidOperationException("Sem consulta externa neste teste")));
+        var manager = Admin with { Permissions = [new("access", true, true, true, false, true)] };
+        var first = await service.SaveAccessReasonAsync(new(null, "Motivo 01", true, DepartmentId: support.Id), manager, default);
+        var second = await service.SaveAccessReasonAsync(new(null, "Motivo 01", true, DepartmentId: cs.Id), manager, default);
+        Assert.NotEqual(first.Id, second.Id);
+        Assert.Equal(2, (await service.GetAccessReasonsAsync(manager, default, catalog: true)).Count);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetAccessReasonsAsync(Admin, default, catalog: true))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetAccessDepartmentsAsync(Admin, default))).StatusCode);
+        Assert.Equal(400, (await Assert.ThrowsAsync<DomainException>(() => service.SaveAccessReasonAsync(new(null, "Sem setor", true), manager, default))).StatusCode);
+        Assert.Equal(400, (await Assert.ThrowsAsync<DomainException>(() => service.SaveAccessReasonAsync(new(null, "Setor inexistente", true, DepartmentId: Guid.NewGuid()), manager, default))).StatusCode);
+        var newDepartment = new TaskDepartment { Name = "Novo setor" }; db.TaskDepartments.Add(newDepartment); await db.SaveChangesAsync();
+        Assert.Contains(await service.GetAccessDepartmentsAsync(manager, default), entry => entry.Id == newDepartment.Id);
+        var legacy = new SupportAccessReason { Name = "Motivo legado" }; db.SupportAccessReasons.Add(legacy); await db.SaveChangesAsync();
+        var assigned = await service.SaveAccessReasonAsync(new(legacy.Id, legacy.Name, true, legacy.Version, support.Id), manager, default);
+        Assert.Equal(legacy.Id, assigned.Id); Assert.Equal(support.Id, assigned.DepartmentId);
+        Assert.Contains(await service.GetAccessReasonsAsync(Admin, default), entry => entry.Id == legacy.Id);
+    }
+
+    [Fact]
+    public async Task Department_membership_is_rechecked_before_releasing_the_login_url()
+    {
+        await using var db = Context();
+        var department = LinkDepartment(db, "Suporte");
+        var reason = new SupportAccessReason { Name = "Atendimento", DepartmentId = department.Id }; db.SupportAccessReasons.Add(reason); await db.SaveChangesAsync();
+        var service = new DontusIntegrationService(db, Client(async request => {
+            if (request.Method == HttpMethod.Get) return Json(CustomerResponse());
+            db.UserDepartments.Remove(await db.UserDepartments.SingleAsync()); await db.SaveChangesAsync();
+            return Json(new { mensagemDeErro = false, usuarios = new[] { new { id = 1, nome = "Teste", usuario = "teste", usuarioAtivo = true, urlLogin = "https://sistema.dontus.com.br/login" } } });
+        }));
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.LoginAsync(new("150001", 1, reason.Id, "Atendimento"), Admin, default))).StatusCode);
+        Assert.Empty(db.SupportAccessLogs);
+    }
+
+    private static TaskDepartment LinkDepartment(OperationsDbContext db, string name)
+    {
+        var user = db.Users.Local.FirstOrDefault(entry => entry.Email == Admin.Email);
+        if (user is null) { user = new AppUser { Email = Admin.Email, DisplayName = Admin.DisplayName, CreatedBy = "test" }; db.Users.Add(user); }
+        var department = new TaskDepartment { Name = name }; db.TaskDepartments.Add(department);
+        db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = department.Id, IsPrimary = true });
+        return department;
     }
 
     [Fact]

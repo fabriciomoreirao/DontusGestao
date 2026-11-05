@@ -362,7 +362,7 @@ export default function CustomerSuccessJourneyModule({
       {PHASES.map((phase) => <button key={phase.id} className={tab === phase.id ? "active" : ""} onClick={() => setTab(phase.id)}>{phase.label}<b>{counts[phase.id]}</b></button>)}
     </nav>
 
-    <section className="cs-pipeline-toolbar reminder-filter-toolbar">{reminderFilter.control}
+    <section className="cs-pipeline-toolbar reminder-filter-toolbar compact-operational-filters cs-compact-filters" aria-label="Filtros do acompanhamento">{reminderFilter.control}
       <label className="cs-pipeline-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, ID, responsável ou telefone" /></label>
       <SearchablePeopleSelect searchLabel="Responsável" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Filtrar responsável"><option value="all">Todos os responsáveis</option>{[...new Set([...employees.filter(entry=>entry.active).map(entry=>entry.displayName),...records.map(entry=>entry.item.owner)].filter(Boolean))].map((owner) => <option key={owner}>{owner}</option>)}</SearchablePeopleSelect>
       <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filtrar status"><option value="all">Todos os status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select>

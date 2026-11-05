@@ -83,6 +83,10 @@ publicadas em conversas, documentação ou código-fonte.
 
 ## Usuários, grupos e permissões
 
+Em **Colaboradores → Editar → Restrição de horário de acesso**, ative o controle e configure os dias e intervalos permitidos no horário de Brasília. É possível separar pausas ou definir turnos que terminam no dia seguinte. O servidor valida o expediente no login, nas requisições e nas conexões em tempo real; ao encerrar o intervalo, a interface retorna ao login com **Acesso proibido fora do expediente.** Cadastros existentes permanecem sem restrição até a configuração ser ativada.
+
+Em **Acesso de Suporte**, o botão de acesso à base abre um modal central que exige **motivo cadastrado** e **descrição** antes da liberação. **Configuração** organiza os motivos em abas por setor, usando os setores de Colaboradores/Cadastros; novos setores aparecem automaticamente. Gestores podem cadastrar, renomear, mover e inativar motivos. Na liberação da base, inclusive para administradores, o servidor aceita somente motivos de setores ativos vinculados ao colaborador, incluindo vínculos secundários. Colaboradores de vários setores recebem a união dos motivos permitidos. **Histórico de acesso** filtra datas inclusivas de Brasília, responsável, motivo e identificação do cliente, com paginação. Os registros preservam o nome do motivo na data do acesso, o responsável autenticado e o usuário de destino; senhas e URLs de login não são gravadas. Cadastre ao menos um motivo ativo para liberar o primeiro acesso.
+
 O primeiro usuário administrativo é definido por `LOCAL_USER_EMAIL` e `LOCAL_USER_NAME`. No ambiente padrão, ele é `gestor@dontus.local`.
 
 Na tela **Administração**:
@@ -125,6 +129,8 @@ Em **Cadastros → Setores** e **Colaboradores → Setores**, selecione os coord
 Na ficha 360 do cliente, a aba **Comercial** reúne os leads e oportunidades, comentários, follow-ups, interações e movimentações desde a qualificação, inclusive antes do ganho. A abertura pelo card usa o registro de origem quando ainda não há cliente cadastrado. A consolidação acompanha os vínculos entre qualificação, CRM, CS e LIA e o ID informado no encaminhamento; históricos antigos sem ID são relacionados pelo nome exato ou contato único. As interações também aparecem em **Comentários** e **Linha do tempo**, respeitando os módulos disponíveis ao usuário.
 
 ## Módulo de Tarefas
+
+Os filtros de **Tarefas** e dos **Acompanhamentos de Ativação, Retenção, LIA e Chamados** ficam em uma linha nas telas largas e em até duas linhas nas demais larguras. Telas estreitas permitem rolagem horizontal apenas na barra de filtros. Nas tarefas, setor e comunicação com o cliente integram a mesma barra, preservando os filtros de busca, lembretes, prioridade, responsável e tarefas próprias.
 
 Nos acompanhamentos de **Ativação** e **Retenção**, **Inserir cliente** permite informar a **Data de início do acompanhamento**. O botão **Editar** do card reabre o formulário preenchido para ajustar data, nome, ID, telefone, responsável e status, preservando o histórico e a etapa. A contagem usa dias do calendário de Brasília; registros antigos sem data usam a criação do card, sem reiniciar após edições. Encaminhamentos gravam a data inicial automaticamente.
 

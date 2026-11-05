@@ -14,6 +14,8 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<LiaFormRequest> LiaFormRequests => Set<LiaFormRequest>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<CustomerDontusLink> CustomerDontusLinks => Set<CustomerDontusLink>();
+    public DbSet<SupportAccessReason> SupportAccessReasons => Set<SupportAccessReason>();
+    public DbSet<SupportAccessLog> SupportAccessLogs => Set<SupportAccessLog>();
     public DbSet<CustomerCatalogOption> CustomerCatalogOptions => Set<CustomerCatalogOption>();
     public DbSet<WorkItem> WorkItems => Set<WorkItem>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
@@ -110,6 +112,27 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.HasOne<LiaForm>().WithMany().HasForeignKey(x => x.FormId).OnDelete(DeleteBehavior.Restrict);
         });
         ConfigureEntity(modelBuilder.Entity<Customer>(), "customers");
+        ConfigureEntity(modelBuilder.Entity<SupportAccessReason>(), "support_access_reasons");
+        modelBuilder.Entity<SupportAccessReason>(entity => {
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.HasIndex(x => new { x.DepartmentId, x.Name }).IsUnique();
+            entity.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
+        });
+        modelBuilder.Entity<SupportAccessLog>(entity => {
+            entity.ToTable("support_access_logs");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ActorEmail).HasMaxLength(254);
+            entity.Property(x => x.ActorName).HasMaxLength(200);
+            entity.Property(x => x.Identification).HasMaxLength(19);
+            entity.Property(x => x.CustomerName).HasMaxLength(240);
+            entity.Property(x => x.TargetUserName).HasMaxLength(240);
+            entity.Property(x => x.ReasonName).HasMaxLength(120);
+            entity.Property(x => x.Justification).HasMaxLength(2000);
+            entity.HasIndex(x => x.AccessedAt);
+            entity.HasIndex(x => new { x.ActorEmail, x.AccessedAt });
+            entity.HasIndex(x => new { x.ReasonId, x.AccessedAt });
+            entity.HasOne<SupportAccessReason>().WithMany().HasForeignKey(x => x.ReasonId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<CustomerDontusLink>(entity =>
         {
             entity.ToTable("customer_dontus_links");

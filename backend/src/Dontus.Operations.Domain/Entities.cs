@@ -154,6 +154,7 @@ public sealed class AppUser : Entity
     public DateTimeOffset? BlockedAt { get; set; }
     public bool IsCoordinator { get; set; }
     public DateTimeOffset? LastAccessAt { get; set; }
+    public string AccessScheduleJson { get; set; } = "";
     public required string CreatedBy { get; set; }
     public ICollection<UserAccessGroup> Groups { get; set; } = [];
 }

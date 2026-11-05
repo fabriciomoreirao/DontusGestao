@@ -1,3 +1,5 @@
+using Dontus.Operations.Domain;
+
 namespace Dontus.Operations.Application;
 
 public sealed record AuthenticatedIdentity(string Email, string DisplayName);
@@ -68,7 +70,8 @@ public sealed record EmployeeDto(
     IReadOnlyCollection<string> GroupNames,
     bool Active,
     DateTimeOffset? BlockedAt,
-    IReadOnlyCollection<Guid>? AgendaCalendarIds = null);
+    IReadOnlyCollection<Guid>? AgendaCalendarIds = null,
+    EmployeeAccessSchedule? AccessSchedule = null);
 
 public sealed record EmployeeDepartmentDto(Guid Id, string Name, string Description, bool Active, IReadOnlyCollection<Guid>? CoordinatorUserIds = null);
 public sealed record EmployeeLevelDto(Guid Id, string Name, string Description, bool Active);
@@ -87,7 +90,8 @@ public sealed record CreateEmployeeCommand(
     IReadOnlyCollection<Guid>? GroupIds = null,
     IReadOnlyCollection<Guid>? AgendaDepartmentIds = null,
     bool FullAccess = false,
-    IReadOnlyCollection<Guid>? AgendaCalendarIds = null);
+    IReadOnlyCollection<Guid>? AgendaCalendarIds = null,
+    EmployeeAccessSchedule? AccessSchedule = null);
 
 public sealed record UpdateEmployeeCommand(
     Guid Id,
@@ -105,7 +109,8 @@ public sealed record UpdateEmployeeCommand(
     IReadOnlyCollection<Guid>? GroupIds = null,
     IReadOnlyCollection<Guid>? AgendaDepartmentIds = null,
     bool FullAccess = false,
-    IReadOnlyCollection<Guid>? AgendaCalendarIds = null);
+    IReadOnlyCollection<Guid>? AgendaCalendarIds = null,
+    EmployeeAccessSchedule? AccessSchedule = null);
 
 public sealed record CreateEmployeeResult(Guid Id);
 public sealed record SaveEmployeeDepartmentCommand(Guid? Id, string Name, string? Description, bool Active, IReadOnlyCollection<Guid>? CoordinatorUserIds = null);

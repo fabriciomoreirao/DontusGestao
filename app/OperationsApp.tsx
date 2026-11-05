@@ -6,6 +6,8 @@ import { crmResponsible, crmResponsibleOptions, isCsEmployee, matchesCrmResponsi
 
 import { directSaleClientId, directSaleFollowup } from "@/lib/direct-sale-routing";
 import { clientRecordQuery, resolveClientHistory, structuredClientEvolutions, consolidateClientEvolutions } from "@/lib/client-history";
+import { ACCESS_DENIED_EVENT, OUTSIDE_WORKING_HOURS, accessDeniedMessage } from "@/lib/access-session";
+import EmployeeAccessScheduleEditor, { accessScheduleError, type EmployeeAccessSchedule } from "@/app/EmployeeAccessScheduleEditor";
 
 import {applyChatPresence,type ChatPresence} from "@/lib/chat-presence";
 import { sendInternalChatFiles } from "@/lib/internal-chat-upload";
@@ -168,6 +170,7 @@ type AccessManagement = {
 };
 
 type Employee = {
+  accessSchedule?: EmployeeAccessSchedule;
   id: string; displayName: string; email: string; birthDate: string | null; startedAt: string | null;
   departmentId: string | null; departmentName: string; levelId: string | null; levelName: string;
   departmentIds: string[]; departmentNames: string[];
@@ -186,7 +189,7 @@ type AdminSection = AdminPage;
 type ReportingSection = "performance" | "indicators" | "bi" | "biExecutive";
 
 type AppData = {
-  user: { email: string; displayName: string; role: string; department: string; photoDataUrl: string; jobTitle: string; isCoordinator: boolean; fullAccess?: boolean; permissions: EffectivePermission[] };
+  user: { email: string; displayName: string; role: string; department: string; photoDataUrl: string; jobTitle: string; isCoordinator: boolean; fullAccess?: boolean; accessAllowedUntil?: string | null; permissions: EffectivePermission[] };
   customers: Customer[];
   items: WorkItem[];
   appointments: Appointment[];
@@ -457,6 +460,7 @@ export default function OperationsApp() {
   const [reportingSection, setReportingSection] = useState<ReportingSection>("bi");
   const [analyticsDepartment, setAnalyticsDepartment] = useState("Todos");
   const [loginRequired, setLoginRequired] = useState(false);
+  const [loginMessage, setLoginMessage] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [collapsedNavGroups, setCollapsedNavGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(
@@ -639,17 +643,35 @@ export default function OperationsApp() {
   const chatInFlight = useRef(false);
   const realtimeCursor = useRef("");
   const mutationRevision = useRef(0);
-  const expireSession = useCallback(() => {
+  const expireSession = useCallback((reason?: string) => {
     mutationRevision.current += 1;
     presenceCache.current=[];
+    dataRef.current = null;
     setData(null);
     setLoginRequired(true);
+    setLoginMessage(reason ?? "");
     setError("");
     setModal(null);
     setSelectedItem(null);
     setNotificationCenterOpen(false);
     setChatAlerts([]);
   }, []);
+  useEffect(() => {
+    const denied = (event: Event) => expireSession((event as CustomEvent<string | undefined>).detail);
+    window.addEventListener(ACCESS_DENIED_EVENT, denied);
+    return () => window.removeEventListener(ACCESS_DENIED_EVENT, denied);
+  }, [expireSession]);
+  useEffect(() => {
+    const until = data?.user.accessAllowedUntil;
+    if (!until || loginRequired) return;
+    const cutoff = Date.parse(until);
+    if (!Number.isFinite(cutoff)) return;
+    const check = () => { if (Date.now() >= cutoff) expireSession(OUTSIDE_WORKING_HOURS); };
+    const timer = window.setTimeout(check, Math.max(0, Math.min(2147483647, cutoff - Date.now())));
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => { window.clearTimeout(timer); window.removeEventListener("focus", check); document.removeEventListener("visibilitychange", check); };
+  }, [data?.user.accessAllowedUntil, loginRequired, expireSession]);
   const load = async (background = false) => {
     if (loadInFlight.current || (background && document.hidden)) return false;
     loadInFlight.current = true;
@@ -669,7 +691,7 @@ export default function OperationsApp() {
         catch { throw new Error("A operação retornou uma resposta inválida."); }
       }
       if (response.status === 401) {
-        expireSession();
+        expireSession((payload as { code?: string }).code === "access_outside_hours" ? OUTSIDE_WORKING_HOURS : undefined);
         return true;
       }
       if (response.status === 403) {
@@ -707,7 +729,7 @@ export default function OperationsApp() {
     const revision = mutationRevision.current;
     try {
       const response = await fetch("/api/internal-chat", { cache: "no-store" });
-      if (response.status === 401) { expireSession(); return true; }
+      if (response.status === 401) { expireSession(await accessDeniedMessage(response)); return true; }
       if (!response.ok) return false;
       const internalChatModule = await response.json() as InternalChatModuleData;
       if (revision === mutationRevision.current) setData((current) => current ? { ...current, internalChatModule:applyChatPresence(internalChatModule,presenceCache.current) } : current);
@@ -927,7 +949,7 @@ export default function OperationsApp() {
       const response = await fetch("/api/operations", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestPayload, knownWorkItemVersions: knownWorkItemVersions(dataRef.current?.items ?? []) }),
       });
-      if (response.status === 401) { expireSession(); return false; }
+      if (response.status === 401) { expireSession(await accessDeniedMessage(response)); return false; }
       const body = await response.text();
       let result: Record<string, unknown> = {};
       if (body) {
@@ -1247,7 +1269,7 @@ export default function OperationsApp() {
   const publicSurveyToken = routeParams.get("survey");
   if (publicSurveyToken) return <PublicSurveyResponsePage token={publicSurveyToken} />;
   if (loading) return <LoadingScreen />;
-  if (loginRequired) return <LoginScreen onAuthenticated={() => window.location.replace("/")} />;
+  if (loginRequired) return <LoginScreen initialError={loginMessage} onAuthenticated={() => window.location.replace("/")} />;
   if (error || !data) return <ErrorScreen message={error} onRetry={load} />;
   const publicProcessId = routeParams.get("process");
   if (routeParams.get("application") === "processo-seletivo" && publicProcessId)
@@ -1629,7 +1651,7 @@ export default function OperationsApp() {
               onExit={() => navigate("dashboard")}
             />
           )}
-          {active === "access" && <DontusSupportAccess />}
+          {active === "access" && <DontusSupportAccess canManage={userCan(data.user, "access", "manage")} />}
           {active === "catalogs" && data.taskModule && (
             <><ConfigurationReturnBar target={settingsReturnTarget} onBack={returnFromSettings} /><CatalogsModule module={data.taskModule} section={catalogSection} onSection={navigateCatalog} canManage={userCan(data.user, "catalogs", "manage") || userCan(data.user, "tasks", "manage")} busy={busy} operate={operate} /></>
           )}
@@ -1877,12 +1899,12 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => voi
   return <div className="error-screen"><Image src="/dontus-logo.png" alt="Dontus" width={240} height={68} priority unoptimized /><h1>Não foi possível abrir a operação</h1><p>{message}</p><button onClick={onRetry}>Tentar novamente</button></div>;
 }
 
-function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
+function LoginScreen({ onAuthenticated, initialError = "" }: { onAuthenticated: () => void; initialError?: string }) {
   const [email, setEmail] = useState("gestor@dontus.local");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3969,6 +3991,8 @@ function EmployeeModal({ onResetPassword, employee, employees, departments, cale
   const [subordinateUserIds, setSubordinateUserIds] = useState<string[]>(employee?.subordinateUserIds ?? []);
   const [departmentIds, setDepartmentIds] = useState<string[]>(employee?.departmentIds ?? (employee?.departmentId ? [employee.departmentId] : []));
   const [agendaCalendarIds, setAgendaCalendarIds] = useState<string[]>(employee?.agendaCalendarIds ?? []);
+  const [accessSchedule, setAccessSchedule] = useState<EmployeeAccessSchedule>(employee?.accessSchedule ?? { enabled: false, windows: [] });
+  const [scheduleError, setScheduleError] = useState("");
   const [departmentError, setDepartmentError] = useState("");
   const [groupError, setGroupError] = useState("");
   const choosePhoto = (file?: File) => {
@@ -3985,7 +4009,10 @@ function EmployeeModal({ onResetPassword, employee, employees, departments, cale
     const groupIds=fullAccess ? [] : form.getAll("groupIds"); if(!fullAccess&&groupIds.length===0){setGroupError("Selecione ao menos um grupo de permissões ou marque Acesso total.");return} setGroupError("");
     if (departmentIds.length === 0) { setDepartmentError("Selecione ao menos um setor para o colaborador."); return; }
     setDepartmentError("");
-    onSave({ displayName: form.get("displayName"), email: form.get("email"), birthDate: form.get("birthDate") || null, startedAt: form.get("startedAt") || null, departmentIds, agendaCalendarIds, employeeLevelId: form.get("employeeLevelId"), photoDataUrl, jobTitle: form.get("jobTitle"), isCoordinator, subordinateUserIds: isCoordinator ? subordinateUserIds : [], groupIds, fullAccess, active });
+    const scheduleValidation = accessScheduleError(accessSchedule);
+    setScheduleError(scheduleValidation);
+    if (scheduleValidation) return;
+    onSave({ displayName: form.get("displayName"), email: form.get("email"), birthDate: form.get("birthDate") || null, startedAt: form.get("startedAt") || null, departmentIds, agendaCalendarIds, accessSchedule, employeeLevelId: form.get("employeeLevelId"), photoDataUrl, jobTitle: form.get("jobTitle"), isCoordinator, subordinateUserIds: isCoordinator ? subordinateUserIds : [], groupIds, fullAccess, active });
   };
   return <ModalShell className="employee-modal" title={employee ? "Editar colaborador" : "Novo colaborador"} subtitle={employee ? "Atualize os dados cadastrais e o vínculo do colaborador." : "A senha temporária será gerada para o teste do login local."} onClose={onClose}><form className="form-grid employee-form" onSubmit={submit}>
     <MediaUploadField className="wide" label="Foto do usuário" accept="image/*" selectedText={photoDataUrl ? "Foto selecionada" : undefined} previewUrl={photoDataUrl} previewLabel="Abrir foto do colaborador" hint="Selecione uma imagem para o perfil do colaborador, com no máximo 2 MB." onChange={(event) => choosePhoto(event.target.files?.[0])} />
@@ -3994,6 +4021,8 @@ function EmployeeModal({ onResetPassword, employee, employees, departments, cale
     <label className="wide">Função na empresa<select name="jobTitle" required defaultValue={employee?.jobTitle ?? ""}><option value="">Selecione a função cadastrada</option>{[...new Set(roles)].map(role => <option key={role}>{role}</option>)}</select><small>A função permanece vinculada diretamente ao cadastro do colaborador.</small></label>
     <label>Data de nascimento<input name="birthDate" type="date" required defaultValue={employee?.birthDate ?? ""} /></label><label>Início na empresa<input name="startedAt" type="date" required defaultValue={employee?.startedAt ?? ""} /></label>
     <label>Nível<select name="employeeLevelId" required defaultValue={levels.some((level) => level.active && level.id === employee?.levelId) ? (employee?.levelId ?? "") : ""}><option value="">Selecione</option>{levels.filter((level) => level.active).map((level) => <option value={level.id} key={level.id}>{level.name}</option>)}</select></label>
+    <EmployeeAccessScheduleEditor value={accessSchedule} onChange={value => { setAccessSchedule(value); setScheduleError(""); }} disabled={busy} />
+    {scheduleError && <p className="form-error wide" role="alert">{scheduleError}</p>}
     <fieldset className="wide group-selector employee-departments"><legend>Setores do colaborador</legend><p>Selecione os vínculos funcionais. O primeiro marcado será o setor principal. O acesso às agendas é definido abaixo.</p>{departments.filter((department) => department.active).map((department) => <label key={department.id}><input name="departmentIds" type="checkbox" value={department.id} checked={departmentIds.includes(department.id)} onChange={(event) => setDepartmentIds((current) => event.target.checked ? [...current, department.id] : current.filter((id) => id !== department.id))} /><span><strong>{department.name}</strong><small>{department.description || "Setor operacional"}</small></span></label>)}</fieldset>
     {departmentError && <p className="form-error wide">{departmentError}</p>}
     <fieldset className="wide group-selector employee-agenda-calendars"><legend>Acesso às agendas</legend><p>Selecione as agendas que o colaborador poderá consultar e utilizar. O setor do cadastro não libera acesso automaticamente. Administradores e gestores de agenda mantêm acesso a todas as agendas.</p>{calendars.filter(calendar=>calendar.active||agendaCalendarIds.includes(calendar.id)).map(calendar=><label key={calendar.id}><input type="checkbox" disabled={fullAccess} checked={fullAccess||agendaCalendarIds.includes(calendar.id)} onChange={event=>setAgendaCalendarIds(current=>event.target.checked?[...new Set([...current,calendar.id])]:current.filter(id=>id!==calendar.id))}/><span><strong>{calendar.name}</strong><small>{calendar.departmentName}{!calendar.active?" · Inativa":""}</small></span></label>)}{!calendars.length&&<small>Nenhuma agenda cadastrada.</small>}</fieldset>
