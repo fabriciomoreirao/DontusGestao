@@ -477,7 +477,7 @@ public sealed class TaskServiceTests
             "Revisar retorno", "Descrição suficiente", type.Id, null, null,
             support.Id, support.Id, null, null, null, null, "5511999990000",
             null, null, null, null, false, [], []), actor);
-        const string body = "Primeira atualização\n\nCliente retornou com sucesso ✅😀";
+        const string body = "  **Primeira atualização**\n\n\tCliente retornou com sucesso ✅😀\n";
 
         await service.AddCommentAsync(new AddTaskCommentCommand(created.Id, body, []), actor);
 
@@ -485,6 +485,10 @@ public sealed class TaskServiceTests
         Assert.Contains(
             module.Tasks.Single(x => x.Id == created.Id).Comments,
             comment => comment.Body == body);
+        var commentId = module.Tasks.Single(x => x.Id == created.Id).Comments.Single().Id;
+        var edited = body + "\n  Segunda atualização";
+        await service.UpdateCommentAsync(new UpdateTaskCommentCommand(created.Id, commentId, edited), actor);
+        Assert.Equal(edited, (await service.GetModuleAsync(actor)).Tasks.Single(x => x.Id == created.Id).Comments.Single().Body);
     }
 
     [Fact]

@@ -50,7 +50,7 @@ export function CandidateDrawer({ candidate, stages, busy, onClose, onOperate }:
   const save = async (stage?: string) => {
     const result = stage
       ? await onOperate({ action: "transitionWorkItem", id: candidate.id, nextStatus: stage, version: candidate.version, confirmed: true }, "Etapa do candidato atualizada.")
-      : await onOperate({ action: "updateWorkItem", id: candidate.id, module: "admin", recordType: candidate.record_type, title: candidate.title, customerName: candidate.customer_name, owner: candidate.owner, team: candidate.team, priority: candidate.priority, amountCents: candidate.amount_cents, description: JSON.stringify({ ...payload, comments: comment.trim() ? [...comments, comment.trim()] : comments }), version: candidate.version }, "Candidato atualizado com sucesso.");
+      : await onOperate({ action: "updateWorkItem", id: candidate.id, module: "admin", recordType: candidate.record_type, title: candidate.title, customerName: candidate.customer_name, owner: candidate.owner, team: candidate.team, priority: candidate.priority, amountCents: candidate.amount_cents, description: JSON.stringify({ ...payload, comments: comment.trim() ? [...comments, comment] : comments }), version: candidate.version }, "Candidato atualizado com sucesso.");
     if (result) { setComment(""); if (stage) onClose(); }
   };
   const copyLink = async () => {

@@ -9,9 +9,9 @@ public sealed class CommentFilesTests
     [Fact]
     public void Files_are_preserved_with_text_or_on_their_own()
     {
-        Assert.Equal("Comentário\n\n"+Files,CommentFiles.Validate(" Comentário\n\n"+Files+" "));
+        Assert.Equal(" Comentário\n\n"+Files,CommentFiles.Validate(" Comentário\n\n"+Files+" "));
         Assert.Equal(Files,CommentFiles.Validate(Files));
-        Assert.Equal("Texto antigo",CommentFiles.Validate(" Texto antigo "));
+        Assert.Equal(" Texto antigo ",CommentFiles.Validate(" Texto antigo "));
     }
     [Fact]
     public void Text_limits_and_file_integrity_are_enforced_on_the_server()
@@ -20,5 +20,8 @@ public sealed class CommentFilesTests
         Assert.Throws<DomainException>(()=>CommentFiles.Validate(Files.Replace("\"size\":4","\"size\":5")));
         Assert.Throws<DomainException>(()=>CommentFiles.Validate(Files.Replace("dGVzdA==","invalid")));
         Assert.Throws<DomainException>(()=>CommentFiles.Validate(""));
+        Assert.Throws<DomainException>(()=>CommentFiles.Validate("   "));
+        const string formatted="  Primeiro **destaque**\n\n    Segundo item\n";
+        Assert.Equal(formatted,CommentFiles.Validate(formatted));
     }
 }

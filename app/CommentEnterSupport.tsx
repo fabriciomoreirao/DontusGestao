@@ -11,12 +11,13 @@ export default function CommentEnterSupport(){
       if(!(input instanceof HTMLTextAreaElement)||!input.hasAttribute("data-comment-input")||(!input.value.trim()&&!input.hasAttribute("data-comment-has-files")))return;
       const composer=input.closest("[data-comment-composer]")??input.closest("form");
       if(!composer)return;
-      const button=[...composer.querySelectorAll<HTMLButtonElement>("button")].find(button=>{
+      const button=composer.querySelector<HTMLButtonElement>('button[data-comment-submit="true"]')??[...composer.querySelectorAll<HTMLButtonElement>("button")].find(button=>{
         if(button.disabled||!(input.compareDocumentPosition(button)&Node.DOCUMENT_POSITION_FOLLOWING))return false;
+        if(button.closest(".task-comment-tools,.comment-attachment-list,.comment-editor"))return false;
         const label=(button.textContent||button.getAttribute("aria-label")||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"");
         return input.dataset.commentKind==="follow"?/registrar.*follow|adicionar.*follow/i.test(label):/comentar|registrar|adicionar|enviar|salvar|publicar/i.test(label);
       });
-      if(!button)return;
+      if(!button||button.disabled)return;
       event.preventDefault();event.stopPropagation();
       if(composer instanceof HTMLFormElement&&button.type==="submit")composer.requestSubmit(button);else button.click();
     };
