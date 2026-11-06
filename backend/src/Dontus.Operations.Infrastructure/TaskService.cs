@@ -255,12 +255,12 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 comments.Where(x => x.TaskId == task.Id && !TaskApproverPolicy.IsLegacyMarker(x.Body)).Select(x =>
                     new TaskCommentDto(x.Id, x.AuthorUserId, UserName(x.AuthorUserId), x.Body, x.Internal, x.CreatedAt,
                         attachments.Where(a => a.CommentId == x.Id).Select(a =>
-                            new TaskAttachmentDto(a.Id, a.CommentId, a.FileName, $"/api/task-files/{a.Id}", a.CreatedAt)).ToList())).ToList(),
+                            new TaskAttachmentDto(a.Id, a.CommentId, a.FileName, $"/api/task-files/{a.Id}", a.CreatedAt) { SizeBytes = a.SizeBytes }).ToList())).ToList(),
                 history.Where(x => x.TaskId == task.Id).Select(x =>
                     new TaskHistoryDto(x.Id, x.EventType, x.Summary, UserName(x.ActorUserId),
                         x.PreviousValueJson, x.NewValueJson, x.Source, x.Justification, x.CreatedAt)).ToList(),
                 attachments.Where(x => x.TaskId == task.Id && x.CommentId == null).Select(x =>
-                    new TaskAttachmentDto(x.Id, x.CommentId, x.FileName, $"/api/task-files/{x.Id}", x.CreatedAt)).ToList(),
+                    new TaskAttachmentDto(x.Id, x.CommentId, x.FileName, $"/api/task-files/{x.Id}", x.CreatedAt) { SizeBytes = x.SizeBytes }).ToList(),
                 TaskApproverPolicy.Resolve(departments.First(x => x.Id == task.CurrentDepartmentId), users.Values.Where(x => x.Active && x.BlockedAt == null).Select(x => x.Id), userDepartments));
         }).ToList();
 
@@ -688,7 +688,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var mentions = command.MentionedUserIds?.Distinct().ToList() ?? [];
         var comment = new TaskComment
         {
-            TaskId = task.Id, AuthorUserId = user.Id, Body = command.Body.Trim(),
+            TaskId = task.Id, AuthorUserId = user.Id, Body = command.Body,
             MentionedUserIdsJson = JsonSerializer.Serialize(mentions, JsonOptions),
         };
         db.TaskComments.Add(comment);
@@ -704,8 +704,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     public async Task UpdateCommentAsync(UpdateTaskCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("tasks", "edit");
-        var body = command.Body.Trim();
-        if (body.Length == 0 || body.Length > 4000)
+        var body = command.Body;
+        if (string.IsNullOrWhiteSpace(body) || body.Length > 4000)
             throw new DomainException("Informe um comentário de até 4.000 caracteres.");
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);

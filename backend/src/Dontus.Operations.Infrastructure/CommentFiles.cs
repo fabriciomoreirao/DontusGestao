@@ -8,18 +8,19 @@ public static class CommentFiles
     private const string Marker = "[[DONTUS_FILES:";
     public static string Validate(string? input, int maximumTextLength = 3000)
     {
-        var body=input?.Trim()??"";
+        var body=input??"";
         if(body.Length>22*1024*1024)throw new DomainException("Os anexos do comentário excedem o limite permitido.");
-        var index=body.LastIndexOf(Marker,StringComparison.Ordinal);
-        if(index<0||!body.EndsWith("]]",StringComparison.Ordinal))
+        var encodedBody=body.TrimEnd();
+        var index=encodedBody.LastIndexOf(Marker,StringComparison.Ordinal);
+        if(index<0||!encodedBody.EndsWith("]]",StringComparison.Ordinal))
         {
-            if(body.Length<1||body.Length>maximumTextLength)throw new DomainException($"O comentário deve ter entre 1 e {maximumTextLength:N0} caracteres.");
+            if(string.IsNullOrWhiteSpace(body)||body.Length>maximumTextLength)throw new DomainException($"O comentário deve ter entre 1 e {maximumTextLength:N0} caracteres.");
             return body;
         }
-        if(body[..index].Trim().Length>maximumTextLength)throw new DomainException("O texto do comentário excede o limite permitido.");
+        if(body[..index].Length>maximumTextLength+2)throw new DomainException("O texto do comentário excede o limite permitido.");
         try
         {
-            using var json=JsonDocument.Parse(body[(index+Marker.Length)..^2]);
+            using var json=JsonDocument.Parse(encodedBody[(index+Marker.Length)..^2]);
             var files=json.RootElement;
             if(files.ValueKind!=JsonValueKind.Array||files.GetArrayLength() is <1 or >10)throw new FormatException();
             long total=0;
@@ -36,7 +37,7 @@ public static class CommentFiles
                 total+=size;
             }
             if(total>15*1024*1024)throw new FormatException();
-            return body;
+            return encodedBody;
         }
         catch(Exception error) when(error is JsonException or FormatException or InvalidOperationException or KeyNotFoundException or OverflowException)
         {

@@ -45,7 +45,10 @@ public sealed record TaskCommentDto(
 public sealed record TaskHistoryDto(
     Guid Id, string EventType, string Summary, string ActorName, string PreviousValue,
     string NewValue, string Source, string Justification, DateTimeOffset CreatedAt);
-public sealed record TaskAttachmentDto(Guid Id, Guid? CommentId, string FileName, string Url, DateTimeOffset CreatedAt);
+public sealed record TaskAttachmentDto(Guid Id, Guid? CommentId, string FileName, string Url, DateTimeOffset CreatedAt)
+{
+    public long SizeBytes { get; init; }
+}
 
 public sealed record TaskNotificationDto(
     Guid Id, Guid TaskId, long TaskNumber, string EventType, string Message,
