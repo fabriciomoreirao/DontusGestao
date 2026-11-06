@@ -236,7 +236,8 @@ test("padroniza campos de upload de mídia nos principais cadastros", async () =
   assert.match(component, /media-upload-action/);
   assert.match(css, /\.media-upload-control/);
   assert.match(css, /linear-gradient\(135deg,#2688ed,#1765d4\)/);
-  assert.ok((modules.join("\n").match(/<MediaUploadField/g) ?? []).length >= 8);
+  for (const source of modules) assert.match(source, /<MediaUploadField/);
+  assert.match(modules[0], /ref=\{attachmentInput\} type="file" hidden multiple/);
 });
 
 test("mantém upload de tarefa sem rolagem e disponível nos cards", async () => {
