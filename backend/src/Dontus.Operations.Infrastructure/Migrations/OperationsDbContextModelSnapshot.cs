@@ -2553,6 +2553,20 @@ namespace Dontus.Operations.Infrastructure.Migrations
                     b.ToTable("suggestion_attachments", (string)null);
                 });
 
+            modelBuilder.Entity("Dontus.Operations.Domain.SuggestionAttachmentContent", b =>
+                {
+                    b.Property<Guid>("AttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("AttachmentId");
+
+                    b.ToTable("suggestion_attachment_contents", (string)null);
+                });
+
             modelBuilder.Entity("Dontus.Operations.Domain.SuggestionComment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4060,6 +4074,15 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("UploadedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dontus.Operations.Domain.SuggestionAttachmentContent", b =>
+                {
+                    b.HasOne("Dontus.Operations.Domain.SuggestionAttachment", null)
+                        .WithOne()
+                        .HasForeignKey("Dontus.Operations.Domain.SuggestionAttachmentContent", "AttachmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

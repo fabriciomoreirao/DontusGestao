@@ -20,7 +20,9 @@ public sealed class SalesCelebrationTests
             var item = await db.WorkItems.SingleAsync(x => x.Id == id);
             var description = item.Description.Replace("Proposta", "Ganho");
             await service.UpdateWorkItemAsync(new(id, item.Title, item.Owner, 10000, description, null, null, item.Version), Actor);
+            var wonAt = System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["wonAt"]!.ToString();
             await service.UpdateWorkItemAsync(new(id, item.Title, item.Owner, 10000, description, null, null, item.Version), Actor);
+            Assert.Equal(wonAt, System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["wonAt"]!.ToString());
         }
         var events = await SalesCelebrationService.RecentAsync(db, default);
         Assert.Equal(2, events.Count); Assert.Equal(2, events.Select(x => x.Id).Distinct().Count());

@@ -1,5 +1,6 @@
 "use client";
 
+import { goalProgress, type PerformanceGoal } from "@/lib/goal-progress";
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { Activity, ArrowLeft, BarChart3, CheckCircle2, Clock3, Filter, Gauge, Lightbulb, Target, TrendingUp, UsersRound, WalletCards } from "lucide-react";
@@ -689,7 +690,7 @@ type GoalMetricConfig = { kind?: string; sourceModule?: string; recordType?: str
 type GoalProgress = { item: Item; goal: GoalDetail; current: number; percent: number; department: string };
 
 const goalCadenceLabel: Record<string, string> = { daily: "Diária", weekly: "Semanal", monthly: "Mensal", annual: "Anual" };
-const goalMetricLabel: Record<string, string> = { salesValue: "Valor de vendas", salesCount: "Quantidade de vendas", clientCount: "Quantidade de clientes", usageScore: "Score de utilização" };
+const goalMetricLabel: Record<string, string> = { salesValue: "Valor de vendas", salesCount: "Quantidade de vendas", clientCount: "Quantidade de clientes (legado)", referralCount: "Quantidade de indicações", usageScore: "Médias de score" };
 const goalDate = (item: Item) => stringOf(parse(item.description).saleDate, item.created_at).slice(0, 10);
 const isGoalSale = (item: Item) => {
   if (item.module !== "commercial") return false;
@@ -715,32 +716,8 @@ const parseGoalDetail = (item: Item): GoalDetail | null => {
 };
 
 function calculateGoalProgress(goal: GoalDetail, items: Item[], catalogs: Catalog[]) {
-  const sources = items.filter((item) => {
-    const date = goalDate(item);
-    return date >= goal.periodStart && date <= goal.periodEnd
-      && (!goal.employeeName || clean(item.owner) === clean(goal.employeeName))
-      && (!goal.departmentName || clean(item.team).includes(clean(goal.departmentName)));
-  });
-  if (goal.metric === "salesValue") return sources.filter(isGoalSale).reduce((sum, item) => sum + item.amount_cents / 100, 0);
-  if (goal.metric === "salesCount") return sources.filter(isGoalSale).length;
-  if (goal.metric === "clientCount") return sources.filter((item) => item.module === "cs" || item.module === "lia").length;
-  if (goal.metric === "usageScore") {
-    const scores = sources.filter((item) => item.module === "cs").map((item) => scoreOf(parse(item.description)));
-    return scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0;
-  }
-  if (!goal.metric.startsWith("custom:")) return 0;
-  const catalog = catalogs.find((entry) => entry.id === goal.metric.slice(7) && entry.catalog === "goalMetric");
-  const config = catalog ? parse(catalog.description) as GoalMetricConfig : null;
-  if (!config?.sourceModule) return 0;
-  const matching = sources.filter((item) => item.module === config.sourceModule
-    && (!config.recordType || clean(item.record_type).includes(clean(config.recordType)))
-    && (!config.statusFilter || clean(item.status).includes(clean(config.statusFilter))));
-  if (config.aggregation === "amount") return matching.reduce((sum, item) => sum + item.amount_cents / 100, 0);
-  if (config.aggregation === "averageScore") {
-    const scores = matching.map((item) => scoreOf(parse(item.description)));
-    return scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0;
-  }
-  return matching.length;
+  const defaults=catalogs.filter(entry=>entry.active&&(entry.catalog==="csFeatureBase"||["csFeature","csFeatureActive","csFeaturePlus"].includes(entry.catalog)&&parse(entry.description).featureBase===true)).map(entry=>entry.name);
+  return goalProgress(goal as PerformanceGoal,items.map(item=>({...item,description:item.description||""})),defaults);
 }
 
 function GoalsIndicatorsBoard({ title, items, catalogs, onClose }: { title: string; items: Item[]; catalogs: Catalog[]; onClose: () => void }) {
@@ -778,7 +755,7 @@ function GoalsIndicatorsBoard({ title, items, catalogs, onClose }: { title: stri
     <section role="tabpanel" id={`goals-panel-${tab}`} aria-labelledby={`goals-tab-${tab}`} className="indicator-panel">
     {tab === "fields" ? fieldAnalysis.panel(scoped.map(entry => entry.item)) : <>
     <section className="goals-bi-kpis"><article><Target /><span><small>Metas ativas</small><strong>{activeGoals.length}</strong><em>na competência</em></span></article><article className="success"><CheckCircle2 /><span><small>Metas atingidas</small><strong>{achieved}</strong><em>{percent(achieved, activeGoals.length)} das ativas</em></span></article><article><UsersRound /><span><small>Setores com metas</small><strong>{departmentRows.length}</strong><em>áreas acompanhadas</em></span></article><article className={averageReach >= 100 ? "success" : "progress"}><Gauge /><span><small>Alcance médio</small><strong>{averageReach}%</strong><em>{averageReach >= 100 ? `margem +${averageReach - 100} p.p.` : `faltam ${100 - averageReach} p.p.`}</em></span></article><article className="warning"><TrendingUp /><span><small>Próximas da meta</small><strong>{closeToTarget}</strong><em>entre 75% e 99%</em></span></article></section>
-    {tab === "overview" ? <section className="goals-bi-overview"><article className="goals-bi-sector-panel"><header><span><UsersRound />Alcance por setor</span><b>{departmentRows.length} setor(es)</b></header><div>{departmentRows.length ? departmentRows.map((entry) => <section key={entry.name}><span><strong>{entry.name}</strong><small>{entry.achieved} de {entry.count} atingida(s)</small></span><i><em style={{ width: `${Math.min(100, entry.average)}%` }} /></i><b>{entry.average}%</b></section>) : <p>Nenhuma meta ativa nesta competência.</p>}</div></article><article className="goals-bi-distribution"><header><span><BarChart3 />Distribuição do alcance</span></header><div><span className="success"><b>{achieved}</b><small>Atingidas</small></span><span className="near"><b>{closeToTarget}</b><small>Entre 75% e 99%</small></span><span className="attention"><b>{activeGoals.filter((entry) => entry.percent < 75).length}</b><small>Abaixo de 75%</small></span></div><p>{activeGoals.length ? `${Math.max(0, 100 - averageReach)} ponto(s) percentual(is) separam, em média, as metas ativas do objetivo.` : "Cadastre e ative metas para iniciar o acompanhamento."}</p></article></section> : <section className="goals-bi-tracking">{scoped.length ? scoped.sort((a, b) => a.percent - b.percent).map((entry) => { const margin = entry.current - entry.goal.target; return <article key={entry.item.id} className={entry.percent >= 100 ? "achieved" : entry.percent < 75 ? "attention" : "near"}><header><span><small>{goalCadenceLabel[entry.goal.cadence] || entry.goal.cadence} · {entry.department}</small><strong>{entry.item.title}</strong><em>{metricName(entry.goal.metric)} · {entry.goal.employeeName || "Todo o setor"}</em></span><b>{entry.percent}%</b></header><div className="goals-bi-values"><span><small>Realizado</small><strong>{formattedValue(entry.current, entry.goal.metric)}</strong></span><span><small>Meta</small><strong>{formattedValue(entry.goal.target, entry.goal.metric)}</strong></span><span className={margin >= 0 ? "positive" : "negative"}><small>Margem de alcance</small><strong>{margin >= 0 ? "+" : "−"}{formattedValue(Math.abs(margin), entry.goal.metric)}</strong></span></div><div className="goals-bi-progress"><i style={{ width: `${Math.min(100, entry.percent)}%` }} /></div><footer><span>{entry.goal.periodStart.split("-").reverse().join("/")} a {entry.goal.periodEnd.split("-").reverse().join("/")}</span><strong>{margin >= 0 ? "Objetivo superado" : `Faltam ${formattedValue(Math.abs(margin), entry.goal.metric)}`}</strong></footer></article>; }) : <p className="goals-bi-empty">Nenhuma meta corresponde aos filtros selecionados.</p>}</section>}
+    {tab === "overview" ? <section className="goals-bi-overview"><article className="goals-bi-sector-panel"><header><span><UsersRound />Alcance por setor</span><b>{departmentRows.length} setor(es)</b></header><div>{departmentRows.length ? departmentRows.map((entry) => <section key={entry.name}><span><strong>{entry.name}</strong><small>{entry.achieved} de {entry.count} atingida(s)</small></span><i><em style={{ width: `${Math.min(100, entry.average)}%` }} /></i><b>{entry.average}%</b></section>) : <p>Nenhuma meta ativa nesta competência.</p>}</div></article><article className="goals-bi-distribution"><header><span><BarChart3 />Distribuição do alcance</span></header><div><span className="success"><b>{achieved}</b><small>Atingidas</small></span><span className="near"><b>{closeToTarget}</b><small>Entre 75% e 99%</small></span><span className="attention"><b>{activeGoals.filter((entry) => entry.percent < 75).length}</b><small>Abaixo de 75%</small></span></div><p>{activeGoals.length ? `${Math.max(0, 100 - averageReach)} ponto(s) percentual(is) separam, em média, as metas ativas do objetivo.` : "Cadastre e ative metas para iniciar o acompanhamento."}</p></article></section> : <section className="goals-bi-tracking">{scoped.length ? scoped.sort((a, b) => a.percent - b.percent).map((entry) => { const margin = entry.current - entry.goal.target; return <article key={entry.item.id} className={entry.percent >= 100 ? "achieved" : entry.percent < 75 ? "attention" : "near"}><header><span><small>{goalCadenceLabel[entry.goal.cadence] || entry.goal.cadence} · {entry.department}</small><strong>{entry.item.title}</strong><em>{metricName(entry.goal.metric)} · {entry.goal.employeeName || "Todo o setor"}</em></span><b>{entry.percent}%</b></header><div className="goals-bi-values"><span><small>Realizado</small><strong>{formattedValue(entry.current, entry.goal.metric)}</strong></span><span><small>Meta</small><strong>{formattedValue(entry.goal.target, entry.goal.metric)}</strong></span><span className={margin >= 0 ? "positive" : "negative"}><small>Margem de alcance</small><strong>{margin >= 0 ? "+" : "−"}{formattedValue(Math.abs(margin), entry.goal.metric)}</strong></span></div><div className="goals-bi-progress"><i style={{ width: `${Math.min(100, entry.percent)}%` }} /></div><footer><span>{entry.goal.periodStart.split("-").reverse().join("/")} a {entry.goal.periodEnd.split("-").reverse().join("/")}</span><strong>{margin >= 0 ? "Meta batida" : `Faltam ${formattedValue(Math.abs(margin), entry.goal.metric)}`}</strong></footer></article>; }) : <p className="goals-bi-empty">Nenhuma meta corresponde aos filtros selecionados.</p>}</section>}
     </>}
     </section>
   </section></main>;

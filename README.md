@@ -81,6 +81,41 @@ no `.env`, limitados ao bucket de `AWS_S3_BUCKET`. No ECS, utilize o task role d
 aplicação com permissão para os objetos necessários. Nunca reutilize credenciais
 publicadas em conversas, documentação ou código-fonte.
 
+### Anexos, contatos e metas
+
+Os comentários operacionais oferecem o clipe **Anexar arquivo**. Imagens, vídeos,
+PDFs, Excel e outros formatos ficam vinculados à mensagem e aparecem ao lado do
+texto. Os comentários desses módulos aceitam até dez arquivos de 5 MB, com 15 MB
+no total por comentário. Tarefas, Sugestões e Chat mantêm os limites de seus envios
+próprios no card. Os comentários de Sugestões usam o mesmo clipe e os limites
+dos demais comentários operacionais. Arquivos de imagem e mídia podem ser abertos; planilhas e outros tipos
+são baixados com o nome original. Encaminhamentos do Portal e os arquivos de
+Marketing também aceitam outros formatos. Imagens de capa e de perfil mantêm
+seus campos específicos.
+
+O ícone verde junto dos telefones e o botão das tarefas abrem o **WhatsApp do
+computador**, usando o número internacional. Números brasileiros com DDD recebem
+o prefixo 55. A pesquisa superior apresenta os campos do registro e seu histórico
+em formato legível, sem mostrar a descrição técnica em JSON.
+
+Em **Metas → Criar meta**, informe nome, tipo, valor a atingir, período diário,
+mensal ou anual, data inicial, colaborador, setor e observação. Os tipos definidos
+são valor de vendas, quantidade de vendas ganhas no CRM comercial, indicações
+enviadas pelo Portal e média dos scores de acompanhamento. O início informado é
+preservado; períodos mensais e anuais terminam no último dia do mês ou ano. O
+vendedor e o setor do registro determinam o escopo das vendas; indicações usam o
+colaborador e setor de origem. Os scores incluem Base e Plus do CS e unidades
+ativas das contas estratégicas. A tela, seus indicadores e o painel externo
+calculam o mesmo progresso e mostram **Meta batida** a partir de 100%. No painel
+externo, a aba **Metas** também participa da rotação quando há metas no período.
+
+A competência de CS e LIA considera o início efetivo do acompanhamento; registros
+sem data válida não geram novos lançamentos. Decisões de comissão já aprovadas ou
+reprovadas preservam sua competência histórica. Cancelamentos usam a data da
+solicitação para os indicadores e o valor do card como recuperação de registros
+antigos. O seletor de documentos do cancelamento faz o envio pela própria seta.
+A reserva da sala exige escolher o tipo cadastrado do compromisso.
+
 ## Usuários, grupos e permissões
 
 Em **Colaboradores → Editar → Restrição de horário de acesso**, ative o controle e configure os dias e intervalos permitidos no horário de Brasília. É possível separar pausas ou definir turnos que terminam no dia seguinte. O servidor valida o expediente no login, nas requisições e nas conexões em tempo real; ao encerrar o intervalo, a interface retorna ao login com **Acesso proibido fora do expediente.** Cadastros existentes permanecem sem restrição até a configuração ser ativada.
@@ -326,6 +361,14 @@ A navegação oferece **Ctrl+K** (ou **⌘K** no macOS) para localizar ferrament
 O caminho da tela e a navegação rápida ficam na mesma barra da pesquisa, com botões de voltar e avançar nas telas maiores. Em notebooks menores e celulares, o botão ao lado da busca abre o menu sobre o conteúdo, sem reduzir a área de trabalho. Módulos e subáreas mantêm seus endereços ao recarregar e ao percorrer o histórico. **Foco** amplia a área operacional ocultando o menu lateral; **Esc** restaura a navegação. Nos formulários compartilhados, **Tab** permanece dentro da janela e **Esc** fecha o formulário, retornando o foco ao controle que o abriu.
 
 O **Chat interno** ocupa a altura disponível, com rolagem nas mensagens e campo de envio sempre visível. No celular, selecione uma conversa para abri-la em toda a largura; a seta **Voltar às conversas** retorna à lista. A navegação entre a lista e a conversa preserva o texto ainda não enviado.
+
+A interface compartilha a escala visual documentada em `design-system/dontus/MASTER.md`, com tipografia legível, foco visível, campos consistentes e superfícies próprias para os temas claro e escuro. A skill local **UI/UX Pro Max** foi instalada em `C:/Users/elixa/.codex/skills/ui-ux-pro-max` e orienta os próximos ajustes de interface.
+
+Em **Acesso de suporte**, o motivo permite pesquisar pelo nome e pelo setor, desconsiderando acentos. Em **Histórico de acesso → Indicadores**, os filtros do histórico são preservados e os gráficos consideram todos os registros filtrados, independentemente da paginação. O painel mostra evolução, responsáveis, motivos, clientes, dias da semana e horários de Brasília, com tabelas de valores acessíveis. Sem registros, apresenta o estado vazio.
+
+Metas usam quantidades inteiras para vendas e indicações, reais para valor de vendas e porcentagem para score. Os cards compartilham a apresentação com o painel externo. Links HTTP(S) nas mensagens dos chats abrem em nova guia.
+
+Anexos de sugestões mantêm a sessão no proxy e aceitam até 10 arquivos de 25 MB cada. Quando o armazenamento externo está indisponível, o conteúdo é persistido de forma privada em uma tabela separada no PostgreSQL, sem entrar na carga dos cards. Downloads exigem autenticação e suportam intervalos para reprodução de vídeo. Reenvios preservam apenas os anexos pendentes, sem criar outra sugestão.
 
 O indicador de atualização mostra o horário de Brasília da última leitura bem-sucedida da API. Quando uma atualização em segundo plano falha, a interface identifica os dados como pendentes de atualização, mantendo a última leitura disponível. O painel da Fila de espera considera os encaminhamentos operacionais em espera.
 

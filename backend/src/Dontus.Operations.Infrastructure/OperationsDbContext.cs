@@ -75,6 +75,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<Suggestion> Suggestions => Set<Suggestion>();
     public DbSet<SuggestionComment> SuggestionComments => Set<SuggestionComment>();
     public DbSet<SuggestionAttachment> SuggestionAttachments => Set<SuggestionAttachment>();
+    public DbSet<SuggestionAttachmentContent> SuggestionAttachmentContents => Set<SuggestionAttachmentContent>();
     public DbSet<CompanyNotice> CompanyNotices => Set<CompanyNotice>();
     public DbSet<CompanyNoticeRead> CompanyNoticeReads => Set<CompanyNoticeRead>();
     public DbSet<ServiceRequestAiSetting> ServiceRequestAiSettings => Set<ServiceRequestAiSetting>();
@@ -471,6 +472,14 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         });
 
         ConfigureEntity(modelBuilder.Entity<SuggestionAttachment>(), "suggestion_attachments");
+        modelBuilder.Entity<SuggestionAttachmentContent>(entity =>
+        {
+            entity.ToTable("suggestion_attachment_contents");
+            entity.HasKey(x => x.AttachmentId);
+            entity.Property(x => x.Content).HasColumnType("bytea");
+            entity.HasOne<SuggestionAttachment>().WithOne().HasForeignKey<SuggestionAttachmentContent>(x => x.AttachmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<SuggestionAttachment>(entity =>
         {
             entity.Property(x => x.FileName).HasMaxLength(260);

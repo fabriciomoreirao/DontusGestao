@@ -29,10 +29,20 @@ public static class SalesCelebrationService
         return Regex.IsMatch(string.IsNullOrWhiteSpace(stage) ? item.Status : stage, "ganho|vendid|fechad|contrat|conclu", RegexOptions.IgnoreCase);
     }
 
+    public static string PreserveWinDate(WorkItem item, string? description)
+    {
+        var before = Detail(item.Description); var next = Detail(description ?? "{}");
+        if (IsWon(item)) next["wonAt"] = Text(before, "wonAt") is { Length: > 0 } date ? date : item.UpdatedAt.ToString("O");
+        else next.Remove("wonAt");
+        return next.ToJsonString();
+    }
+
     public static void RecordWin(OperationsDbContext db, WorkItem item, bool previouslyWon, ActorContext actor)
     {
         if (previouslyWon || !IsWon(item)) return;
         var detail = Detail(item.Description);
+        detail["wonAt"] = DateTimeOffset.UtcNow.ToString("O");
+        item.Description = detail.ToJsonString();
         db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = AuditAction, Resource = "work_item", ResourceId = item.Id.ToString(), Module = "commercial",
             DetailsJson = JsonSerializer.Serialize(new { customerName = Text(detail, "customer") is { Length: > 0 } customer ? customer : string.IsNullOrWhiteSpace(item.CustomerName) ? item.Title : item.CustomerName,
                 clientId = Text(detail, "clientId"), seller = Text(detail, "seller") is { Length: > 0 } seller ? seller : item.Owner }) });

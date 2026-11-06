@@ -1,6 +1,10 @@
 "use client";
 
-import { ArrowLeft, Check, History, Pencil, RefreshCw, Save, Search, Settings, X } from "lucide-react";
+import SearchableSelect from "./SearchableSelect";
+import SupportAccessFilters from "./SupportAccessFilters";
+import SupportAccessIndicators from "./SupportAccessIndicators";
+import {emptyAccessFilters,supportAccessQuery,validAccessPeriod,type AccessFilters} from "@/lib/support-access-indicators";
+import { ArrowLeft, BarChart3, Check, History, Pencil, RefreshCw, Save, Search, Settings, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { dontusIntegrationApi as api } from "@/lib/dontus-integration-api";
 import useDialogFocus from "@/app/useDialogFocus";
@@ -26,7 +30,7 @@ export function SupportAccessReasonModal({ userName, customerName, identificatio
     <section ref={dialog} className="modal support-access-reason-modal" role="dialog" aria-modal="true" aria-labelledby="support-reason-title" tabIndex={-1}>
       <header className="modal-head"><div><span className="eyebrow">ACESSO À BASE</span><h2 id="support-reason-title">Informe o motivo do acesso</h2><p>{customerName || "Cliente Dontus"} · ID {identification} · {userName}</p></div><button type="button" className="icon-button" disabled={busy} aria-label="Fechar motivo do acesso" onClick={onClose}><X /></button></header>
       <form className="support-access-reason-form" onSubmit={submit}>
-        <label>Motivo cadastrado *<select required value={reasonId} onChange={event => setReasonId(event.target.value)} disabled={busy || loading}><option value="">{loading ? "Carregando motivos…" : "Selecione o motivo"}</option>{activeReasons.map(reason => <option key={reason.id} value={reason.id}>{reason.departmentName} · {reason.name}</option>)}</select></label>
+        <label>Motivo cadastrado *<SearchableSelect label="Pesquisar motivo do acesso" required value={reasonId} onChange={setReasonId} disabled={busy||loading} placeholder={loading?"Carregando motivos…":"Digite para pesquisar um motivo"} options={activeReasons.map(reason=>({value:reason.id,label:reason.name,description:reason.departmentName}))}/><small className="field-hint">Pesquise pelo nome do motivo ou pelo setor e selecione uma opção da lista.</small></label>
         <label>Descrição do motivo *<textarea required rows={4} maxLength={2000} disabled={busy} value={justification} onChange={event => setJustification(event.target.value)} placeholder="Descreva por que precisa acessar esta base e o atendimento relacionado." /></label>
         {!loading && activeReasons.length === 0 && <p role="status">Nenhum motivo ativo disponível para os seus setores. Confira os vínculos do colaborador e os motivos cadastrados em Configuração.</p>}
         {error && <p className="dontus-integration-error" role="alert">{error}</p>}
@@ -37,37 +41,35 @@ export function SupportAccessReasonModal({ userName, customerName, identificatio
   </div>;
 }
 
-function AccessPanelHeading({ title, children, onBack }: { title: string; children: ReactNode; onBack: () => void }) {
-  return <header className="dontus-integration-heading support-access-subheading"><button className="icon-button" type="button" onClick={onBack} aria-label="Voltar ao acesso de suporte"><ArrowLeft /></button><div><span className="eyebrow">ACESSO DE SUPORTE</span><h1>{title}</h1><p>{children}</p></div></header>;
+export function AccessPanelHeading({ title, children, onBack, actions, backLabel = "Voltar ao acesso de suporte" }: { title: string; children: ReactNode; onBack: () => void; actions?:ReactNode; backLabel?:string }) {
+  return <header className="dontus-integration-heading support-access-subheading"><button className="icon-button" type="button" onClick={onBack} aria-label={backLabel}><ArrowLeft /></button><div><span className="eyebrow">ACESSO DE SUPORTE</span><h1>{title}</h1><p>{children}</p></div>{actions&&<div className="support-access-heading-actions">{actions}</div>}</header>;
 }
 
 export function SupportAccessHistory({ reasons, onBack }: { reasons: SupportAccessReason[]; onBack: () => void }) {
-  const [filters, setFilters] = useState({ from: "", to: "", responsible: "", reasonId: "", identification: "" });
+  const [filters, setFilters] = useState<AccessFilters>({...emptyAccessFilters});
+  const [view,setView]=useState<"history"|"indicators">("history");
   const [applied, setApplied] = useState(filters);
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<HistoryResult | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
+    if(view!=="history")return;
     const controller = new AbortController();
     setBusy(true); setError("");
-    const query = new URLSearchParams({ ...Object.fromEntries(Object.entries(applied).filter(([, value]) => value)), page: String(page) });
+    const query = supportAccessQuery(applied,page);
     void api<HistoryResult>(`access/history?${query}`, undefined, controller.signal).then(value => { if (!controller.signal.aborted) setResult(value); }).catch(error => { if (!controller.signal.aborted) { setError(errorMessage(error)); setResult(null); } }).finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
-  }, [applied, page]);
+  }, [applied, page, view]);
   const totalPages = Math.max(1, Math.ceil((result?.total ?? 0) / (result?.pageSize ?? 20)));
-  const submit = (event: FormEvent) => { event.preventDefault(); if (filters.from && filters.to && filters.from > filters.to) { setError("A data inicial deve ser anterior ou igual à data final."); return; } setPage(1); setApplied({ ...filters }); };
+  const submit = (event: FormEvent) => { event.preventDefault(); if (!validAccessPeriod(filters)) { setError("A data inicial deve ser anterior ou igual à data final."); return; } setError(""); setPage(1); setApplied({ ...filters }); };
+  const clear=()=>{setFilters({...emptyAccessFilters});setApplied({...emptyAccessFilters});setPage(1);setError("")};
+  const indicators=()=>{if(!validAccessPeriod(filters)){setError("A data inicial deve ser anterior ou igual à data final.");return}setError("");setApplied({...filters});setPage(1);setView("indicators")};
+  if(view==="indicators")return <SupportAccessIndicators filters={filters} applied={applied} onFilters={setFilters} onApply={submit} onClear={clear} onBack={()=>setView("history")} responsible={result?.responsible||[]} reasons={reasons} validationError={error}/>;
   return <section className="support-access-page support-access-history" aria-busy={busy}>
-    <AccessPanelHeading title="Histórico de acesso" onBack={onBack}>Acessos liberados pelo Suporte. Datas e horários de Brasília.</AccessPanelHeading>
+    <AccessPanelHeading title="Histórico de acesso" onBack={onBack} actions={<button type="button" className="primary-button" disabled={busy||!result} onClick={indicators}><BarChart3 size={18} aria-hidden="true"/>Indicadores</button>}>Acessos liberados pelo Suporte. Datas e horários de Brasília.</AccessPanelHeading>
     <section className="support-access-panel"><div className="support-access-title"><History size={18} /> Histórico de acesso às bases</div>
-      <form className="support-access-history-filters" onSubmit={submit}>
-        <label>Data inicial<input type="date" value={filters.from} onChange={event => setFilters({ ...filters, from: event.target.value })} /></label>
-        <label>Data final<input type="date" value={filters.to} min={filters.from || undefined} onChange={event => setFilters({ ...filters, to: event.target.value })} /></label>
-        <label>Responsável<select value={filters.responsible} onChange={event => setFilters({ ...filters, responsible: event.target.value })}><option value="">Todos os responsáveis</option>{result?.responsible.map(person => <option key={person.email} value={person.email}>{person.name || person.email}</option>)}</select></label>
-        <label>Motivo<select value={filters.reasonId} onChange={event => setFilters({ ...filters, reasonId: event.target.value })}><option value="">Todos os motivos</option>{reasons.map(reason => <option key={reason.id} value={reason.id}>{reason.departmentName} · {reason.name}{reason.active ? "" : " · Inativo"}</option>)}</select></label>
-        <label>Identificação do cliente<input inputMode="numeric" pattern="[0-9]+" value={filters.identification} onChange={event => setFilters({ ...filters, identification: event.target.value })} placeholder="Todas as bases" /></label>
-        <button type="submit" className="primary-button" disabled={busy}><Search size={16} />Filtrar</button>
-      </form>
+      <SupportAccessFilters filters={filters} onChange={setFilters} onApply={submit} onClear={clear} responsible={result?.responsible||[]} reasons={reasons} busy={busy}/>
       {error && <p className="dontus-integration-error" role="alert">{error}</p>}
       <p className="dontus-access-meta" role="status">{busy ? "Consultando histórico…" : `${result?.total ?? 0} acesso(s) encontrado(s)`}</p>
       <div className="support-access-log-scroll"><table className="support-access-log-table"><thead><tr><th>Data e horário</th><th>Responsável</th><th>Cliente / base</th><th>Usuário acessado</th><th>Motivo e descrição</th></tr></thead><tbody>{!busy && result?.entries.map(entry => <tr key={entry.id}><td>{timestamp(entry.accessedAt)}</td><td><strong>{entry.actorName}</strong><small>{entry.actorEmail}</small></td><td><strong>{entry.customerName || "Cliente Dontus"}</strong><small>ID {entry.identification}</small></td><td>{entry.targetUserName}</td><td><strong>{entry.reasonName}</strong><p>{entry.justification}</p></td></tr>)}</tbody></table></div>

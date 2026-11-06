@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dontus.Operations.Tests;
 
-public sealed class SuggestionServiceTests
+public sealed partial class SuggestionServiceTests
 {
     [Fact]
     public async Task Creates_sequential_protocols_and_uses_the_creator_as_responsible()

@@ -1,4 +1,6 @@
 "use client";
+import {validateSuggestionFiles} from "@/lib/suggestion-upload";
+import CommentInput, {CommentContent} from "@/app/CommentInput";
 
 import { beginKanbanDrag, readKanbanDrop } from "@/lib/kanban-drag";
 
@@ -54,7 +56,7 @@ function FlagBadges({ suggestion, compact = false }: { suggestion: Suggestion; c
 }
 
 export default function SuggestionsModule({ module, customers, canCreate, canEdit, canDelete, busy, operate, uploadAttachments, onOpenSettings }: {
-  module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; uploadAttachments: (suggestionId: string, files: File[]) => Promise<boolean>; onOpenSettings?: () => void;
+  module: SuggestionModuleData; customers: Customer[]; canCreate: boolean; canEdit: boolean; canDelete: boolean; busy: boolean; operate: Operate; uploadAttachments: (suggestionId: string, files: File[], onUploaded?: (files:File[])=>void) => Promise<boolean>; onOpenSettings?: () => void;
 }) {
   const reminderFilter = useReminderFilter("suggestions");
   const [view, setView] = useState<"list" | "kanban">("kanban");
@@ -64,6 +66,7 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Suggestion | null>(null);
   const [createdProtocol, setCreatedProtocol] = useState("");
+  const [savedDraft,setSavedDraft]=useState<{id:string;createdProtocol?:string}|null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("card"));
   const selected = module.suggestions.find((entry) => entry.id === selectedId) ?? null;
   const activeStatuses = module.statuses.filter((entry) => entry.active).sort((a, b) => a.displayOrder - b.displayOrder);
@@ -115,7 +118,7 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
   return <section className="suggestions-page">
     <header className="suggestions-header module-page-header">
       <div className="module-page-title"><span className="module-page-title-icon"><Sparkles size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO DE MELHORIAS</span><h1>Sugestões</h1><p>Registre ideias, acompanhe decisões e visualize a evolução de cada sugestão.</p></span></div>
-      <div className="commercial-header-actions module-page-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Sugestões" title="Configurar Sugestões"><Settings2 size={18} /></button>}{canCreate && <button className="primary-button" disabled={!configured} onClick={() => setCreating(true)}><Plus size={17} /> Nova sugestão</button>}</div>
+      <div className="commercial-header-actions module-page-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Sugestões" title="Configurar Sugestões"><Settings2 size={18} /></button>}{canCreate && <button className="primary-button" disabled={!configured} onClick={() => {setSavedDraft(null);setCreating(true)}}><Plus size={17} /> Nova sugestão</button>}</div>
     </header>
 
     {!configured && <div className="suggestion-setup-warning"><Settings2 size={20} /><span><strong>Cadastros necessários</strong><small>Configure ao menos uma prioridade e um status ativo em Cadastros › Sugestões.</small></span></div>}
@@ -135,13 +138,13 @@ export default function SuggestionsModule({ module, customers, canCreate, canEdi
 
     {view === "list" ? <SuggestionList suggestions={filtered} canEdit={canEdit} canDelete={canDelete} canDeleteOthers={module.canManageCatalogs} currentUserEmail={module.currentUser.email} onOpen={setSelectedId} onEdit={setEditing} onDelete={async (entry) => { const result = await operate({ action: "deleteSuggestion", id: entry.id }, "Sugestão excluída com sucesso."); if (result && selectedId === entry.id) setSelectedId(null); }} /> : <SuggestionKanban suggestions={filtered} statuses={activeStatuses} canEdit={canEdit} canDelete={canDelete} canDeleteOthers={module.canManageCatalogs} currentUserEmail={module.currentUser.email} onOpen={setSelectedId} onEdit={setEditing} onDelete={async (entry) => { const result = await operate({ action: "deleteSuggestion", id: entry.id }, "Sugestão excluída com sucesso."); if (result && selectedId === entry.id) setSelectedId(null); }} onChangeStatus={changeStatus} />}
 
-    {creating && <NewSuggestionModal module={module} customers={customers} busy={busy} onClose={() => setCreating(false)} onSave={async (payload, files) => {
-      const result = await operate({ action: "createSuggestion", ...payload }, "Sugestão cadastrada com sucesso.");
-      if (result) { if (result.id && files.length && !await uploadAttachments(result.id, files)) return; setCreating(false); setCreatedProtocol(result.createdProtocol ?? ""); }
+    {creating && <NewSuggestionModal module={module} customers={customers} busy={busy} savedProtocol={savedDraft?.createdProtocol|| (savedDraft?"Salva":"")} onClose={() => {setCreating(false);if(savedDraft)setSelectedId(savedDraft.id)}} onSave={async (payload, files, onUploaded) => {
+      const result = savedDraft || await operate({ action: "createSuggestion", ...payload }, "Sugestão cadastrada com sucesso.");
+      if (result && result.id) { setSavedDraft({id:result.id,createdProtocol:result.createdProtocol});if(files.length&&!await uploadAttachments(result.id,files,onUploaded))return;setCreating(false);setSavedDraft(null);setCreatedProtocol(result.createdProtocol??""); }
     }} />}
-    {editing && canEdit && <NewSuggestionModal module={module} customers={customers} busy={busy} initial={editing} onClose={() => setEditing(null)} onSave={async (payload, files) => {
+    {editing && canEdit && <NewSuggestionModal module={module} customers={customers} busy={busy} initial={editing} onClose={() => setEditing(null)} onSave={async (payload, files, onUploaded) => {
       const result = await operate({ action: "updateSuggestion", requireConfirmation: true, id: editing.id, version: editing.version, ...payload }, "Sugestão atualizada com sucesso.");
-      if (result) { if (files.length && !await uploadAttachments(editing.id, files)) return; setEditing(null); }
+      if (result) { if (files.length && !await uploadAttachments(editing.id, files, onUploaded)) return; setEditing(null); }
     }} />}
     {createdProtocol && <SuggestionCreatedModal protocol={createdProtocol} onClose={() => setCreatedProtocol("")} />}
     {selected && <SuggestionDetailsModal suggestion={selected} statuses={activeStatuses} currentUserId={module.currentUser.id} canEdit={canEdit} canDelete={canDelete && (selected.responsibleEmail === module.currentUser.email || module.canManageCatalogs)} busy={busy} onClose={() => setSelectedId(null)} onDelete={async () => { const result = await operate({ action: "deleteSuggestion", id: selected.id }, "Sugestão excluída com sucesso."); if (result) setSelectedId(null); }} onStatus={(statusId) => changeStatus(selected, statusId)} onSendToDevelopment={() => sendToDevelopment(selected)} onComment={async (body) => {
@@ -209,19 +212,22 @@ function SuggestionKanban({ suggestions, statuses, canEdit, canDelete, canDelete
   </div>;
 }
 
-function NewSuggestionModal({ module, customers, busy, initial, onClose, onSave }: { module: SuggestionModuleData; customers: Customer[]; busy: boolean; initial?: Suggestion; onClose: () => void; onSave: (payload: Record<string, unknown>, files: File[]) => void }) {
+function NewSuggestionModal({ module, customers, busy, initial, savedProtocol, onClose, onSave }: { module: SuggestionModuleData; customers: Customer[]; busy: boolean; initial?: Suggestion; savedProtocol?:string; onClose: () => void; onSave: (payload: Record<string, unknown>, files: File[], onUploaded:(files:File[])=>void) => void }) {
   const priorities = module.priorities.filter((entry) => entry.active).sort((a, b) => a.displayOrder - b.displayOrder);
   const initialStatus = module.statuses.filter((entry) => entry.active).sort((a, b) => Number(b.isInitial) - Number(a.isInitial) || a.displayOrder - b.displayOrder)[0];
   const [strategicClient, setStrategicClient] = useState(initial?.strategicClient ?? false);
   const [cancellationRisk, setCancellationRisk] = useState(initial?.cancellationRisk ?? false);
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<File[]>([]);const [fileError,setFileError]=useState("");
   return <div className="modal-backdrop"><form className="modal suggestion-create-modal" onSubmit={(event) => {
     event.preventDefault();
+    try{validateSuggestionFiles(files);setFileError("")}catch(error){setFileError(error instanceof Error?error.message:"Confira os anexos.");return}
     const form = new FormData(event.currentTarget);
-    onSave({ name: form.get("name"), description: form.get("description"), customerId: form.get("customerId") || null, priorityId: form.get("priorityId"), strategicClient, cancellationRisk }, files);
+    onSave({ name: form.get("name"), description: form.get("description"), customerId: form.get("customerId") || null, priorityId: form.get("priorityId"), strategicClient, cancellationRisk }, files, uploaded=>setFiles(current=>current.filter(file=>!uploaded.includes(file))));
   }}>
     <div className="modal-header"><div><span className="eyebrow">SUGESTÕES</span><h2>{initial ? "Editar sugestão" : "Nova sugestão"}</h2><p>{initial ? `Protocolo ${initial.protocol}` : "O protocolo será gerado automaticamente ao concluir o cadastro."}</p></div><button type="button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
     <div className="modal-body">
+      {savedProtocol&&<p role="status">Sugestão {savedProtocol} salva. Reenvie os anexos pendentes para concluir.</p>}
+      <fieldset className="suggestion-draft-fields" disabled={!!savedProtocol||busy}>
       <div className="suggestion-auto-fields"><div><Hash size={18} /><span><small>Protocolo</small><strong>Gerado automaticamente</strong></span></div><div><Avatar name={module.currentUser.name} photo={module.currentUser.photoDataUrl} coordinator={module.currentUser.isCoordinator} small /><span><small>Responsável</small><strong>{module.currentUser.name}</strong></span></div></div>
       <label className="field span-2"><span>Nome da sugestão *</span><input name="name" required maxLength={240} autoFocus defaultValue={initial?.name} placeholder="Descreva a melhoria em uma frase" /></label>
       <div className="form-grid suggestion-form-grid">
@@ -233,10 +239,12 @@ function NewSuggestionModal({ module, customers, busy, initial, onClose, onSave 
         <button type="button" className={cancellationRisk ? "selected risk" : ""} onClick={() => setCancellationRisk((current) => !current)}><span className="flag-check">{cancellationRisk && <Check size={14} />}</span><ShieldAlert size={19} /><span><strong>Risco de cancelamento</strong><small>Sinaliza urgência relacionada à retenção do cliente.</small></span></button>
       </div>
       <label className="field"><span>Descrição</span><textarea name="description" maxLength={6000} rows={5} defaultValue={initial?.description} placeholder="Contexto, impacto esperado e detalhes da sugestão..." /></label>
-      <MediaUploadField className="suggestion-upload-field" label="Imagens, vídeos e arquivos" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois." onChange={(event) => setFiles((current) => { const incoming=Array.from(event.target.files??[]); return [...current,...incoming.filter(file=>!current.some(entry=>entry.name===file.name&&entry.size===file.size&&entry.lastModified===file.lastModified))] })} />
+      </fieldset>
+      {fileError&&<p role="alert" className="goal-field-error">{fileError}</p>}
+      <MediaUploadField disabled={busy} className="suggestion-upload-field" label="Imagens, vídeos e arquivos" multiple accept="" selectedFiles={files} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Até 10 arquivos, com no máximo 25 MB cada. Imagens, vídeos, PDFs e documentos." onChange={(event) => setFiles((current) => { const incoming=Array.from(event.target.files??[]); return [...current,...incoming.filter(file=>!current.some(entry=>entry.name===file.name&&entry.size===file.size&&entry.lastModified===file.lastModified))] })} />
       {initialStatus && <div className="suggestion-initial-flow"><CircleDot size={17} style={{ color: initialStatus.color }} /><span>Ao criar, a sugestão entrará em <strong>{initialStatus.kanbanColumn || initialStatus.name}</strong>.</span></div>}
     </div>
-    <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !priorities.length || (!initial && !initialStatus)}><Plus size={17} /> {initial ? "Salvar alterações" : "Cadastrar sugestão"}</button></div>
+    <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || !priorities.length || (!initial && !initialStatus)}><Plus size={17} /> {savedProtocol?"Reenviar anexos":initial ? "Salvar alterações" : "Cadastrar sugestão"}</button></div>
   </form></div>;
 }
 
@@ -255,8 +263,8 @@ function SuggestionDetailsModal({ suggestion, statuses, currentUserId, canEdit, 
       <section className="suggestion-description"><h3>Descrição da sugestão</h3><p>{suggestion.description || "Nenhuma descrição informada."}</p></section>
       <section className="suggestion-attachments"><h3><Paperclip size={17} /> Anexos</h3>{suggestion.attachments?.length ? <div>{suggestion.attachments.map((attachment) => <button data-reminder-entity-id={attachment.id} type="button" key={attachment.id} onClick={() => /^(image|video)\//i.test(attachment.contentType) ? setAttachmentPreview(attachment) : window.open(attachment.url, "_blank", "noopener,noreferrer")}><FileText size={17} /><span><strong>{attachment.fileName}</strong><small>{attachment.contentType || "Arquivo"} · {(attachment.sizeBytes / 1024 / 1024).toFixed(2)} MB</small></span></button>)}</div> : <p className="suggestion-muted">Nenhum arquivo anexado.</p>}</section>
       <section className="suggestion-comments"><div className="suggestion-comments-title"><span><MessageSquareText size={18} /><strong>Comentários</strong></span><b>{suggestion.comments.length}</b></div>
-        <div className="suggestion-comment-list">{suggestion.comments.length === 0 ? <p className="suggestion-muted">Ainda não há comentários nesta sugestão.</p> : suggestion.comments.map((entry) => <article data-reminder-entity-id={entry.id} key={entry.id}><Avatar name={entry.authorName} photo={entry.authorPhotoDataUrl} coordinator={entry.authorIsCoordinator} small /><div><header><strong>{entry.authorName}</strong><span><time>{dateTime(entry.createdAt)}</time>{entry.authorUserId === currentUserId && editingCommentId !== entry.id && <button type="button" className="icon-button" title="Editar comentário" onClick={() => { setEditingCommentId(entry.id); setEditingCommentBody(entry.body); }}><Pencil size={13} /></button>}</span></header>{editingCommentId === entry.id ? <form data-comment-composer="true" className="suggestion-comment-edit" onSubmit={async (event) => { event.preventDefault(); if (await onUpdateComment(entry.id, editingCommentBody)) setEditingCommentId(""); }}><textarea data-comment-input="true" value={editingCommentBody} maxLength={3000} rows={3} onChange={(event) => setEditingCommentBody(event.target.value)} /><div><button type="button" className="secondary-button" onClick={() => setEditingCommentId("")}>Cancelar</button><button className="primary-button" disabled={busy || !editingCommentBody.trim()}>Salvar</button></div></form> : <p>{entry.body}</p>}</div></article>)}</div>
-        <form data-comment-composer="true" className="suggestion-comment-form" onSubmit={async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (await onComment(comment)) setComment(""); }}><textarea data-comment-input="true" value={comment} onChange={(event) => setComment(event.target.value)} required maxLength={3000} rows={3} placeholder="Escreva um comentário para a equipe..." /><button className="primary-button" disabled={busy || !comment.trim()}><MessageSquareText size={16} /> Comentar</button></form>
+        <div className="suggestion-comment-list">{suggestion.comments.length === 0 ? <p className="suggestion-muted">Ainda não há comentários nesta sugestão.</p> : suggestion.comments.map((entry) => <article data-reminder-entity-id={entry.id} key={entry.id}><Avatar name={entry.authorName} photo={entry.authorPhotoDataUrl} coordinator={entry.authorIsCoordinator} small /><div><header><strong>{entry.authorName}</strong><span><time>{dateTime(entry.createdAt)}</time>{entry.authorUserId === currentUserId && editingCommentId !== entry.id && <button type="button" className="icon-button" title="Editar comentário" onClick={() => { setEditingCommentId(entry.id); setEditingCommentBody(entry.body); }}><Pencil size={13} /></button>}</span></header>{editingCommentId === entry.id ? <form data-comment-composer="true" className="suggestion-comment-edit" onSubmit={async (event) => { event.preventDefault(); if (await onUpdateComment(entry.id, editingCommentBody)) setEditingCommentId(""); }}><CommentInput disabled={busy} data-comment-input="true" value={editingCommentBody} maxLength={3000} rows={3} onChange={(event) => setEditingCommentBody(event.target.value)} /><div><button type="button" className="secondary-button" onClick={() => setEditingCommentId("")}>Cancelar</button><button className="primary-button" disabled={busy || !editingCommentBody.trim()}>Salvar</button></div></form> : <p><CommentContent text={entry.body}/></p>}</div></article>)}</div>
+        <form data-comment-composer="true" className="suggestion-comment-form" onSubmit={async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (await onComment(comment)) setComment(""); }}><CommentInput disabled={busy} data-comment-input="true" value={comment} onChange={(event) => setComment(event.target.value)} maxLength={3000} rows={3} placeholder="Escreva um comentário para a equipe..." /><button className="primary-button" disabled={busy || !comment.trim()}><MessageSquareText size={16} /> Comentar</button></form>
       </section>
       </main>
       <aside className="suggestion-detail-sidebar">

@@ -1,4 +1,6 @@
 "use client";
+import MessageText from "@/app/MessageText";
+import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
@@ -248,7 +250,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
             <div className="timeline-start">Atendimento iniciado em {formatDate(selected.messages[0]?.createdAt ?? selected.lastMessageAt)}</div>
             {selected.messages.map((message) => <article key={message.id} className={`${message.internal ? "internal" : message.direction === "Saida" ? "outbound" : "inbound"}`}>
               <div className="message-meta"><strong>{message.senderName || (message.direction === "Entrada" ? selected.contact.name : "Equipe Dontus")}</strong><span>{message.internal ? "Nota interna" : message.direction}</span><time>{formatTime(message.createdAt)}</time></div>
-              <p>{message.body}</p>
+              <p><MessageText text={message.body}/></p>
               {message.mediaName && (/^image\//i.test(message.mediaContentType) || /^video\//i.test(message.mediaContentType) ? <button type="button" className="chat-media-message" onClick={() => setMediaPreview({ url: `/api/chat-files/${message.id}`, name: message.mediaName, type: message.mediaContentType })}>{/^image\//i.test(message.mediaContentType) ? <img src={`/api/chat-files/${message.id}`} alt={message.mediaName} /> : <video src={`/api/chat-files/${message.id}`} preload="metadata" />}<span>{message.mediaName}</span></button> : <a className="message-file" href={`/api/chat-files/${message.id}`} target="_blank" rel="noreferrer"><Paperclip size={14} /><span><b>{message.mediaName}</b><small>{message.mediaContentType || "Arquivo"}</small></span></a>)}
               {!message.internal && message.direction === "Saida" && <small className={`chat-message-receipt ${message.readAt ? "seen" : message.deliveredAt ? "delivered" : "sent"}`}>{message.readAt || message.deliveredAt ? <CheckCheck size={14} /> : <Check size={14} />} {message.readAt ? `Visto ${formatTime(message.readAt)}` : message.deliveredAt ? `Recebido ${formatTime(message.deliveredAt)}` : `Enviado ${formatTime(message.createdAt)}`}</small>}
             </article>)}
@@ -304,7 +306,7 @@ function ConversationDetails({ conversation, module, busy, canEdit, has, operate
       <h3>{conversation.isGroup ? conversation.groupName : conversation.contact.name}</h3><p>{conversation.isGroup ? "Grupo de atendimento" : conversation.contact.companyName || "Contato sem empresa vinculada"}</p>
       {conversation.isGroup
         ? <div className="chat-group-members">{conversation.groupParticipants.map((participant) => <span key={participant}><UserCheck size={13} /> {participant}</span>)}</div>
-        : <div><a href={`tel:${conversation.contact.phone}`}><Phone size={14} /> {conversation.contact.phone || "Sem telefone"}</a><span>{conversation.contact.email || "Sem e-mail"}</span></div>}
+        : <div><a href={`tel:${conversation.contact.phone}`}><Phone size={14} /> <PhoneLink phone={conversation.contact.phone || "Sem telefone"}/></a><span>{conversation.contact.email || "Sem e-mail"}</span></div>}
     </div>
     <div className="detail-block"><h4>Atendimento</h4>
       <label>Status<select disabled={!canEdit} value={conversation.status} onChange={(event) => void operate({ action: "updateChatConversation", conversationId: conversation.id, status: event.target.value, version: conversation.version }, "Status atualizado.")}>
@@ -599,7 +601,7 @@ function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModu
       <label className="whatsapp-field"><span>Modelo de conexão</span><select name="connectionMode" value={connectionMode} onChange={(event) => setConnectionMode(event.target.value as "CloudApi" | "Coexistence")}><option value="Coexistence">Coexistência · App + API</option><option value="CloudApi">Somente Cloud API</option></select></label>
       <input name="internalName" required placeholder="Nome interno (ex.: Suporte 01)" defaultValue={editing?.internalName} />
       <input name="displayName" required placeholder="Nome exibido no WhatsApp" defaultValue={editing?.displayName} />
-      <input name="phone" required placeholder="Número com DDI e DDD" defaultValue={editing?.phoneNumber} />
+      <PhoneInput name="phone" required placeholder="Número com DDI e DDD" defaultValue={editing?.phoneNumber} />
       <select name="departmentId" required defaultValue={editing?.departmentId ?? ""}><option value="">Selecione o setor</option>{module.departments.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
       <select name="channelId" required defaultValue={editing?.channelId ?? ""}><option value="">Canal WhatsApp</option>{module.channels.filter((item) => item.active && item.type === "WhatsApp").map((item) => <option value={item.id} key={item.id}>{item.departmentName} · {item.name}</option>)}</select>
       {connectionMode === "CloudApi" && <input name="phoneNumberId" placeholder="Phone Number ID (Meta)" defaultValue={editing?.phoneNumberId} />}
@@ -620,7 +622,7 @@ function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModu
     </form>}
     <div className="whatsapp-number-grid">{module.whatsAppNumbers.map((item) => <article className={editingId === item.id ? "editing" : ""} key={item.id}>
       <span className="whatsapp-icon"><Phone size={19} /></span>
-      <div><h3>{item.internalName}</h3><p>{item.displayName} · {item.phoneNumber}</p><small>{item.departmentName} · {item.connectionMode === "Coexistence" ? "Coexistência" : "Cloud API"} · API {item.apiVersion}</small></div>
+      <div><h3>{item.internalName}</h3><p>{item.displayName} · <PhoneLink phone={item.phoneNumber}/></p><small>{item.departmentName} · {item.connectionMode === "Coexistence" ? "Coexistência" : "Cloud API"} · API {item.apiVersion}</small></div>
       <em className={item.active && item.status === "Configurado" ? "active" : item.coexistenceStatus === "Erro" ? "error" : ""}>{item.connectionMode === "Coexistence" ? item.coexistenceStatus : item.status}</em>
       <span className="credential-state">{item.hasAccessToken ? <><Check size={13} /> Credencial protegida</> : item.connectionMode === "Coexistence" ? "Aguardando Embedded Signup" : "Sem token"}</span>
       {item.coexistenceError && <p className="coexistence-card-error">{item.coexistenceError}</p>}
@@ -662,7 +664,7 @@ function NewConversationModal({ module, busy, initialPhone = "", initialSubject 
     onSubmit({ contactName: isGroup ? form.get("groupName") : form.get("contactName"), phone: form.get("phone"), email: form.get("email"), companyName: form.get("companyName"), customerId: form.get("customerId") || null, channelId, queueId: form.get("queueId") || null, assigneeUserId: form.get("assigneeUserId") || null, subject: form.get("subject"), priority: form.get("priority"), initialMessage: form.get("initialMessage"), isGroup, groupName: form.get("groupName"), groupParticipants: String(form.get("groupParticipants") ?? "").split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean) });
   }}>
     <label className="wide chat-group-toggle"><input type="checkbox" checked={isGroup} onChange={(event) => setIsGroup(event.target.checked)} /><span><b>Atendimento em grupo</b><small>Crie uma conversa compartilhada e acompanhe os participantes ao lado.</small></span></label>
-    {isGroup ? <><label className="wide">Nome do grupo<input name="groupName" required placeholder="Ex.: Implantação · Clínica Sorriso" /></label><label className="wide">Participantes<textarea name="groupParticipants" required rows={4} placeholder={'Informe nome ou telefone, um por linha\nAna · 5511999999999\nCarlos · 5511888888888'} /></label></> : <><label>Nome do contato<input name="contactName" required /></label><label>Telefone<input name="phone" required defaultValue={initialPhone} placeholder="55 11 99999-9999" /></label><label>E-mail<input name="email" type="email" /></label><label>Empresa<input name="companyName" /></label></>}
+    {isGroup ? <><label className="wide">Nome do grupo<input name="groupName" required placeholder="Ex.: Implantação · Clínica Sorriso" /></label><label className="wide">Participantes<textarea name="groupParticipants" required rows={4} placeholder={'Informe nome ou telefone, um por linha\nAna · 5511999999999\nCarlos · 5511888888888'} /></label></> : <><label>Nome do contato<input name="contactName" required /></label><label>Telefone<PhoneInput name="phone" required defaultValue={initialPhone} placeholder="55 11 99999-9999" /></label><label>E-mail<input name="email" type="email" /></label><label>Empresa<input name="companyName" /></label></>}
     <label className="wide">Assunto<input name="subject" required defaultValue={initialSubject} /></label><label>Canal<select required value={channelId} onChange={(event) => setChannelId(event.target.value)}><option value="">Selecione</option>{module.channels.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.departmentName} · {item.name}</option>)}</select></label><label>Fila<select name="queueId" required><option value="">Selecione</option>{module.queues.filter((item) => item.active && item.departmentId === channel?.departmentId).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Responsável<SearchablePeopleSelect searchLabel="Responsável" name="assigneeUserId"><option value="">Fila compartilhada</option>{module.users.filter((item) => item.departmentIds.includes(channel?.departmentId ?? "")).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</SearchablePeopleSelect></label><label>Prioridade<select name="priority"><option>Normal</option><option>Baixa</option><option>Alta</option><option>Urgente</option></select></label><label className="wide">Mensagem inicial<textarea name="initialMessage" rows={4} placeholder="Contexto recebido do cliente" /></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><CirclePlus size={16} /> Criar atendimento</button></div>
   </form></div></div>;
 }

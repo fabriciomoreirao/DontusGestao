@@ -53,7 +53,7 @@ internal static class CsJourneyTimeline
     {
         if (scope == "lia") return !string.IsNullOrWhiteSpace(detail["startDate"]?.ToString()) ? ReadDate(detail["startDate"]!.ToString())
             : !string.IsNullOrWhiteSpace(detail["startedAt"]?.ToString()) ? ReadDate(detail["startedAt"]!.ToString())
-            : DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(createdAt, "America/Sao_Paulo").DateTime);
+            : null;
         if (detail["phase"]?.ToString() is "validation" or "onboarding" or "activation") return null;
         return !string.IsNullOrWhiteSpace(detail["trackingStartedAt"]?.ToString()) ? ReadDate(detail["trackingStartedAt"]!.ToString())
             : detail["phase"]?.ToString() is "tracking" or "evolution" ? ReadDate(detail["startDate"]?.ToString()) : null;

@@ -30,5 +30,7 @@ public static class DontusIntegrationEndpoints
             Results.Ok(await service.SaveAccessReasonAsync(command, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct)));
         group.MapGet("/access/history", async ([Microsoft.AspNetCore.Http.AsParameters] SupportAccessHistoryQuery filter, ClaimsPrincipal principal, IAccessControlService access, DontusIntegrationService service, CancellationToken ct) =>
             Results.Ok(await service.GetAccessHistoryAsync(filter, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct)));
+        group.MapGet("/access/indicators", async ([Microsoft.AspNetCore.Http.AsParameters] SupportAccessHistoryQuery filter, ClaimsPrincipal principal, IAccessControlService access, DontusIntegrationService service, CancellationToken ct) =>
+            Results.Ok(await service.GetAccessIndicatorsAsync(filter, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct)));
     }
 }
