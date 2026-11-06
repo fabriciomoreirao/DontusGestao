@@ -128,8 +128,9 @@ button.performance-goal-title {cursor:pointer;border-radius:8px;}
 .app-shell .task-detail-overlay .task-detail-layout>.task-owner-controls {padding:14px 18px;background:transparent;border-style:dashed;flex-wrap:wrap;}
 .app-shell .task-detail-overlay .task-owner-controls>div {flex:1;min-width:180px;}
 .app-shell .task-detail-overlay .task-owner-controls button {min-height:34px;padding:7px 12px;font-size:12px;}
-.app-shell .task-card .task-card-top {gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
-.app-shell .task-card-updated {font-size:11px;color:var(--muted);}
+.app-shell .content .task-card .task-card-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0;}
+.app-shell .content .task-card .task-card-heading>.task-card-title {display:-webkit-box;flex:1;min-width:0;margin:0;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow-wrap:anywhere;color:var(--ink);font:800 13px/1.35 var(--font-manrope);letter-spacing:-.015em;}
+.app-shell .content .task-card .task-card-heading>.task-client-state {flex:0 0 auto;align-self:flex-start;max-width:none;margin:0;white-space:nowrap;}
 .app-shell .task-card .task-card-description {background:var(--panel-elevated);border:1px solid var(--line);padding:12px;border-radius:10px;}
 .app-shell .task-card .task-card-description p {font-size:13px!important;line-height:1.6!important;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;}
 .app-shell .task-card-bottom-actions {display:flex;justify-content:flex-end;}

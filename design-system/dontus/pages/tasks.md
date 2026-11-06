@@ -1,6 +1,7 @@
 # Tarefas — referência visual do usuário
 
-O card apresenta aviso ao cliente no topo, título, tipo, prioridade, SLA
+O card apresenta título à esquerda e aviso ao cliente no canto superior direito
+na mesma linha, seguidos de tipo, prioridade, SLA
 e rodapé com setor e responsável. Data de atualização, identificação do cliente,
 descrição e envio de arquivos ficam no modal
 da tarefa; o card conserva apenas as ações de editar e excluir, conforme permissões.
