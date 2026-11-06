@@ -1,8 +1,10 @@
 # Tarefas — referência visual do usuário
 
 O card volta ao layout compacto anterior à reformulação de referência: aviso ao
-cliente e atualização no topo, título, cliente, descrição, tipo, prioridade, SLA
-e rodapé com setor e responsável. A referência anexada orienta o modal da tarefa.
+cliente e atualização no topo, título, cliente, tipo, prioridade, SLA
+e rodapé com setor e responsável. Descrição e envio de arquivos ficam no modal
+da tarefa; o card conserva apenas as ações de editar e excluir, conforme permissões.
+A referência anexada orienta o modal da tarefa.
 
 O detalhe abre no mesmo contexto em uma gaveta da direita para a esquerda.
 Em telas de computador, descrição, anexos e conversa ficam na coluna esquerda;
