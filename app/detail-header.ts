@@ -4,6 +4,7 @@ const ACTION_HOST_SELECTOR = ".customer-drawer-actions,.lead-header-actions,.dev
 const INJECTED_ACTIONS = ".card-copy-link,.reminder-detail-action,.agenda-detail-action,.client-alert-detail-action,.client-checklist-detail-action,.client-record-detail-action,.reminder-history-detail-action";
 
 export function normalizeDetailHeader(header: HTMLElement) {
+  if (header.dataset?.layoutOwned === "task") return;
   // Preserve React-owned controls; only collect the actions added by enhancers.
   const copies = Array.from(header.querySelectorAll<HTMLElement>(COPY_LINK_SELECTOR));
   const nativeCopy = copies.find(button => !button.matches(".card-copy-link"));
