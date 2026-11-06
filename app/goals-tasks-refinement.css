@@ -1,0 +1,162 @@
+/* Shared goal cards in the workspace and the external indicators panel. */
+.app-shell .content .goals-module .goals-grid,.public-bi-page .public-performance-goals {
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:18px;align-items:start;
+}
+.public-bi-page .public-performance-goals {padding:12px 0 24px;}
+.app-shell .content .goals-module .goals-filters {display:grid;grid-template-columns:minmax(200px,1.3fr) repeat(3,minmax(155px,1fr));gap:12px;align-items:end;}
+.app-shell .content .goals-module .goals-filters::before {grid-column:1/-1;}
+.public-bi-page .performance-goal-card {
+  --ink:var(--public-ink);--muted:var(--public-muted);--surface:var(--public-surface);--line:var(--public-line);
+  --panel-elevated:var(--public-alt);--primary:var(--public-primary);
+}
+.goals-module .goals-summary {gap:16px;margin-bottom:18px;}
+.goals-module .goals-summary>article {padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--surface);}
+.goals-module .goals-summary strong {font-size:24px;line-height:1.3;}
+.goals-module .goals-summary small {font-size:12px;color:var(--muted);}
+.performance-goal-card,.public-bi-page .public-performance-goals>.performance-goal-card {
+  --goal-success:#14734a;display:flex;flex-direction:column;gap:18px;min-width:0;padding:22px;
+  border:1px solid var(--line);border-radius:18px;color:var(--ink);background:var(--surface);box-shadow:0 5px 18px rgb(12 35 58 / 5%);
+}
+.theme-dark .performance-goal-card,.public-bi-dark .performance-goal-card {--goal-success:#66e2ad;}
+.performance-goal-card.achieved {border-color:color-mix(in srgb,var(--goal-success) 55%,var(--line));}
+.performance-goal-card.inactive {background:var(--panel-elevated);}
+.performance-goal-card>header {display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+.performance-goal-cadence,.performance-goal-state {display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:650;line-height:1.4;padding:5px 9px;border-radius:7px;background:var(--panel-elevated);color:var(--muted);}
+.performance-goal-state {color:var(--primary);background:color-mix(in srgb,var(--primary) 9%,var(--surface));}
+.performance-goal-card.achieved .performance-goal-state {color:var(--goal-success);background:color-mix(in srgb,var(--goal-success) 10%,var(--surface));}
+.performance-goal-title {display:flex;align-items:center;gap:12px;width:100%;border:0;padding:0;color:var(--ink);background:transparent;text-align:left;min-width:0;font:inherit;}
+button.performance-goal-title {cursor:pointer;border-radius:8px;}
+.performance-goal-title>span:nth-child(2) {min-width:0;flex:1;}
+.performance-goal-title>svg {flex-shrink:0;color:var(--muted);}
+.performance-goal-icon {width:46px;height:46px;display:grid;place-items:center;border-radius:13px;color:var(--primary);background:color-mix(in srgb,var(--primary) 9%,var(--surface));flex-shrink:0;}
+.performance-goal-title small,.public-performance-goals .performance-goal-title small {display:block;font-size:12px;color:var(--muted);opacity:1;line-height:1.5;}
+.performance-goal-title h2 {font-size:18px;font-weight:800;line-height:1.4;margin:3px 0 0;overflow-wrap:anywhere;}
+.performance-goal-values {display:flex;justify-content:space-between;gap:12px;align-items:baseline;}
+.performance-goal-values>div {min-width:0;display:grid;gap:5px;}
+.performance-goal-values>div:last-child {text-align:right;}
+.performance-goal-values small,.public-performance-goals .performance-goal-values small {font-size:12px;color:var(--muted);opacity:1;}
+.performance-goal-values strong {font-size:clamp(23px,2vw,30px);font-weight:800;line-height:1.2;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;}
+.performance-goal-values b {font-size:16px;font-weight:700;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;}
+.performance-goal-progress-label {display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:-10px;gap:12px;}
+.performance-goal-progress-label strong {color:var(--primary);font-size:14px;}
+.performance-goal-track {height:9px;border-radius:9px;overflow:hidden;background:color-mix(in srgb,var(--primary) 12%,var(--surface));}
+.performance-goal-track>i {display:block;height:100%;border-radius:inherit;background:var(--primary);}
+.performance-goal-card.achieved :is(.performance-goal-track>i) {background:var(--goal-success);}
+.performance-goal-card.achieved .performance-goal-progress-label strong {color:var(--goal-success);}
+.performance-goal-scope {display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px;}
+.performance-goal-scope>span {display:grid;gap:3px;color:var(--ink);}
+.performance-goal-scope small,.public-performance-goals .performance-goal-scope small {font-size:12px;opacity:1;color:var(--muted);}
+.performance-goal-card>footer {display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:14px;margin-top:auto;}
+.performance-goal-card>footer>span {display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);}
+.performance-goal-actions {display:flex;align-items:center;gap:6px;margin-left:auto;}
+.performance-goal-actions button {display:inline-flex;align-items:center;justify-content:center;min-width:34px;min-height:34px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font:inherit;font-size:12px;cursor:pointer;}
+.performance-goal-actions button:hover {color:var(--primary);background:var(--panel-elevated);}
+.performance-goal-actions button.delete:hover {color:var(--danger,#c83348);}
+.performance-goal-card :is(button,a):focus-visible {outline:3px solid var(--primary);outline-offset:3px;}
+.app-shell .goal-modal {width:min(740px,calc(100vw - 32px));padding:0;overflow:auto;}
+.app-shell .goal-modal .modal-head {padding:24px 26px;margin:0;border-bottom:1px solid var(--line);}
+.app-shell .goal-modal .form-grid {padding:24px 26px;gap:20px;}
+.app-shell .goal-modal .form-grid>label {font-size:13px;font-weight:650;gap:8px;}
+.goal-target-input {display:flex;align-items:center;gap:0;min-width:0;position:relative;}
+.goal-target-input>span {position:absolute;left:13px;color:var(--muted);font-size:14px;font-weight:700;pointer-events:none;}
+.goal-target-input.percentage>span {right:14px;left:auto;}
+.app-shell .goal-target-input>input {width:100%;font-size:16px;font-weight:650;font-variant-numeric:tabular-nums;}
+.app-shell .goal-target-input.money>input {padding-left:43px;}
+.app-shell .goal-target-input.percentage>input {padding-right:36px;}
+.goal-field-error {color:var(--danger,#c83348);font-size:12px;line-height:1.5;}
+.goal-target-input input[aria-invalid=true] {border-color:var(--danger,#c83348);}
+.goal-modal .field-hint {font-size:12px;line-height:1.5;font-weight:400;color:var(--muted);}
+
+/* Tasks use a readable page flow instead of compressed fixed grid areas. */
+.app-shell .task-detail-overlay .task-side-panel {width:min(1180px,100vw);max-width:100%;}
+.app-shell .task-detail-overlay .task-side-panel>header {padding:20px 24px;gap:12px;}
+.app-shell .task-detail-overlay .task-side-panel>header h2 {font-size:23px;line-height:1.4;}
+.app-shell .task-detail-overlay .task-header-meta {display:flex;flex-wrap:wrap;align-items:center;gap:12px;}
+.app-shell .task-detail-overlay .task-header-subtitle {font-size:12px;color:var(--muted);}
+.app-shell .task-detail-overlay .task-side-panel>.task-modal-body {overflow:auto;padding:20px 24px 28px;}
+.app-shell .task-detail-overlay .task-detail-layout,.app-shell .task-detail-overlay .task-detail-layout:not(:has(>.task-owner-controls)) {display:flex;flex-direction:column;gap:16px;height:auto;min-height:0;}
+.app-shell .task-detail-overlay .task-detail-layout>:is(section,div),.app-shell .task-detail-overlay .task-detail-grid>section {height:auto;min-height:0;flex-shrink:0;}
+.app-shell .task-detail-overlay .task-detail-layout .task-description-card {padding:22px 24px;gap:14px;border-left:3px solid var(--primary);overflow:visible;}
+.app-shell .task-detail-overlay .task-description-card h3 {font-size:16px;font-weight:800;}
+.app-shell .task-detail-overlay .task-description-card p {font-size:15px!important;line-height:1.8!important;white-space:pre-wrap;overflow:visible;max-height:none;max-width:90ch;margin:0;display:block;-webkit-line-clamp:unset;}
+.app-shell .task-detail-overlay .task-detail-layout .task-detail-summary {min-height:0!important;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:auto;padding:12px 16px;gap:8px 16px;overflow:visible;}
+.app-shell .task-detail-overlay .task-detail-summary>header {border:0;padding:2px 0 4px;min-height:0;font-size:13px;}
+.app-shell .task-detail-overlay .task-detail-summary>div,.app-shell .task-detail-overlay .task-detail-summary>div:nth-child(n) {display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:3px;border:0;padding:5px 0;min-height:42px;grid-column:auto;}
+.app-shell .task-detail-overlay .task-detail-summary>div strong {font-size:12px;max-width:100%;}
+.app-shell .task-detail-overlay .task-detail-summary :is(.task-summary-owner,.task-summary-approver)>span {display:contents;}
+.app-shell .task-detail-overlay .task-summary-owner>.task-assignee-avatar {display:none;}
+.app-shell .task-detail-overlay .task-detail-summary :is(.task-summary-priority,.task-summary-sla) strong {padding:3px 6px;font-size:11px;}
+.app-shell .task-detail-overlay .task-files-panel {padding:16px 18px;overflow:visible;}
+.app-shell .task-detail-overlay .task-files-panel>p {margin:8px 0;color:var(--muted);font-size:12px;}
+.app-shell .task-detail-overlay .task-attachment-grid {max-height:none;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));}
+.app-shell .task-detail-overlay .task-actions-panel {gap:10px;padding:16px 18px;min-height:0;overflow:visible;}
+.app-shell .task-detail-overlay .task-actions-panel>header {min-height:0;}
+.app-shell .task-detail-overlay .task-actions-panel>header p {display:none;}
+.app-shell .task-detail-overlay .task-actions-panel>header h3 {font-size:15px;}
+.app-shell .task-detail-overlay .task-action-fields,.app-shell .task-detail-overlay .task-action-buttons {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+.app-shell .task-detail-overlay .task-action-fields :is(select,input),.app-shell .task-detail-overlay .task-action-buttons>button {height:36px;min-height:36px;font-size:12px;line-height:1.4;padding:6px 9px;}
+.app-shell .task-detail-overlay .task-action-fields .task-responsible-transfer button {width:36px;min-width:36px;height:36px;min-height:36px;}
+.app-shell .task-detail-overlay .task-action-fields label>span {font-size:12px;}
+.app-shell .task-detail-overlay .task-action-buttons>button {white-space:normal;justify-content:center;}
+.app-shell .task-detail-overlay .task-detail-layout>.task-transfer {grid-template-columns:1fr 1fr 1.4fr auto;padding:16px 18px;gap:12px;}
+.app-shell .task-detail-overlay .task-transfer>div {grid-column:1/-1;}
+.app-shell .task-detail-overlay .task-detail-grid {display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start;}
+.app-shell .task-detail-overlay .task-conversation-card,.app-shell .task-detail-overlay .task-history-card {padding:16px;overflow:visible;min-height:0!important;}
+.app-shell .task-detail-overlay .task-comments {display:flex;flex-direction:column;gap:10px;overflow:visible;max-height:none;padding:14px 0;flex:none;}
+.app-shell .task-detail-overlay .task-comment-entry {width:94%;display:flex;gap:8px;border:0;padding:0;margin:0;align-items:flex-start;background:transparent;}
+.app-shell .task-detail-overlay .task-comment-entry.own {margin-left:auto;flex-direction:row-reverse;}
+.app-shell .task-detail-overlay .task-comment-entry>div {min-width:0;flex:1;border:1px solid var(--line);border-radius:2px 12px 12px;padding:9px 11px;background:var(--panel-elevated);}
+.app-shell .task-detail-overlay .task-comment-entry.own>div {border-radius:12px 2px 12px 12px;background:color-mix(in srgb,var(--primary) 7%,var(--surface));}
+.app-shell .task-detail-overlay .task-comment-entry .task-assignee-avatar {width:26px;height:26px;flex-shrink:0;}
+.app-shell .task-detail-overlay .task-comment-head {display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.app-shell .task-detail-overlay .task-comment-head :is(b,time) {font-size:11px!important;line-height:1.5;}
+.app-shell .task-detail-overlay .task-comment-head button {width:28px;height:28px;padding:4px;margin-left:auto;}
+.app-shell .task-detail-overlay .task-comment-entry p {font-size:13px!important;line-height:1.6!important;margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;}
+.app-shell .task-detail-overlay .task-conversation-card>form {position:relative;margin-top:12px;padding-top:12px;display:grid;grid-template-columns:auto 1fr;gap:8px;}
+.app-shell .task-detail-overlay .task-conversation-card>form>textarea {grid-column:1/-1;width:100%;min-height:62px;height:62px;max-height:150px;padding:10px 12px;border-radius:12px;font-size:13px;resize:vertical;}
+.app-shell .task-detail-overlay .task-comment-tools {display:flex;gap:6px;align-items:center;padding:0;}
+.app-shell .task-detail-overlay .task-comment-tools :is(button,label) {width:34px;height:34px;min-height:34px;display:inline-flex;align-items:center;justify-content:center;padding:7px;border-radius:8px;border:1px solid var(--line);color:var(--muted);background:var(--surface);cursor:pointer;}
+.app-shell .task-detail-overlay .task-comment-tools .task-emoji-picker {position:absolute;bottom:45px;left:0;display:flex;flex-wrap:wrap;max-width:300px;padding:6px;gap:4px;border:1px solid var(--line);border-radius:12px;background:var(--surface);z-index:5;}
+.app-shell .task-detail-overlay .task-conversation-card>form>footer {display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:0;border:0;}
+.app-shell .task-detail-overlay .task-conversation-card>form>footer button {min-height:34px;padding:7px 12px;font-size:12px;}
+.app-shell .task-detail-overlay .comment-selected-files {grid-column:1/-1;}
+.app-shell .task-detail-overlay .task-history {max-height:none;overflow:visible;padding-top:14px;}
+.app-shell .task-detail-overlay .task-history article {padding-bottom:14px;}
+.app-shell .task-detail-overlay .task-history :is(b,p) {font-size:12px!important;line-height:1.6!important;}
+.app-shell .task-detail-overlay .task-history small {font-size:11px!important;line-height:1.5;}
+.app-shell .task-detail-overlay .task-see-more {display:block;width:100%;padding:9px 12px;min-height:36px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--primary);font-size:12px;cursor:pointer;}
+.app-shell .task-detail-overlay .task-detail-layout>.task-owner-controls {padding:14px 18px;background:transparent;border-style:dashed;flex-wrap:wrap;}
+.app-shell .task-detail-overlay .task-owner-controls>div {flex:1;min-width:180px;}
+.app-shell .task-detail-overlay .task-owner-controls button {min-height:34px;padding:7px 12px;font-size:12px;}
+.app-shell .task-card .task-card-top {gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+.app-shell .task-card-updated {font-size:11px;color:var(--muted);}
+.app-shell .task-card .task-card-description {background:var(--panel-elevated);border:1px solid var(--line);padding:12px;border-radius:10px;}
+.app-shell .task-card .task-card-description p {font-size:13px!important;line-height:1.6!important;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;}
+.app-shell .task-card-bottom-actions {display:flex;justify-content:flex-end;}
+.app-shell .task-card-bottom-actions>.task-card-actions {position:static;display:flex;gap:6px;padding-top:8px;}
+.message-text-link {color:inherit;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;}
+.message-text-link:hover {text-decoration-thickness:2px;}
+.message-text-link:focus-visible {outline:2px solid currentColor;outline-offset:3px;border-radius:2px;}
+.suggestion-draft-fields {display:contents;border:0;margin:0;padding:0;min-width:0;}
+@media(max-width:900px){
+  .app-shell .content .goals-module .goals-filters {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .app-shell .task-detail-overlay .task-detail-grid {grid-template-columns:minmax(0,1fr);}
+  .app-shell .task-detail-overlay .task-action-fields,.app-shell .task-detail-overlay .task-action-buttons {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .app-shell .task-detail-overlay .task-detail-layout>.task-transfer {grid-template-columns:1fr 1fr;}
+}
+@media(max-width:640px){
+  .app-shell .content .goals-module .goals-filters {grid-template-columns:minmax(0,1fr);}
+  .performance-goal-card,.public-bi-page .public-performance-goals>.performance-goal-card {padding:18px;}
+  .performance-goal-actions button {min-width:44px;min-height:44px;}
+  .app-shell .goal-modal .modal-head,.app-shell .goal-modal .form-grid {padding:20px;}
+  .app-shell .goal-modal .form-grid {grid-template-columns:minmax(0,1fr);}
+  .app-shell .task-detail-overlay .task-side-panel>header {padding:16px;}
+  .app-shell .task-detail-overlay .task-side-panel>.task-modal-body {padding:16px;}
+  .app-shell .task-detail-overlay .task-detail-layout .task-detail-summary {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;}
+  .app-shell .task-detail-overlay .task-detail-layout .task-description-card {padding:18px;}
+  .app-shell .task-detail-overlay .task-action-fields :is(select,input),.app-shell .task-detail-overlay .task-action-buttons>button {min-height:44px;height:auto;font-size:13px;}
+  .app-shell .task-detail-overlay .task-detail-layout>.task-transfer {grid-template-columns:1fr;}
+  .app-shell .task-detail-overlay .task-comment-tools :is(button,label),.app-shell .task-detail-overlay .task-conversation-card>form>footer button {min-height:44px;min-width:44px;}
+  .app-shell .task-detail-overlay .task-conversation-card>form>footer>small {display:none;}
+  .app-shell .task-detail-overlay .task-conversation-card>form>textarea {font-size:16px;}
+}

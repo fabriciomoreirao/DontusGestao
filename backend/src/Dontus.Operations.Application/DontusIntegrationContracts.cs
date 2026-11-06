@@ -15,3 +15,9 @@ public sealed record DontusCustomerLinkDto(string Identification, long ExternalC
 public sealed record DontusCustomerDataDto(string Identification, long ExternalClientId, DateTimeOffset FetchedAt, JsonElement Data);
 public sealed record DontusEnvironmentUserDto(long Id, string Name, string Username, string Email,
     bool IsSupervisor, bool Active, bool CanAccess);
+public sealed record SupportAccessMetricDto(string Key, string Label, int Count);
+public sealed record SupportAccessIndicatorsDto(int Total, int Clients, int Collaborators, int Reasons, decimal AveragePerDay,
+    int ActiveDays, DateOnly From, DateOnly To, DateTimeOffset? FirstAccessAt, DateTimeOffset? LastAccessAt, string Granularity,
+    IReadOnlyList<SupportAccessMetricDto> Trend, IReadOnlyList<SupportAccessMetricDto> ByResponsible,
+    IReadOnlyList<SupportAccessMetricDto> ByReason, IReadOnlyList<SupportAccessMetricDto> ByClient,
+    IReadOnlyList<SupportAccessMetricDto> ByHour, IReadOnlyList<SupportAccessMetricDto> ByWeekday);

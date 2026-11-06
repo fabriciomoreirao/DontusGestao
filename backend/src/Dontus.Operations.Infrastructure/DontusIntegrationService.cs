@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class DontusIntegrationService(OperationsDbContext db, DontusApiClient api)
+public sealed partial class DontusIntegrationService(OperationsDbContext db, DontusApiClient api)
 {
     private async Task RequireCustomerAsync(Guid id, ActorContext actor, CancellationToken ct)
     {
@@ -157,13 +157,7 @@ public sealed class DontusIntegrationService(OperationsDbContext db, DontusApiCl
     public async Task<object> GetAccessHistoryAsync(SupportAccessHistoryQuery filter, ActorContext actor, CancellationToken ct)
     {
         actor.RequirePermission("access", "view");
-        if (filter.From > filter.To) throw new DomainException("A data inicial deve ser anterior ou igual à data final.");
-        var query = db.SupportAccessLogs.AsNoTracking();
-        if (filter.From is { } from) { var start = LocalMidnight(from); query = query.Where(entry => entry.AccessedAt >= start); }
-        if (filter.To is { } to) { var end = LocalMidnight(to.AddDays(1)); query = query.Where(entry => entry.AccessedAt < end); }
-        if (!string.IsNullOrWhiteSpace(filter.Responsible)) { var email = filter.Responsible.Trim().ToLowerInvariant(); query = query.Where(entry => entry.ActorEmail == email); }
-        if (filter.ReasonId is { } reasonId) query = query.Where(entry => entry.ReasonId == reasonId);
-        if (!string.IsNullOrWhiteSpace(filter.Identification)) { var identification = DontusApiClient.NormalizeIdentification(filter.Identification); query = query.Where(entry => entry.Identification == identification); }
+        var query = FilterAccessHistory(filter);
         var total = await query.CountAsync(ct);
         var page = Math.Clamp(filter.Page, 1, Math.Max(1, (int)Math.Ceiling(total / 20d)));
         var entries = await query.OrderByDescending(entry => entry.AccessedAt).ThenByDescending(entry => entry.Id)

@@ -51,3 +51,9 @@ public sealed class SuggestionAttachment : Entity
     public long SizeBytes { get; set; }
     public required string StorageKey { get; set; }
 }
+
+public sealed class SuggestionAttachmentContent
+{
+    public Guid AttachmentId { get; set; }
+    public required byte[] Content { get; set; }
+}

@@ -179,6 +179,16 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         .Where(entry => entry is not null && entry.Active && entry.PeriodStart < localEnd.Date && entry.PeriodEnd >= localStart.Date)
         .Cast<PublicGoalEntry>()
         .ToList();
+    var goalRecords = await db.WorkItems.AsNoTracking().Where(entry => entry.Module == "goals").ToListAsync(cancellationToken);
+    var sourceRecords = goalRecords.Count == 0 ? new List<WorkItem>() : await db.WorkItems.AsNoTracking()
+        .Where(entry => entry.Module == "commercial" || entry.Module == "referrals" || entry.Module == "cs" || entry.Module == "lia")
+        .ToListAsync(cancellationToken);
+    var goalFeatures = await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Active && (entry.Catalog == "csFeatureBase" || entry.Catalog == "csFeature" || entry.Catalog == "csFeatureActive" || entry.Catalog == "csFeaturePlus"))
+        .Select(entry => new { entry.Catalog, entry.Name, entry.Description }).ToListAsync(cancellationToken);
+    var defaultFeatures = goalFeatures.Where(entry => entry.Catalog == "csFeatureBase" || entry.Description.Contains("\"featureBase\":true") || entry.Description.Contains("\"featureBase\": true")).Select(entry => entry.Name).ToArray();
+    var performanceGoals = goalRecords.Select(entry => GoalProgress.Calculate(entry, sourceRecords, defaultFeatures))
+        .Where(entry => entry is not null && entry.Active && string.CompareOrdinal(entry.PeriodStart, localEnd.ToString("yyyy-MM-dd")) < 0 && string.CompareOrdinal(entry.PeriodEnd, localStart.ToString("yyyy-MM-dd")) >= 0)
+        .ToList();
     var journeys = workItems.Where(entry => entry.Module == "cs" || entry.Module == "lia")
         .Select(entry => new PublicJourneyEntry(entry.Module, entry.Team, entry.Owner, entry.Status, entry.CreatedAt, entry.UpdatedAt))
         .ToList();
@@ -314,6 +324,7 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
     return Results.Ok(new
     {
         generatedAt = DateTimeOffset.UtcNow,
+        performanceGoals,
         saleEvents = await SalesCelebrationService.RecentAsync(db, cancellationToken),
         month = localStart.ToString("yyyy-MM"),
         monthLabel = localStart.ToString("MMMM 'de' yyyy", new System.Globalization.CultureInfo("pt-BR")),
@@ -851,6 +862,8 @@ suggestionFiles.MapGet("/attachments/{attachmentId:guid}", async (
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var download = await suggestionService.GetAttachmentDownloadAsync(attachmentId, actor, cancellationToken);
+    if (download.Content is not null)
+        return Results.File(download.Content, download.ContentType, download.FileName, enableRangeProcessing: true);
     return Results.Redirect(download.Url);
 });
 

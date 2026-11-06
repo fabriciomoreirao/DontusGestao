@@ -3,10 +3,11 @@ using System.Text.RegularExpressions;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileStorage? fileStorage = null) : ISuggestionService
+public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileStorage? fileStorage = null, ILogger<SuggestionService>? logger = null) : ISuggestionService
 {
     private const long MaximumAttachmentSizeBytes = 25 * 1024 * 1024;
     private static readonly HashSet<string> BlockedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -295,9 +296,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
     public async Task UpdateCommentAsync(UpdateSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("suggestions", "edit");
-        var body = command.Body?.Trim() ?? "";
-        if (body.Length is < 1 or > 3000)
-            throw new DomainException("O comentário deve ter entre 1 e 3.000 caracteres.");
+        var body = CommentFiles.Validate(command.Body);
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         var comment = await db.SuggestionComments.SingleOrDefaultAsync(entry => entry.Id == command.CommentId, cancellationToken)
             ?? throw new DomainException("Comentário não encontrado.", 404);
@@ -312,9 +311,11 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
 
     public async Task<Guid> UploadAttachmentAsync(UploadSuggestionAttachmentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("suggestions", "edit");
-        if (!await db.Suggestions.AnyAsync(entry => entry.Id == command.SuggestionId, cancellationToken))
-            throw new DomainException("Sugestão não encontrada.", 404);
+        var suggestion = await db.Suggestions.AsNoTracking().SingleOrDefaultAsync(entry => entry.Id == command.SuggestionId, cancellationToken)
+            ?? throw new DomainException("Sugestão não encontrada.", 404);
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        if (!actor.HasPermission("suggestions", "edit") && !(actor.HasPermission("suggestions", "create") && suggestion.ResponsibleUserId == actorUser.Id))
+            actor.RequirePermission("suggestions", "edit");
         if (command.SizeBytes <= 0 || command.SizeBytes > MaximumAttachmentSizeBytes)
             throw new DomainException("Cada anexo deve ter no máximo 25 MB.");
         var fileName = Path.GetFileName(command.FileName).Trim();
@@ -323,24 +324,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
         var extension = Path.GetExtension(fileName);
         if (BlockedAttachmentExtensions.Contains(extension))
             throw new DomainException("Este tipo de arquivo não é permitido.");
-        if (fileStorage is null)
-            throw new DomainException("Armazenamento de arquivos indisponível.", 503);
-        var actorUser = await GetActorUserAsync(actor, cancellationToken);
-        var storageKey = $"suggestions/{command.SuggestionId:N}/{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
-        await fileStorage.StoreAsync(storageKey, command.Content, command.ContentType, command.SizeBytes, cancellationToken);
-        var attachment = new SuggestionAttachment
-        {
-            SuggestionId = command.SuggestionId,
-            UploadedByUserId = actorUser.Id,
-            FileName = fileName,
-            ContentType = string.IsNullOrWhiteSpace(command.ContentType) ? "application/octet-stream" : command.ContentType,
-            SizeBytes = command.SizeBytes,
-            StorageKey = storageKey,
-        };
-        db.SuggestionAttachments.Add(attachment);
-        AddAudit(actor, "Attach", "suggestion", command.SuggestionId, new { attachment.Id, attachment.FileName });
-        await db.SaveChangesAsync(cancellationToken);
-        return attachment.Id;
+        return await PersistAttachmentAsync(command, actorUser.Id, fileName, actor, cancellationToken);
     }
 
     public async Task<TaskAttachmentDownloadDto> GetAttachmentDownloadAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default)
@@ -349,6 +333,10 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
         var attachment = await db.SuggestionAttachments.AsNoTracking()
             .SingleOrDefaultAsync(entry => entry.Id == attachmentId, cancellationToken)
             ?? throw new DomainException("Anexo não encontrado.", 404);
+        var content = await db.SuggestionAttachmentContents.AsNoTracking().Where(entry => entry.AttachmentId == attachmentId)
+            .Select(entry => entry.Content).SingleOrDefaultAsync(cancellationToken);
+        if (content is not null)
+            return new TaskAttachmentDownloadDto("") { Content = content, ContentType = attachment.ContentType, FileName = attachment.FileName };
         if (fileStorage is null)
             throw new DomainException("Armazenamento de arquivos indisponível.", 503);
         return new TaskAttachmentDownloadDto(fileStorage.CreateDownloadUrl(
@@ -358,9 +346,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
     public async Task<Guid> AddCommentAsync(AddSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("suggestions", "view");
-        var body = command.Body?.Trim() ?? "";
-        if (body.Length is < 1 or > 3000)
-            throw new DomainException("O comentário deve ter entre 1 e 3.000 caracteres.");
+        var body = CommentFiles.Validate(command.Body);
         if (!await db.Suggestions.AnyAsync(entry => entry.Id == command.SuggestionId, cancellationToken))
             throw new DomainException("Sugestão não encontrada.", 404);
         var actorUser = await GetActorUserAsync(actor, cancellationToken);

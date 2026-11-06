@@ -8,7 +8,7 @@ export default function CommentEnterSupport(){
     const submit=(event:KeyboardEvent)=>{
       if(!isCommentSubmitKey(event))return;
       const input=event.target;
-      if(!(input instanceof HTMLTextAreaElement)||!input.hasAttribute("data-comment-input")||!input.value.trim())return;
+      if(!(input instanceof HTMLTextAreaElement)||!input.hasAttribute("data-comment-input")||(!input.value.trim()&&!input.hasAttribute("data-comment-has-files")))return;
       const composer=input.closest("[data-comment-composer]")??input.closest("form");
       if(!composer)return;
       const button=[...composer.querySelectorAll<HTMLButtonElement>("button")].find(button=>{
@@ -20,7 +20,9 @@ export default function CommentEnterSupport(){
       event.preventDefault();event.stopPropagation();
       if(composer instanceof HTMLFormElement&&button.type==="submit")composer.requestSubmit(button);else button.click();
     };
-    document.addEventListener("keydown",submit,true);return()=>document.removeEventListener("keydown",submit,true);
+    const pending=(event:Event)=>{const element=event.target;if(!(element instanceof Element))return;const composer=element.closest("[data-comment-composer]");if(composer?.querySelector('[data-comment-uploading="true"]')&&(event.type==="submit"||element.closest("button"))){event.preventDefault();event.stopPropagation();}};
+    document.addEventListener("click",pending,true);document.addEventListener("submit",pending,true);
+    document.addEventListener("keydown",submit,true);return()=>{document.removeEventListener("keydown",submit,true);document.removeEventListener("click",pending,true);document.removeEventListener("submit",pending,true);};
   },[]);
   return null;
 }

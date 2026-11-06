@@ -38,7 +38,7 @@ export function commissionDate(value: unknown): string | null {
 }
 
 export function journeyCommissionDate(scope: "cs" | "lia", detail: Record<string, unknown>, createdAt: string): string | null {
-  if (scope === "lia") return detail.startDate ? commissionDate(detail.startDate) : detail.startedAt ? commissionDate(detail.startedAt) : commissionDate(createdAt);
+  if (scope === "lia") return detail.startDate ? commissionDate(detail.startDate) : detail.startedAt ? commissionDate(detail.startedAt) : null;
   if (["validation", "onboarding", "activation"].includes(String(detail.phase))) return null;
   return detail.trackingStartedAt ? commissionDate(detail.trackingStartedAt)
     : ["tracking", "evolution"].includes(String(detail.phase)) ? commissionDate(detail.startDate) : null;

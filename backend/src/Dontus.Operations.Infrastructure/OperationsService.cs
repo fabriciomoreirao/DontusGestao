@@ -1085,6 +1085,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             CreatedBy = actor.Email,
         };
 
+        GoalProgress.Validate(item.Module, item.Description);
         if (item.Module == "cs")
         {
             item.Description = CsJourneyTimeline.Normalize(item.Description);
@@ -1410,12 +1411,15 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             throw new DomainException("Informe o título do registro.");
 
         var previouslyWon = SalesCelebrationService.IsWon(item);
+        if (item.Module == "commercial")
+            command = command with { Description = SalesCelebrationService.PreserveWinDate(item, command.Description) };
         if (item.Module == "cancellations")
         {
             var assignment = CancellationResponsibilityPolicy.Update(item.Description, command.Description, item.Owner);
             command = command with { Description = assignment.Description, Owner = assignment.Owner };
         }
 
+        GoalProgress.Validate(item.Module, command.Description);
         CsDistributionService.Assignment? distribution = null;
         if (command.ResponsibleUserId.HasValue)
         {

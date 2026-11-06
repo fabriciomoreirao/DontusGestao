@@ -1,4 +1,5 @@
 "use client";
+import GoalProgressCard from "@/app/GoalProgressCard";
 
 import {
   Activity, BadgeCheck, BarChart3, BriefcaseBusiness, CalendarDays, CheckCircle2,
@@ -27,7 +28,9 @@ type PublicDepartment = {
   goals: { salesValueCents: number; salesCount: number; trackingCount: number; trackingActual: number; trackingProgress: number };
   topCollaborators: PublicCollaborator[]; activityByDay: PublicDay[]; commercial: PublicCommercial;
 };
+type PublicPerformanceGoal = { id:string;title:string;metric:string;cadence:string;target:number;actual:number;progress:number;achieved:boolean;employee:string;department:string;periodStart:string;periodEnd:string };
 type PublicOverviewData = {
+  performanceGoals?: PublicPerformanceGoal[];
   saleEvents?: SaleCelebration[];
   generatedAt: string; month: string; monthLabel: string; refreshAfterSeconds: number;
   overview: {
@@ -90,7 +93,7 @@ export default function PublicOperationsOverview() {
     return () => { window.clearInterval(refreshTimer); window.clearInterval(clockTimer); document.removeEventListener("visibilitychange", refreshOnFocus); };
   }, [load]);
 
-  const tabIds = useMemo(() => ["overview", ...(data?.departments.map((entry) => entry.id) ?? []), "referrals"], [data]);
+  const tabIds = useMemo(() => ["overview", ...(data?.departments.map((entry) => entry.id) ?? []), "referrals", ...((data?.performanceGoals?.length??0)>0?["goals"]:[])], [data]);
   const tabKey = tabIds.join("|");
   useEffect(() => {
     if (!autoRotate || tabIds.length < 2) { setRotationProgress(0); return; }
@@ -137,13 +140,15 @@ export default function PublicOperationsOverview() {
       <button className={tab === "overview" ? "active" : ""} onClick={() => chooseTab("overview")}><Home />Visão geral</button>
       {data.departments.map((entry) => <button className={tab === entry.id ? "active" : ""} onClick={() => chooseTab(entry.id)} key={entry.id}><DepartmentTabIcon name={entry.name} />{entry.name}</button>)}
       <button className={tab === "referrals" ? "active referral" : "referral"} onClick={() => chooseTab("referrals")}><BarChart3 />Indicações</button>
+      <button className={tab === "goals" ? "active" : ""} onClick={() => chooseTab("goals")}><Target />Metas</button>
       {autoRotate && <i className="public-bi-rotation"><b style={{ width: `${rotationProgress}%` }} /></i>}
     </nav>
 
-    <section className={`public-bi-stage ${tab === "overview" ? "overview-stage" : tab === "referrals" ? "referrals-stage" : department?.commercial.enabled ? "department-stage commercial-stage" : "department-stage"}`} key={tab}>
+    <section className={`public-bi-stage ${tab === "overview" ? "overview-stage" : tab === "referrals" ? "referrals-stage" : tab === "goals" ? "goals-stage" : department?.commercial.enabled ? "department-stage commercial-stage" : "department-stage"}`} key={tab}>
       {tab === "overview" && <OverviewView data={data} completionRate={completionRate} solutionRate={solutionRate} maxDepartmentVolume={maxDepartmentVolume} onDepartment={chooseTab} />}
       {department && <DepartmentView department={department} />}
       {tab === "referrals" && <ReferralsView referrals={data.referrals} activity={data.overview.activityByDay} />}
+      {tab === "goals" && ((data.performanceGoals?.length??0)>0?<PublicGoalCards goals={data.performanceGoals||[]}/>:<section className="public-ops-panel"><h2>Nenhuma meta nesta competência</h2><p>As metas criadas no sistema aparecem aqui com seu acompanhamento automático.</p></section>)}
     </section>
     <footer className="public-ops-footer"><span><RefreshCw />Atualização automática a cada {data.refreshAfterSeconds}s</span><span><Activity />Rotação entre telas a cada {ROTATION_LABEL}</span><span><BadgeCheck />Valores de comissão não são exibidos</span></footer>
   </main>;
@@ -229,7 +234,7 @@ function CommercialDepartment({ department }: { department: PublicDepartment }) 
 }
 
 function GoalGauge({ label, value, target, progress }: { label: string; value: string; target: string; progress: number }) {
-  return <article className="public-goal-gauge"><div style={{ "--public-goal": `${Math.min(100, progress)}%` } as React.CSSProperties}><strong>{progress}%</strong></div><span><small>{label}</small><strong>{value}</strong><p>{target}</p></span></article>;
+  return <article className="public-goal-gauge"><div style={{ "--public-goal": `${Math.min(100, progress)}%` } as React.CSSProperties}><strong>{progress}%</strong></div><span><small>{label}</small><strong>{value}</strong><p>{progress>=100?"Meta batida · ":""}{target}</p></span></article>;
 }
 
 function ReferralsView({ referrals, activity }: { referrals: PublicOverviewData["referrals"]; activity: PublicDay[] }) {
@@ -250,4 +255,8 @@ function ReferralPodium({ entries }: { entries: PublicRanking[] }) {
 
 function RankingPanel({ title, icon, entries, max }: { title: string; icon: React.ReactNode; entries: PublicRanking[]; max: number }) {
   return <article className="public-ops-panel public-ranking-panel"><header><span>{icon}{title}</span></header>{entries.length ? entries.slice(0, 3).map((entry, index) => <div key={`${entry.name}-${index}`}><b>{index + 1}</b><span><strong>{entry.name}</strong><i><em style={{ width: `${entry.count / max * 100}%` }} /></i></span><strong>{entry.count}</strong></div>) : <p className="public-ops-empty">Nenhuma indicação registrada.</p>}</article>;
+}
+
+function PublicGoalCards({goals}:{goals:PublicPerformanceGoal[]}) {
+ return goals.length>0?<section className="public-performance-goals" aria-label="Acompanhamento das metas">{goals.map(goal=><GoalProgressCard key={goal.id} goal={goal}/>)}</section>:null;
 }

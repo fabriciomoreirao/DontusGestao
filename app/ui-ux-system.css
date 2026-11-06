@@ -1,0 +1,164 @@
+/* UI/UX Pro Max: shared operational components, brand tokens and readable density. */
+:root {
+  --ui-space-1:4px;--ui-space-2:8px;--ui-space-3:12px;--ui-space-4:16px;--ui-space-6:24px;--ui-space-8:32px;
+  --ui-radius:16px;--ui-control-height:44px;--ui-motion:160ms;
+}
+.app-shell.theme-light {
+  --ui-control-border:#7b8ea7;
+  --ink:#17324d;--text:var(--ink);--muted:#52657b;--line:#d9e3ee;--border:var(--line);
+  --surface:#fff;--panel:var(--surface);--panel-elevated:#f6f9fd;--input:#fff;
+  --shadow:0 6px 22px rgba(22,48,80,.055);
+}
+.app-shell.theme-dark {
+  --ui-control-border:#617994;
+  --ink:#ecf3fc;--text:var(--ink);--muted:#afc0d3;--line:#30465f;--border:var(--line);
+  --surface:#101f30;--panel:var(--surface);--panel-elevated:#172a40;--input:#0c1929;
+  --shadow:0 6px 24px rgba(0,0,0,.16);
+}
+.app-shell {font-size:14px;line-height:1.5;font-family:var(--font-manrope),"Segoe UI",sans-serif;}
+.app-shell :is(button,input,textarea,select) {font-family:inherit;}
+.app-shell :is(h1,h2,h3) {text-wrap:balance;overflow-wrap:anywhere;letter-spacing:-.025em;}
+.app-shell :is(input,textarea,select,button,a,[role=button],[role=link]):focus-visible {
+  outline:3px solid var(--primary,#2563eb);outline-offset:3px;
+}
+.app-shell :is(input,textarea,select)::placeholder {color:var(--muted);opacity:.82;}
+.app-shell :is(button,input,textarea,select):disabled {cursor:not-allowed;opacity:.58;}
+.app-shell :is(button,a) {touch-action:manipulation;}
+.app-shell :is(.primary-button,.secondary-button,.danger-button,.icon-button) {
+  transition:background-color var(--ui-motion),border-color var(--ui-motion),box-shadow var(--ui-motion),color var(--ui-motion);
+}
+.app-shell :is(.primary-button,.secondary-button,.danger-button) {
+  min-height:42px;border-radius:10px;padding:10px 16px;gap:8px;font-size:13px;font-weight:750;line-height:1.35;
+}
+.app-shell .primary-button {box-shadow:0 4px 12px color-mix(in srgb,var(--primary,#2563eb) 18%,transparent);}
+.app-shell .secondary-button {border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:none;}
+.app-shell .secondary-button:hover {border-color:color-mix(in srgb,var(--primary,#2563eb) 48%,var(--line));background:color-mix(in srgb,var(--primary,#2563eb) 6%,var(--surface));}
+.app-shell .icon-button {width:40px;height:40px;flex-shrink:0;border-radius:10px;color:var(--muted);}
+.app-shell .icon-button:hover {color:var(--primary);background:color-mix(in srgb,var(--primary,#2563eb) 9%,var(--surface));}
+.app-shell .sidebar .nav-label,.app-shell .sidebar .nav-group-toggle {font-size:11px;letter-spacing:.07em;line-height:1.5;}
+.app-shell .sidebar .nav-item {font-size:13px;min-height:40px;line-height:1.4;border-radius:10px;}
+.app-shell .sidebar .nav-item>svg:first-child {width:18px;height:18px;flex-shrink:0;}
+.app-shell .sidebar-footer strong {font-size:13px;}.app-shell .sidebar-footer small {font-size:11px;}
+.app-shell .topbar {min-height:72px;box-shadow:0 1px 0 var(--line);}
+.app-shell .global-search input {height:44px;font-size:14px;border-radius:12px;background:var(--panel-elevated);border-color:var(--line);}
+.app-shell .content {padding:24px;min-width:0;}
+.app-shell .content :is(.module-page-header,.module-page-heading,.journey-page-head,.service-records-header,.support-access-subheading) {
+  min-height:78px;gap:16px;margin-bottom:20px;align-items:center;
+}
+.app-shell .content :is(.module-page-title h1,.module-page-header h1,.journey-page-head h1,.dontus-integration-heading h1) {font-size:clamp(22px,1.6vw,27px);font-weight:800;line-height:1.25;margin:0;}
+.app-shell .content :is(.module-page-copy p,.module-page-header p,.journey-page-head p,.dontus-integration-heading p) {font-size:13px;line-height:1.6;color:var(--muted);margin:5px 0 0;}
+.app-shell .eyebrow {font-size:11px;line-height:1.5;font-weight:800;letter-spacing:.08em;}
+.app-shell .content :is(.panel,.support-access-panel,.operation-bi-panel,.agenda-calendar-card) {border:1px solid var(--line);border-radius:var(--ui-radius);box-shadow:var(--shadow);background:var(--surface);}
+.app-shell .content :is(.commercial-lead-card,.retention-lead-card,.cs-client-card,.enterprise-card,.cancellation-card,.marketing-card,.journey-card,.goal-card,.standard-card,.referral-card-shell) {
+  border-color:var(--line);border-radius:14px;box-shadow:var(--shadow);color:var(--ink);
+}
+.app-shell .content :is(.commercial-lead-card,.retention-lead-card,.cs-client-card,.enterprise-card,.cancellation-card,.marketing-card,.journey-card,.goal-card,.standard-card,.referral-card-shell):hover {border-color:color-mix(in srgb,var(--primary,#2563eb) 32%,var(--line));}
+.app-shell .content :is(.commercial-lead-card,.retention-lead-card,.cs-client-card,.enterprise-card,.cancellation-card,.marketing-card,.journey-card,.goal-card,.standard-card) :is(h2,h3) {font-size:16px;line-height:1.4;}
+.app-shell .content :is(.commercial-lead-card,.retention-lead-card,.cs-client-card,.enterprise-card,.cancellation-card,.marketing-card,.journey-card,.goal-card,.standard-card) p {font-size:13px;line-height:1.55;}
+.app-shell .content :is(.goals-summary,.cancellation-kpis,.journey-summary-grid,.commission-summary,.service-summary,.operation-bi-kpis) small {font-size:12px;line-height:1.4;}
+.app-shell .content :is(.goals-summary,.cancellation-kpis,.commission-summary,.service-summary,.operation-bi-kpis) strong {font-variant-numeric:tabular-nums;font-size:24px;line-height:1.3;}
+.app-shell :is(.form-grid,.field-grid,.service-entry-grid,.support-access-reason-form,.support-access-reason-editor) label {font-size:13px;line-height:1.5;gap:7px;}
+.app-shell :is(.form-grid,.field-grid,.service-entry-grid,.support-access-reason-form,.support-access-reason-editor) :is(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]),select,textarea) {
+  border:1px solid var(--ui-control-border,var(--line));border-radius:10px;background:var(--input);color:var(--ink);min-height:var(--ui-control-height);font-size:14px;line-height:1.5;padding:10px 12px;max-width:100%;
+}
+.app-shell textarea {resize:vertical;}
+.app-shell :is(.field-hint,.form-grid label>small,.field-grid label>small) {font-size:12px;color:var(--muted);font-weight:500;line-height:1.5;}
+.app-shell :is(.form-error,.dontus-integration-error,[role=alert]) {line-height:1.55;}
+.app-shell :is(.form-actions,.modal-actions,.modal-footer) {gap:10px;flex-wrap:wrap;}
+.app-shell :is(.modal,.drawer,.journey-drawer,.standard-modal,.portal-simple-modal,.portal-dispatch-modal) {border-color:var(--line);box-shadow:0 24px 80px rgba(5,21,40,.22);}
+.app-shell :is(.modal-head,.modal-header,.drawer-head,.journey-drawer>header) {padding-block:20px;gap:16px;}
+.app-shell :is(.modal-head,.modal-header,.drawer-head,.journey-drawer>header) h2 {font-size:21px;line-height:1.35;}
+.app-shell :is(.modal-head,.modal-header,.drawer-head,.journey-drawer>header) p {font-size:13px;line-height:1.6;}
+.app-shell :is(.modal-backdrop,.drawer-backdrop,.portal-modal-backdrop) {backdrop-filter:blur(5px);}
+.app-shell .content :is(.compact-operational-filters,.commercial-lead-filters,.commission-filters,.cs-journey-filters,.development-process-filter,.enterprise-filters,.goals-filters,.hr-toolbar,.journey-filterbar,.marketing-toolbar,.referral-toolbar,.waiting-queue-filters,.suggestion-toolbar,.audit-filters,.recruitment-filters,.operation-bi-filters,.support-access-history-filters,.lia-adjustment-filters,.chat-report-filters,.confirmation-report-filters,.cancellation-toolbar,.cancellation-responsibility-filters)::before {content:"FILTROS DE PESQUISA";font-size:11px;letter-spacing:.055em;color:var(--muted);}
+.app-shell .content :is(.reminder-filter-toolbar,.operation-bi-filters,.support-access-history-filters,.service-filter-panel,.agenda-filters) :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select) {min-height:44px;height:44px;font-size:13px;border-color:var(--line);border-radius:10px;}
+.app-shell .content table {font-size:13px;line-height:1.55;}
+.app-shell .content table th {font-size:12px;color:var(--muted);font-weight:750;line-height:1.5;}
+.app-shell .content table :is(td,th) {border-color:var(--line);}
+.app-shell .content table td {font-variant-numeric:tabular-nums;}
+.app-shell .content :is(.status-pill,.status-badge,.priority-badge) {font-size:12px;line-height:1.4;border-radius:7px;}
+.app-shell :is(.empty-state,.goals-empty,.empty-copy,.suggestion-muted) {color:var(--muted);line-height:1.6;}
+.app-shell .content :is(.commercial-lead-card,.retention-lead-card,.cs-client-card,.enterprise-card,.cancellation-card,.marketing-card,.journey-card,.goal-card,.standard-card,.task-card) small {font-size:12px;line-height:1.45;}
+.app-shell .content :is(.commercial-card-heading>strong,.task-card-title,.development-card h3,.suggestion-kanban-cards>article h3) {font-size:15px;line-height:1.4;}
+.app-shell .content :is(.table-row,.task-table-row,.development-list-row,.direct-sales-row)>span {font-size:13px;line-height:1.5;}
+.app-shell .content :is(.table-row,.task-table-row,.development-list-row,.direct-sales-row) small {font-size:12px;line-height:1.5;}
+.app-shell.theme-dark :is(.form-error,.dontus-integration-error) {color:#ffc0c8;border-color:#915361;}
+.app-shell.theme-light :is(.form-error,.dontus-integration-error) {color:#b42335;}
+.app-shell .comment-content {font-size:14px;line-height:1.65;}
+.app-shell .comment-input-field textarea {font-size:14px;line-height:1.6;min-height:96px;}
+.app-shell .comment-file-tools small {font-size:12px;}
+.app-shell .people-picker input {font-size:14px;min-height:44px;border-radius:10px;}
+.app-shell .people-picker-options {border-radius:12px;border-color:var(--line);box-shadow:0 16px 40px rgba(5,21,40,.18);}
+.app-shell .people-picker-options button {min-height:40px;font-size:13px;line-height:1.5;}
+
+/* Generic searchable selects also search the sector/description of each option. */
+.searchable-select {position:relative;display:block;min-width:0;width:100%;font-weight:500;}
+.app-shell .searchable-select>input[role=combobox] {width:100%;padding:10px 36px!important;min-height:44px;height:44px;border:1px solid var(--ui-control-border,var(--line));border-radius:10px;color:var(--ink);background:var(--input);font-size:14px;}
+.searchable-select-icon,.searchable-select-arrow {position:absolute;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);}
+.searchable-select-icon {left:12px;}.searchable-select-arrow {right:12px;}
+.searchable-select-options {position:fixed;z-index:20000;overflow:auto;padding:5px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);box-shadow:0 16px 44px rgba(5,21,40,.22);scrollbar-width:thin;overscroll-behavior:contain;}
+.searchable-select-options>button {display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;border:0;border-radius:8px;background:transparent;color:var(--ink);padding:9px 12px;text-align:left;font:inherit;font-size:13px;}
+.searchable-select-options>button>span {min-width:0;display:grid;gap:3px;}
+.searchable-select-options strong {font-weight:650;overflow-wrap:anywhere;}
+.searchable-select-options small {color:var(--muted);font-size:12px;font-weight:500;line-height:1.4;}
+.searchable-select-options>button:is(:hover,.active,[aria-selected=true]) {background:color-mix(in srgb,var(--primary,#2563eb) 10%,var(--surface));}
+.searchable-select-options>button[aria-selected=true]>svg {color:var(--primary);flex-shrink:0;}
+.searchable-select-options>p {padding:12px;margin:0;font-size:13px;color:var(--muted);}
+
+/* Support access: one filter set shared by history and the complete analytics view. */
+.support-access-subheading>div:not(.support-access-heading-actions) {min-width:0;flex:1;}
+.support-access-heading-actions {margin-left:auto;display:flex;align-items:center;gap:10px;}
+.support-access-page {display:grid;gap:20px;}
+.app-shell .content .support-access-subheading {margin-bottom:0;}
+.app-shell .content .support-access-shared-filters {grid-template-columns:repeat(2,minmax(125px,.75fr)) repeat(2,minmax(180px,1.15fr)) minmax(145px,.8fr);padding:20px;border:0;border-radius:0;background:transparent;}
+.app-shell .content .support-access-shared-filters::before {content:none;}
+.support-access-shared-filters .support-filter-actions {grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;}
+.support-access-shared-filters>label {display:grid;gap:7px;font-size:12px;font-weight:700;}
+.support-access-title {padding:16px 20px;font-size:14px;line-height:1.5;font-weight:750;justify-content:flex-start;}
+.support-access-history .dontus-access-meta {font-size:13px;padding:14px 20px;margin:0;border-top:1px solid var(--line);}
+.app-shell .content .support-access-log-table :is(td,th) {padding:15px 20px;}
+.support-access-log-table tbody tr:hover {background:color-mix(in srgb,var(--primary,#2563eb) 3%,var(--surface));}
+.access-indicator-period {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;color:var(--muted);font-size:13px;}
+.access-indicator-period>span {display:flex;align-items:center;gap:7px;}
+.access-indicator-kpis {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;}
+.access-indicator-kpis>article {display:flex;align-items:flex-start;gap:14px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow);min-width:0;}
+.access-metric-icon {display:grid;place-items:center;width:44px;height:44px;border-radius:12px;flex-shrink:0;color:var(--primary);background:color-mix(in srgb,var(--primary,#2563eb) 9%,var(--surface));}
+.access-metric-icon>svg {width:22px;height:22px;}
+.access-indicator-kpis small {display:block;font-size:12px;color:var(--muted);}
+.access-indicator-kpis strong {display:block;font-size:30px;font-weight:800;line-height:1.25;font-variant-numeric:tabular-nums;margin:6px 0;}
+.access-indicator-kpis p {font-size:12px;line-height:1.55;color:var(--muted);margin:0;}
+.access-indicator-charts {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
+.access-indicator-charts>article {padding:24px;min-width:0;}
+.access-indicator-charts>article>header {margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:16px;}
+.access-indicator-charts h2 {font-size:17px;line-height:1.4;font-weight:800;margin:0;}
+.access-indicator-charts header p {font-size:13px;color:var(--muted);line-height:1.6;margin:5px 0 0;}
+.access-chart-wide {grid-column:1/-1;}
+.access-indicator-charts .bi-ranked-entry>div>span {overflow-wrap:anywhere;min-width:0;}
+.access-indicator-charts .bi-chart-data table {width:100%;}
+.access-indicator-charts .bi-chart-data table :is(td,th) {padding:10px;text-align:left;}
+.access-indicator-empty {display:grid;justify-items:center;text-align:center;gap:12px;padding:48px 24px;color:var(--muted);}
+.access-indicator-empty h2 {color:var(--ink);font-size:21px;margin:0;}.access-indicator-empty p {font-size:14px;line-height:1.6;max-width:60ch;margin:0;}
+.access-indicator-footnote {display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between;color:var(--muted);font-size:12px;}
+.access-indicator-loading>span {font-size:14px;color:var(--muted);}.access-indicator-loading>div {display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:16px;}
+.access-indicator-loading i {height:132px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(100deg,var(--surface),var(--panel-elevated),var(--surface));background-size:200% 100%;animation:access-loading 1.4s linear infinite;}
+@keyframes access-loading {to{background-position:200% 0;}}
+@media(max-width:1200px){.access-indicator-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}.app-shell .content .support-access-shared-filters{grid-template-columns:repeat(3,minmax(0,1fr));}.support-access-shared-filters .support-filter-actions{grid-column:auto;align-self:end;}}
+@media(max-width:900px){.app-shell .content{padding:18px;}.access-indicator-charts{grid-template-columns:minmax(0,1fr);}.access-chart-wide{grid-column:auto;}.support-access-subheading{flex-wrap:wrap;}.support-access-heading-actions{flex-basis:100%;margin-left:0;justify-content:flex-end;}}
+@media(max-width:640px){
+ .app-shell .content{padding:16px;}.app-shell :is(.primary-button,.secondary-button,.danger-button,.icon-button){min-height:44px;}.app-shell .icon-button{width:44px;height:44px;}
+ .app-shell .topbar.workspace-topbar{height:auto;min-height:112px;flex-wrap:wrap;gap:8px;padding:10px;}
+ .app-shell .topbar.workspace-topbar .icon-button{width:44px;height:44px;min-height:44px;flex-shrink:0;}
+ .app-shell .workspace-topbar>.global-search{order:1;flex:1 1 calc(100% - 52px);}
+ .app-shell .workspace-topbar .global-search input{height:44px!important;}
+ .app-shell .workspace-topbar .workspace-context-actions{order:2;margin-left:0;gap:4px;}
+ .app-shell .workspace-topbar .workspace-command-trigger{width:44px;min-width:44px;height:44px;}
+ .app-shell .workspace-topbar .topbar-actions{order:3;flex:1;justify-content:flex-end;gap:4px;}
+ .app-shell .workspace-topbar .desktop-install-button{min-width:44px;min-height:44px;justify-content:center;}
+ .app-shell .content :is(.module-page-header,.journey-page-head){gap:12px;}.app-shell .content .support-access-shared-filters{grid-template-columns:repeat(2,minmax(0,1fr));padding:16px;gap:14px;}
+ .support-access-shared-filters>label:nth-child(n+3){grid-column:1/-1;}.support-access-shared-filters .support-filter-actions{grid-column:1/-1;}.support-access-shared-filters .support-filter-actions>button{flex:1;justify-content:center;}
+ .access-indicator-kpis{gap:12px;}.access-indicator-kpis>article{padding:16px;gap:10px;flex-direction:column;}.access-indicator-kpis strong{font-size:27px;}
+ .access-indicator-charts>article{padding:18px;}.access-indicator-loading>div{grid-template-columns:repeat(2,1fr);}
+ .app-shell :is(.form-grid,.field-grid,.service-entry-grid,.support-access-reason-form) :is(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]),select,textarea){font-size:16px;}
+ .app-shell .searchable-select>input[role=combobox]{font-size:16px;}
+}
+@media(prefers-reduced-motion:reduce){.app-shell :is(.primary-button,.secondary-button,.danger-button,.icon-button){transition:none;}.access-indicator-loading i{animation:none;}}

@@ -29,6 +29,7 @@ test("CS gera comissão no mês de início e somente depois de entrar em acompan
   assert.equal(commissionDate("2026-02-30"),null);assert.equal(commissionDate("2026-02-30T12:00:00Z"),null);
   assert.equal(journeyCommissionDate("lia",{startDate:"2026-09-20"},created),"2026-09-20");
   assert.equal(journeyCommissionDate("lia",{startDate:"2026-02-30"},created),null);
+  assert.equal(journeyCommissionDate("lia",{},created),null);
   assert.equal(journeyCommissionDate("cs",{...manual,trackingStartedAt:"inválida"},created),null);
 });
 

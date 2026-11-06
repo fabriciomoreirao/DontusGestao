@@ -4,7 +4,7 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   const { path } = await context.params;
   const route = path.join("/");
   const customerPath = /^customers\/[0-9a-f-]{36}(\/data)?$/i.test(route);
-  const allowed = request.method === "GET" ? customerPath || route === "access/reasons" || route === "access/history" || route === "access/departments"
+  const allowed = request.method === "GET" ? customerPath || route === "access/reasons" || route === "access/history" || route === "access/indicators" || route === "access/departments"
     : route === "users" || route === "users/login" || route === "access/reasons" || customerPath && path.length === 2;
   if (!allowed) return Response.json({ detail: "Rota não encontrada." }, { status: 404 });
   const headers = new Headers({ "content-type": "application/json", accept: "application/json" });
