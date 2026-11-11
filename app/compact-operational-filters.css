@@ -30,7 +30,7 @@
 .app-shell .content .compact-operational-filters .mine-filter input { width: 16px; height: 16px; min-height: 16px; padding: 0; flex-shrink: 0; }
 .app-shell .content .compact-operational-filters > :is(.task-search,.cs-pipeline-search) { min-width: 0; width: 100%; align-self: end; }
 .app-shell .content .task-compact-filters { grid-template-columns: minmax(145px,1fr) minmax(190px,1.6fr) minmax(145px,1fr) minmax(135px,1fr) minmax(170px,1.2fr) auto minmax(170px,1.2fr); }
-.app-shell .content .cs-compact-filters { grid-template-columns: minmax(150px,.8fr) minmax(230px,1.6fr) minmax(180px,1.1fr) minmax(150px,.9fr) auto auto; }
+.app-shell .content .compact-operational-filters.cs-compact-filters { width:100%; grid-template-columns: minmax(140px,.8fr) minmax(230px,1.6fr) minmax(180px,1.1fr) minmax(150px,.9fr) max-content max-content; }
 .app-shell .content .cs-compact-filters > span:not(.people-picker) { justify-self: end; white-space: nowrap; align-self: center; }
 .app-shell .content .cs-compact-filters > .cs-view-switch { justify-self: end; align-self: center; }
 .app-shell .content .lia-compact-filters { grid-template-columns: minmax(240px,1.6fr) repeat(3,minmax(150px,1fr)) auto; }
@@ -42,6 +42,10 @@
 }
 @media (max-width: 1100px) {
   .app-shell .content :is(.cs-compact-filters,.lia-compact-filters) { grid-template-columns: repeat(3,minmax(180px,1fr)); }
+  .app-shell .content .compact-operational-filters.cs-compact-filters { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media (max-width: 600px) {
+  .app-shell .content .compact-operational-filters.cs-compact-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 900px) {
   .app-shell .content .service-compact-filters { grid-template-columns: repeat(2,minmax(180px,1fr)); }
