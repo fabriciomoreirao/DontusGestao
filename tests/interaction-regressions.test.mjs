@@ -251,14 +251,18 @@ test("mantém upload de arquivos disponível no modal de tarefas", async () => {
   assert.match(css, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\);grid-auto-rows:29px/);
 });
 
-test("exibe uploads como links e só abre a mídia quando solicitado", async () => {
-  const [field, tasks, css] = await Promise.all([
+test("exibe uploads com prévia sob demanda e preserva links dos anexos de tarefas", async () => {
+  const [field, tasks, css, preview] = await Promise.all([
     readFile(new URL("../app/MediaUploadField.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/TasksModule.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/FilePreview.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(field, /media-upload-links/);
-  assert.match(field, /window\.open\(url/);
+  assert.match(field, /LocalFilePreview/);
+  assert.match(preview, /onClick=\{\(\) => setOpen\(true\)\}/);
+  assert.match(preview, /role="dialog"/);
+  assert.match(preview, /download=\{name\}/);
   assert.match(field, /previewUrl/);
   assert.match(tasks, /className="task-attachment-link"/);
   assert.doesNotMatch(tasks, /function TaskFilePreview/);

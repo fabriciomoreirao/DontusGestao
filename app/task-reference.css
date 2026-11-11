@@ -222,7 +222,7 @@ html:has(.app-shell .task-reference-overlay.task-detail-overlay){overflow:hidden
 .comment-input-field.is-chat-composer .comment-emoji-menu{position:absolute;left:0;bottom:48px;z-index:30;display:flex;gap:4px;flex-wrap:wrap;width:280px;max-width:100%;padding:7px;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:var(--ui-shadow-card);}
 .comment-input-field.is-chat-composer .comment-emoji-menu>button{width:40px;height:40px;min-height:40px;padding:8px;border:0;border-radius:8px;background:transparent;font-size:20px;}
 .comment-input-field.is-chat-composer>.comment-attachment-list{margin-top:8px;}
-.comment-content>.comment-text{display:inline-block;max-width:100%;padding:6px 12px;border-radius:4px 16px 16px;background:color-mix(in srgb,var(--primary) 8%,var(--surface));color:var(--ink);font-size:13px;line-height:1.5;}
+.comment-content>.comment-text{display:block;max-width:100%;padding:0;border-radius:0;background:transparent;color:var(--ink);font-size:14px;line-height:1.6;}
 @media(max-width:640px){.comment-input-field.is-chat-composer .comment-editor>textarea{font-size:16px!important;}.comment-input-field.is-chat-composer .comment-emoji-button{height:44px;min-height:44px;}.comment-input-field.is-chat-composer .comment-send-button{height:44px;min-height:44px;}}
 
 /* Shared history surrounds the native message rows without changing their actions. */

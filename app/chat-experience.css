@@ -57,6 +57,29 @@
 .internal-chat-participant-row .participant-remove{width:32px;height:32px;min-height:32px;padding:7px;border:1px solid var(--line);border-radius:8px;color:var(--danger);background:var(--surface);}
 .internal-chat-participants-panel>footer{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
 .internal-chat-participants-panel>footer>button{display:flex;align-items:center;gap:6px;min-height:36px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);}
+
+.app-shell .internal-chat-members-modal{width:min(860px,calc(100vw - 32px));max-width:860px;max-height:calc(100dvh - 48px);min-height:0;padding:24px;display:flex;flex-direction:column;overflow:hidden;}
+.app-shell .modal.internal-chat-members-modal>.modal-head{flex-shrink:0;align-items:flex-start;padding:0 46px 12px 0!important;}
+.app-shell .modal.internal-chat-members-modal>.internal-chat-members-form{display:flex;flex:1;flex-direction:column;gap:12px;min-height:0;padding:14px 0 0;overflow:hidden;scrollbar-gutter:auto;}
+.internal-chat-members-modal .checkbox-multiselect-inline{display:flex;flex-direction:column;min-height:0;gap:10px;}
+.internal-chat-members-modal .checkbox-multiselect-inline>details{display:flex;flex-direction:column;min-height:0;}
+.internal-chat-members-modal .checkbox-multiselect-inline summary{display:none;}
+.internal-chat-members-modal .checkbox-multiselect-popover{position:static;inset:auto;display:flex;flex-direction:column;gap:12px;min-height:0;padding:0;border:0;box-shadow:none;overflow:hidden;}
+.internal-chat-members-modal .checkbox-multiselect-options,.internal-chat-members-modal .internal-chat-member-list{min-height:min(300px,35dvh);max-height:44dvh;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;}
+.app-shell .internal-chat-members-modal .internal-chat-member-list{min-height:80px;flex:1 1 300px;}
+.internal-chat-members-form>:is(.internal-chat-group-identity,.internal-chat-member-title,.internal-chat-members-search){flex-shrink:0;}
+.app-shell .modal.internal-chat-members-modal .internal-chat-members-form>:is(.internal-chat-group-identity,.internal-chat-member-title){margin:0;}
+.app-shell .internal-chat-members-modal .checkbox-multiselect-options>label{min-height:48px;padding:10px 12px;font-size:14px!important;}
+.internal-chat-members-modal .checkbox-multiselect-search,.internal-chat-members-search{display:flex;align-items:center;gap:10px;flex-shrink:0;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--input);color:var(--muted);}
+.internal-chat-members-modal :is(.checkbox-multiselect-search,.internal-chat-members-search)>input{width:100%;min-width:0;min-height:46px;border:0;background:transparent;font-size:14px;}
+.app-shell .modal.internal-chat-members-modal .form-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-shrink:0;flex-wrap:wrap;margin:0!important;padding:12px 0 0!important;border-top:1px solid var(--line);}
+.internal-chat-members-modal .form-actions>span{margin-right:auto;color:var(--muted);font-size:13px;}
+.internal-chat-members-modal .internal-chat-member-list strong{font-size:14px;}
+.internal-chat-members-modal .internal-chat-member-list small{font-size:12px;}
+.internal-chat-members-modal .internal-chat-member-list .internal-chat-avatar{flex:0 0 38px;width:38px;height:38px;display:grid;place-items:center;}
+.app-shell .modal.internal-chat-members-modal :is(.checkbox-multiselect-search,.internal-chat-members-search)>input{border:0;box-shadow:none;background:transparent;}
+.internal-chat-members-modal .internal-chat-group-name>input{min-height:46px;}
+@media(max-width:600px){.app-shell .internal-chat-members-modal{padding:16px;max-height:calc(100dvh - 24px);}.internal-chat-members-modal .form-actions>span{flex-basis:100%;}.internal-chat-members-modal .internal-chat-group-identity{flex-wrap:wrap;}.internal-chat-members-modal .internal-chat-group-name{flex:1 1 100%;}}
 .internal-chat-voice-panel{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 16px;border-top:1px solid var(--line);background:var(--surface);color:var(--ink);}
 .internal-chat-voice-panel button{display:flex;align-items:center;gap:6px;min-height:38px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-alt);color:var(--ink);}
 .internal-chat-voice-panel audio,.internal-chat-audio{max-width:100%;width:280px;height:42px;}
