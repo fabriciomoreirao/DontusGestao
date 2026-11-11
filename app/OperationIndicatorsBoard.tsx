@@ -1,5 +1,6 @@
 "use client";
 
+import { paidTrafficCohort, retainedToOnboarding } from "@/lib/paid-traffic-indicators";
 import { goalProgress, type PerformanceGoal } from "@/lib/goal-progress";
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
@@ -551,7 +552,11 @@ function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClos
   const [snapshotTime] = useState(() => Date.now());
   const [month, setMonth] = useState(new Date().toLocaleDateString("en-CA").slice(0, 7));
   const [seller, setSeller] = useState("all"); const [stage, setStage] = useState("all"); const [origin, setOrigin] = useState("all");
-  const rawEntries = useMemo(() => commercialEntries(items, contextKey), [items, contextKey]);
+  const [crm, setCrm] = useState("all");
+  const flowEntries = useMemo(() => commercialEntries(items, contextKey), [items, contextKey]);
+  const crmOptions = [...new Set(flowEntries.map(entry => String(entry.detail.funnel || "Sem CRM")))];
+  const rawEntries = flowEntries.filter(entry => crm === "all" || String(entry.detail.funnel || "Sem CRM") === crm);
+  const campaigns = paidTrafficCohort(items).filter(entry => entry.date.startsWith(month) && (seller === "all" || String(entry.detail.seller || entry.item.owner) === seller));
   const fieldAnalysis = useFieldIndicatorAnalysis(rawEntries.map(entry => entry.item));
   const all = rawEntries.filter(entry => fieldAnalysis.matches(entry.item));
   const scoped = useMemo(() => all.filter((entry) => entry.date.startsWith(month) && (seller === "all" || entry.seller === seller) && (stage === "all" || entry.stage === stage) && (origin === "all" || entry.origin === origin)), [all, month, seller, stage, origin]);
@@ -605,26 +610,26 @@ function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClos
       <article><header><span>Origem dos leads</span><b>AQUISIÇÃO</b></header><DistributionChart title="Origem dos leads" entries={origins} unit="leads" donut /></article>
     </section>}
     {tab === "team" && <section className="commercial-bi-bottom"><article><header>Ranking da equipe (mês)</header><div className="commercial-ranking">{team.length ? team.map((entry, index) => <span key={entry.name}><b>#{index + 1}</b><strong>{entry.name}</strong><em>{money(entry.revenue)}</em><small>{entry.sales} vendas · {entry.lia} LIA · {entry.conversion}%</small></span>) : <p>Sem vendas neste recorte.</p>}</div></article><article><header>Atividades pendentes</header><div className="commercial-pending"><span><b>{overdue}</b> follow-ups atrasados</span><span><b>{withoutContact}</b> oportunidades sem contato</span><span><b>{todayFollowups}</b> interações hoje</span><span><b>{directSales.length}</b> vendas diretas</span></div></article><article><header>Oportunidades quentes</header><div className="commercial-hot">{hot.length ? hot.map((entry) => <span key={entry.item.id}><strong>{entry.item.title}</strong><small>{entry.stage}</small><b>{money(entry.amount)}</b></span>) : <p>Nenhuma oportunidade quente no filtro.</p>}</div></article><article><header>Desempenho vs mês anterior</header><div className="commercial-performance"><span>Receita <MetricChange value={delta(revenue, previousRevenue)}/></span><span>Leads <MetricChange value={delta(leads.length, previous.filter((entry) => !entry.direct).length)}/></span><span>Vendas <MetricChange value={delta(sales.length, previousSales.length)}/></span><span>Conversão <b>{percent(sales.length, scoped.length)}</b></span></div></article></section>}
-    {tab === "campaigns" && <CommercialCampaignIndicators entries={scoped} />}
+    {tab === "campaigns" && <CommercialCampaignIndicators entries={campaigns} />}
     </section>
   </section></main>;
 }
 
 function MetricChange({value}:{value:number|null}) { return <b className={value===null?"":value>=0?"positive":"negative"}>{value===null?"Sem base":(value>=0?"+":"")+value+"%"}</b>; }
 
-function CommercialCampaignIndicators({ entries }: { entries: CommercialEntry[] }) {
-  const leads = entries.filter((entry) => !entry.direct);
-  const qualified = leads.filter((entry) => entry.detail.leadQualification === "qualified");
-  const notQualified = leads.filter((entry) => entry.detail.leadQualification === "not-qualified");
+function CommercialCampaignIndicators({ entries }: { entries: ReturnType<typeof paidTrafficCohort<Item>> }) {
+  const leads = entries;
+  const qualified = leads.filter((entry) => entry.qualified);
+  const notQualified = leads.filter((entry) => entry.disqualified);
   const campaigns = counted(leads.map((entry) => stringOf(entry.detail.campaignName)).filter(Boolean), 12);
   const regions = counted(leads.map((entry) => stringOf(entry.detail.region)).filter(Boolean), 12);
   const bestCampaign = campaigns[0]; const bestRegion = regions[0];
   const weeks = Array.from({ length: 5 }, (_, index) => {
     const rows = leads.filter((entry) => Math.min(5, Math.ceil(Number(entry.date.slice(8, 10)) / 7)) === index + 1);
-    return { label: `${index + 1}ª semana`, qualified: rows.filter((entry) => entry.detail.leadQualification === "qualified").length, notQualified: rows.filter((entry) => entry.detail.leadQualification === "not-qualified").length };
+    return { label: `${index + 1}ª semana`, qualified: rows.filter((entry) => entry.qualified).length, notQualified: rows.filter((entry) => entry.disqualified).length };
   });
   const maxWeek = Math.max(1, ...weeks.flatMap((entry) => [entry.qualified, entry.notQualified]));
-  return <section className="commercial-campaign-bi"><section className="campaign-lead-kpis"><article><small>Leads analisados</small><strong>{leads.length}</strong><span>{leads.length - qualified.length - notQualified.length} sem qualificação</span></article><article className="positive"><small>Qualificados</small><strong>{qualified.length}</strong><span>{percent(qualified.length, leads.length)} dos leads</span></article><article className="negative"><small>Não qualificados</small><strong>{notQualified.length}</strong><span>{percent(notQualified.length, leads.length)} dos leads</span></article><article><small>Melhor campanha</small><strong>{bestCampaign?.label || "—"}</strong><span>{bestCampaign ? `${bestCampaign.count} lead(s)` : "Sem atribuição"}</span></article><article><small>Melhor região</small><strong>{bestRegion?.label || "—"}</strong><span>{bestRegion ? `${bestRegion.count} lead(s)` : "Sem região"}</span></article></section><section className="campaign-lead-grid"><article><header>Qualificação por semana do mês</header><div className="campaign-week-chart">{weeks.map((week) => <div key={week.label}><span><i className="qualified" style={{ height: `${Math.max(3, week.qualified / maxWeek * 100)}%` }} title={`${week.qualified} qualificado(s)`}/><i className="not-qualified" style={{ height: `${Math.max(3, week.notQualified / maxWeek * 100)}%` }} title={`${week.notQualified} não qualificado(s)`}/></span><b>{week.label}</b><small>{week.qualified} / {week.notQualified}</small></div>)}</div><footer><span><i className="qualified"/>Qualificados</span><span><i className="not-qualified"/>Não qualificados</span></footer></article><article><header>Campanhas com mais leads</header><div className="campaign-ranking-bars">{campaigns.length ? campaigns.map((entry) => <div key={entry.label}><span><strong>{entry.label}</strong><b>{entry.count}</b></span><i><em style={{ width: `${entry.count / Math.max(1, campaigns[0].count) * 100}%` }}/></i></div>) : <p>Nenhum lead vinculado a campanha publicada.</p>}</div></article><article><header>Regiões com mais leads</header><div className="campaign-ranking-bars region">{regions.length ? regions.map((entry) => <div key={entry.label}><span><strong>{entry.label}</strong><b>{entry.count}</b></span><i><em style={{ width: `${entry.count / Math.max(1, regions[0].count) * 100}%` }}/></i></div>) : <p>Nenhuma região informada.</p>}</div></article></section></section>;
+  return <section className="commercial-campaign-bi"><section className="campaign-lead-kpis"><article><small>Leads recebidos no mês</small><strong>{leads.length}</strong><span>{leads.length - qualified.length - notQualified.length} sem qualificação</span></article><article className="positive"><small>Qualificados</small><strong>{qualified.length}</strong><span>{percent(qualified.length, leads.length)} dos leads</span></article><article className="negative"><small>Desqualificados</small><strong>{notQualified.length}</strong><span>{percent(notQualified.length, leads.length)} dos leads</span></article><article className="positive"><small>Convertidos</small><strong>{leads.filter(entry=>entry.converted).length}</strong><span>ganhos na origem ou no destino</span></article><article className="negative"><small>Perdidos</small><strong>{leads.filter(entry=>entry.lost&&!entry.converted).length}</strong></article><article><small>Em outros CRMs</small><strong>{leads.filter(entry=>entry.otherCrm).length}</strong></article><article><small>Melhor campanha</small><strong>{bestCampaign?.label || "—"}</strong><span>{bestCampaign ? `${bestCampaign.count} lead(s)` : "Sem atribuição"}</span></article><article><small>Melhor região</small><strong>{bestRegion?.label || "—"}</strong><span>{bestRegion ? `${bestRegion.count} lead(s)` : "Sem região"}</span></article></section><section className="campaign-lead-grid"><article><header>Qualificação por semana do mês</header><div className="campaign-week-chart">{weeks.map((week) => <div key={week.label}><span><i className="qualified" style={{ height: `${Math.max(3, week.qualified / maxWeek * 100)}%` }} title={`${week.qualified} qualificado(s)`}/><i className="not-qualified" style={{ height: `${Math.max(3, week.notQualified / maxWeek * 100)}%` }} title={`${week.notQualified} não qualificado(s)`}/></span><b>{week.label}</b><small>{week.qualified} / {week.notQualified}</small></div>)}</div><footer><span><i className="qualified"/>Qualificados</span><span><i className="not-qualified"/>Desqualificados</span></footer></article><article><header>Campanhas com mais leads</header><div className="campaign-ranking-bars">{campaigns.length ? campaigns.map((entry) => <div key={entry.label}><span><strong>{entry.label}</strong><b>{entry.count}</b></span><i><em style={{ width: `${entry.count / Math.max(1, campaigns[0].count) * 100}%` }}/></i></div>) : <p>Nenhum lead vinculado a campanha publicada.</p>}</div></article><article><header>Regiões com mais leads</header><div className="campaign-ranking-bars region">{regions.length ? regions.map((entry) => <div key={entry.label}><span><strong>{entry.label}</strong><b>{entry.count}</b></span><i><em style={{ width: `${entry.count / Math.max(1, regions[0].count) * 100}%` }}/></i></div>) : <p>Nenhuma região informada.</p>}</div></article></section><section className="indicator-records"><header><h2>Leads do Tráfego Pago</h2><small>Datas de entrada e fechamento</small></header>{leads.map(entry=><article key={entry.id}><strong>{entry.item.title}</strong><span>Entrada: {entry.date}</span><span>Fechamento: {entry.closedAt ? entry.closedAt.slice(0,10) : "Em aberto"}</span>{entry.otherCrm&&<b>Em outro CRM</b>}</article>)}</section></section>;
 }
 
 function RetentionIndicatorsBoard({ title, contextKey, items, onClose }: { title: string; contextKey: string; items: Item[]; onClose: () => void }) {
@@ -639,7 +644,7 @@ function RetentionIndicatorsBoard({ title, contextKey, items, onClose }: { title
   const outcome = (entry: CommercialEntry) => {
     const value = clean(`${entry.stage} ${entry.item.status}`);
     if (/sem sucesso|perdid|cancelad|reprovad/.test(value)) return "failure" as const;
-    if (/concluid|sucesso|retid|finaliz/.test(value)) return "success" as const;
+    if (retainedToOnboarding(entry.item.id, entry.detail, items)) return "success" as const;
     return "process" as const;
   };
   const total = scoped.length;

@@ -752,7 +752,7 @@ operations.MapGet("", async (
         snapshot = snapshot with { AgendaModule = await agendaService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("suggestions", "view"))
         snapshot = snapshot with { SuggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("tasks", "view") || actor.HasPermission("catalogs", "view"))
+    if (actor.HasPermission("tasks", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("ti", "view"))
         snapshot = snapshot with { TaskModule = await taskService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("chat", "view"))
         snapshot = snapshot with { ChatModule = await chatService.GetModuleAsync(actor, cancellationToken) };
@@ -986,13 +986,18 @@ internalChatFiles.MapPost("/{roomId:guid}/attachments", async (
 internalChatFiles.MapGet("/attachments/{messageId:guid}", async (
     Guid messageId,
     ClaimsPrincipal principal,
+    HttpResponse response,
     IInternalChatService internalChatService,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var attachment = await internalChatService.GetAttachmentAsync(messageId, actor, cancellationToken);
-    return Results.File(attachment.FullPath, attachment.ContentType, fileDownloadName: null, enableRangeProcessing: true);
+    response.Headers.XContentTypeOptions = "nosniff";
+    var inline = attachment.ContentType is "image/png" or "image/jpeg" or "image/gif" or "image/webp" or "image/avif"
+        or "video/mp4" or "video/webm" or "video/ogg" or "video/quicktime"
+        or "audio/mpeg" or "audio/wav" or "audio/ogg" or "audio/webm" or "audio/mp4" or "application/pdf";
+    return Results.File(attachment.FullPath, attachment.ContentType, fileDownloadName: inline ? null : attachment.FileName, enableRangeProcessing: true);
 });
 
 app.MapGet("/api/integrations/whatsapp/webhook", async (
@@ -1206,7 +1211,7 @@ operations.MapPost("", async (
             break;
 
         case "saveNote":
-            id = await service.SaveNoteAsync(request.Id, request.Title ?? "", request.Description, request.Color, request.Status, actor, cancellationToken);
+            id = await service.SaveNoteAsync(request.Id, request.Title ?? "", request.Description, request.Color, request.Status, actor, cancellationToken, request.DepartmentId, request.CustomerCode, request.CustomerId);
             break;
 
         case "deleteNote":
@@ -1444,6 +1449,9 @@ operations.MapPost("", async (
                 request.Id ?? throw new DomainException("Comentário obrigatório."), request.Body ?? ""), actor, cancellationToken);
             break;
 
+        case "deleteSuggestionAttachment":
+            await suggestionService.DeleteAttachmentAsync(request.Id ?? throw new DomainException("Anexo obrigatório."),actor,cancellationToken);
+            break;
         case "deleteSuggestion":
             await suggestionService.DeleteSuggestionAsync(
                 request.Id ?? throw new DomainException("Sugestão obrigatória."), actor, cancellationToken);
@@ -1757,6 +1765,16 @@ operations.MapPost("", async (
                 request.RoomId ?? throw new DomainException("Conversa obrigatória.")), actor, cancellationToken);
             break;
 
+        case "addInternalChatMembers":
+        case "removeInternalChatMember":
+        case "leaveInternalChatGroup":
+            await internalChatService.ChangeMembersAsync(new ChangeInternalChatMembersCommand(
+                request.RoomId ?? throw new DomainException("Grupo obrigatório."),
+                request.Action == "addInternalChatMembers" ? request.MemberUserIds : null,
+                request.Action == "removeInternalChatMember" ? request.Id : null,
+                request.Action == "leaveInternalChatGroup"), actor, cancellationToken);
+            break;
+
         case "updateInternalChatGroup":
             await internalChatService.UpdateGroupAsync(new UpdateInternalChatGroupCommand(
                 request.RoomId ?? throw new DomainException("Grupo obrigatório."), request.Name, request.PhotoDataUrl), actor, cancellationToken);
@@ -1897,7 +1915,7 @@ operations.MapPost("", async (
         }
         return id.HasValue ? Results.Json(result, statusCode: StatusCodes.Status201Created) : Results.Ok(result);
     }
-    if ((request.Action is "addSuggestionComment" or "updateSuggestionComment") && actor.HasPermission("suggestions", "view"))
+    if ((request.Action is "addSuggestionComment" or "updateSuggestionComment" or "deleteSuggestionAttachment") && actor.HasPermission("suggestions", "view"))
         return Results.Ok(new { ok = true, id, suggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) });
     if (request.Action is "createWorkItem" or "updateWorkItem" or "transitionWorkItem" or "deleteWorkItem")
     {

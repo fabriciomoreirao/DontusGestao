@@ -1,12 +1,9 @@
 export const TASK_FILE_BYTES = 25 * 1024 * 1024;
-const blockedExtensions = new Set(['ade','adp','app','bat','cmd','com','cpl','dll','exe','hta','htm','html','js','jse','msi','msp','ps1','scr','svg','vbe','vbs','wsf']);
 
 export function taskUploadBatches<T extends { name: string; size: number }>(files: T[]) {
   if (files.length > 10) throw new Error('É permitido enviar no máximo 10 arquivos por vez.');
   if (files.some(file => file.size <= 0 || file.size > TASK_FILE_BYTES))
     throw new Error('Selecione arquivos não vazios, com no máximo 25 MB cada.');
-  if (files.some(file => blockedExtensions.has(file.name.split('.').at(-1)?.toLowerCase() ?? '')))
-    throw new Error('Um dos tipos de arquivo selecionados não é permitido por segurança.');
   const batches: T[][] = []; let bytes = 0;
   for (const file of files) {
     if (!batches.length || bytes + file.size > TASK_FILE_BYTES) { batches.push([]); bytes = 0; }

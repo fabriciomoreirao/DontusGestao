@@ -18,6 +18,7 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
     private sealed record ConnectionPresence(Guid UserId, DateTimeOffset At, bool Connected);
     private readonly ConcurrentDictionary<Guid, ConnectionPresence> presence = new();
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> lastSeen = new();
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> lastPresenceBroadcast = new();
     private DateTimeOffset Now => (clock ?? TimeProvider.System).GetUtcNow();
     public UserPresenceDto GetPresence(Guid userId) => new(userId,
         presence.Values.Any(session => session.UserId == userId && session.Connected && Now - session.At < TimeSpan.FromSeconds(75)),
@@ -57,8 +58,12 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
             presence.AddOrUpdate(connectionId, next, (_, previous) => at >= previous.At ? next : previous);
             lastSeen.AddOrUpdate(userId.Value, at, (_, previous) => at > previous ? at : previous);
             foreach (var stale in presence.Where(entry => Now - entry.Value.At > TimeSpan.FromMinutes(10))) presence.TryRemove(stale.Key, out _);
-            if (before != GetPresence(userId.Value).IsOnline)
+            var due = !lastPresenceBroadcast.TryGetValue(userId.Value, out var broadcastAt) || at - broadcastAt >= TimeSpan.FromSeconds(30);
+            if (before != GetPresence(userId.Value).IsOnline || next.Connected && due)
+            {
+                lastPresenceBroadcast[userId.Value] = at;
                 foreach (var subscriber in subscribers.Values.Where(subscriber => subscriber.Chat)) subscriber.Notify(RealtimeChange.Presence);
+            }
             return;
         }
         if (topic != "operations" && (topic != "chat" || userId is null)) return;

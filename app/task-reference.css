@@ -199,3 +199,36 @@ html:has(.app-shell .task-reference-overlay.task-detail-overlay){overflow:hidden
 .app-shell .task-reference-overlay.task-detail-overlay .task-ideal-header :is(.copy-task-link,.task-protocol-chip){color:var(--task-blue)!important;}
 .app-shell .task-reference-overlay.task-detail-overlay .task-ideal-header button svg{color:inherit!important;}
 .app-shell.theme-dark .task-reference-overlay.task-detail-overlay .task-owner-controls>button.delete{color:#ffb5c2!important;border-color:#a94b62!important;background:#342233!important;}
+
+/* Keep claiming and reassignment visible beside the responsible field. */
+.app-shell .task-reference-overlay.task-detail-overlay .task-action-fields .task-responsible-transfer>button{width:auto;min-width:88px;padding:5px 8px;font-size:12px!important;white-space:nowrap;}
+.app-shell .task-reference-overlay.task-detail-overlay .task-action-fields .task-responsible-transfer input[readonly]{width:100%;height:31px;padding:5px 10px;border:1px solid var(--task-line);border-radius:9px;color:var(--task-ink);background:var(--task-canvas);font-size:13px;}
+@media(max-width:640px){.app-shell .task-reference-overlay.task-detail-overlay .task-action-fields .task-responsible-transfer{flex-wrap:wrap;}.app-shell .task-reference-overlay.task-detail-overlay .task-action-fields .task-responsible-transfer>label{flex-basis:100%;}.app-shell .task-reference-overlay.task-detail-overlay .task-action-fields .task-responsible-transfer>button{min-height:40px;width:100%;}}
+
+/* Shared comment composer follows the compact task conversation. */
+[data-comment-native-submit="true"]{display:none!important;}
+.comment-paperclip:focus-within{outline:2px solid var(--primary,#2563eb);outline-offset:3px;}
+.comment-content:has(>.comment-attachment-list){display:flex!important;align-items:flex-start;flex-wrap:wrap;gap:8px 12px;}
+.comment-content:has(>.comment-attachment-list)>.comment-text{flex:1 1 200px;min-width:0;}
+.comment-content:has(>.comment-attachment-list)>.comment-attachment-list{margin-top:0;flex:0 1 auto;}
+.comment-input-field.is-chat-composer{display:block;min-width:0;}
+.comment-input-field.is-chat-composer .comment-composer-bar{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr) 44px;gap:9px;align-items:end;width:100%;}
+.comment-input-field.is-chat-composer .comment-editor{grid-column:2;grid-row:1;min-width:0;}
+.comment-input-field.is-chat-composer .comment-editor>textarea{display:block;height:40px;min-height:40px!important;max-height:160px;width:100%;padding:10px 76px 10px 12px!important;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:13px!important;line-height:18px;resize:vertical;}
+.comment-input-field.is-chat-composer .comment-bold-button{top:auto;bottom:5px;right:35px;}
+.comment-input-field.is-chat-composer .comment-paperclip{position:absolute;right:58px;bottom:5px;display:grid!important;place-items:center;width:28px;min-width:28px;height:30px;min-height:30px;padding:4px;border:0;background:transparent;color:var(--ink);}
+.comment-input-field.is-chat-composer .comment-emoji-button{display:grid;place-items:center;grid-column:1;grid-row:1;width:40px;min-width:40px;height:40px;min-height:40px;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted);}
+.comment-input-field.is-chat-composer .comment-send-button{display:grid;place-items:center;grid-column:3;grid-row:1;width:44px;min-width:44px;height:40px;min-height:40px;padding:9px;border:0;border-radius:10px;color:#fff;background:var(--primary);}
+.comment-input-field.is-chat-composer .comment-emoji-menu{position:absolute;left:0;bottom:48px;z-index:30;display:flex;gap:4px;flex-wrap:wrap;width:280px;max-width:100%;padding:7px;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:var(--ui-shadow-card);}
+.comment-input-field.is-chat-composer .comment-emoji-menu>button{width:40px;height:40px;min-height:40px;padding:8px;border:0;border-radius:8px;background:transparent;font-size:20px;}
+.comment-input-field.is-chat-composer>.comment-attachment-list{margin-top:8px;}
+.comment-content>.comment-text{display:inline-block;max-width:100%;padding:6px 12px;border-radius:4px 16px 16px;background:color-mix(in srgb,var(--primary) 8%,var(--surface));color:var(--ink);font-size:13px;line-height:1.5;}
+@media(max-width:640px){.comment-input-field.is-chat-composer .comment-editor>textarea{font-size:16px!important;}.comment-input-field.is-chat-composer .comment-emoji-button{height:44px;min-height:44px;}.comment-input-field.is-chat-composer .comment-send-button{height:44px;min-height:44px;}}
+
+/* Shared history surrounds the native message rows without changing their actions. */
+.shared-comment-history{width:100%;min-width:0;display:flex;flex-direction:column;gap:10px}
+.shared-comment-rows{display:flex!important;flex-direction:column!important;gap:10px!important;min-width:0}
+.shared-comment-rows>article{position:relative;display:flex!important;align-items:flex-start!important;gap:10px!important;padding:4px 0!important;margin:0!important;border:0!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;min-width:0}
+.shared-comment-rows>article>i,.shared-comment-rows>article>.candidate-timeline-icon{display:none!important}
+.shared-comment-rows>article>div{min-width:0;flex:1}.shared-comment-rows article header{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:0;padding:0;border:0;background:transparent}.shared-comment-rows article small,.shared-comment-rows article time{font-size:11px;color:var(--muted);line-height:1.5}.shared-comment-rows article p{margin:4px 0;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}.shared-comment-rows .comment-text{font-weight:400;font-size:13px}
+.shared-comment-more{display:flex!important;align-items:center;justify-content:center;gap:6px;align-self:center;min-height:32px;padding:6px 18px!important;border:0!important;border-radius:10px;color:var(--primary);background:color-mix(in srgb,var(--primary) 9%,var(--surface));font-size:12px}

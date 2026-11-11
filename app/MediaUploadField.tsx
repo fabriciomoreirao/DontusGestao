@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, FileText, Upload } from "lucide-react";
+import { ExternalLink, FileText, Upload, X } from "lucide-react";
 import type { ChangeEventHandler, Ref } from "react";
 
 type MediaUploadFieldProps = {
@@ -18,6 +18,8 @@ type MediaUploadFieldProps = {
   className?: string;
   inputRef?: Ref<HTMLInputElement>;
   onChange?: ChangeEventHandler<HTMLInputElement>;
+  onRemoveFile?: (index: number) => void;
+  onRemovePreview?: () => void;
 };
 
 export default function MediaUploadField({
@@ -35,10 +37,14 @@ export default function MediaUploadField({
   className = "",
   inputRef,
   onChange,
+  onRemoveFile,
+  onRemovePreview,
 }: MediaUploadFieldProps) {
   const openLocalFile = (file: File) => {
-    const url = URL.createObjectURL(file);
-    window.open(url, "_blank", "noopener,noreferrer");
+    const preview = /^(image\/(png|jpeg|gif|webp|avif)|video\/(mp4|webm|ogg|quicktime)|audio\/(mpeg|wav|ogg|webm|mp4)|application\/pdf)$/.test(file.type);
+    const url = URL.createObjectURL(preview ? file : new Blob([file], {type:"application/octet-stream"}));
+    if (preview) window.open(url, "_blank", "noopener,noreferrer");
+    else {const link = document.createElement("a"); link.href = url; link.download = file.name; link.click();}
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
   return <div className={`media-upload-field ${className}`.trim()}>
@@ -52,8 +58,8 @@ export default function MediaUploadField({
     </label>
     <small>{hint}</small>
     {(selectedFiles.length > 0 || previewUrl) && <div className="media-upload-links" aria-label="Arquivos selecionados">
-      {selectedFiles.map((file) => <button type="button" key={`${file.name}-${file.lastModified}`} onClick={() => openLocalFile(file)}><FileText size={14} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small><ExternalLink size={13} /></button>)}
-      {previewUrl && selectedFiles.length === 0 && <a href={previewUrl} target="_blank" rel="noreferrer"><FileText size={14} /><span>{previewLabel || "Visualizar imagem"}</span><ExternalLink size={13} /></a>}
+      {selectedFiles.map((file, index) => <span className="media-upload-selected-row" key={`${file.name}-${file.lastModified}`}><button type="button" key={`${file.name}-${file.lastModified}`} onClick={() => openLocalFile(file)}><FileText size={14} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small><ExternalLink size={13} /></button>{onRemoveFile&&<button className="media-upload-remove" type="button" disabled={disabled} aria-label={`Remover ${file.name}`} onClick={()=>onRemoveFile(index)}><X size={16}/></button>}</span>)}
+      {previewUrl && selectedFiles.length === 0 && <span className="media-upload-selected-row"><a href={previewUrl} target="_blank" rel="noreferrer"><FileText size={14} /><span>{previewLabel || "Visualizar imagem"}</span><ExternalLink size={13} /></a>{onRemovePreview&&<button type="button" className="media-upload-remove" disabled={disabled} aria-label="Remover arquivo atual" onClick={onRemovePreview}><X size={16}/></button>}</span>}
     </div>}
   </div>;
 }

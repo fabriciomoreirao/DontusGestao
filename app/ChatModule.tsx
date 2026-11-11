@@ -306,7 +306,7 @@ function ConversationDetails({ conversation, module, busy, canEdit, has, operate
       <h3>{conversation.isGroup ? conversation.groupName : conversation.contact.name}</h3><p>{conversation.isGroup ? "Grupo de atendimento" : conversation.contact.companyName || "Contato sem empresa vinculada"}</p>
       {conversation.isGroup
         ? <div className="chat-group-members">{conversation.groupParticipants.map((participant) => <span key={participant}><UserCheck size={13} /> {participant}</span>)}</div>
-        : <div><a href={`tel:${conversation.contact.phone}`}><Phone size={14} /> <PhoneLink phone={conversation.contact.phone || "Sem telefone"}/></a><span>{conversation.contact.email || "Sem e-mail"}</span></div>}
+        : <div><span><PhoneLink phone={conversation.contact.phone || "Sem telefone"}/></span><span>{conversation.contact.email || "Sem e-mail"}</span></div>}
     </div>
     <div className="detail-block"><h4>Atendimento</h4>
       <label>Status<select disabled={!canEdit} value={conversation.status} onChange={(event) => void operate({ action: "updateChatConversation", conversationId: conversation.id, status: event.target.value, version: conversation.version }, "Status atualizado.")}>

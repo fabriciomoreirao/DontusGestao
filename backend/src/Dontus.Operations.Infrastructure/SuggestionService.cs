@@ -10,8 +10,6 @@ namespace Dontus.Operations.Infrastructure;
 public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileStorage? fileStorage = null, ILogger<SuggestionService>? logger = null) : ISuggestionService
 {
     private const long MaximumAttachmentSizeBytes = 25 * 1024 * 1024;
-    private static readonly HashSet<string> BlockedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
-    { ".exe", ".dll", ".bat", ".cmd", ".com", ".msi", ".ps1", ".sh", ".js", ".vbs" };
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (!await db.SuggestionPriorities.AnyAsync(cancellationToken))
@@ -321,10 +319,19 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
         var fileName = Path.GetFileName(command.FileName).Trim();
         if (string.IsNullOrWhiteSpace(fileName) || fileName.Length > 260)
             throw new DomainException("Nome do arquivo inválido.");
-        var extension = Path.GetExtension(fileName);
-        if (BlockedAttachmentExtensions.Contains(extension))
-            throw new DomainException("Este tipo de arquivo não é permitido.");
         return await PersistAttachmentAsync(command, actorUser.Id, fileName, actor, cancellationToken);
+    }
+
+    public async Task DeleteAttachmentAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("suggestions","edit");
+        var attachment=await db.SuggestionAttachments.SingleOrDefaultAsync(entry=>entry.Id==attachmentId,cancellationToken) ?? throw new DomainException("Anexo não encontrado.",404);
+        var content=await db.SuggestionAttachmentContents.SingleOrDefaultAsync(entry=>entry.AttachmentId==attachmentId,cancellationToken);
+        if(content is not null) db.SuggestionAttachmentContents.Remove(content);
+        db.SuggestionAttachments.Remove(attachment);
+        var suggestion=await db.Suggestions.SingleAsync(entry=>entry.Id==attachment.SuggestionId,cancellationToken);suggestion.UpdatedAt=DateTimeOffset.UtcNow;suggestion.Version++;
+        AddAudit(actor,"DeleteAttachment","suggestion",suggestion.Id,new{attachment.Id,attachment.FileName});await db.SaveChangesAsync(cancellationToken);
+        if(content is null && fileStorage is not null)try{await fileStorage.DeleteAsync(attachment.StorageKey,cancellationToken);}catch(Exception error){logger?.LogWarning(error,"Could not remove suggestion attachment {Id} from storage.",attachmentId);}
     }
 
     public async Task<TaskAttachmentDownloadDto> GetAttachmentDownloadAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default)

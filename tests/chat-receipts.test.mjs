@@ -17,3 +17,11 @@ test('a imagem da conversa preenche o quadro sem repetir e as reações têm op�
   assert.equal(new Set(CHAT_REACTIONS).size,CHAT_REACTIONS.length);
   assert.ok(CHAT_REACTIONS.includes('👍'));assert.ok(CHAT_REACTIONS.includes('❤️'));
 });
+
+
+ test('data da conversa usa Hoje, Ontem e data completa no fuso de Brasília',async()=>{
+ const {chatListDateLabel}=await import('../lib/chat-receipts.ts');const now=Date.parse('2026-11-10T15:00:00Z');
+ assert.equal(chatListDateLabel('2026-11-10T12:00:00Z',now),'Hoje');
+ assert.equal(chatListDateLabel('2026-11-10T01:00:00Z',now),'Ontem');
+ assert.equal(chatListDateLabel('2026-11-06T10:00:00Z',now),'06/11/2026');
+ });

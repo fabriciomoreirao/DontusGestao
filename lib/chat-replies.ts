@@ -4,6 +4,7 @@ export function chatReplyPreview(message: ChatReplyMessage) {
   if (message.deletedAt) return "Mensagem excluída";
   if (message.type === "image") return message.fileName ? `Imagem: ${message.fileName}` : "Imagem";
   if (message.type === "video") return message.fileName ? `Vídeo: ${message.fileName}` : "Vídeo";
+  if (message.type === "audio") return message.fileName ? `Áudio: ${message.fileName}` : "Áudio";
   if (message.type === "file") return message.fileName || "Arquivo";
   if (message.type === "poll") {
     try { return `Enquete: ${String(JSON.parse(message.body).question || "pergunta").slice(0, 240)}`; }

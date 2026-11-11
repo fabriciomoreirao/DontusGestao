@@ -55,7 +55,7 @@ public sealed class TaskServiceTests
         ActorContext Actor(AppUser user,bool create=false,bool edit=false,string[]? capabilities=null)=>new(user.Email,user.DisplayName,"Colaborador","",[new("tasks",true,create,edit,false,false,capabilities??[])]);
         var created=await service.CreateAsync(new("Cliente precisa de retorno","Descrição",type.Id,null,null,support.Id,support.Id,creator.Id,null,null,null,"5511999999999",null,null,null,null,false,[creator.Id],[]),Actor(creator,true,true));
         var task=await db.CorporateTasks.SingleAsync(x=>x.Id==created.Id);
-        await service.TransferAsync(new(task.Id,development.Id,sharedQueue?null:responsible.Id,"Análise do desenvolvimento",false,task.Version),Actor(originCoord,edit:true,capabilities:["forward"]));
+        await service.TransferAsync(new(task.Id,development.Id,sharedQueue?null:responsible.Id,"Análise do desenvolvimento",false,task.Version),Actor(creator));
         if(!sharedQueue)await service.ChangeStatusAsync(new(task.Id,(await db.TaskStatuses.SingleAsync(x=>x.Name=="Resolvida")).Id,"Resolvido",task.Version),Actor(responsible));
         var sender=sharedQueue?finalCoord:responsible;
         await service.CommunicateWithClientAsync(new(task.Id,"requestContact","Interno","Explique a solução ao cliente."),Actor(sender));
@@ -79,7 +79,72 @@ public sealed class TaskServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Current_assignee_can_reassign_to_team_without_extra_capability(bool canEdit)
+    public async Task Any_viewing_sector_member_can_claim_the_shared_queue_but_only_the_owner_can_reassign(bool explicitSelf)
+    {
+        await using var db=CreateContext();
+        var (service,admin)=await InitializeAsync(db);
+        var support=await db.TaskDepartments.SingleAsync(department=>department.Name=="Suporte");
+        var finance=await db.TaskDepartments.SingleAsync(department=>department.Name=="Financeiro");
+        var type=await db.TaskTypes.SingleAsync();
+        var ana=new AppUser{Email="claim-ana@test",DisplayName="Ana",CreatedBy=admin.Email};
+        var bia=new AppUser{Email="claim-bia@test",DisplayName="Bia",CreatedBy=admin.Email};
+        var outsider=new AppUser{Email="claim-outsider@test",DisplayName="Outro setor",CreatedBy=admin.Email};
+        db.Users.AddRange(ana,bia,outsider);
+        db.UserDepartments.AddRange(new UserDepartment{UserId=ana.Id,DepartmentId=support.Id},
+            new UserDepartment{UserId=bia.Id,DepartmentId=support.Id},new UserDepartment{UserId=outsider.Id,DepartmentId=finance.Id});
+        await db.SaveChangesAsync();
+        var created=await service.CreateAsync(new("Assumir fila","Contexto",type.Id,null,null,support.Id,support.Id,null,null,null,null,"5511999990000",null,null,null,null,false,[],[]),admin);
+        var task=await db.CorporateTasks.SingleAsync(entry=>entry.Id==created.Id);
+        ActorContext Viewer(AppUser person)=>new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false)]);
+        var anaActor=Viewer(ana);
+        // A shared task can only be claimed for oneself, with normal tasks/view access.
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(task.Id,bia.Id,task.Version),anaActor))).StatusCode);
+        var noView=new ActorContext(ana.Email,ana.DisplayName,"Colaborador","",[]);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(task.Id,null,task.Version),noView))).StatusCode);
+        var foreignViewer=new ActorContext(outsider.Email,outsider.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false,["viewOtherDepartments"])]);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(task.Id,null,task.Version),foreignViewer))).StatusCode);
+        var previousVersion=task.Version;
+        await service.AssignAsync(new(task.Id,explicitSelf?ana.Id:null,task.Version),anaActor);
+        Assert.Equal(ana.Id,task.AssigneeUserId);
+        Assert.Equal(previousVersion+1,task.Version);
+        var manager=new ActorContext(bia.Email,bia.DisplayName,"Colaborador","",[new("tasks",true,true,true,true,true,TaskCapabilities.All)]);
+        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(task.Id,bia.Id,previousVersion),manager))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(task.Id,bia.Id,task.Version),manager))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(task.Id,bia.Id,task.Version),admin))).StatusCode);
+        // Forwarding to another sector cannot bypass the reassignment restriction.
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.TransferAsync(new(task.Id,finance.Id,outsider.Id,"Tentar trocar responsável",false,task.Version),manager))).StatusCode);
+        await service.AssignAsync(new(task.Id,outsider.Id,task.Version),anaActor);
+        Assert.Equal(outsider.Id,task.AssigneeUserId);
+        Assert.Equal(created.Id,Assert.Single((await service.GetModuleAsync(Viewer(outsider))).Tasks).Id);
+    }
+
+    [Fact]
+    public async Task Concurrent_claims_do_not_overwrite_the_first_responsible()
+    {
+        var options=new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase($"concurrent-task-claim-{Guid.NewGuid():N}").Options;
+        await using var firstDb=new OperationsDbContext(options);
+        var (firstService,admin)=await InitializeAsync(firstDb);
+        var department=await firstDb.TaskDepartments.SingleAsync(entry=>entry.Name=="Suporte");
+        var type=await firstDb.TaskTypes.SingleAsync();
+        var ana=new AppUser{Email="first-claim@test",DisplayName="Ana",CreatedBy=admin.Email};
+        var bia=new AppUser{Email="second-claim@test",DisplayName="Bia",CreatedBy=admin.Email};
+        firstDb.Users.AddRange(ana,bia);
+        firstDb.UserDepartments.AddRange(new UserDepartment{UserId=ana.Id,DepartmentId=department.Id},new UserDepartment{UserId=bia.Id,DepartmentId=department.Id});
+        await firstDb.SaveChangesAsync();
+        var created=await firstService.CreateAsync(new("Disputa de fila","Contexto",type.Id,null,null,department.Id,department.Id,null,null,null,null,"5511999990000",null,null,null,null,false,[],[]),admin);
+        await using var secondDb=new OperationsDbContext(options);
+        var stale=await secondDb.CorporateTasks.SingleAsync(entry=>entry.Id==created.Id);
+        ActorContext Viewer(AppUser person)=>new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false)]);
+        await firstService.AssignAsync(new(created.Id,ana.Id,stale.Version),Viewer(ana));
+        var secondService=new TaskService(secondDb);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(()=>secondService.AssignAsync(new(created.Id,bia.Id,stale.Version),Viewer(bia)));
+        Assert.Equal(ana.Id,(await firstDb.CorporateTasks.AsNoTracking().SingleAsync(entry=>entry.Id==created.Id)).AssigneeUserId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Current_assignee_can_reassign_across_departments_without_extra_capability(bool canEdit)
     {
         await using var db=CreateContext();var (service,admin)=await InitializeAsync(db);
         var support=await db.TaskDepartments.SingleAsync(x=>x.Name=="Suporte");
@@ -90,18 +155,23 @@ public sealed class TaskServiceTests
         var outsider=new AppUser{Email="outside@test",DisplayName="Outro setor",CreatedBy=admin.Email};
         var blocked=new AppUser{Email="blocked@test",DisplayName="Bloqueado",BlockedAt=DateTimeOffset.UtcNow,CreatedBy=admin.Email};
         db.Users.AddRange(ana,bia,outsider,blocked);
-        db.UserDepartments.AddRange(new UserDepartment{UserId=ana.Id,DepartmentId=support.Id},new UserDepartment{UserId=bia.Id,DepartmentId=finance.Id},new UserDepartment{UserId=bia.Id,DepartmentId=support.Id},new UserDepartment{UserId=outsider.Id,DepartmentId=finance.Id},new UserDepartment{UserId=blocked.Id,DepartmentId=support.Id});
+        db.UserDepartments.AddRange(new UserDepartment{UserId=ana.Id,DepartmentId=support.Id},new UserDepartment{UserId=bia.Id,DepartmentId=finance.Id},new UserDepartment{UserId=outsider.Id,DepartmentId=finance.Id},new UserDepartment{UserId=blocked.Id,DepartmentId=support.Id});
         await db.SaveChangesAsync();
         var id=(await service.CreateAsync(new("Trocar responsável","Contexto",type.Id,null,null,support.Id,support.Id,ana.Id,null,"123456","Clínica","5511999990000",null,null,null,null,false,[],[]),admin)).Id;
         var task=await db.CorporateTasks.SingleAsync(x=>x.Id==id);
         var actor=new ActorContext(ana.Email,ana.DisplayName,"Colaborador","Suporte",[new("tasks",true,false,canEdit,false,false)]);
-        await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(id,outsider.Id,task.Version),actor));
         await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(id,blocked.Id,task.Version),actor));
         Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(id,bia.Id,task.Version+1),actor))).StatusCode);
         await service.AssignAsync(new(id,bia.Id,task.Version),actor);
         Assert.Equal(bia.Id,task.AssigneeUserId);
         Assert.Contains(db.TaskHistory,x=>x.TaskId==id&&x.EventType=="assignee_changed");
         Assert.Contains(db.TaskNotifications,x=>x.TaskId==id&&x.RecipientUserId==bia.Id&&x.EventType=="assigned");
+        var biaActor=new ActorContext(bia.Email,bia.DisplayName,"Colaborador","Financeiro",[new("tasks",true,false,false,false,false)]);
+        Assert.Equal(id,Assert.Single((await service.GetModuleAsync(biaActor)).Tasks).Id);
+        var progress=await db.TaskStatuses.SingleAsync(status=>status.Name=="Em andamento");
+        await service.ChangeStatusAsync(new(id,progress.Id,null,task.Version),biaActor);
+        Assert.Equal(progress.Id,task.StatusId);
+        Assert.False((await service.GetModuleAsync(actor)).Collaborators.Single(collaborator=>collaborator.Id==blocked.Id).Active);
         Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignAsync(new(id,ana.Id,task.Version),actor))).StatusCode);
     }
 
@@ -147,6 +217,9 @@ public sealed class TaskServiceTests
     [InlineData("documento.pdf", "application/pdf")]
     [InlineData("dados.csv", "text/csv")]
     [InlineData("arquivos.zip", "application/zip")]
+    [InlineData("arte.svg", "image/svg+xml")]
+    [InlineData("pagina.html", "text/html")]
+    [InlineData("backup.7z", "application/octet-stream")]
     public async Task S3_denial_preserves_the_complete_file_in_private_storage_and_on_the_reopened_card(string name, string type)
     {
         await using var db = CreateContext();
@@ -283,7 +356,7 @@ public sealed class TaskServiceTests
     }
 
     [Fact]
-    public async Task Rejects_assignee_that_does_not_belong_to_destination_department()
+    public async Task Creates_task_for_an_active_assignee_from_another_department()
     {
         await using var db = CreateContext();
         var (service, actor) = await InitializeAsync(db);
@@ -296,15 +369,21 @@ public sealed class TaskServiceTests
             CreatedBy = actor.Email,
         };
         db.Users.Add(outsider);
+        var finance = await db.TaskDepartments.SingleAsync(department=>department.Name=="Financeiro");
+        db.UserDepartments.Add(new UserDepartment {UserId=outsider.Id,DepartmentId=finance.Id});
         await db.SaveChangesAsync();
 
-        var exception = await Assert.ThrowsAsync<DomainException>(() => service.CreateAsync(
+        var created = await service.CreateAsync(
             new CreateCorporateTaskCommand(
-                "Tarefa inválida", "Descrição", type.Id, null, null,
+                "Tarefa de outro setor", "Descrição", type.Id, null, null,
                 support.Id, support.Id, outsider.Id, null, null, null, "5511999990000", null, null, null, null, false, [], []),
-            actor));
+            actor);
 
-        Assert.Contains("não pertence", exception.Message);
+        var outsiderActor=new ActorContext(outsider.Email,outsider.DisplayName,"Colaborador","Financeiro",[new("tasks",true,false,false,false,false)]);
+        var visible=Assert.Single((await service.GetModuleAsync(outsiderActor)).Tasks);
+        Assert.Equal(created.Id,visible.Id);
+        Assert.Equal(support.Id,visible.CurrentDepartmentId);
+        Assert.Equal(outsider.Id,visible.AssigneeUserId);
     }
 
     [Fact]
@@ -652,6 +731,47 @@ public sealed class TaskServiceTests
         Assert.Equal("Contato realizado com o cliente.", Assert.Single((await tasks.GetModuleAsync(actor)).Tasks.Single(entry => entry.Id == created.Id).Comments).Body);
         await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, []), actor);
         Assert.False((await db.UserDepartments.SingleAsync(entry => entry.UserId == coordinator.Id && entry.DepartmentId == support.Id)).IsCoordinator);
+    }
+
+    [Fact]
+    public async Task Completion_notifies_creator_owner_coordinators_and_commenters_once_and_keeps_the_result_visible()
+    {
+        await using var db=CreateContext();var (service,admin)=await InitializeAsync(db);
+        var support=await db.TaskDepartments.SingleAsync(entry=>entry.Name=="Suporte");var type=await db.TaskTypes.SingleAsync();
+        var owner=new AppUser{Email="completion-owner@test",DisplayName="Responsável",CreatedBy=admin.Email};
+        var commenter=new AppUser{Email="completion-commenter@test",DisplayName="Comentou",CreatedBy=admin.Email};
+        var coordinator=new AppUser{Email="completion-coord@test",DisplayName="Coordenação",CreatedBy=admin.Email};
+        var blocked=new AppUser{Email="completion-blocked@test",DisplayName="Bloqueado",BlockedAt=DateTimeOffset.UtcNow,CreatedBy=admin.Email};
+        db.Users.AddRange(owner,commenter,coordinator,blocked);
+        db.UserDepartments.AddRange(new UserDepartment{UserId=owner.Id,DepartmentId=support.Id},new UserDepartment{UserId=commenter.Id,DepartmentId=support.Id},new UserDepartment{UserId=coordinator.Id,DepartmentId=support.Id,IsCoordinator=true});await db.SaveChangesAsync();
+        var created=await service.CreateAsync(new("Conclusão notificada","Contexto",type.Id,null,null,support.Id,support.Id,null,null,null,null,"5511999990000",null,null,null,null,false,[],[]),admin);
+        var task=await db.CorporateTasks.SingleAsync(entry=>entry.Id==created.Id);
+        var creatorId=(await db.Users.SingleAsync(entry=>entry.Email==admin.Email)).Id;
+        foreach(var id in new[]{commenter.Id,commenter.Id,owner.Id,coordinator.Id,creatorId,blocked.Id})db.TaskComments.Add(new TaskComment{TaskId=task.Id,AuthorUserId=id,Body="Histórico de contato"});await db.SaveChangesAsync();
+        ActorContext Viewer(AppUser person)=>new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false)]);
+        await service.AssignAsync(new(task.Id,null,task.Version),Viewer(owner));
+        Assert.Empty((await service.GetModuleAsync(Viewer(commenter))).Tasks);
+        var final=await db.TaskStatuses.SingleAsync(status=>status.Name=="Resolvida");
+        await service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),Viewer(owner));
+        var expected=new[]{creatorId,owner.Id,coordinator.Id,commenter.Id}.Order().ToArray();
+        Assert.Equal(expected,(await db.TaskNotifications.Where(entry=>entry.TaskId==task.Id&&entry.EventType=="task_completed").Select(entry=>entry.RecipientUserId).ToArrayAsync()).Order().ToArray());
+        var commentModule=await service.GetModuleAsync(Viewer(commenter));Assert.Equal(created.Id,Assert.Single(commentModule.Tasks).Id);
+        Assert.Single(commentModule.Notifications,entry=>entry.EventType=="task_completed");Assert.Single((await service.GetModuleAsync(Viewer(owner))).Notifications,entry=>entry.EventType=="task_completed");
+        await service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),Viewer(owner));
+        Assert.Equal(expected.Length,await db.TaskNotifications.CountAsync(entry=>entry.TaskId==task.Id&&entry.EventType=="task_completed"));
+    }
+
+    [Fact]
+    public async Task Assigned_developer_can_read_only_the_linked_parent_and_its_video_without_task_module_permission()
+    {
+        await using var db=CreateContext();var (service,admin)=await InitializeAsync(db);var department=await db.TaskDepartments.SingleAsync(entry=>entry.Name=="Suporte");var type=await db.TaskTypes.SingleAsync();
+        var task=await service.CreateAsync(new("Matriz privada","Descrição",type.Id,null,null,department.Id,department.Id,null,null,null,null,"5511999990000",null,null,null,null,false,[],[]),admin);
+        var developer=new AppUser{Email="linked-developer@test",DisplayName="TI responsável",CreatedBy=admin.Email};var outsider=new AppUser{Email="unlinked-developer@test",DisplayName="Outro TI",CreatedBy=admin.Email};db.AddRange(developer,outsider);
+        db.Add(new WorkItem{Module="ti",RecordType="Tarefa de desenvolvimento",Title="Subtarefa",Status="Ajuste",CreatedBy=admin.Email,Description=System.Text.Json.JsonSerializer.Serialize(new{kind="developmentTask",sourceTaskId=task.Id,executor=developer.DisplayName})});await db.SaveChangesAsync();
+        using var bytes=new MemoryStream([1,2,3,4]);var file=await service.UploadAttachmentAsync(new(task.Id,null,"evidencia.mp4","video/mp4",4,bytes),admin);
+        ActorContext Viewer(AppUser user)=>new(user.Email,user.DisplayName,"Colaborador","TI",[new("ti",true,false,false,false,false)]);
+        Assert.Equal(task.Id,Assert.Single((await service.GetModuleAsync(Viewer(developer))).Tasks).Id);Assert.NotNull((await service.GetAttachmentDownloadAsync(file,Viewer(developer))).Content);
+        Assert.Empty((await service.GetModuleAsync(Viewer(outsider))).Tasks);Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.GetAttachmentDownloadAsync(file,Viewer(outsider)))).StatusCode);
     }
 
     private static async Task<(TaskService Service, ActorContext Actor)> InitializeAsync(

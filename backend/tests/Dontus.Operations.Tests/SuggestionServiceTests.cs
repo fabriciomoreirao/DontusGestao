@@ -99,6 +99,43 @@ public sealed partial class SuggestionServiceTests
         Assert.Equal("Contexto", suggestion.Description);
     }
 
+    [Fact]
+    public async Task Files_can_be_replaced_and_removed_only_with_edit_permission()
+    {
+        await using var db=CreateContext();var user=AddUser(db,"files@test","Responsável");await db.SaveChangesAsync();var service=new SuggestionService(db);await service.InitializeAsync();
+        var priority=await db.SuggestionPriorities.FirstAsync();var suggestion=await service.CreateSuggestionAsync(new("Anexos","Contexto",null,priority.Id,false,false),Actor(user));
+        using var first=new MemoryStream([1,2,3]);var file=await service.UploadAttachmentAsync(new(suggestion.Id,"imagem.png","image/png",3,first),Actor(user));
+        var reader=Actor(user) with {Permissions=[new("suggestions",true,false,false,false,false)]};
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteAttachmentAsync(file,reader))).StatusCode);
+        await service.DeleteAttachmentAsync(file,Actor(user));Assert.Empty(await db.SuggestionAttachments.ToArrayAsync());Assert.Empty(await db.SuggestionAttachmentContents.ToArrayAsync());
+        using var replacement=new MemoryStream([4,5,6]);var newFile=await service.UploadAttachmentAsync(new(suggestion.Id,"video.mp4","video/mp4",3,replacement),Actor(user));
+        Assert.Equal(newFile,Assert.Single((await service.GetModuleAsync(Actor(user))).Suggestions).Attachments.Single().Id);
+        Assert.NotNull((await service.GetAttachmentDownloadAsync(newFile,reader)).Content);
+    }
+
+    [Theory]
+    [InlineData("arte.svg", "image/svg+xml")]
+    [InlineData("backup.7z", "application/octet-stream")]
+    [InlineData("pagina.html", "text/html")]
+    [InlineData("arquivo.exe", "application/octet-stream")]
+    public async Task General_file_formats_keep_their_bytes_and_download_names(string name, string type)
+    {
+        await using var db = CreateContext();
+        var user = AddUser(db, "all-formats@test", "Responsável");
+        await db.SaveChangesAsync();
+        var service = new SuggestionService(db);
+        await service.InitializeAsync();
+        var priority = await db.SuggestionPriorities.FirstAsync();
+        var suggestion = await service.CreateSuggestionAsync(new("Anexos", "Contexto", null, priority.Id, false, false), Actor(user));
+        var original = new byte[] { 0, 1, 2, 255 };
+        using var bytes = new MemoryStream(original);
+        var id = await service.UploadAttachmentAsync(new(suggestion.Id, name, type, bytes.Length, bytes), Actor(user));
+        var download = await service.GetAttachmentDownloadAsync(id, Actor(user));
+        Assert.Equal(name, download.FileName);
+        Assert.Equal(type, download.ContentType);
+        Assert.Equal(original, download.Content);
+    }
+
     private static AppUser AddUser(OperationsDbContext db, string email, string name)
     {
         var user = new AppUser { Email = email, DisplayName = name, Department = "Produto", CreatedBy = "tests@dontus.local" };

@@ -64,6 +64,7 @@ public interface ISuggestionService
     Task<Guid> AddCommentAsync(AddSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateCommentAsync(UpdateSuggestionCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> UploadAttachmentAsync(UploadSuggestionAttachmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task DeleteAttachmentAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default);
     Task<TaskAttachmentDownloadDto> GetAttachmentDownloadAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default);
     Task DeleteSuggestionAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
 }

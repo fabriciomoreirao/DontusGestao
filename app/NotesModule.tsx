@@ -13,18 +13,21 @@ export type Note = {
   visibility: "public" | "private";
   author: string;
   canEdit: boolean;
+  departmentId?: string | null;
+  customerId?: string | null;
+  customerCode?: string;
 };
 
-export type NotesModuleData = { notes: Note[] };
+export type NotesModuleData = { notes: Note[]; departments?: {id: string; name: string}[] };
 type OperationResult = { id?: string } | false;
 type Operate = (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
-type EditorState = { id: string | null; title: string; content: string; color: string; visibility: "public" | "private" };
+export type EditorState = { id: string | null; title: string; content: string; color: string; visibility: "public" | "private"; departmentId?: string | null; customerId?: string | null; customerCode?: string };
 
 const DEFAULT_COLOR = "#7c3aed";
 const emptyEditor = (): EditorState => ({ id: null, title: "", content: "", color: DEFAULT_COLOR, visibility: "private" });
 const noteDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 
-export default function NotesModule({ module, busy, operate }: { module: NotesModuleData; busy: boolean; operate: Operate }) {
+export default function NotesModule({ module, busy, operate, canCreate = true }: { canCreate?: boolean; module: NotesModuleData; busy: boolean; operate: Operate }) {
   const [query, setQuery] = useState("");
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [viewing, setViewing] = useState<Note | null>(null);
@@ -60,7 +63,7 @@ export default function NotesModule({ module, busy, operate }: { module: NotesMo
 
   const saveNote = async (payload: EditorState) => {
     const result = await operate(
-      { action: "saveNote", id: payload.id, title: payload.title, description: payload.content, color: payload.color, status: payload.visibility },
+      { action: "saveNote", id: payload.id, title: payload.title, description: payload.content, color: payload.color, status: payload.visibility, departmentId: payload.departmentId || null, customerId: payload.customerId || null, customerCode: payload.customerCode || "" },
       payload.id ? "Anotação atualizada com sucesso." : "Anotação criada com sucesso.",
     );
     if (result) setEditor(null);
@@ -69,7 +72,7 @@ export default function NotesModule({ module, busy, operate }: { module: NotesMo
   return <>
     <header className="page-header notes-header module-page-header">
       <div className="module-page-title"><span className="module-page-title-icon"><StickyNote size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO PESSOAL</span><h1>Anotações</h1><p>{module.notes.length} {module.notes.length === 1 ? "anotação" : "anotações"} · arraste os cartões para reorganizar.</p></span></div>
-      <div className="module-page-actions"><button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={17} /> Nova anotação</button></div>
+      <div className="module-page-actions">{canCreate && <button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={17} /> Nova anotação</button>}</div>
     </header>
 
     <div className="notes-toolbar">
@@ -78,9 +81,9 @@ export default function NotesModule({ module, busy, operate }: { module: NotesMo
       {module.notes.length > 1 && <span>Arraste pelo ícone para organizar</span>}
     </div>
 
-    {visibleNotes.length === 0 ? <div className="notes-empty"><StickyNote size={30} /><strong>{query ? "Nenhuma anotação encontrada" : "Comece sua coleção de anotações"}</strong><p>{query ? "Tente outra palavra na busca." : "Registre informações, modelos e lembretes importantes para o seu dia."}</p>{!query && <button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={16} /> Criar primeira anotação</button>}</div> : <section className="notes-grid">
+    {visibleNotes.length === 0 ? <div className="notes-empty"><StickyNote size={30} /><strong>{query ? "Nenhuma anotação encontrada" : "Comece sua coleção de anotações"}</strong><p>{query ? "Tente outra palavra na busca." : "Registre informações, modelos e lembretes importantes para o seu dia."}</p>{!query && canCreate && <button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={16} /> Criar primeira anotação</button>}</div> : <section className="notes-grid">
       {visibleNotes.map((note) => <NoteCard key={note.id} note={note} busy={busy} dragging={draggedId === note.id} copied={copiedId === note.id}
-        onEdit={() => note.canEdit ? setEditor({ id: note.id, title: note.title, content: note.content, color: note.color, visibility: note.visibility }) : setViewing(note)}
+        onEdit={() => note.canEdit ? setEditor({ id: note.id, title: note.title, content: note.content, color: note.color, visibility: note.visibility, departmentId: note.departmentId, customerId: note.customerId, customerCode: note.customerCode }) : setViewing(note)}
     onCopy={() => void copyNote(note)}
         onDuplicate={() => void operate({ action: "duplicateNote", id: note.id }, "Anotação duplicada com sucesso.")}
         onDelete={() => void operate({ action: "deleteNote", id: note.id }, "Anotação excluída com sucesso.")}
@@ -91,7 +94,7 @@ export default function NotesModule({ module, busy, operate }: { module: NotesMo
     </section>}
 
     {viewing && <div className="modal-backdrop" onMouseDown={event => event.currentTarget === event.target && setViewing(null)}><section className="modal note-editor" role="dialog" aria-modal="true" aria-label="Visualizar anotação pública"><header className="modal-head"><div><span className="eyebrow">ANOTAÇÃO PÚBLICA · {viewing.author}</span><h2>{viewing.title}</h2></div><button className="icon-button" aria-label="Fechar" onClick={() => setViewing(null)}><X size={20} /></button></header><div className="note-view-content">{viewing.content || "Sem conteúdo."}</div><div className="form-actions"><button className="secondary-button" onClick={() => void copyNote(viewing)}><Copy size={15} />{copiedId === viewing.id ? "Copiado" : "Copiar conteúdo"}</button><button className="primary-button" onClick={() => setViewing(null)}>Fechar</button></div></section></div>}
-    {editor && <NoteEditor editor={editor} busy={busy} onClose={() => setEditor(null)} onSave={saveNote} />}
+    {editor && <NoteEditor departments={module.departments} editor={editor} busy={busy} onClose={() => setEditor(null)} onSave={saveNote} />}
   </>;
 }
 
@@ -107,11 +110,12 @@ function NoteCard({ note, busy, dragging, copied, onEdit, onCopy, onDuplicate, o
   </article>;
 }
 
-function NoteEditor({ editor, busy, onClose, onSave }: { editor: EditorState; busy: boolean; onClose: () => void; onSave: (payload: EditorState) => void }) {
+export function NoteEditor({ editor, busy, onClose, onSave, departments = [] }: { departments?: {id: string; name: string}[]; editor: EditorState; busy: boolean; onClose: () => void; onSave: (payload: EditorState) => void }) {
+  const [visibility, setVisibility] = useState(editor.visibility);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    onSave({ id: editor.id, title: String(form.get("title") ?? ""), content: String(form.get("content") ?? ""), color: String(form.get("color") ?? DEFAULT_COLOR), visibility: String(form.get("visibility")??"private") as "public"|"private" });
+    onSave({ ...editor, departmentId: String(form.get("departmentId") || "") || null, id: editor.id, title: String(form.get("title") ?? ""), content: String(form.get("content") ?? ""), color: String(form.get("color") ?? DEFAULT_COLOR), visibility: String(form.get("visibility")??"private") as "public"|"private" });
   };
-  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className="modal note-editor" role="dialog" aria-modal="true" aria-label={editor.id ? "Editar anotação" : "Nova anotação"}><div className="modal-head"><div><span className="eyebrow">ANOTAÇÕES</span><h2>{editor.id ? "Editar anotação" : "Nova anotação"}</h2><p>Defina se o conteúdo será privado ou compartilhado com a equipe.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div><form className="form-grid" onSubmit={submit}><label className="wide">Título *<input name="title" defaultValue={editor.title} required maxLength={240} autoFocus placeholder="Título da anotação" /></label><label>Visibilidade<select name="visibility" defaultValue={editor.visibility}><option value="private">Privada · somente eu</option><option value="public">Pública · equipe</option></select></label><label className="wide">Conteúdo<textarea name="content" defaultValue={editor.content} rows={7} placeholder="Escreva sua anotação..." /></label><label className="wide note-color-field">Cor<div><input name="color" type="color" defaultValue={editor.color} aria-label="Selecionar cor da anotação" /><span><strong>Selecionar cor do cartão</strong><small>Escolha qualquer cor para identificar esta anotação.</small></span></div></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy}><Save size={16} /> {busy ? "Salvando..." : editor.id ? "Salvar alterações" : "Criar anotação"}</button></div></form></div></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className="modal note-editor" role="dialog" aria-modal="true" aria-label={editor.id ? "Editar anotação" : "Nova anotação"}><div className="modal-head"><div><span className="eyebrow">ANOTAÇÕES</span><h2>{editor.id ? "Editar anotação" : "Nova anotação"}</h2><p>Defina se o conteúdo será privado ou compartilhado com a equipe.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div><form className="form-grid" onSubmit={submit}><label className="wide">Título *<input name="title" defaultValue={editor.title} required maxLength={240} autoFocus placeholder="Título da anotação" /></label><label>Visibilidade<select name="visibility" value={visibility} onChange={event => setVisibility(event.target.value as "public"|"private")}><option value="private">Privada · somente eu</option><option value="public">Pública · equipe</option></select></label>{visibility === "public" && <label>Compartilhar com<select name="departmentId" defaultValue={editor.departmentId || ""}><option value="">Todos os setores</option>{departments.map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>}<label className="wide">Conteúdo<textarea name="content" defaultValue={editor.content} rows={7} placeholder="Escreva sua anotação..." /></label><label className="wide note-color-field">Cor<div><input name="color" type="color" defaultValue={editor.color} aria-label="Selecionar cor da anotação" /><span><strong>Selecionar cor do cartão</strong><small>Escolha qualquer cor para identificar esta anotação.</small></span></div></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy}><Save size={16} /> {busy ? "Salvando..." : editor.id ? "Salvar alterações" : "Criar anotação"}</button></div></form></div></div>;
 }
