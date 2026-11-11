@@ -21,6 +21,7 @@ import "./requested-refinements.css";
 import "./ui-ux-system.css";
 import "./goals-tasks-refinement.css";
 import "./task-reference.css";
+import "./crm-workspace-refinement.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

@@ -849,7 +849,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var manageCommissions = actor.HasPermission("commissions", "manage") || actor.HasPermission("commissions", "approve");
         var manageReferrals = actor.HasPermission("referrals", "manage") || actor.HasPermission("referrals", "approve");
         var entries = await db.CustomerCatalogOptions.AsNoTracking()
-            .Where(entry => includeInactive || entry.Active || manageCommissions && entry.Catalog == "commissionRule" ||
+            // Inactive CRM overrides suppress inherited reasons and must also reach regular viewers.
+            .Where(entry => includeInactive || entry.Active || entry.Catalog.StartsWith("commercialLossReason_") || manageCommissions && entry.Catalog == "commissionRule" ||
                 manageReferrals && (entry.Catalog == "referralCommission" || entry.Catalog == "referralModule" || entry.Catalog == "referralUsageStatus"))
             .OrderBy(entry => entry.Catalog).ThenBy(entry => entry.Name)
             .Select(entry => new CustomerCatalogOptionDto(entry.Id, entry.Catalog, entry.Name, entry.Description, entry.Active))

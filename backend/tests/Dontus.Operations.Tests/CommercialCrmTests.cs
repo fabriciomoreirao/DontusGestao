@@ -67,6 +67,65 @@ public sealed class CommercialCrmTests
         Assert.Equal(12991, (await db.WorkItems.SingleAsync(item => item.Id == id)).AmountCents);
     }
 
+    [Fact]
+    public async Task Regular_viewers_receive_disabled_crm_overrides_without_other_inactive_catalogs()
+    {
+        await using var db = Context();
+        var legacy = new CustomerCatalogOption { Catalog = "lossReason", Name = "Preço" };
+        var disabled = new CustomerCatalogOption { Catalog = "commercialLossReason_alpha", Name = "Preço", Active = false };
+        db.CustomerCatalogOptions.AddRange(legacy, disabled,
+            new CustomerCatalogOption { Catalog = "commercialProduct", Name = "Produto antigo", Active = false },
+            new CustomerCatalogOption { Catalog = "lossReason", Name = "Motivo antigo", Active = false });
+        await db.SaveChangesAsync();
+        var viewer = new ActorContext("viewer@example.com", "Leitor", "Colaborador", "Comercial",
+            [new("commercial", true, false, false, false, false)]);
+
+        var result = await new OperationsService(db).GetCustomerModuleAsync(viewer);
+
+        Assert.Equal(2, result.Catalogs.Count);
+        Assert.Contains(result.Catalogs, option => option.Id == legacy.Id && option.Active);
+        Assert.Contains(result.Catalogs, option => option.Id == disabled.Id && !option.Active);
+    }
+
+    [Fact]
+    public async Task Editing_a_crm_loss_reason_preserves_other_crms_and_legacy_reasons()
+    {
+        await using var db = Context();
+        var service = new OperationsService(db);
+        var manager = new ActorContext("manager@example.com", "Gestor", "Gestor", "Comercial",
+            [new("commercial", true, true, true, true, true)]);
+        var legacyId = await service.SaveCustomerCatalogAsync(null, "lossReason", "Preço", "{}", true, manager);
+        var alphaId = await service.SaveCustomerCatalogAsync(null, "commercialLossReason_alpha", "Preço", "{}", true, manager);
+        var betaId = await service.SaveCustomerCatalogAsync(null, "commercialLossReason_beta", "Preço", "{}", true, manager);
+
+        await service.SaveCustomerCatalogAsync(alphaId, "commercialLossReason_alpha", "Orçamento Alpha", "{\"inheritedName\":\"Preço\"}", false, manager);
+        db.ChangeTracker.Clear();
+
+        var alpha = await db.CustomerCatalogOptions.SingleAsync(option => option.Id == alphaId);
+        Assert.Equal("Orçamento Alpha", alpha.Name);
+        Assert.False(alpha.Active);
+        foreach (var id in new[] { legacyId, betaId })
+        {
+            var unchanged = await db.CustomerCatalogOptions.SingleAsync(option => option.Id == id);
+            Assert.Equal("Preço", unchanged.Name);
+            Assert.True(unchanged.Active);
+        }
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.SaveCustomerCatalogAsync(
+            betaId, "commercialLossReason_alpha", "Outro motivo", "{}", true, manager))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Scoped_loss_reasons_require_commercial_management_permission()
+    {
+        await using var db = Context();
+        var service = new OperationsService(db);
+        var error = await Assert.ThrowsAsync<DomainException>(() => service.SaveCustomerCatalogAsync(
+            null, "commercialLossReason_alpha", "Preço", "{}", true, Actor("commercial")));
+
+        Assert.Equal(403, error.StatusCode);
+        Assert.Empty(db.CustomerCatalogOptions);
+    }
+
     private static ActorContext Actor(string screen) => new("operator@example.com", "Operador", "Colaborador", "Suporte",
         [new(screen, true, true, true, false, false)]);
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>()
