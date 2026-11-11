@@ -12,3 +12,9 @@ export function chatSeenLabel(value?: string | null, now = Date.now(), seenByCou
 }
 
 export const CHAT_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉"];
+
+export function chatListDateLabel(value:string,now=Date.now()):string {
+  if(!Number.isFinite(Date.parse(value)))return "";
+  const day=date.format(new Date(value));
+  return day===date.format(new Date(now))?"Hoje":day===date.format(new Date(now-86_400_000))?"Ontem":fullDate.format(new Date(value));
+}

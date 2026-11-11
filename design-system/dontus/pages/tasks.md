@@ -21,3 +21,15 @@ Comentários e histórico começam com cinco registros recentes e revelam mais e
 blocos de cinco. O editor compacto oferece emoji, negrito, anexos e envio.
 O texto mantém espaços e parágrafos e o negrito é persistido como `**texto**`, sem
 aceitar HTML executável. Os temas claro e escuro usam os tokens do sistema.
+
+## Responsável e fila compartilhada
+
+Qualquer colaborador ativo com acesso às tarefas e vínculo ao setor pode assumir
+uma tarefa sem responsável, em seu próprio nome, pelo botão visível ao lado do
+campo. Uma vez atribuída, somente o responsável atual pode transferi-la a outro
+colaborador ativo, inclusive de outro setor. Para os demais, o nome é somente leitura.
+A API aplica as mesmas restrições, inclusive ao encaminhar entre setores, e valida
+a versão para evitar que duas pessoas assumam o mesmo item simultaneamente.
+
+A tarefa atribuída e seu setor aparecem para o novo responsável. Esse acesso não
+libera criar tarefas em outros setores nem consultar as tarefas de terceiros.

@@ -19,9 +19,9 @@ export type AgendaCelebrant = { id: string; name: string; birthDate: string | nu
 export type AgendaCommitment = {
   id: string; agendaId: string; agendaTypeId: string; agendaStatusId: string; title: string; description: string;
   startsAt: string; endsAt: string; responsibleUserId: string; responsibleName: string; typeName: string;
-  statusName: string; statusColor: string; createdBy: string; participantUserIds: string[]; recurrenceGroupId?: string | null; recurrenceCount?: number;
+  statusChangedAt?: string | null; statusName: string; statusColor: string; createdBy: string; participantUserIds: string[]; recurrenceGroupId?: string | null; recurrenceCount?: number;
 };
-export type AgendaModuleData = { calendars: AgendaCalendar[]; departments: AgendaDepartment[]; types: AgendaType[]; statuses: AgendaStatus[]; collaborators: AgendaCollaborator[]; celebrants: AgendaCelebrant[]; commitments: AgendaCommitment[]; canManage: boolean };
+export type AgendaModuleData = { calendars: AgendaCalendar[]; departments: AgendaDepartment[]; types: AgendaType[]; statuses: AgendaStatus[]; collaborators: AgendaCollaborator[]; celebrants: AgendaCelebrant[]; commitments: AgendaCommitment[]; canManage: boolean; alerts?:Array<{id:string;title:string;startsAt:string;statusChangedAt:string}> };
 export type QuickAgendaPreset = { title?: string; description?: string; responsibleName?: string };
 type Operate = (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>;
 
@@ -205,11 +205,13 @@ export default function AgendaModule({ module, busy, operate, currentEmail, curr
   };
   const effectiveCalendarFilter = calendarFilter === "all" || module.calendars.some((item) => item.id === calendarFilter && item.active) ? calendarFilter : "all";
   const effectiveTypeFilter = typeFilter === "all" || module.types.some((item) => item.id === typeFilter && item.active) ? typeFilter : "all";
+  const agendaViewer=module.collaborators.find(person=>person.email.toLowerCase()===currentEmail.toLowerCase());
+  const isOwnSectorView=module.calendars.some(calendar=>calendar.id===effectiveCalendarFilter&&calendar.departmentId===agendaViewer?.departmentId);
   const filtered = useMemo(() => module.commitments.filter((entry) =>
-    (effectiveCalendarFilter === "all" || entry.agendaId === effectiveCalendarFilter) &&
+    (effectiveCalendarFilter === "all" || entry.agendaId === effectiveCalendarFilter || isOwnSectorView && entry.participantUserIds.includes(agendaViewer?.id??"")) &&
     (effectiveTypeFilter === "all" || entry.agendaTypeId === effectiveTypeFilter) &&
     (collaboratorFilter === "all" || entry.responsibleUserId === collaboratorFilter || entry.participantUserIds.includes(collaboratorFilter)),
-  ), [module.commitments, effectiveCalendarFilter, effectiveTypeFilter, collaboratorFilter]);
+  ), [module.commitments, effectiveCalendarFilter, effectiveTypeFilter, collaboratorFilter,isOwnSectorView,agendaViewer?.id]);
   const visibleCommitments = showMeetingRoomCommitments
     ? filtered
     : filtered.filter((entry) => !isMeetingRoomCommitment(entry, module.calendars));

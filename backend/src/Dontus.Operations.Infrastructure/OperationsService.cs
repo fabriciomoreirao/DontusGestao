@@ -139,14 +139,28 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var registeredUser = await db.Users.AsNoTracking().Where(user => user.Email == actor.Email)
             .Select(user => new { user.Id, user.CreatedAt }).SingleOrDefaultAsync(cancellationToken);
         var registeredAt = registeredUser?.CreatedAt ?? DateTimeOffset.MinValue;
+        var sharedParentIds = registeredUser is null || !actor.HasPermission("tasks", "view") ? [] : await db.CorporateTasks.AsNoTracking()
+            .Where(task => task.CreatorUserId == registeredUser.Id || task.AssigneeUserId == registeredUser.Id).Select(task => task.Id).ToArrayAsync(cancellationToken);
+        var sharedDevelopmentIds = new List<Guid>();
+        if (sharedParentIds.Length > 0)
+        {
+            var developments = await db.WorkItems.AsNoTracking().Where(item => item.Module == "ti" && item.Description.Contains("developmentTask")).Select(item => new { item.Id, item.Description }).ToArrayAsync(cancellationToken);
+            foreach (var development in developments)
+            {
+                try { var source = JsonNode.Parse(development.Description)?["sourceTaskId"]?.ToString(); if (Guid.TryParse(source, out var parentId) && sharedParentIds.Contains(parentId)) sharedDevelopmentIds.Add(development.Id); }
+                catch (JsonException) { }
+            }
+        }
+        var visibleNoteIds = actor.HasPermission("notes", "view") ? (await GetNotesModuleAsync(actor,cancellationToken)).Notes.Select(note=>note.Id).ToArray() : [];
         var includeAllDescriptions = knownWorkItemVersions is null;
         var knownVersionKeys = knownWorkItemVersions?.Select(entry => $"{entry.Key}:{entry.Value}").ToArray() ?? [];
         // Keep authorization and version metadata in SQL, without fetching unchanged embedded files.
         // Commission descriptions still participate in the identity check below.
         var items = await db.WorkItems.AsNoTracking()
-            .Where(x => visibleModules.Contains(x.Module)
+            .Where(x => (visibleModules.Contains(x.Module) || sharedDevelopmentIds.Contains(x.Id))
                 && x.RecordType != "Perfil de colaborador"
-                && (directlyVisibleModules.Contains(x.Module) || canManageCommissions || x.Owner == actor.DisplayName)
+                && (x.Module != "notes" || visibleNoteIds.Contains(x.Id))
+                && (directlyVisibleModules.Contains(x.Module) || sharedDevelopmentIds.Contains(x.Id) || canManageCommissions || x.Owner == actor.DisplayName)
                 && (x.Module != "reminders" || x.CreatedAt >= registeredAt)
                 && (x.Module != "reminders" || x.CustomerName == actor.Email || x.CreatedBy == actor.Email || actor.HasPermission("reminders", "manage"))
                 && (x.Module != "diary" || x.CreatedBy == actor.Email)
@@ -349,10 +363,15 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .Take(500)
             .ToListAsync(cancellationToken);
 
+        var userId = await db.Users.Where(user => user.Email == actor.Email).Select(user => (Guid?)user.Id).SingleOrDefaultAsync(cancellationToken);
+        var memberships = await db.UserDepartments.Where(member => member.UserId == userId).Select(member => member.DepartmentId).ToArrayAsync(cancellationToken);
+        notes = notes.Where(note => note.CreatedBy == actor.Email || ReadNoteMetadata(note.TagsJson).DepartmentId is not Guid department || memberships.Contains(department)).ToList();
         return new NotesModuleDto(notes.Select(entry => new NoteDto(
             entry.Id, entry.Title, entry.Description, ReadNoteColor(entry.TagsJson),
             (int)Math.Min(entry.AmountCents, int.MaxValue), entry.UpdatedAt,
-            entry.Team == "Pública" ? "public" : "private", entry.Owner, entry.CreatedBy == actor.Email)).ToArray());
+            entry.Team == "Pública" ? "public" : "private", entry.Owner, entry.CreatedBy == actor.Email)
+            { DepartmentId = ReadNoteMetadata(entry.TagsJson).DepartmentId, CustomerCode = ReadNoteMetadata(entry.TagsJson).CustomerCode ?? "", CustomerId = entry.CustomerId }).ToArray())
+        { Departments = await db.TaskDepartments.Where(department => department.Active).OrderBy(department => department.Name).Select(department => new NoteDepartmentDto(department.Id, department.Name)).ToArrayAsync(cancellationToken) };
     }
 
     public async Task<Guid> SaveNoteAsync(
@@ -362,13 +381,18 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         string? color,
         string? visibility,
         ActorContext actor,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Guid? departmentId = null, string? customerCode = null, Guid? customerId = null)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new DomainException("Informe o título da anotação.");
         if (title.Trim().Length > 240)
             throw new DomainException("O título deve ter no máximo 240 caracteres.");
 
+        if (departmentId.HasValue && !await db.TaskDepartments.AnyAsync(department => department.Id == departmentId && department.Active, cancellationToken))
+            throw new DomainException("Selecione um setor ativo.");
+        if (customerId.HasValue && !await db.Customers.AnyAsync(customer => customer.Id == customerId, cancellationToken))
+            throw new DomainException("Cliente não encontrado.", 404);
+        if (!string.Equals(visibility, "public", StringComparison.OrdinalIgnoreCase)) departmentId = null;
         var now = DateTimeOffset.UtcNow;
         var normalizedColor = NormalizeNoteColor(color);
         if (id is null)
@@ -383,9 +407,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             {
                 Module = "notes",
                 RecordType = "Anotação",
+                CustomerId = customerId,
                 Title = title.Trim(),
                 Description = content?.Trim() ?? "",
-                TagsJson = SerializeNoteColor(normalizedColor),
+                TagsJson = JsonSerializer.Serialize(new NoteMetadata(normalizedColor, departmentId, customerCode?.Trim())),
                 Status = "Ativa",
                 Priority = "P3",
                 Owner = actor.DisplayName,
@@ -403,9 +428,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var existing = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Id == id.Value, cancellationToken)
             ?? throw new DomainException("Anotação não encontrada.", 404);
         EnsureOwnedNote(existing, actor);
+        existing.CustomerId = customerId;
         existing.Title = title.Trim();
         existing.Description = content?.Trim() ?? "";
-        existing.TagsJson = SerializeNoteColor(normalizedColor);
+        existing.TagsJson = JsonSerializer.Serialize(new NoteMetadata(normalizedColor, departmentId, customerCode?.Trim()));
         existing.Team = string.Equals(visibility, "public", StringComparison.OrdinalIgnoreCase) ? "Pública" : "Pessoal";
         existing.UpdatedAt = now;
         existing.Version++;
@@ -442,7 +468,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             RecordType = "Anotação",
             Title = string.Concat(source.Title, " (cópia)"),
             Description = source.Description,
-            TagsJson = SerializeNoteColor(ReadNoteColor(source.TagsJson)),
+            TagsJson = source.TagsJson,
+            CustomerId = source.CustomerId,
             Team = source.Team,
             Status = "Ativa",
             Priority = "P3",
@@ -1027,6 +1054,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
 
         if (TryReadJourneyIdentity(command.Description, out var journeyKind, out var clientId, out var journeyTrack) &&
             !string.IsNullOrWhiteSpace(clientId) &&
+            !(journeyKind.Equals("csJourney", StringComparison.OrdinalIgnoreCase) && journeyTrack.Equals("retention", StringComparison.OrdinalIgnoreCase)) &&
             (journeyKind.Equals("csJourney", StringComparison.OrdinalIgnoreCase) || journeyKind.Equals("liaJourney", StringComparison.OrdinalIgnoreCase)))
         {
             var module = command.Module.Trim();
@@ -1060,6 +1088,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 throw new DomainException("Este processo seletivo foi finalizado e não recebe novas inscrições.", 409);
         }
 
+        await ConfiguredRecordFields.ValidateAsync(db, command.Description, null, cancellationToken);
         var item = new WorkItem
         {
             Module = command.Module.Trim(),
@@ -1410,6 +1439,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Informe o título do registro.");
 
+        command = await ValidateWaitingQueueEditAsync(item, command, actor, cancellationToken);
         var previouslyWon = SalesCelebrationService.IsWon(item);
         if (item.Module == "commercial")
             command = command with { Description = SalesCelebrationService.PreserveWinDate(item, command.Description) };
@@ -1419,6 +1449,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             command = command with { Description = assignment.Description, Owner = assignment.Owner };
         }
 
+        await ConfiguredRecordFields.ValidateAsync(db, command.Description, item.Description, cancellationToken);
         GoalProgress.Validate(item.Module, command.Description);
         CsDistributionService.Assignment? distribution = null;
         if (command.ResponsibleUserId.HasValue)
@@ -1440,7 +1471,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (item.Module == "cs")
         {
             command = command with { Description = CsJourneyTimeline.Normalize(CsDistributionService.PreserveMetadata(item.Description, command.Description, distribution), item) };
-            if (TryReadJourneyIdentity(command.Description, out var editedKind, out var editedId, out var editedTrack) && editedKind == "csJourney" && !string.IsNullOrWhiteSpace(editedId))
+            if (TryReadJourneyIdentity(command.Description, out var editedKind, out var editedId, out var editedTrack) && editedKind == "csJourney" && editedTrack != "retention" && !string.IsNullOrWhiteSpace(editedId))
             {
                 var others = await db.WorkItems.AsNoTracking().Where(entry => entry.Module == "cs" && entry.Id != item.Id)
                     .Select(entry => entry.Description).ToListAsync(cancellationToken);
@@ -1449,6 +1480,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                     throw new DomainException("ID já inserido na funcionalidade.", 409);
             }
         }
+        command = command with { Description = await SyncDevelopmentCommentsAsync(item, command.Description, actor, cancellationToken) };
         if (distribution is not null) AddAudit(actor, CsDistributionService.AuditAction, "work_item", item.Id.ToString(), "cs", distribution);
 
         if (!string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -1491,6 +1523,50 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         });
         AddAudit(actor, "Update", "work_item", item.Id.ToString(), item.Module, new { item.RecordType, item.Title });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<string?> SyncDevelopmentCommentsAsync(WorkItem item, string? description, ActorContext actor, CancellationToken ct)
+    {
+        if (item.Module != "ti") return description;
+        JsonObject? before, after;
+        try { before = JsonNode.Parse(item.Description) as JsonObject; after = JsonNode.Parse(description ?? "") as JsonObject; }
+        catch (JsonException) { return description; }
+        if (after?["kind"]?.ToString() != "developmentTask" || !Guid.TryParse(after["sourceTaskId"]?.ToString(), out var parentId)) return description;
+        if (before?["sourceTaskId"]?.ToString() != after["sourceTaskId"]?.ToString()) throw new DomainException("A tarefa matriz não pode ser alterada.");
+        var parent = await db.CorporateTasks.SingleOrDefaultAsync(task => task.Id == parentId, ct) ?? throw new DomainException("Tarefa matriz não encontrada.", 404);
+        var author = await db.Users.SingleAsync(user => user.Email == actor.Email, ct);
+        var oldComments = (before?["comments"] as JsonArray ?? []).Select(comment => comment?.ToJsonString()).ToHashSet();
+        var additions = (after["comments"] as JsonArray ?? []).OfType<JsonObject>().Where(comment => !oldComments.Contains(comment.ToJsonString())).ToArray();
+        foreach (var comment in additions)
+        {
+            var text = comment["text"]?.ToString(); if (string.IsNullOrWhiteSpace(text)) continue;
+            text = CommentFiles.Validate(text,4000);
+            var id = Guid.TryParse(comment["matrixCommentId"]?.ToString(), out var savedId) ? savedId : Guid.NewGuid();
+            if (await db.TaskComments.AnyAsync(entry => entry.Id == id, ct)) continue;
+            db.TaskComments.Add(new TaskComment { Id = id, TaskId = parent.Id, AuthorUserId = author.Id, Body = text });
+            comment["matrixCommentId"] = id.ToString();
+            db.TaskHistory.Add(new TaskHistory { TaskId = parent.Id, ActorUserId = author.Id, EventType = "comment_added", Summary = "Comentário incluído pela subtarefa", Source = "development" });
+        }
+        if (additions.Length > 0) { parent.Version++; parent.UpdatedAt = DateTimeOffset.UtcNow; }
+        return after.ToJsonString();
+    }
+
+    private async Task<UpdateWorkItemCommand> ValidateWaitingQueueEditAsync(WorkItem item, UpdateWorkItemCommand command, ActorContext actor, CancellationToken ct)
+    {
+        if (item.Module != "waitingQueue") return command;
+        JsonObject before, after;
+        try { before = JsonNode.Parse(item.Description) as JsonObject ?? throw new JsonException(); after = JsonNode.Parse(command.Description ?? "") as JsonObject ?? throw new JsonException(); }
+        catch (JsonException) { throw new DomainException("Encaminhamento inválido."); }
+        if (before["departmentId"]?.ToString() == after["departmentId"]?.ToString()) return command;
+        if (!string.Equals(item.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase))
+            throw new DomainException("Somente o criador pode alterar o setor do encaminhamento.", 403);
+        if (!Guid.TryParse(after["departmentId"]?.ToString(), out var departmentId)) throw new DomainException("Selecione o setor de destino.");
+        var department = await db.TaskDepartments.SingleOrDefaultAsync(entry => entry.Id == departmentId && entry.Active, ct) ?? throw new DomainException("Selecione um setor ativo.");
+        after["departmentName"] = department.Name; after["responsibleUserId"] = ""; after["responsibleName"] = "";
+        // An assignment activity provides a fresh, stable notification identity for the new sector.
+        db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module, Kind = "Responsável alterado", Summary = "Setor: " + department.Name, Actor = actor.DisplayName });
+        item.Team = department.Name;
+        return command with { Description = after.ToJsonString(), Owner = "Fila compartilhada" };
     }
 
     private static string? CustomerSuccessJourneyStatus(string description)
@@ -1872,7 +1948,12 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         "#c1444d", "#a83b86", "#5b5bd6", "#64748b",
     ];
 
-    private sealed record NoteMetadata(string Color);
+    private sealed record NoteMetadata(string Color, Guid? DepartmentId = null, string? CustomerCode = null);
+    private static NoteMetadata ReadNoteMetadata(string? value)
+    {
+        try { return JsonSerializer.Deserialize<NoteMetadata>(value ?? "") ?? new NoteMetadata(NoteColors[0]); }
+        catch (JsonException) { return new NoteMetadata(NoteColors[0]); }
+    }
 
     private static string NormalizeNoteColor(string? color)
     {

@@ -370,6 +370,29 @@ public sealed class AgendaServiceTests
         Assert.Empty(db.AuditEvents.Where(entry => entry.Action == "Delete"));
     }
 
+    [Fact]
+    public async Task Scheduled_alert_survives_description_edit_and_ends_only_when_status_changes()
+    {
+        var (db,service,command,actor)=await RecurrenceContext();await using var context=db;
+        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));var commitment=await db.AgendaCommitments.SingleAsync();commitment.StatusChangedAt=DateTimeOffset.UtcNow.AddDays(-4);await db.SaveChangesAsync();
+        Assert.Equal(id,Assert.Single((await service.GetModuleAsync(actor)).Alerts).Id);
+        await service.UpdateCommitmentAsync(new(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,command.ResponsibleUserId,command.Title,"Nova descrição",command.StartsAt,command.EndsAt,[]),actor);
+        Assert.Single((await service.GetModuleAsync(actor)).Alerts);
+        var final=new AgendaStatus{Name="Concluído"};db.Add(final);await db.SaveChangesAsync();await service.ChangeCommitmentStatusAsync(new(id,final.Id),actor);Assert.Empty((await service.GetModuleAsync(actor)).Alerts);
+    }
+    [Fact]
+    public async Task Meeting_invitation_shares_only_invited_booking_without_granting_room_access()
+    {
+        var (db,service,command,actor)=await RecurrenceContext();await using var context=db;
+        var calendar=await db.AgendaCalendars.SingleAsync();calendar.Name="Sala de reunião";(await db.Users.SingleAsync()).IsCoordinator=true;
+        var invited=new AppUser{Email="invited@test",DisplayName="Convidado",CreatedBy="tests"};db.Add(invited);await db.SaveChangesAsync();
+        var booking=Assert.Single(await service.CreateCommitmentAsync(command with{ParticipantUserIds=[invited.Id]},actor));
+        await service.CreateCommitmentAsync(command with{StartsAt=command.StartsAt.AddHours(2),EndsAt=command.EndsAt.AddHours(2)},actor);
+        var invitedActor=new ActorContext(invited.Email,invited.DisplayName,"Colaborador","Outro setor",[new("work",true,false,false,false,false)]);
+        var view=await service.GetModuleAsync(invitedActor);Assert.Equal(booking,Assert.Single(view.Commitments).Id);Assert.Equal(command.AgendaTypeId,view.Commitments.Single().AgendaTypeId);
+        Assert.Empty(await db.UserAgendaCalendarAccesses.Where(grant=>grant.UserId==invited.Id).ToArrayAsync());
+    }
+
     private static AgendaCommitment ExistingSlot(CreateAgendaCommitmentCommand command, ActorContext actor) => new()
     {
         AgendaId = command.AgendaId, AgendaTypeId = command.AgendaTypeId, AgendaStatusId = command.AgendaStatusId,

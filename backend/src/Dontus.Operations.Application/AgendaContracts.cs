@@ -12,7 +12,10 @@ public sealed record AgendaCommitmentDto(
     Guid Id, Guid AgendaId, Guid AgendaTypeId, string Title, string Description,
     DateTimeOffset StartsAt, DateTimeOffset EndsAt, Guid ResponsibleUserId,
     string ResponsibleName, string TypeName, Guid AgendaStatusId, string StatusName, string StatusColor,
-    string CreatedBy, IReadOnlyCollection<Guid> ParticipantUserIds, Guid? RecurrenceGroupId = null, int RecurrenceCount = 1);
+    string CreatedBy, IReadOnlyCollection<Guid> ParticipantUserIds, Guid? RecurrenceGroupId = null, int RecurrenceCount = 1)
+{
+    public DateTimeOffset? StatusChangedAt { get; init; }
+}
 
 public sealed record AgendaModuleDto(
     IReadOnlyCollection<AgendaCalendarDto> Calendars,
@@ -22,7 +25,11 @@ public sealed record AgendaModuleDto(
     IReadOnlyCollection<AgendaCollaboratorDto> Collaborators,
     IReadOnlyCollection<AgendaCelebrantDto> Celebrants,
     IReadOnlyCollection<AgendaCommitmentDto> Commitments,
-    bool CanManage);
+    bool CanManage)
+{
+    public IReadOnlyCollection<AgendaStaleAlertDto> Alerts { get; init; } = [];
+}
+public sealed record AgendaStaleAlertDto(Guid Id, string Title, DateTimeOffset StartsAt, DateTimeOffset StatusChangedAt);
 
 public sealed record SaveAgendaCalendarCommand(Guid? Id, string Name, string? Description, Guid DepartmentId, bool Active);
 public sealed record SaveAgendaTypeCommand(Guid? Id, string Name, string? Description, string? Color, bool Active);

@@ -10,12 +10,6 @@ namespace Dontus.Operations.Infrastructure;
 public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileStorage = null, ILogger<TaskService>? logger = null) : ITaskService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly HashSet<string> BlockedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".ade", ".adp", ".app", ".bat", ".cmd", ".com", ".cpl", ".dll", ".exe",
-        ".hta", ".htm", ".html", ".js", ".jse", ".msi", ".msp", ".ps1", ".scr",
-        ".svg", ".vbe", ".vbs", ".wsf",
-    };
     private const long MaximumAttachmentSizeBytes = 25 * 1024 * 1024;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -163,7 +157,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     public async Task<TaskModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
     {
         var canViewTasks = actor.HasPermission("tasks", "view");
-        if (!canViewTasks)
+        if (!canViewTasks && !actor.HasPermission("ti", "view"))
             actor.RequirePermission("catalogs", "view");
         var user = await GetActorUserAsync(actor, cancellationToken);
         var memberDepartments = await db.UserDepartments
@@ -175,27 +169,30 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var viewOthers = manages || actor.HasCapability("tasks", "viewOthers");
         var participantTaskIds = db.TaskParticipants.Where(x => x.UserId == user.Id).Select(x => x.TaskId);
         var tasksWithParticipants = db.TaskParticipants.Select(x => x.TaskId).Distinct();
+        var completedCommentedTaskIds = db.TaskComments.Where(comment => comment.AuthorUserId == user.Id
+            && db.CorporateTasks.Any(task => task.Id == comment.TaskId && task.CompletedAt.HasValue && !task.Cancelled)).Select(comment => comment.TaskId);
         var coordinatedDepartments = await db.UserDepartments
             .Where(x => x.UserId == user.Id && x.IsCoordinator)
             .Select(x => x.DepartmentId)
             .ToListAsync(cancellationToken);
 
+        var developmentParentIds = await DevelopmentParentIdsAsync(user, actor, cancellationToken);
         var query = db.CorporateTasks.AsNoTracking();
         if (!canViewTasks)
-            query = query.Where(_ => false);
+            query = query.Where(task => developmentParentIds.Contains(task.Id));
         else if (!manages)
         {
             query = query.Where(x => !tasksWithParticipants.Contains(x.Id)
                 || x.AssigneeUserId == null && memberDepartments.Contains(x.CurrentDepartmentId)
                 || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
-                || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId));
+                || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id));
             if (!viewAllDepartments)
                 query = viewOthers
                     ? query.Where(x => memberDepartments.Contains(x.CurrentDepartmentId)
-                        || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.SourceDepartmentId))
+                        || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id))
                     : query.Where(x => x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
                         || x.AssigneeUserId == null && memberDepartments.Contains(x.CurrentDepartmentId)
-                        || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId));
+                        || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id));
         }
 
         var tasks = await query.OrderByDescending(x => x.UpdatedAt).Take(1000).ToListAsync(cancellationToken);
@@ -222,7 +219,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var pauseStatuses = await db.TaskSlaPauseStatuses.AsNoTracking().ToListAsync(cancellationToken);
         var notifications = await db.TaskNotifications.AsNoTracking()
             .Where(x => x.RecipientUserId == user.Id && taskIds.Contains(x.TaskId)
-                && (x.EventType == "client_contact_requested"
+                && (x.EventType == "task_completed"
+                    ? db.CorporateTasks.Any(task => task.Id == x.TaskId && task.CompletedAt.HasValue && !task.Cancelled)
+                    : x.EventType == "client_contact_requested"
                     ? db.CorporateTasks.Any(task => task.Id == x.TaskId && task.ClientNotificationState == "Avisar Cliente")
                     : x.ActorUserId != user.Id && (x.EventType == "approval_requested"
                         || (x.EventType == "assigned" || x.EventType == "transferred" || x.EventType == "comment_added")
@@ -283,7 +282,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 x.AlertBeforeMinutes, x.EscalationMinutes, x.RecalculateOnTransfer,
                 pauseStatuses.Where(m => m.SlaPolicyId == x.Id).Select(m => m.StatusId).ToList(), x.Active)).ToList(),
             users.Values.OrderBy(x => x.DisplayName).Select(x => new TaskCollaboratorDto(
-                x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, ProfilePhotoUrls.For(x.Id, x.UpdatedAt, x.HasPhoto), x.Active,
+                x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, ProfilePhotoUrls.For(x.Id, x.UpdatedAt, x.HasPhoto), x.Active && x.BlockedAt == null,
                 userDepartments.Where(m => m.UserId == x.Id).Select(m => m.DepartmentId).ToList(),
                 userDepartments.Where(m => m.UserId == x.Id && m.IsCoordinator).Select(m => m.DepartmentId).ToList())).ToList(),
             notifications.Select(x => new TaskNotificationDto(x.Id, x.TaskId,
@@ -331,7 +330,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (!await db.TaskTypeStatuses.AnyAsync(x => x.TaskTypeId == type.Id && x.StatusId == status.Id, cancellationToken))
             throw new DomainException("O status não pertence ao fluxo configurado para o tipo.");
         if (command.AssigneeUserId.HasValue)
-            await ValidateAssigneeAsync(command.AssigneeUserId.Value, command.CurrentDepartmentId, cancellationToken);
+            await ValidateAssigneeAsync(command.AssigneeUserId.Value, cancellationToken);
 
         // A política selecionada no tipo (ou a política geral do setor) é vinculada
         // já na criação e passa a contabilizar o prazo a partir deste instante.
@@ -433,6 +432,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             RequireCapabilityOrManage(actor, "changeStatus");
         }
         if (task.Version != command.Version) throw new DomainException("A tarefa foi alterada por outro usuário.", 409);
+        if (task.StatusId == status.Id) return;
         if (status.DepartmentId.HasValue && status.DepartmentId != task.CurrentDepartmentId)
             throw new DomainException("O status não pertence ao setor atual da tarefa.");
         if (cancelling) RequireCapabilityOrManage(actor, "cancel");
@@ -443,6 +443,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (status.IsFinal && string.IsNullOrWhiteSpace(task.Description))
             throw new DomainException("A tarefa não pode ser concluída sem descrição.");
 
+        var wasCompleted = task.CompletedAt.HasValue && !task.Cancelled;
         var previous = task.StatusId;
         task.StatusId = status.Id;
         task.UpdatedAt = DateTimeOffset.UtcNow;
@@ -454,6 +455,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             $"Status alterado para {status.Name}", new { StatusId = previous }, new { StatusId = status.Id },
             command.Justification);
         await NotifyInterestedAsync(task, user.Id, "status_changed", $"A tarefa #{task.Number} mudou para {status.Name}.", cancellationToken);
+        if (status.IsFinal && !cancelling && !wasCompleted)
+            await NotifyCompletedAsync(task, user.Id, cancellationToken);
         if (isApprovalStatus)
             await NotifyWorkflowStakeholdersAsync(task, user.Id, "approval_requested", $"A tarefa {task.Protocol} foi enviada para aprovação.", cancellationToken, true);
         await db.SaveChangesAsync(cancellationToken);
@@ -516,6 +519,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             RequireCapabilityOrManage(actor, "forward");
         }
         if (task.Version != command.Version) throw new DomainException("A tarefa foi alterada por outro usuário.", 409);
+        if (task.AssigneeUserId.HasValue && task.AssigneeUserId != user.Id && command.AssigneeUserId != task.AssigneeUserId)
+            throw new DomainException("Somente o responsável atual pode transferir a responsabilidade da tarefa.", 403);
         var destination = await db.TaskDepartments.SingleOrDefaultAsync(x => x.Id == command.DepartmentId && x.Active, cancellationToken)
             ?? throw new DomainException("Setor de destino inválido ou inativo.");
         if (destination.Id == task.CurrentDepartmentId)
@@ -523,7 +528,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (destination.RequiresAssigneeOnTransfer && !command.AssigneeUserId.HasValue)
             throw new DomainException("O setor de destino exige um responsável.");
         if (command.AssigneeUserId.HasValue)
-            await ValidateAssigneeAsync(command.AssigneeUserId.Value, destination.Id, cancellationToken);
+            await ValidateAssigneeAsync(command.AssigneeUserId.Value, cancellationToken);
         var previousDepartment = task.CurrentDepartmentId;
         var previousAssignee = task.AssigneeUserId;
         var previousStatus = task.StatusId;
@@ -578,14 +583,21 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     {
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
-        if (!command.AssigneeUserId.HasValue || task.AssigneeUserId != user.Id)
-        {
-            actor.RequirePermission("tasks", "edit");
-            RequireCapabilityOrManage(actor, command.AssigneeUserId.HasValue ? "transferAssignee" : "assume");
-        }
         if (task.Version != command.Version) throw new DomainException("A tarefa foi alterada por outro usuário.", 409);
         var assigneeId = command.AssigneeUserId ?? user.Id;
-        await ValidateAssigneeAsync(assigneeId, task.CurrentDepartmentId, cancellationToken);
+        if (task.AssigneeUserId.HasValue)
+        {
+            if (task.AssigneeUserId != user.Id)
+                throw new DomainException("Somente o responsável atual pode transferir a responsabilidade da tarefa.", 403);
+        }
+        else
+        {
+            if (assigneeId != user.Id)
+                throw new DomainException("Assuma a tarefa em seu próprio nome antes de transferir a responsabilidade.", 403);
+            if (!await db.UserDepartments.AnyAsync(x => x.UserId == user.Id && x.DepartmentId == task.CurrentDepartmentId, cancellationToken))
+                throw new DomainException("Somente colaboradores do setor podem assumir uma tarefa da fila compartilhada.", 403);
+        }
+        await ValidateAssigneeAsync(assigneeId, cancellationToken);
         var previous = task.AssigneeUserId;
         task.AssigneeUserId = assigneeId;
         task.UpdatedAt = DateTimeOffset.UtcNow;
@@ -704,9 +716,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     public async Task UpdateCommentAsync(UpdateTaskCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("tasks", "edit");
-        var body = command.Body;
-        if (string.IsNullOrWhiteSpace(body) || body.Length > 4000)
-            throw new DomainException("Informe um comentário de até 4.000 caracteres.");
+        var body = CommentFiles.Validate(command.Body,4000);
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
         var comment = await db.TaskComments.SingleOrDefaultAsync(entry => entry.Id == command.CommentId && entry.TaskId == task.Id, cancellationToken)
@@ -1137,8 +1147,6 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("O arquivo está vazio.");
         if (command.SizeBytes > MaximumAttachmentSizeBytes)
             throw new DomainException("Cada anexo pode possuir no máximo 25 MB.");
-        if (BlockedAttachmentExtensions.Contains(Path.GetExtension(fileName)))
-            throw new DomainException("Este tipo de arquivo não é permitido por segurança.");
         var attachment = new TaskAttachment
         {
             TaskId = task.Id,
@@ -1270,12 +1278,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("Você não possui acesso ao setor selecionado.", 403);
     }
 
-    private async Task ValidateAssigneeAsync(Guid userId, Guid departmentId, CancellationToken cancellationToken)
+    private async Task ValidateAssigneeAsync(Guid userId, CancellationToken cancellationToken)
     {
         if (!await db.Users.AnyAsync(x => x.Id == userId && x.Active && x.BlockedAt == null, cancellationToken))
             throw new DomainException("Somente colaboradores ativos podem receber tarefas.");
-        if (!await db.UserDepartments.AnyAsync(x => x.UserId == userId && x.DepartmentId == departmentId, cancellationToken))
-            throw new DomainException("O responsável não pertence ao setor selecionado.");
     }
 
     private async Task EnsureSlaNotificationsAsync(Guid actorUserId, CancellationToken cancellationToken)
@@ -1329,14 +1335,36 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("Somente o criador ou o responsável pode editar ou excluir esta tarefa.", 403);
     }
 
+    private async Task<Guid[]> DevelopmentParentIdsAsync(AppUser user, ActorContext actor, CancellationToken ct)
+    {
+        if (!actor.HasPermission("ti", "view")) return [];
+        var rows = await db.WorkItems.AsNoTracking().Where(item => item.Module == "ti" && item.Description.Contains("developmentTask")).Select(item => item.Description).ToArrayAsync(ct);
+        var ids = new HashSet<Guid>();
+        foreach (var row in rows)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(row); var root = document.RootElement;
+                var executor = root.TryGetProperty("executor", out var value) ? value.GetString() : null;
+                if (new[] { user.DisplayName, user.Email, user.Id.ToString() }.Any(identity => string.Equals(identity, executor, StringComparison.OrdinalIgnoreCase))
+                    && root.TryGetProperty("sourceTaskId", out var parent) && Guid.TryParse(parent.GetString(), out var id)) ids.Add(id);
+            }
+            catch (JsonException) { }
+        }
+        return ids.ToArray();
+    }
+
     private async Task<CorporateTask> LoadVisibleTaskAsync(
         Guid taskId, AppUser user, ActorContext actor, CancellationToken cancellationToken)
     {
+        if ((await DevelopmentParentIdsAsync(user, actor, cancellationToken)).Contains(taskId))
+            return await db.CorporateTasks.SingleOrDefaultAsync(task => task.Id == taskId, cancellationToken) ?? throw new DomainException("Tarefa não encontrada.", 404);
         actor.RequirePermission("tasks", "view");
         var task = await db.CorporateTasks.SingleOrDefaultAsync(x => x.Id == taskId, cancellationToken)
             ?? throw new DomainException("Tarefa não encontrada.", 404);
         if (actor.HasPermission("tasks", "manage")) return task;
         if (task.CreatorUserId == user.Id || task.AssigneeUserId == user.Id) return task;
+        if (task.CompletedAt.HasValue && !task.Cancelled && await db.TaskComments.AnyAsync(comment => comment.TaskId == task.Id && comment.AuthorUserId == user.Id, cancellationToken)) return task;
         if (!task.AssigneeUserId.HasValue && await db.UserDepartments.AnyAsync(x => x.UserId == user.Id
             && x.DepartmentId == task.CurrentDepartmentId, cancellationToken)) return task;
         if (await db.TaskParticipants.AnyAsync(x => x.TaskId == task.Id && x.UserId == user.Id, cancellationToken))
@@ -1417,10 +1445,22 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         foreach (var recipient in recipients) AddNotification(task.Id, recipient, actorId, type, message);
     }
 
+    private async Task NotifyCompletedAsync(CorporateTask task, Guid actorId, CancellationToken ct)
+    {
+        var coordinators = db.UserDepartments.Where(link => link.IsCoordinator
+            && (link.DepartmentId == task.CurrentDepartmentId || link.DepartmentId == task.SourceDepartmentId)).Select(link => link.UserId);
+        var commenters = db.TaskComments.Where(comment => comment.TaskId == task.Id).Select(comment => comment.AuthorUserId);
+        var stakeholderIds = (await coordinators.Concat(commenters).Distinct().ToArrayAsync(ct))
+            .Append(task.CreatorUserId).Concat(task.AssigneeUserId.HasValue ? new[] { task.AssigneeUserId.Value } : Array.Empty<Guid>()).Distinct().ToArray();
+        var recipients = await db.Users.Where(user => stakeholderIds.Contains(user.Id) && user.Active && user.BlockedAt == null).Select(user => user.Id).ToArrayAsync(ct);
+        foreach (var recipient in recipients)
+            AddNotification(task.Id, recipient, actorId, "task_completed", $"A tarefa {task.Protocol} foi concluída: {task.Title}.");
+    }
+
     private void AddNotification(Guid taskId, Guid recipientId, Guid actorId, string type, string message)
     {
-        if (recipientId == actorId && type != "client_contact_requested"
-            || type is not ("assigned" or "transferred" or "comment_added" or "client_contact_requested" or "approval_requested")) return;
+        if (recipientId == actorId && type is not ("client_contact_requested" or "task_completed")
+            || type is not ("assigned" or "transferred" or "comment_added" or "client_contact_requested" or "approval_requested" or "task_completed")) return;
         db.TaskNotifications.Add(new()
         {
             TaskId = taskId, RecipientUserId = recipientId, ActorUserId = actorId,

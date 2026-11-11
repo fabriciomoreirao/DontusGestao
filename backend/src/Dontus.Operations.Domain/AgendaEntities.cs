@@ -47,6 +47,7 @@ public sealed class AgendaCommitment : Entity
     public Guid AgendaId { get; set; }
     public Guid AgendaTypeId { get; set; }
     public Guid AgendaStatusId { get; set; }
+    public DateTimeOffset? StatusChangedAt { get; set; }
     public Guid ResponsibleUserId { get; set; }
     public required string Title { get; set; }
     public string Description { get; set; } = "";

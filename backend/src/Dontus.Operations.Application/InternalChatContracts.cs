@@ -44,6 +44,7 @@ public sealed record SetInternalChatMessageReactionCommand(Guid RoomId, Guid Mes
 public sealed record SetInternalChatRoomArchivedCommand(Guid RoomId, bool Archived);
 public sealed record MarkInternalChatRoomReadCommand(Guid RoomId);
 public sealed record UpdateInternalChatGroupCommand(Guid RoomId, string? Name, string? PhotoDataUrl);
+public sealed record ChangeInternalChatMembersCommand(Guid RoomId, IReadOnlyCollection<Guid>? AddUserIds, Guid? RemoveUserId, bool Leave);
 
 public sealed record UploadInternalChatAttachmentCommand(
     Guid RoomId, string FileName, string ContentType, long SizeBytes, Stream Content, Guid? ReplyToMessageId = null);
@@ -64,6 +65,7 @@ public interface IInternalChatService
     Task SetArchivedAsync(SetInternalChatRoomArchivedCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task MarkReadAsync(MarkInternalChatRoomReadCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateGroupAsync(UpdateInternalChatGroupCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task ChangeMembersAsync(ChangeInternalChatMembersCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> UploadAttachmentAsync(UploadInternalChatAttachmentCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<InternalChatAttachmentDto> GetAttachmentAsync(Guid messageId, ActorContext actor, CancellationToken cancellationToken = default);
 }

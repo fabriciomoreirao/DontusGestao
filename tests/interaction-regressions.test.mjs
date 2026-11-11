@@ -713,7 +713,8 @@ test("integra redes, acesso total, alertas por ID e notificações persistentes"
   assert.match(app, /buildNotifications/);
   assert.match(app, /entry\.targetUrl/);
   assert.match(app, /onAuthenticated=\{\(\) => window\.location\.replace\("\/"\)\}/);
-  assert.match(actions, /ID do cliente \*/);
+  assert.match(actions, /ID do cliente<input/);
+  assert.match(actions, /customer\?\.id \|\| null/);
   assert.match(actions, /pattern="\[0-9\]\{6\}"/);
   assert.match(actions, /Nome do cliente/);
   assert.match(notices, /Ver depois/);

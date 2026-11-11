@@ -22,3 +22,9 @@ export function taskInitialSelection(statuses: readonly Status[], requestedId: s
   const marked = statuses.filter(status => status.isInitial);
   return marked.length === 1 ? marked[0].id : "";
 }
+
+// Assigned tasks stay visible across sectors without granting creation in those sectors.
+export function taskViewingDepartments<T extends Department>(departments:readonly T[],collaborator:Collaborator|undefined,viewAll:boolean,assignedDepartmentIds:readonly string[]):T[] {
+  const visible=new Set([...availableTaskDepartments(departments,collaborator,viewAll).map(department=>department.id),...assignedDepartmentIds]);
+  return departments.filter(department=>department.active && visible.has(department.id));
+}

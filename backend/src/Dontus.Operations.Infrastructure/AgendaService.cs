@@ -17,8 +17,11 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var canManage = CanManage(actor);
         var memberDepartmentIds = await AccessibleAgendaCalendarIdsAsync(actorUser.Id, cancellationToken);
 
+        var meetingRoomIds = (await db.AgendaCalendars.AsNoTracking().ToListAsync(cancellationToken)).Where(IsMeetingRoom).Select(calendar=>calendar.Id).ToArray();
+        var invitedCommitmentIds = db.AgendaCommitmentParticipants.Where(participant => participant.UserId == actorUser.Id && db.AgendaCommitments.Any(commitment=>commitment.Id==participant.CommitmentId && meetingRoomIds.Contains(commitment.AgendaId))).Select(participant => participant.CommitmentId);
+        var invitedCalendarIds = db.AgendaCommitments.Where(commitment => invitedCommitmentIds.Contains(commitment.Id)).Select(commitment => commitment.AgendaId);
         var calendarsQuery = db.AgendaCalendars.AsNoTracking();
-        if (!canManage) calendarsQuery = calendarsQuery.Where(calendar => calendar.Active && memberDepartmentIds.Contains(calendar.Id));
+        if (!canManage) calendarsQuery = calendarsQuery.Where(calendar => calendar.Active && (memberDepartmentIds.Contains(calendar.Id) || invitedCalendarIds.Contains(calendar.Id)));
         var calendars = await calendarsQuery.OrderBy(calendar => calendar.Name).ToListAsync(cancellationToken);
         var calendarIds = calendars.Select(calendar => calendar.Id).ToArray();
         // A agenda utiliza a mesma base de setores do RH. Assim, setores criados ou
@@ -49,10 +52,11 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             var primary = userDepartments.Where(x => x.UserId == user.Id).OrderByDescending(x => x.IsPrimary).FirstOrDefault();
             return new AgendaCollaboratorDto(user.Id, user.DisplayName, user.Email, primary?.DepartmentId ?? Guid.Empty,
                 primary is null ? user.Department : departments.GetValueOrDefault(primary.DepartmentId, user.Department), user.BirthDate, user.StartedAt, ids);
-        }).Where(user => user.AgendaIds!.Count > 0).OrderBy(user => user.Name).ToArray();
+        }).Where(user => user.AgendaIds!.Count > 0 || user.Id == actorUser.Id || actorUser.IsCoordinator && calendars.Any(IsMeetingRoom)).OrderBy(user => user.Name).ToArray();
 
         var commitments = await db.AgendaCommitments.AsNoTracking()
-            .Where(commitment => calendarIds.Contains(commitment.AgendaId))
+            .Where(commitment => calendarIds.Contains(commitment.AgendaId)
+                && (canManage || memberDepartmentIds.Contains(commitment.AgendaId) || invitedCommitmentIds.Contains(commitment.Id)))
             .OrderBy(commitment => commitment.StartsAt)
             .Take(1500)
             .ToListAsync(cancellationToken);
@@ -65,6 +69,12 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             .ToListAsync(cancellationToken);
         var typeNames = types.ToDictionary(type => type.Id);
         var statusNames = statuses.ToDictionary(status => status.Id);
+
+        var scheduledIds = statuses.Where(status => new string(status.Name.Where(char.IsLetter).ToArray()).Equals("Agendado", StringComparison.OrdinalIgnoreCase)).Select(status => status.Id).ToHashSet();
+        var cutoff = clock.GetUtcNow().AddDays(-3);
+        var alerts = commitments.Where(commitment => commitment.ResponsibleUserId == actorUser.Id && scheduledIds.Contains(commitment.AgendaStatusId)
+            && (commitment.StatusChangedAt ?? commitment.CreatedAt) < cutoff)
+            .Select(commitment => new AgendaStaleAlertDto(commitment.Id, commitment.Title, commitment.StartsAt, commitment.StatusChangedAt ?? commitment.CreatedAt)).ToArray();
 
         return new AgendaModuleDto(
             calendars.Select(calendar => new AgendaCalendarDto(calendar.Id, calendar.Name, calendar.Description, calendar.DepartmentId,
@@ -89,9 +99,9 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
                     type?.Name ?? "Tipo removido", commitment.AgendaStatusId, status?.Name ?? "Status removido", status?.Color ?? "#64748b",
                     commitment.CreatedBy,
                     participants.Where(participant => participant.CommitmentId == commitment.Id).Select(participant => participant.UserId).ToArray(),
-                    commitment.RecurrenceGroupId, commitment.RecurrenceGroupId.HasValue ? groupCounts.GetValueOrDefault(commitment.RecurrenceGroupId.Value, 1) : 1);
+                    commitment.RecurrenceGroupId, commitment.RecurrenceGroupId.HasValue ? groupCounts.GetValueOrDefault(commitment.RecurrenceGroupId.Value, 1) : 1) { StatusChangedAt = commitment.StatusChangedAt ?? commitment.CreatedAt };
             }).ToArray(),
-            canManage);
+            canManage) { Alerts = alerts };
     }
 
     public async Task<Guid> SaveCalendarAsync(SaveAgendaCalendarCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -241,6 +251,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
                 AgendaId = calendar.Id,
                 AgendaTypeId = type.Id,
                 AgendaStatusId = status.Id,
+                StatusChangedAt = clock.GetUtcNow(),
                 ResponsibleUserId = command.ResponsibleUserId,
                 Title = command.Title.Trim(),
                 Description = command.Description?.Trim() ?? "",
@@ -288,6 +299,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
 
         commitment.AgendaId = calendar.Id;
         commitment.AgendaTypeId = type.Id;
+        if (commitment.AgendaStatusId != status.Id) commitment.StatusChangedAt = clock.GetUtcNow();
         commitment.AgendaStatusId = status.Id;
         commitment.ResponsibleUserId = command.ResponsibleUserId;
         commitment.Title = command.Title.Trim();
@@ -306,12 +318,16 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var commitment = await db.AgendaCommitments.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Compromisso não encontrado.", 404);
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
-        await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
+        actor.RequirePermission("work", "view");
+        var statusCalendar = await db.AgendaCalendars.SingleAsync(calendar=>calendar.Id==commitment.AgendaId,cancellationToken);
+        if (!IsMeetingRoom(statusCalendar) || commitment.ResponsibleUserId != actorUser.Id && !string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase))
+            await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
         if (!string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) && commitment.ResponsibleUserId != actorUser.Id)
             throw new DomainException("Apenas o criador ou responsável pelo compromisso pode alterar o status.", 403);
         var status = await db.AgendaStatuses.SingleOrDefaultAsync(entry => entry.Id == command.AgendaStatusId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um status ativo.");
 
+        if (commitment.AgendaStatusId != status.Id) commitment.StatusChangedAt = clock.GetUtcNow();
         commitment.AgendaStatusId = status.Id;
         commitment.UpdatedAt = DateTimeOffset.UtcNow;
         AddAudit(actor, "UpdateStatus", "agenda_commitment", commitment.Id.ToString(), new { commitment.Title, Status = status.Name });
@@ -457,6 +473,13 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
 
     private async Task<Guid[]> ValidateCalendarParticipantsAsync(Guid calendarId, Guid[] userIds, Guid actorId, bool actorManages, CancellationToken ct)
     {
+        var calendar = await db.AgendaCalendars.AsNoTracking().SingleAsync(entry => entry.Id == calendarId, ct);
+        if (IsMeetingRoom(calendar))
+        {
+            var active = await db.Users.Where(user => userIds.Contains(user.Id) && user.Active && user.BlockedAt == null).Select(user => user.Id).ToArrayAsync(ct);
+            if (active.Length != userIds.Length) throw new DomainException("Selecione somente participantes ativos.");
+            return active;
+        }
         var managers = await CalendarManagerIdsAsync(ct);
         if (actorManages) managers = managers.Append(actorId).Distinct().ToArray();
         var granted = await db.UserAgendaCalendarAccesses.Where(x => x.CalendarId == calendarId && userIds.Contains(x.UserId)).Select(x => x.UserId).ToArrayAsync(ct);

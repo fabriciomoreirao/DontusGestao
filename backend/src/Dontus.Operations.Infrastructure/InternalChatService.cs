@@ -377,9 +377,10 @@ public sealed class InternalChatService(
         await ValidateReplyAsync(room.Id, actorUser.Id, command.ReplyToMessageId, cancellationToken);
         if (command.SizeBytes <= 0 || command.SizeBytes > MaxAttachmentBytes)
             throw new DomainException("Envie um arquivo de até 50 MB.");
-        var contentType = (command.ContentType ?? "application/octet-stream").Trim().ToLowerInvariant();
-        if (!IsAllowedContentType(contentType))
-            throw new DomainException("Este tipo de arquivo não é permitido no chat.");
+        var contentType = string.IsNullOrWhiteSpace(command.ContentType)
+            ? "application/octet-stream" : command.ContentType.Trim().ToLowerInvariant();
+        if (contentType.Length > 200 || !System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(contentType, out _))
+            throw new DomainException("O tipo informado para o arquivo é inválido.");
         var fileName = Path.GetFileName(command.FileName ?? "arquivo").Trim();
         if (string.IsNullOrWhiteSpace(fileName)) fileName = "arquivo";
         if (fileName.Length > 240) fileName = fileName[..240];
@@ -393,6 +394,7 @@ public sealed class InternalChatService(
 
         var type = contentType.StartsWith("image/", StringComparison.Ordinal) ? "image"
             : contentType.StartsWith("video/", StringComparison.Ordinal) ? "video"
+            : contentType.StartsWith("audio/", StringComparison.Ordinal) ? "audio"
             : "file";
         var message = new InternalChatMessage
         {
@@ -522,6 +524,47 @@ public sealed class InternalChatService(
         }
     }
 
+    public async Task ChangeMembersAsync(ChangeInternalChatMembersCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("internalChat", "view");
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
+        if (!room.IsGroup) throw new DomainException("A gestão de participantes está disponível somente para grupos.");
+        var members = await db.InternalChatRoomMembers.Where(member => member.RoomId == room.Id).ToListAsync(cancellationToken);
+        var own = members.Single(member => member.UserId == actorUser.Id);
+        var additions = (command.AddUserIds ?? []).Distinct().ToArray();
+        var removeId = command.Leave ? actorUser.Id : command.RemoveUserId;
+        var leavingOnly = removeId == actorUser.Id && additions.Length == 0;
+        if (!leavingOnly)
+        {
+            actor.RequirePermission("internalChat", "edit");
+            if (!own.IsAdmin && room.CreatedByUserId != actorUser.Id)
+                throw new DomainException("Somente administradores podem incluir ou remover participantes.", 403);
+        }
+        if (additions.Length > 0)
+        {
+            var activeIds = await db.Users.Where(user => additions.Contains(user.Id) && user.Active && user.BlockedAt == null).Select(user => user.Id).ToArrayAsync(cancellationToken);
+            if (activeIds.Length != additions.Length) throw new DomainException("Selecione somente colaboradores ativos.");
+            foreach (var id in additions.Where(id => members.All(member => member.UserId != id)))
+            {
+                var membership = new InternalChatRoomMember { RoomId = room.Id, UserId = id, JoinedAt = DateTimeOffset.UtcNow };
+                db.InternalChatRoomMembers.Add(membership); members.Add(membership);
+            }
+        }
+        if (removeId.HasValue)
+        {
+            var removed = members.SingleOrDefault(member => member.UserId == removeId.Value)
+                ?? throw new DomainException("Este colaborador não participa do grupo.");
+            db.InternalChatRoomMembers.Remove(removed); members.Remove(removed);
+            // Retain group administration when its last administrator leaves.
+            if (members.Count > 0 && !members.Any(member => member.IsAdmin || member.UserId == room.CreatedByUserId))
+                members.OrderBy(member => member.JoinedAt).ThenBy(member => member.UserId).First().IsAdmin = true;
+        }
+        room.UpdatedAt = DateTimeOffset.UtcNow; room.Version++;
+        AddAudit(actor, leavingOnly ? "Leave" : "Update", "internal_chat_group_members", room.Id.ToString(), new { Added = additions, Removed = removeId });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task UpdateGroupAsync(UpdateInternalChatGroupCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("internalChat", "edit");
@@ -583,14 +626,6 @@ public sealed class InternalChatService(
             throw new DomainException("Caminho de arquivo inválido.", 400);
         return fullPath;
     }
-
-    private static bool IsAllowedContentType(string contentType) =>
-        contentType.StartsWith("image/", StringComparison.Ordinal) ||
-        contentType.StartsWith("video/", StringComparison.Ordinal) ||
-        contentType is "application/pdf" or "text/plain" or "text/csv" or "text/markdown" or "application/csv" or "application/zip" or "application/x-zip-compressed" or
-            "application/msword" or "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or
-            "application/vnd.ms-excel" or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" or
-            "application/vnd.ms-powerpoint" or "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
     private static string NormalizePhoto(string? value)
     {

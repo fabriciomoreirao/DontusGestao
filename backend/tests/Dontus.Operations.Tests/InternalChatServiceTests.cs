@@ -413,6 +413,72 @@ public sealed class InternalChatServiceTests
         Assert.Equal("Corrigida no histórico",(await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Body);
     }
 
+    [Fact]
+    public async Task Group_members_can_be_added_removed_and_leave_without_exposing_history_before_joining()
+    {
+        await using var db=CreateContext();var owner=AddUser(db,"group-owner@test","Criador");owner.IsCoordinator=true;
+        var member=AddUser(db,"group-member@test","Membro");var invited=AddUser(db,"group-invited@test","Convidado");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new("Equipe",null,true,[member.Id]),Actor(owner));
+        var old=await service.SendMessageAsync(new(room,"Mensagem anterior ao convite","text"),Actor(owner));
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeMembersAsync(new(room,[invited.Id],null,false),Actor(member)))).StatusCode);
+        await service.ChangeMembersAsync(new(room,[invited.Id,invited.Id],null,false),Actor(owner));
+        Assert.Single(db.InternalChatRoomMembers.Where(entry=>entry.RoomId==room&&entry.UserId==invited.Id));
+        Assert.DoesNotContain((await service.GetModuleAsync(Actor(invited))).Rooms.Single().Messages,message=>message.Id==old);
+        var recent=await service.SendMessageAsync(new(room,"Depois do convite","text"),Actor(member));
+        Assert.Contains((await service.GetModuleAsync(Actor(invited))).Rooms.Single().Messages,message=>message.Id==recent);
+        var readOnlyInvitee=new ActorContext(invited.Email,invited.DisplayName,"Colaborador","",[new("internalChat",true,false,false,false,false)]);
+        await service.ChangeMembersAsync(new(room,null,null,true),readOnlyInvitee);
+        Assert.Empty((await service.GetModuleAsync(readOnlyInvitee)).Rooms);
+        await service.ChangeMembersAsync(new(room,null,null,true),Actor(owner));
+        Assert.True((await db.InternalChatRoomMembers.SingleAsync(entry=>entry.RoomId==room&&entry.UserId==member.Id)).IsAdmin);
+        Assert.Empty((await service.GetModuleAsync(Actor(owner))).Rooms);
+        await service.ChangeMembersAsync(new(room,[invited.Id],null,false),Actor(member));
+        await service.ChangeMembersAsync(new(room,null,invited.Id,false),Actor(member));
+        Assert.Empty((await service.GetModuleAsync(Actor(invited))).Rooms);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(room,"Sem acesso","text"),Actor(invited)))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Audio_uploads_keep_their_type_content_and_room_access_restrictions()
+    {
+        await using var db=CreateContext();var sender=AddUser(db,"audio-sender@test","Remetente");var reader=AddUser(db,"audio-reader@test","Leitor");var outsider=AddUser(db,"audio-outsider@test","Outro");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender));
+        await using var bytes=new MemoryStream(new byte[]{82,73,70,70,1,2,3,4});
+        var id=await service.UploadAttachmentAsync(new(room,"gravacao.webm","audio/webm",bytes.Length,bytes),Actor(sender));
+        var message=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
+        Assert.Equal("audio",message.Type);Assert.Equal("audio/webm",message.ContentType);Assert.True(message.HasAttachment);
+        var downloaded=await service.GetAttachmentAsync(id,Actor(reader));Assert.Equal("audio/webm",downloaded.ContentType);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.GetAttachmentAsync(id,Actor(outsider)))).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("backup.7z", "application/x-7z-compressed")]
+    [InlineData("dados.json", "application/json")]
+    [InlineData("arquivo.bin", "application/octet-stream")]
+    [InlineData("sem-extensao", "")]
+    public async Task Arbitrary_file_formats_preserve_bytes_and_member_authorization(string name, string contentType)
+    {
+        await using var db = CreateContext();
+        var sender = AddUser(db, "file-sender@test", "Remetente");
+        var reader = AddUser(db, "file-reader@test", "Leitor");
+        var outsider = AddUser(db, "file-outsider@test", "Outro");
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new(null, null, false, [reader.Id]), Actor(sender));
+        var original = new byte[] { 0, 1, 2, 3, 255 };
+        await using var bytes = new MemoryStream(original);
+        var id = await service.UploadAttachmentAsync(new(room, name, contentType, bytes.Length, bytes), Actor(sender));
+        var downloaded = await service.GetAttachmentAsync(id, Actor(reader));
+        try
+        {
+            Assert.Equal(name, downloaded.FileName);
+            Assert.Equal(string.IsNullOrEmpty(contentType) ? "application/octet-stream" : contentType, downloaded.ContentType);
+            Assert.Equal(original, await File.ReadAllBytesAsync(downloaded.FullPath));
+            Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetAttachmentAsync(id, Actor(outsider)))).StatusCode);
+        }
+        finally { File.Delete(downloaded.FullPath); }
+    }
+
     private static AppUser AddUser(OperationsDbContext db, string email, string name)
     {
         var user = new AppUser

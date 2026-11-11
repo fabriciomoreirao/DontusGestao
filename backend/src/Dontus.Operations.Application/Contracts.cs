@@ -315,9 +315,17 @@ public sealed record NoteDto(
     DateTimeOffset UpdatedAt,
     string Visibility,
     string Author,
-    bool CanEdit);
-
-public sealed record NotesModuleDto(IReadOnlyCollection<NoteDto> Notes);
+    bool CanEdit)
+{
+    public Guid? DepartmentId { get; init; }
+    public Guid? CustomerId { get; init; }
+    public string CustomerCode { get; init; } = "";
+}
+public sealed record NoteDepartmentDto(Guid Id, string Name);
+public sealed record NotesModuleDto(IReadOnlyCollection<NoteDto> Notes)
+{
+    public IReadOnlyCollection<NoteDepartmentDto> Departments { get; init; } = [];
+}
 
 public sealed record CompanyNoticeRecipientDto(
     Guid UserId, string UserName, string PhotoDataUrl,
@@ -392,7 +400,7 @@ public interface IOperationsService
         IReadOnlyDictionary<Guid, long>? knownWorkItemVersions = null);
     Task<DiaryModuleDto> GetDiaryModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
     Task<NotesModuleDto> GetNotesModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
-    Task<Guid> SaveNoteAsync(Guid? id, string title, string? content, string? color, string? visibility, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<Guid> SaveNoteAsync(Guid? id, string title, string? content, string? color, string? visibility, ActorContext actor, CancellationToken cancellationToken = default, Guid? departmentId = null, string? customerCode = null, Guid? customerId = null);
     Task DeleteNoteAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> DuplicateNoteAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task ReorderNotesAsync(IReadOnlyCollection<Guid> noteIds, ActorContext actor, CancellationToken cancellationToken = default);

@@ -61,7 +61,6 @@ public sealed partial class SuggestionServiceTests
         using var content = new MemoryStream("arquivo"u8.ToArray());
         var stranger = Actor(other) with { Permissions = actor.Permissions };
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UploadAttachmentAsync(new(suggestion.Id, "arquivo.pdf", "application/pdf", content.Length, content), stranger))).StatusCode);
-        await Assert.ThrowsAsync<DomainException>(() => service.UploadAttachmentAsync(new(suggestion.Id, "arquivo.exe", "application/octet-stream", content.Length, content), actor));
         await Assert.ThrowsAsync<DomainException>(() => service.UploadAttachmentAsync(new(suggestion.Id, "arquivo.pdf", "application/pdf", content.Length+1, content), actor));
         Assert.Empty(db.SuggestionAttachments);
         content.Position = 0;

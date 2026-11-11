@@ -28,6 +28,17 @@ public sealed class RealtimeBrokerTests
     }
 
     [Fact]
+    public void Heartbeats_refresh_the_last_seen_snapshot_while_a_person_stays_connected()
+    {
+        var clock=new Clock();var broker=new RealtimeBroker(clock);broker.SetAvailable(true);
+        using var viewer=broker.Subscribe(Guid.NewGuid(),true);var user=Guid.NewGuid();var connection=Guid.NewGuid();
+        broker.Publish(Presence(connection,user,true,clock.Now));viewer.Take();
+        clock.Now=clock.Now.AddSeconds(15);broker.Publish(Presence(connection,user,true,clock.Now));Assert.Equal(RealtimeChange.None,viewer.Take());
+        clock.Now=clock.Now.AddSeconds(15);broker.Publish(Presence(connection,user,true,clock.Now));
+        Assert.Equal(RealtimeChange.Presence,viewer.Take());Assert.True(broker.GetPresence(user).IsOnline);Assert.Equal(clock.Now,broker.GetPresence(user).LastSeenAt);
+    }
+
+    [Fact]
     public void Lost_connections_expire_and_delayed_heartbeats_do_not_resurrect_closed_tabs()
     {
         var clock = new Clock(); var broker = new RealtimeBroker(clock); var user = Guid.NewGuid(); var connection = Guid.NewGuid(); var opened = clock.Now;
