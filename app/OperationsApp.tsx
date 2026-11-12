@@ -16,6 +16,8 @@ import { beginKanbanDrag, readKanbanDrop } from "@/lib/kanban-drag";
 
 import { crmResponsible, crmResponsibleOptions, isCsEmployee, matchesCrmResponsible } from "@/lib/crm-responsibles";
 
+import { liaContractedPlan } from "@/lib/lia-journey";
+import LiaPlanField from "@/app/LiaPlanField";
 import { directSaleClientId, directSaleFollowup } from "@/lib/direct-sale-routing";
 import { clientRecordQuery, resolveClientHistory, structuredClientEvolutions, consolidateClientEvolutions } from "@/lib/client-history";
 import { ACCESS_DENIED_EVENT, OUTSIDE_WORKING_HOURS, accessDeniedMessage } from "@/lib/access-session";
@@ -393,6 +395,8 @@ function userHasCapability(user: AppData["user"], screen: string, capability: st
   return user.permissions.find((entry) => entry.screen === screen)?.capabilities?.includes(capability) === true;
 }
 
+
+function userCanNavigate(user:AppData["user"],screen:string,section?:string|null){return screen==="admin"&&section==="liaCatalogs"?userCan(user,"lia","manage"):userCan(user,screen);}
 export default function OperationsApp() {
   const [active, setActive] = useState<ModuleKey>("dashboard");
   const [data, setData] = useState<AppData | null>(null);
@@ -721,7 +725,7 @@ export default function OperationsApp() {
       setLastUpdatedAt(Date.now()); setSyncError(false);
       setLoginRequired(false);
       setActive((current) => {
-        if (userCan(appPayload.user, current)) return current;
+        if (userCanNavigate(appPayload.user, current, new URLSearchParams(window.location.search).get("adminPage")||new URLSearchParams(window.location.search).get("admin"))) return current;
         return (appPayload.user.permissions.find((permission: EffectivePermission) => permission.canView)?.screen ?? "dashboard") as ModuleKey;
       });
       setError("");
@@ -840,7 +844,7 @@ export default function OperationsApp() {
   }, [data?.user.email, data?.internalChatModule, policyNotifications, dismissedNotificationIds]);
 
   const navigate = (module: ModuleKey, nextAdminSection?: AdminSection, nextCommercialFlow?: CommercialFlow, nextCsFlow?: CsFlow, nextReportingSection?: ReportingSection) => {
-    if (data && !userCan(data.user, module)) {
+    if (data && !userCanNavigate(data.user, module, nextAdminSection)) {
       setToast({ kind: "error", message: "Seu grupo não possui acesso a esta tela." });
       return;
     }
@@ -1527,7 +1531,7 @@ export default function OperationsApp() {
             )}
           </div>
           <div className="topbar-actions">
-            {kanbanModules.has(active) && active !== "tasks" && !indicatorsOpen && <label className="topbar-month-filter"><span>Mês</span><input aria-label="Filtrar mês do quadro" type="month" value={kanbanMonth} onChange={event => setKanbanMonth(event.target.value || brasiliaMonthKey())} /></label>}
+            {kanbanModules.has(active) && active !== "tasks" && active !== "lia" && !indicatorsOpen && <label className="topbar-month-filter"><span>Mês</span><input aria-label="Filtrar mês do quadro" type="month" value={kanbanMonth} onChange={event => setKanbanMonth(event.target.value || brasiliaMonthKey())} /></label>}
             <button className="icon-button background-shortcut" onClick={() => active === "internalChat" ? window.dispatchEvent(new Event("dontus:chat-appearance")) : setBackgroundModalOpen(true)} aria-label="Alterar imagem de fundo" title="Alterar imagem de fundo"><Upload size={18} /></button>
             <button className="icon-button theme-toggle" onClick={() => changeTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}>
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
@@ -1591,7 +1595,7 @@ export default function OperationsApp() {
               onMove={(item, status) => operate({ action: "transitionWorkItem", id: item.id, nextStatus: status, version: item.version, confirmed: true, boardMove: true }, `Registro movido para ${status}.`)}
             />
           )}
-          {active === "lia" && <LiaJourneyModule items={kanbanItems} employees={assignmentEmployees} catalogs={data.customerModule?.catalogs ?? []} currentUser={data.user.displayName} canEdit={userCan(data.user, "lia", "edit")} canCoordinate={userCan(data.user, "lia", "approve")||userCan(data.user, "lia", "manage")} busy={busy} operate={operate} agendaModule={data.agendaModule} onOpenSettings={userCan(data.user, "lia", "manage") ? () => openFunctionSettings("liaCatalogs") : undefined} />}
+          {active === "lia" && <LiaJourneyModule items={data.items} canCreate={userCan(data.user,"lia","create")} employees={assignmentEmployees} catalogs={data.customerModule?.catalogs ?? []} currentUser={data.user.displayName} canEdit={userCan(data.user, "lia", "edit")} canCoordinate={userCan(data.user, "lia", "approve")||userCan(data.user, "lia", "manage")} busy={busy} operate={operate} agendaModule={data.agendaModule} onOpenSettings={userCan(data.user, "lia", "manage") ? () => openFunctionSettings("liaCatalogs") : undefined} />}
           {active === "marketing" && <MarketingWorkspaceModule items={kanbanItems} campaignItems={data.items.filter((item) => item.module === "marketing")} employees={assignmentEmployees} currentUser={data.user} agendaModule={data.agendaModule} canEdit={userCan(data.user, "marketing", "edit")} busy={busy} operate={operate} onOpenSettings={undefined} />}
           {active === "work" && data.agendaModule && <AgendaModule module={data.agendaModule} busy={busy} operate={operate} currentEmail={data.user.email} currentUserIsCoordinator={data.user.isCoordinator} onOpenSettings={userCan(data.user, "work", "manage") ? () => openFunctionSettings("agenda") : undefined} />}
           {active === "diary" && data.diaryModule && <DiaryModule module={data.diaryModule} busy={busy} canCreate={userCan(data.user,"diary","create")} canEdit={userCan(data.user,"diary","edit")} operate={operate} />}
@@ -2426,7 +2430,7 @@ const SERVICE_CATALOGS = [
   ["serviceStatus", "Status"], ["serviceContactType", "Tipos de contato"], ["serviceTool", "Ferramentas / módulos"], ["serviceChecklist", "Tipos de checklist"],
 ] as const;
 const LIA_CATALOGS = [
-  ["liaForms", "Formulários do cliente"], ["liaRequestType", "Tipos de solicitação"], ["liaOrigin", "Origens"], ["liaWorkflowStage", "Etapas adicionais"],
+  ["liaForms", "Formulários do cliente"], ["liaPlan", "Planos LIA"], ["liaRequestType", "Tipos de solicitação"], ["liaOrigin", "Origens"], ["liaWorkflowStage", "Etapas adicionais"],
   ["liaChecklistItem", "Itens do checklist"], ["liaChecklistTemplate", "Tipos de checklist"], ["liaAdjustmentType", "Tipos de ajuste"],
 ] as const;
 const WAITING_QUEUE_CATALOGS = [
@@ -2584,6 +2588,7 @@ function CommercialCatalogModal({ scope, commercialArea = "crm", catalog, label,
 }
 
 type CommercialLead = {
+  liaPlan?: string;
   kind: "commercialLead";
   phone: string;
   source: string;
@@ -2625,6 +2630,7 @@ type FollowUpTrack = "activation" | "retention" | "lia" | "enterprise";
 const followUpTrackLabel = (track: FollowUpTrack) => track === "enterprise" ? "contas estratégicas" : track === "lia" ? "LIA" : track === "retention" ? "retenção" : "ativação";
 
 type DirectSale = {
+  liaPlan?: string;
   kind: "directSale";
   flow: "crm" | "retention";
   followUpTrack: FollowUpTrack;
@@ -2648,7 +2654,7 @@ const parseDirectSale = (value: string): DirectSale | null => {
     const parsed = JSON.parse(value) as Partial<DirectSale>;
     if (parsed.kind !== "directSale" || (parsed.flow !== "crm" && parsed.flow !== "retention")) return null;
     return {
-      kind: "directSale", flow: parsed.flow, networkId: parsed.networkId, followUpTrack: parsed.followUpTrack === "enterprise" ? "enterprise" : parsed.followUpTrack === "lia" ? "lia" : parsed.followUpTrack === "retention" ? "retention" : parsed.flow === "retention" ? "retention" : "activation", saleId: parsed.saleId ?? "", clientId: parsed.clientId ?? "", saleDate: parsed.saleDate ?? "",
+      kind: "directSale", flow: parsed.flow, liaPlan: parsed.liaPlan, networkId: parsed.networkId, followUpTrack: parsed.followUpTrack === "enterprise" ? "enterprise" : parsed.followUpTrack === "lia" ? "lia" : parsed.followUpTrack === "retention" ? "retention" : parsed.flow === "retention" ? "retention" : "activation", saleId: parsed.saleId ?? "", clientId: parsed.clientId ?? "", saleDate: parsed.saleDate ?? "",
       name: parsed.name ?? "", origin: parsed.origin ?? "", version: parsed.version ?? "", seller: parsed.seller ?? "",
       products: Array.isArray(parsed.products) ? parsed.products : [], subtotalCents: Number(parsed.subtotalCents ?? 0),
       discountCents: Number(parsed.discountCents ?? 0), totalCents: Number(parsed.totalCents ?? 0),
@@ -2664,7 +2670,7 @@ const parseCommercialLead = (value: string): CommercialLead | null => {
     const parsed = JSON.parse(value) as Partial<CommercialLead>;
     if (parsed.kind !== "commercialLead") return null;
     return {
-      kind: "commercialLead", phone: parsed.phone ?? "", source: parsed.source ?? "", seller: parsed.seller ?? "",
+      kind: "commercialLead", liaPlan: parsed.liaPlan, phone: parsed.phone ?? "", source: parsed.source ?? "", seller: parsed.seller ?? "",
       funnel: parsed.funnel ?? "", stage: parsed.stage ?? "", temperature: parsed.temperature ?? "",
       labels: Array.isArray(parsed.labels) ? parsed.labels : [], products: Array.isArray(parsed.products) ? parsed.products : [],
       score: Number(parsed.score ?? 0), entryDate: parsed.entryDate ?? "", customer: parsed.customer ?? "",
@@ -2901,7 +2907,7 @@ function DirectSalesView({ commercialSellers, flow, catalogs, customers, items, 
       }
       const isLia=detail.followUpTrack==="lia";
       const journey = directSaleFollowup(detail, sourceId, new Date().toISOString(), crypto.randomUUID());
-      const routed = await operate({action:"createWorkItem",module:isLia?"lia":"cs",recordType:isLia?"Projeto LIA":detail.followUpTrack==="activation"?"Acompanhamento de ativação":"Acompanhamento de retenção",title:detail.name,customerId,customerName:detail.name,owner:isLia?"Coordenação de LIA":"Coordenação de CS",team:isLia?"LIA":detail.followUpTrack==="activation"?"Sucesso do Cliente · Ativação":"Sucesso do Cliente · Retenção",status:isLia?"AguardandoKickoff":undefined,priority:"P3",amountCents:detail.totalCents,description:JSON.stringify(journey)},`Cliente direcionado para acompanhamento ${followUpTrackLabel(detail.followUpTrack)}.`);
+      const routed = await operate({action:"createWorkItem",module:isLia?"lia":"cs",recordType:isLia?"Projeto LIA":detail.followUpTrack==="activation"?"Acompanhamento de ativação":"Acompanhamento de retenção",title:detail.name,customerId,customerName:detail.name,owner:isLia?"Coordenação de LIA":"Coordenação de CS",team:isLia?"LIA":detail.followUpTrack==="activation"?"Sucesso do Cliente · Ativação":"Sucesso do Cliente · Retenção",status:isLia?"Validacao":undefined,priority:"P3",amountCents:detail.totalCents,description:JSON.stringify(journey)},`Cliente direcionado para acompanhamento ${followUpTrackLabel(detail.followUpTrack)}.`);
       if (routed) { await operate({ action: "updateCustomer", id: customerId, status: "Cliente", documentMasked: directSaleClientId(detail), productVersion: detail.version, owner: detail.seller, csOwner: isLia ? "Coordenação de LIA" : "Coordenação de CS", monthlyRevenueCents: detail.totalCents }, "Status do cliente atualizado."); setCreating(false); }
     }} />}
     {editing && <DirectSaleModal flow={flow} catalogs={catalogs} items={items} currentUser={currentUser} busy={busy} sale={editing.detail} onClose={() => setEditing(null)} onSave={async (detail) => { const result = await operate({ action: "updateWorkItem", requireConfirmation: true, id: editing.item.id, title: `${detail.name} · ${detail.saleId}`, customerName: detail.name, owner: detail.seller, amountCents: detail.totalCents, version: editing.item.version, description: JSON.stringify(detail) }, "Venda direta atualizada com sucesso."); if (result) setEditing(null); }} />}
@@ -2934,6 +2940,7 @@ function DirectSaleModal({ flow, catalogs, items, currentUser, busy, sale, onClo
   const [networkId, setNetworkId] = useState(sale?.networkId || "");
   const activeNetworks = items.filter(item => { const network = parseEnterpriseNetwork(item.description); return network && !/inativ|suspens|cancel|conclu/i.test(network.status); });
   const [followUpTrack, setFollowUpTrack] = useState<FollowUpTrack>(sale?.followUpTrack ?? (flow === "retention" ? "retention" : "lia"));
+  const [liaPlan,setLiaPlan]=useState(liaContractedPlan(sale??{}));
   const selectedProduct = productCatalogs.find((entry) => entry.id === productId);
   const plans = (selectedProduct ? commercialDetails(selectedProduct.description).plans ?? [] : []).filter((entry) => entry.active);
   const subtotalCents = selectedProducts.reduce((sum, entry) => sum + Math.round(entry.unitValue * entry.quantity * 100), 0);
@@ -2947,9 +2954,9 @@ function DirectSaleModal({ flow, catalogs, items, currentUser, busy, sale, onClo
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const effectiveProducts=selectedProducts.length?selectedProducts:selectedProduct?[{product:selectedProduct.name,plan,unitValue,quantity}]:[];
-    if (!name.trim() || !origin || !version || !/^\d{6}$/.test(clientId) || effectiveProducts.length === 0) return;
+    if (!name.trim() || !origin || !version || !/^\d{6}$/.test(clientId) || effectiveProducts.length === 0 || (followUpTrack==="lia"&&!liaPlan.trim())) return;
     const effectiveSubtotal=effectiveProducts.reduce((sum,entry)=>sum+Math.round(entry.unitValue*entry.quantity*100),0);const effectiveDiscount=Math.min(effectiveSubtotal,discountCents);const effectiveTotal=Math.max(0,effectiveSubtotal-effectiveDiscount);
-    await onSave({ kind: "directSale", flow, followUpTrack, networkId, saleId, clientId: clientId.trim(), saleDate, name: name.trim(), origin, version, seller: sale?.seller || currentUser.displayName, products: effectiveProducts, subtotalCents:effectiveSubtotal, discountCents:effectiveDiscount, totalCents:effectiveTotal });
+    await onSave({ kind: "directSale", flow, followUpTrack, liaPlan: followUpTrack==="lia"?liaPlan:undefined, networkId, saleId, clientId: clientId.trim(), saleDate, name: name.trim(), origin, version, seller: sale?.seller || currentUser.displayName, products: effectiveProducts, subtotalCents:effectiveSubtotal, discountCents:effectiveDiscount, totalCents:effectiveTotal });
   };
   return <ModalShell title={sale ? "Editar venda direta" : "Adicionar venda direta"} subtitle={`${commercialFlowLabel(flow)} · ID ${saleId}${sale ? "" : " gerado automaticamente"}`} onClose={onClose}><form className="form-grid direct-sale-form" onSubmit={submit}>
     <label>Data *<input type="date" required value={saleDate} onChange={(event) => setSaleDate(event.target.value)} /></label><label>ID da venda<input readOnly value={saleId} /></label>
@@ -2958,6 +2965,7 @@ function DirectSaleModal({ flow, catalogs, items, currentUser, busy, sale, onClo
     <label>Origem *<select required value={origin} onChange={(event) => setOrigin(event.target.value)}><option value="">Selecionar origem</option>{origins.map((entry) => <option value={entry.name} key={entry.id}>{entry.name}</option>)}</select></label>
     <label>Versão *<select required value={version} onChange={(event) => setVersion(event.target.value)}><option value="">Selecionar versão</option>{versionOptions.map((entry) => <option key={entry}>{entry}</option>)}</select></label>
     <label className="wide direct-sale-routing">Tipo de acompanhamento *<select required value={followUpTrack} disabled={Boolean(sale)} onChange={(event) => setFollowUpTrack(event.target.value as FollowUpTrack)}><option value="activation">Acompanhamento Ativação</option><option value="retention">Acompanhamento Retenção</option><option value="lia">Acompanhamento LIA</option><option value="enterprise">Contas estratégicas</option></select>{followUpTrack === "enterprise" && <select required disabled={Boolean(sale)} value={networkId} onChange={event => setNetworkId(event.target.value)}><option value="">Selecionar rede ativa...</option>{activeNetworks.map(network => <option key={network.id} value={network.id}>{network.title}</option>)}</select>}<small>{sale ? "O encaminhamento original é preservado durante a edição." : "Ao salvar, o cliente será encaminhado automaticamente para a fila selecionada."}</small></label>
+    {followUpTrack==="lia"&&<LiaPlanField catalogs={catalogs} value={liaPlan} onChange={setLiaPlan}/>}
     <fieldset className="wide direct-sale-products"><legend>Produtos da venda *</legend><div className="direct-sale-product-picker"><label>Produto<select value={productId} onChange={(event) => { setProductId(event.target.value); setPlan(""); setUnitValue(0); }}><option value="">Selecionar produto</option>{productCatalogs.map((entry) => <option value={entry.id} key={entry.id}>{entry.name}</option>)}</select></label><label>Plano / versão<select value={plan} onChange={event => { setPlan(event.target.value); setUnitValue((parseMoneyInput(String(plans.find(entry => entry.name === event.target.value)?.value ?? "0")) ?? 0) / 100); }} disabled={!selectedProduct}><option value="">Sem plano</option>{plans.map((entry) => <option value={entry.name} key={entry.name}>{entry.name} · {formatMoney(parseMoneyInput(String(entry.value)) ?? 0)}</option>)}</select></label><label>Valor unitário (R$)<MoneyInput key={`${productId}:${plan}`} value={unitValue} onValueChange={setUnitValue} /></label><label>Qtd.<input type="number" min="1" value={quantity} onChange={(event) => setQuantity(Math.max(1, Number(event.target.value) || 1))} /></label><button type="button" className="secondary-button" disabled={!selectedProduct} onClick={event => { const invalid = event.currentTarget.closest("fieldset")?.querySelector<HTMLInputElement>("input:invalid"); if (invalid) { invalid.reportValidity(); return; } addProduct(); }}><Plus size={15} /> Adicionar</button></div>
       <div className="direct-sale-selected-products">{selectedProducts.length === 0 ? <p>Adicione um ou mais produtos para calcular o valor.</p> : selectedProducts.map((entry, index) => <article key={`${entry.product}-${entry.plan}-${index}`}><span><strong>{entry.product}</strong><small>{entry.plan || "Sem plano"} · {entry.quantity} un.</small></span><MoneyInput aria-label={`Valor de ${entry.product}`} value={entry.unitValue} onValueChange={unitValue => setSelectedProducts(current => current.map((product, productIndex) => productIndex === index ? { ...product, unitValue } : product))} /><b>{formatMoney(Math.round(entry.unitValue * entry.quantity * 100))}</b><button type="button" aria-label="Remover produto" onClick={() => setSelectedProducts((current) => current.filter((_, currentIndex) => currentIndex !== index))}><Trash2 size={15} /></button></article>)}</div>
     </fieldset>
@@ -3147,6 +3155,7 @@ function CommercialLeadDrawer({ item, currentUserName, customers, strategicNetwo
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAvailability,setShowAvailability]=useState(false);
   const [followUpTrack, setFollowUpTrack] = useState<FollowUpTrack>(flow === "retention" ? "retention" : "activation");
+  const [liaPlan,setLiaPlan]=useState(liaContractedPlan(lead));
   const schedulingNow = useActivityClock();
   const minimumScheduleDate = commercialDateKey(schedulingNow);
   const [slotDate, setSlotDate] = useState(minimumScheduleDate);
@@ -3219,19 +3228,21 @@ function CommercialLeadDrawer({ item, currentUserName, customers, strategicNetwo
     const cleanClientId = (details?.clientId ?? clientId).replace(/\D/g, "");
     if (!/^\d{6}$/.test(cleanClientId)) { setClientIdError("Informe o ID do cliente com 6 números."); return false; }
     const isLia = followUpTrack === "lia";
+    if(isLia&&!liaPlan.trim()){setClientIdError("Informe o plano LIA contratado antes de encaminhar o cliente.");return false;}
     const journey = isLia
-      ? { kind: "liaJourney", sourceLeadId: item.id, clientId: cleanClientId, startDate: new Date().toISOString(), kickoffDate: scheduled?.date ?? "", kickoffTime: scheduled?.time ?? "", sector: "Comercial", requestType: "Cliente ganho", history: [{ id: crypto.randomUUID(), text: "Cliente encaminhado pelo CRM para a LIA.", at: new Date().toISOString(), author: lead.seller || item.owner }] }
+      ? { kind: "liaJourney", sourceLeadId: item.id, liaPlan:liaPlan.trim(), whatsapp:lead.phone, products:lead.products, clientId: cleanClientId, startDate: new Date().toISOString(), kickoffDate: scheduled?.date ?? "", kickoffTime: scheduled?.time ?? "", sector: "Comercial", requestType: "Cliente ganho", history: [{ id: crypto.randomUUID(), text: "Cliente encaminhado pelo CRM para a LIA.", at: new Date().toISOString(), author: lead.seller || item.owner }] }
       : { kind: "csJourney", track: followUpTrack, phase: "validation", sourceLeadId: item.id, clientId: cleanClientId, scheduledAt: scheduled?.startsAt ?? "", scheduling: scheduled ? "scheduled" : "not-scheduled", commerciallyApproved: true, firstMeetingAt: scheduled?.startsAt ?? "", firstMeetingTime: scheduled?.time ?? "", firstMeetingCommitmentId: scheduled?.commitmentId, trainingAt: "", rescheduledAt: "", status: "Pendente", featuresBase: [], featuresActive: [], featuresPlus: [], labels: [], follows: [{ kind: "Origem comercial", text: scheduled ? `Cliente enviado para acompanhamento de ${followUpTrackLabel(followUpTrack)} com Kick off agendado em ${scheduled.date} às ${scheduled.time}.` : `Cliente enviado para acompanhamento de ${followUpTrackLabel(followUpTrack)}.`, createdAt: new Date().toISOString(), actor: lead.seller || item.owner }] };
-    const created = await onAgendaOperation({ action: "createWorkItem", module: isLia ? "lia" : "cs", recordType: isLia ? "Projeto LIA" : followUpTrack === "activation" ? "Acompanhamento de ativação" : "Acompanhamento de retenção", title: item.title, customerId: linkedCustomer?.id ?? item.customer_id, customerName: lead.customer || item.customer_name, owner: destinationOwner, team: isLia ? "LIA" : followUpTrack === "activation" ? "Sucesso do Cliente · Ativação" : "Sucesso do Cliente · Retenção", status: isLia ? (scheduled ? "KickoffAgendado" : "AguardandoKickoff") : undefined, priority: "P3", amountCents: item.amount_cents, description: JSON.stringify(journey) }, `Cliente enviado para acompanhamento ${followUpTrackLabel(followUpTrack)}.`);
+    const created = await onAgendaOperation({ action: "createWorkItem", module: isLia ? "lia" : "cs", recordType: isLia ? "Projeto LIA" : followUpTrack === "activation" ? "Acompanhamento de ativação" : "Acompanhamento de retenção", title: item.title, customerId: linkedCustomer?.id ?? item.customer_id, customerName: lead.customer || item.customer_name, owner: destinationOwner, team: isLia ? "LIA" : followUpTrack === "activation" ? "Sucesso do Cliente · Ativação" : "Sucesso do Cliente · Retenção", status: isLia ? "Validacao" : undefined, priority: "P3", amountCents: item.amount_cents, description: JSON.stringify(journey) }, `Cliente enviado para acompanhamento ${followUpTrackLabel(followUpTrack)}.`);
     if (created) {
       if (linkedCustomer) await onAgendaOperation({ action: "updateCustomer", id: linkedCustomer.id, status: "Cliente", documentMasked: cleanClientId, productVersion: details?.version ?? releaseVersion, owner: lead.seller || item.owner, csOwner: destinationOwner, monthlyRevenueCents: item.amount_cents }, "Lead convertido em cliente.");
-      await saveLead({ ...lead, clientId: cleanClientId, stage: wonStage, onboarding: { status: scheduled ? "scheduled" : "sent", date: scheduled?.date, time: scheduled?.time, commitmentId: scheduled?.commitmentId, sentAt: new Date().toISOString(), clientId: cleanClientId, version: details?.version ?? releaseVersion, commerciallyApproved: true } });
+      await saveLead({ ...lead, ...(isLia?{liaPlan:liaPlan.trim()}:{}), clientId: cleanClientId, stage: wonStage, onboarding: { status: scheduled ? "scheduled" : "sent", date: scheduled?.date, time: scheduled?.time, commitmentId: scheduled?.commitmentId, sentAt: new Date().toISOString(), clientId: cleanClientId, version: details?.version ?? releaseVersion, commerciallyApproved: true } });
     }
   };
   const scheduleOnboarding = async ({ description, customerId, version }: { description: string; customerId: string; version: string }) => {
     const cleanClientId = customerId.replace(/\D/g, "");
     if (!/^\d{6}$/.test(cleanClientId)) { setClientIdError("Informe o ID do cliente com 6 números."); return false; }
     if (!version.trim()) return false;
+    if(followUpTrack==="lia"&&!liaPlan.trim()){setClientIdError("Informe o plano LIA contratado antes de agendar.");return false;}
     const type = agendaModule?.types.find((entry) => entry.active);
     const status = agendaModule?.statuses.find((entry) => entry.active);
     const responsible = agendaModule?.collaborators.find((entry) => Boolean(activationCalendar && entry.agendaIds?.includes(activationCalendar.id)) && (entry.id === destinationEmployee?.id || entry.name === destinationEmployee?.displayName))
@@ -3273,16 +3284,17 @@ function CommercialLeadDrawer({ item, currentUserName, customers, strategicNetwo
     {flow === "crm" && (showOnboarding || showAvailability) && <section id={`commercial-availability-${item.id}`} className="lead-drawer-section commercial-onboarding-box">
       <span className="eyebrow">{showOnboarding ? "ENCAMINHAMENTO" : "CONSULTA DE AGENDA"}</span><h3>{showOnboarding ? "Direcionar acompanhamento" : "Horários do CS"}</h3>
       <div className="commercial-routing-grid"><label className="commercial-followup-track">Tipo de acompanhamento *<select value={followUpTrack} onChange={(event) => { setFollowUpTrack(event.target.value as FollowUpTrack); setSlot(""); setClientIdError(""); }}><option value="activation">Acompanhamento Ativação</option><option value="retention">Acompanhamento Retenção</option>{showOnboarding && <option value="lia">Acompanhamento LIA</option>}</select></label>{showOnboarding && <><label>ID do cliente *<input inputMode="numeric" maxLength={6} value={clientId} onChange={(event) => { setClientId(event.target.value.replace(/\D/g, "").slice(0, 6)); setClientIdError(""); }} placeholder="000000" /></label><label>Versão *<input value={releaseVersion} onChange={(event) => setReleaseVersion(event.target.value)} placeholder="Ex.: Essencial" /></label></>}</div>
+      {showOnboarding&&followUpTrack==="lia"&&<LiaPlanField catalogs={catalogs} value={liaPlan} onChange={setLiaPlan}/>}
       <p>{!showOnboarding ? "Consulte os horários disponíveis do CS antes de fechar a oportunidade." : lead.onboarding?.status === "scheduled" ? `Agendado para ${lead.onboarding.date} às ${lead.onboarding.time}.` : "Selecione o destino e reserve um horário para encaminhar o cliente à fila correta."}</p>
       {clientIdError && <p className="commercial-schedule-error" role="alert">{clientIdError}</p>}
-      {showOnboarding && <div className="drawer-actions"><button className="secondary-button" disabled={busy || !clientId || !releaseVersion} onClick={() => void sendToOnboarding(undefined, { clientId, version: releaseVersion })}>Enviar sem agendamento</button><button className="primary-button" disabled={busy} onClick={() => { setCheckingSlots(true); setClientIdError(""); }}>Verificar horários disponíveis</button></div>}
+      {showOnboarding && <div className="drawer-actions"><button className="secondary-button" disabled={busy || !clientId || !releaseVersion || (followUpTrack==="lia"&&!liaPlan.trim())} onClick={() => void sendToOnboarding(undefined, { clientId, version: releaseVersion })}>Enviar sem agendamento</button><button className="primary-button" disabled={busy} onClick={() => { setCheckingSlots(true); setClientIdError(""); }}>Verificar horários disponíveis</button></div>}
       {!activationCalendar && <p role="status">Nenhuma agenda do CS disponível para consulta.</p>}
       {checkingSlots && activationCalendar && <div className="commercial-schedule-controls">
         <p className="commercial-schedule-rule">Disponibilidade: segunda a sexta, exceto feriados e períodos bloqueados. Cada horário aceita no máximo 3 compromissos.</p>
         <label>Data disponível a partir de hoje<input type="date" min={minimumScheduleDate} value={slotDate} onChange={(event) => { setSlotDate(event.target.value); setSlot(""); setClientIdError(""); }} /></label>
         <div><span>Horários disponíveis</span><div className="commercial-slot-list">{availableSlots.map((candidate) => <button type="button" key={candidate} className={slot === candidate ? "selected" : ""} onClick={() => { setSlot(candidate); setClientIdError(""); }}>{candidate}</button>)}</div>{availableSlots.length === 0 && <small>Não há vaga neste dia. Veja os próximos cinco dias úteis.</small>}</div>
         <div className="commercial-next-slots"><span>Próximos 5 dias úteis</span>{nextAvailableDays.map((day) => <div key={day.date}><b>{new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).format(new Date(`${day.date}T12:00:00`))}</b>{day.slots.length ? day.slots.map((candidate) => <button type="button" key={candidate} onClick={() => { setSlotDate(day.date); setSlot(candidate); setClientIdError(""); }}>{candidate}</button>) : <small>Sem vagas</small>}</div>)}</div>
-        {showOnboarding && slot && <button type="button" className="primary-button commercial-schedule-submit" disabled={busy} onClick={() => setShowScheduleModal(true)}>Agendar e enviar</button>}
+        {showOnboarding && slot && <button type="button" className="primary-button commercial-schedule-submit" disabled={busy || (followUpTrack==="lia"&&!liaPlan.trim())} onClick={() => setShowScheduleModal(true)}>Agendar e enviar</button>}
       </div>}
       {!showOnboarding && <button type="button" className="secondary-button" onClick={() => setShowAvailability(false)}>Fechar consulta</button>}
     </section>}
@@ -3883,6 +3895,10 @@ function RecruitmentWorkflowView({ data, busy, onOperate }: { data: AppData; bus
 }
 
 function AdminView({ data, section, onSection, busy, onOperate, backgroundImage, onBackgroundChange }: { data: AppData; section: AdminSection; onSection: (section: AdminSection) => void; busy: boolean; onOperate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>; backgroundImage: string; onBackgroundChange: (image: string) => void }) {
+  if (section === "liaCatalogs") {
+    if(!userCan(data.user,"lia","manage"))return <EmptyState text="Seu grupo não permite acessar as configurações da LIA."/>;
+    return data.customerModule?<CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="lia"/>:<EmptyState text="Não foi possível carregar os cadastros da LIA."/>;
+  }
   if (!data.access) return <EmptyState text="Seu perfil não possui acesso à administração." />;
   const configurationScreen: Partial<Record<AdminSection, string>> = { agenda: "work", customers: "customers", suggestions: "suggestions", commercialCatalogs: "commercial", csCatalogs: "cs", liaCatalogs: "lia", serviceCatalogs: "support", waitingQueueCatalogs: "waitingQueue", enterpriseCatalogs: "cs", cancellationCatalogs: "cancellations", hrCatalogs: "hr", referralCatalogs: "referrals", recruitmentCatalogs: "admin" };
   const requiredConfiguration = configurationScreen[section];
@@ -3896,7 +3912,6 @@ function AdminView({ data, section, onSection, busy, onOperate, backgroundImage,
   if (section === "customers") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="customers" /> : <EmptyState text="Não foi possível carregar as configurações de Clientes." />;
   if (section === "commercialCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} /> : <EmptyState text="Não foi possível carregar os cadastros comerciais." />;
   if (section === "csCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="cs" /> : <EmptyState text="Não foi possível carregar os cadastros de CS." />;
-  if (section === "liaCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="lia" /> : <EmptyState text="Não foi possível carregar os cadastros da LIA." />;
   if (section === "serviceCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="service" /> : <EmptyState text="Não foi possível carregar os cadastros de atendimentos." />;
   if (section === "waitingQueueCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="waitingQueue" /> : <EmptyState text="Não foi possível carregar os cadastros da fila de espera." />;
   if (section === "enterpriseCatalogs") return data.customerModule ? <CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="enterprise" /> : <EmptyState text="Não foi possível carregar as configurações de Redes e Franquias." />;

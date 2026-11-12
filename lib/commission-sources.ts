@@ -37,5 +37,5 @@ export function liaCommissionStages(detail: Record<string, unknown>, status: str
   const index = stages.indexOf(status);
   const progress = (key: string, start: number, end: number) => detail[key] ? String(detail[key]) : index > end ? "Concluída" : index >= start ? "Em andamento" : "Pendente";
   return { configuration: progress("configurationStartedAt", 2, 2), tests: progress("clientTestsStartedAt", 3, 4),
-    release: progress("releaseStartedAt", 5, 9), current: status === "Concluida" ? "Concluído" : status === "AcompanhamentoFinal" ? "Acompanhamento" : stages[index] ? ["Onboarding", "Onboarding", "Configuração Inicial", "Testes do Cliente", "Testes do Cliente", "Liberação", "Liberação", "Liberação", "Liberação", "Liberação"][index] : status };
+    release: progress("releaseStartedAt", 5, 9), current: status === "Validacao" ? "Validação" : status === "Concluida" ? "Concluído" : status === "AcompanhamentoFinal" ? "Acompanhamento" : stages[index] ? ["Onboarding", "Onboarding", "Configuração Inicial", "Testes do Cliente", "Testes do Cliente", "Liberação", "Liberação", "Liberação", "Liberação", "Liberação"][index] : status };
 }
