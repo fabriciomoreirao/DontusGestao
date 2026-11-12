@@ -8,8 +8,13 @@ export const LIA_STAGES: readonly LiaStage[] = [
   { key: "tests", label: "4. Testes do cliente", statuses: ["EmTesteCliente", "EmAjustes"], target: "EmTesteCliente" },
   { key: "release", label: "5. Liberação e Ativação CRC", statuses: ["AguardandoAprovacao", "GoLiveAgendado", "EmProducaoAssistida", "ImplantacaoPrincipalConcluida", "ConfigurandoCRC"], target: "AguardandoAprovacao" },
   { key: "finalFollowup", label: "6. Acompanhamento Final", statuses: ["AcompanhamentoFinal"], target: "AcompanhamentoFinal" },
-  { key: "completed", label: "7. Concluídos", statuses: ["Concluida"], target: "Concluida" },
+  { key: "conference", label: "7. Conferência", statuses: ["ConferenciaFinal"], target: "ConferenciaFinal" },
+  { key: "completed", label: "8. Concluídos", statuses: ["Concluida"], target: "Concluida" },
 ];
+
+export function liaCanReassign(owner: string, currentUser: string): boolean {
+  return Boolean(owner.trim() && owner.trim().toLocaleLowerCase("pt-BR") === currentUser.trim().toLocaleLowerCase("pt-BR"));
+}
 
 export function activeLiaStages(catalogs: LiaCatalog[]): LiaStage[] {
   const known = new Set(LIA_STAGES.flatMap(stage => [...stage.statuses]));

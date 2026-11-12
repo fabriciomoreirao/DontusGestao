@@ -100,6 +100,7 @@ public sealed class CommercialAndLiaCommissionTests
         await service.UpdateWorkItemAsync(new(source.Id,source.Title,source.Owner,0,detail.ToJsonString(),null,null,source.Version),Manager);
         Assert.Equal(started,JsonNode.Parse(source.Description)!["finalFollowupStartedAt"]!.ToString());
         detail=JsonNode.Parse(source.Description)!.AsObject();detail["finalFollowupStartedAt"]=DateTimeOffset.UtcNow.AddDays(-3).ToString("O");source.Description=detail.ToJsonString();await db.SaveChangesAsync();
+        await service.TransitionWorkItemAsync(new(source.Id,"ConferenciaFinal",source.Version,true),Manager);Assert.Equal("ConferenciaFinal",source.Status);
         await service.TransitionWorkItemAsync(new(source.Id,"Concluida",source.Version,true),Manager);Assert.Equal("Concluida",source.Status);
     }
 

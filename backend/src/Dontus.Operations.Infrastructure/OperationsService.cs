@@ -1479,6 +1479,17 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             throw new DomainException("A concordância deve ser registrada pelo link do relatório mensal.", 403);
         if (item.Version != command.Version)
             throw new DomainException("O registro foi alterado por outro usuário. Atualize a tela e tente novamente.", 409);
+
+        if (item.Module == "lia" && CommissionConfirmationService.Detail(item.Description)["kind"]?.ToString() == "liaJourney"
+            && !string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            var initialQueueAssignment = item.Status == "Validacao" && (actor.HasPermission("lia", "approve") || actor.HasPermission("lia", "manage"))
+                && !await db.Users.AnyAsync(user => user.Active && user.BlockedAt == null && user.DisplayName == item.Owner, cancellationToken);
+            if (!string.Equals(item.Owner, actor.DisplayName, StringComparison.OrdinalIgnoreCase) && !initialQueueAssignment)
+                throw new DomainException("Somente o responsável atual pelo card pode alterar o responsável.", 403);
+            if (!await db.Users.AnyAsync(user => user.Active && user.BlockedAt == null && user.DisplayName == command.Owner.Trim(), cancellationToken))
+                throw new DomainException("Selecione um colaborador ativo para assumir o acompanhamento LIA.");
+        }
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Informe o título do registro.");
 
@@ -1715,7 +1726,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             if (item.Status == "Validacao" && command.NextStatus != item.Status &&
                 !await db.Users.AnyAsync(user => user.Active && user.BlockedAt == null && user.DisplayName == item.Owner, cancellationToken))
                 throw new DomainException("Selecione um colaborador ativo como responsável pelo onboarding.", 409);
-            item.Description = LiaJourneyTimeline.Normalize(item.Description, command.NextStatus, item);
+            item.Description = LiaJourneyTimeline.Normalize(item.Description, command.NextStatus, item, actor, command.Reason);
         }
         var previousCommercialDescription = item.Description;
         var previouslyWon = SalesCelebrationService.IsWon(item);
