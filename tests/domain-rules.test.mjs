@@ -5,7 +5,7 @@ import { allowedNextStatuses, canTransition, initialStatus } from "../lib/domain
 test("aplica os estados iniciais por domínio", () => {
   assert.equal(initialStatus("commercial"), "NovoLead");
   assert.equal(initialStatus("cs"), "PendenteAgendamento");
-  assert.equal(initialStatus("lia"), "AguardandoKickoff");
+  assert.equal(initialStatus("lia"), "Validacao");
   assert.equal(initialStatus("ti"), "Nova");
   assert.equal(initialStatus("finance"), "Rascunho");
 });

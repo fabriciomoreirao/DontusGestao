@@ -1137,7 +1137,25 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         };
 
         GoalProgress.Validate(item.Module, item.Description);
-        if (item.Module == "lia") item.Description = LiaJourneyTimeline.Normalize(item.Description, item.Status);
+        if (item.Module == "lia")
+        {
+            var liaDetail = CommissionConfirmationService.Detail(item.Description);
+            if (liaDetail?["kind"]?.ToString() == "liaJourney")
+            {
+                if (item.Status != "Concluida") item.Status = "Validacao";
+                var liaClientId = liaDetail["clientId"]?.ToString()?.Trim();
+                if (!string.IsNullOrEmpty(liaClientId))
+                {
+                    var descriptions = await db.WorkItems.AsNoTracking().Where(entry => entry.Module == "lia" && entry.RecordType != "Ajuste de Prompt")
+                        .Select(entry => entry.Description).ToListAsync(cancellationToken);
+                    if (descriptions.Any(description => CommissionConfirmationService.Detail(description)["clientId"]?.ToString()?.Trim() == liaClientId))
+                        throw new DomainException("Este ID de cliente já está no acompanhamento LIA.", 409);
+                }
+                if (item.Status == "Concluida" && !await db.Users.AnyAsync(user => user.Active && user.BlockedAt == null && user.DisplayName == item.Owner, cancellationToken))
+                    throw new DomainException("Selecione um colaborador ativo como responsável pelo cliente importado.");
+            }
+            item.Description = LiaJourneyTimeline.Normalize(item.Description, item.Status);
+        }
         if (item.Module == "cs")
         {
             item.Description = CsJourneyTimeline.Normalize(item.Description);
@@ -1692,7 +1710,13 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (WorkflowPolicy.RequiresExplicitConfirmation(item.Module, command.NextStatus) && !command.Confirmed)
             throw new DomainException("Esta ação sensível exige confirmação explícita e evidência registrada.", 409);
 
-        if (item.Module == "lia") item.Description = LiaJourneyTimeline.Normalize(item.Description, command.NextStatus, item);
+        if (item.Module == "lia")
+        {
+            if (item.Status == "Validacao" && command.NextStatus != item.Status &&
+                !await db.Users.AnyAsync(user => user.Active && user.BlockedAt == null && user.DisplayName == item.Owner, cancellationToken))
+                throw new DomainException("Selecione um colaborador ativo como responsável pelo onboarding.", 409);
+            item.Description = LiaJourneyTimeline.Normalize(item.Description, command.NextStatus, item);
+        }
         var previousCommercialDescription = item.Description;
         var previouslyWon = SalesCelebrationService.IsWon(item);
         var previous = item.Status;

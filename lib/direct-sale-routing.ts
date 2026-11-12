@@ -1,4 +1,7 @@
+import { liaContractedPlan } from "./lia-journey.ts";
+
 type RoutedSale = {
+  liaPlan?: string;
   clientId?: string; saleId: string; saleDate: string; name: string; seller: string;
   followUpTrack: "activation" | "retention" | "lia" | "enterprise";
   version: string; origin: string; products: Array<{product: string; plan: string; unitValue: number; quantity: number}>;
@@ -12,7 +15,7 @@ export function directSaleFollowup(sale: RoutedSale, sourceId: string | undefine
   const common = { clientId: directSaleClientId(sale), sourceLeadId: sourceId, saleId: sale.saleId,
     version: sale.version, origin: sale.origin, products: sale.products, seller: sale.seller, totalCents: sale.totalCents };
   if (sale.followUpTrack === "enterprise") throw new Error("Vendas para contas estratégicas devem ser vinculadas à rede selecionada.");
-  if (sale.followUpTrack === "lia") return { ...common, kind: "liaJourney", startDate: at, sector: "Comercial", requestType: "Venda direta",
+  if (sale.followUpTrack === "lia") return { ...common, kind: "liaJourney", liaPlan: liaContractedPlan(sale), startDate: at, sector: "Comercial", requestType: "Venda direta",
     history: [{id: historyId, text: summary, at, author: sale.seller}] };
   return { ...common, kind: "csJourney", track: sale.followUpTrack, phase: "validation", commerciallyApproved: true, status: "Pendente",
     featuresBase: [], featuresActive: [], featuresPlus: [], labels: [], follows: [{kind: "Origem comercial", text: summary, createdAt: at, actor: sale.seller}] };

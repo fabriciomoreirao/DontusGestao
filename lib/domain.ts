@@ -48,7 +48,7 @@ export const STATE_MACHINES: Record<string, readonly string[]> = {
   ],
   cancellations: ["Fila de espera", "Em processo", "Follow up", "Convertido", "Não convertido"],
   lia: [
-    "AguardandoKickoff", "KickoffAgendado", "ConfiguracaoInicial", "EmTesteCliente",
+    "Validacao", "AguardandoKickoff", "KickoffAgendado", "ConfiguracaoInicial", "EmTesteCliente",
     "EmAjustes", "AguardandoAprovacao", "GoLiveAgendado", "EmProducaoAssistida",
     "ImplantacaoPrincipalConcluida", "ConfigurandoCRC", "AcompanhamentoFinal", "Concluida",
     "BloqueadaPeloCliente", "Pausada", "Cancelada",
