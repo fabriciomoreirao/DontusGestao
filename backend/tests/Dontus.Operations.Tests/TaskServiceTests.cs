@@ -9,6 +9,48 @@ namespace Dontus.Operations.Tests;
 public sealed class TaskServiceTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Sector_colleagues_can_read_assigned_tasks_and_comments_without_mutation_access(bool withParticipants, bool canEdit)
+    {
+        await using var db = CreateContext();
+        var (service, admin) = await InitializeAsync(db);
+        var support = await db.TaskDepartments.SingleAsync(entry => entry.Name == "Suporte");
+        var finance = await db.TaskDepartments.SingleAsync(entry => entry.Name == "Financeiro");
+        var type = await db.TaskTypes.SingleAsync();
+        var owner = new AppUser { Email = "sector-owner@test", DisplayName = "Responsável", CreatedBy = admin.Email };
+        var observer = new AppUser { Email = "sector-observer@test", DisplayName = "Colega", CreatedBy = admin.Email };
+        var participant = new AppUser { Email = "sector-participant@test", DisplayName = "Participante", CreatedBy = admin.Email };
+        var outsider = new AppUser { Email = "sector-outsider@test", DisplayName = "Outro setor", CreatedBy = admin.Email };
+        db.Users.AddRange(owner, observer, participant, outsider);
+        db.UserDepartments.AddRange(new UserDepartment { UserId = owner.Id, DepartmentId = support.Id },
+            new UserDepartment { UserId = observer.Id, DepartmentId = finance.Id, IsPrimary = true },
+            new UserDepartment { UserId = observer.Id, DepartmentId = support.Id },
+            new UserDepartment { UserId = outsider.Id, DepartmentId = finance.Id });
+        await db.SaveChangesAsync();
+        var created = await service.CreateAsync(new("Consulta do setor", "Descrição", type.Id, null, null,
+            support.Id, support.Id, owner.Id, null, "123456", "Clínica", "5511999990000", null, null, null, null,
+            false, withParticipants ? [participant.Id] : [], []), admin);
+        ActorContext Actor(AppUser person, bool edit = true) => new(person.Email, person.DisplayName, "Colaborador", "",
+            [new("tasks", true, false, edit, false, false, ["changeStatus", "changePriority", "forward"])]);
+        await service.AddCommentAsync(new(created.Id, "Histórico visível ao setor", []), Actor(owner));
+        var observerActor = Actor(observer, canEdit);
+        var visible = Assert.Single((await service.GetModuleAsync(observerActor)).Tasks);
+        Assert.Equal(created.Id, visible.Id);
+        Assert.False(visible.CanModify);
+        Assert.Equal("Histórico visível ao setor", Assert.Single(visible.Comments).Body);
+        Assert.Empty((await service.GetModuleAsync(Actor(outsider))).Tasks);
+        var task = await db.CorporateTasks.SingleAsync(entry => entry.Id == created.Id);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.AddCommentAsync(new(task.Id, "Alteração indevida", []), observerActor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.ChangeStatusAsync(new(task.Id, task.StatusId, "Alteração indevida", task.Version), observerActor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.ChangePriorityAsync(new(task.Id, task.PriorityId, task.Version), observerActor))).StatusCode);
+        if (withParticipants)
+            await service.AddCommentAsync(new(task.Id, "Interação do participante preservada", []), Actor(participant));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Assignee_can_move_request_approval_complete_and_forward_without_extra_capabilities(bool canEdit)
@@ -750,7 +792,7 @@ public sealed class TaskServiceTests
         foreach(var id in new[]{commenter.Id,commenter.Id,owner.Id,coordinator.Id,creatorId,blocked.Id})db.TaskComments.Add(new TaskComment{TaskId=task.Id,AuthorUserId=id,Body="Histórico de contato"});await db.SaveChangesAsync();
         ActorContext Viewer(AppUser person)=>new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false)]);
         await service.AssignAsync(new(task.Id,null,task.Version),Viewer(owner));
-        Assert.Empty((await service.GetModuleAsync(Viewer(commenter))).Tasks);
+        Assert.False(Assert.Single((await service.GetModuleAsync(Viewer(commenter))).Tasks).CanModify);
         var final=await db.TaskStatuses.SingleAsync(status=>status.Name=="Resolvida");
         await service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),Viewer(owner));
         var expected=new[]{creatorId,owner.Id,coordinator.Id,commenter.Id}.Order().ToArray();

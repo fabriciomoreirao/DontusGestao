@@ -1,10 +1,10 @@
 type Task = {assigneeUserId:string|null;currentDepartmentId:string;typeId:string};
 type Status = {id:string;name:string;departmentId:string|null;manualMovement:boolean;active:boolean};
 type Type = {id:string;allowedStatusIds:string[]};
-type Access = {userId?:string;canEdit:boolean;canManage:boolean;changeStatus:boolean;cancel:boolean};
+type Access = {userId?:string;canEdit:boolean;canManage:boolean;changeStatus:boolean;cancel:boolean;canInteract?:boolean};
 
 export function canDragTask(task:Task,access:Access) {
-  return Boolean(access.userId && task.assigneeUserId===access.userId) || access.canEdit&&(access.canManage||access.changeStatus);
+  return access.canInteract!==false && (Boolean(access.userId && task.assigneeUserId===access.userId) || access.canEdit&&(access.canManage||access.changeStatus));
 }
 
 export function canMoveTask(task:Task,status:Status,types:Type[],access:Access) {
