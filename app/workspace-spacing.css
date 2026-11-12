@@ -1,0 +1,58 @@
+/* A single gap between the page header and the top-level workspace blocks. */
+.app-shell .content{--workspace-block-gap:8px}
+
+.app-shell .content :is(
+  .tasks-module,.cs-pipeline-module,.commercial-leads-module,.enterprise-module,
+  .journey-module,.lia-adjustments-module,.cancellation-module,.cancellation-indicators,.waiting-queue-module,
+  .commissions-module,.commission-settings,.goals-module,.hr-module,
+  .marketing-workspace:not(.analytics-tv),.service-records-module,.service-request-module,
+  .referrals-module,.referral-settings-page,.surveys-module,.reminders-page,
+  .suggestions-page,.suggestion-catalog-page,.development-module,
+  .notices-module,.notice-admin-module,.portal-links-admin,.catalogs-module,
+  .employee-indicators-page,.chat-module,.analytics-workspace:not(.analytics-tv)
+):has(>.module-page-header){
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  row-gap:var(--workspace-block-gap);
+  align-content:start;
+}
+
+.app-shell .content :is(
+  .tasks-module,.cs-pipeline-module,.commercial-leads-module,.enterprise-module,
+  .journey-module,.lia-adjustments-module,.cancellation-module,.cancellation-indicators,.waiting-queue-module,
+  .commissions-module,.commission-settings,.goals-module,.hr-module,
+  .marketing-workspace:not(.analytics-tv),.service-records-module,.service-request-module,
+  .referrals-module,.referral-settings-page,.surveys-module,.reminders-page,
+  .suggestions-page,.suggestion-catalog-page,.development-module,
+  .notices-module,.notice-admin-module,.portal-links-admin,.catalogs-module,
+  .employee-indicators-page,.chat-module,.analytics-workspace:not(.analytics-tv),.internal-chat-page
+):has(>.module-page-header)>:not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
+  min-width:0;
+  margin-block:0;
+}
+
+.app-shell .content .internal-chat-page:has(>.module-page-header){row-gap:var(--workspace-block-gap)}
+.app-shell .content .referrals-module>.referral-grid:empty{display:none}
+
+.app-shell .content .support-access-page:has(>:is(.support-access-heading,.support-access-subheading)){
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  row-gap:var(--workspace-block-gap);
+  align-content:start;
+}
+.app-shell .content .support-access-page:has(>:is(.support-access-heading,.support-access-subheading))>:not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
+  min-width:0;
+  margin-block:0;
+}
+
+/* Pages rendered as fragments share the content container as their stack. */
+.app-shell .content:has(>.module-page-header){
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  row-gap:var(--workspace-block-gap);
+  align-content:start;
+}
+.app-shell .content:has(>.module-page-header)>:not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
+  min-width:0;
+  margin-block:0;
+}
