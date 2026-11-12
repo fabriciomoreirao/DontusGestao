@@ -501,12 +501,13 @@ test("integra chamados públicos, competência mensal e rolagem do chat", async 
 });
 
 test("integra campanhas de marketing com qualificação e indicadores do CRM", async () => {
-  const [marketing, app, indicators, workflow, css] = await Promise.all([
+  const [marketing, app, indicators, workflow, css, traffic] = await Promise.all([
     readFile(new URL("../app/MarketingWorkspaceModule.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/OperationIndicatorsBoard.tsx", import.meta.url), "utf8"),
     readFile(new URL("../backend/src/Dontus.Operations.Domain/WorkflowPolicy.cs", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/CommercialTrafficIndicators.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(marketing, /kind:"marketingCampaign"/);
   assert.match(marketing, /"Planejada","Em desenvolvimento","Publicada"/);
@@ -517,9 +518,9 @@ test("integra campanhas de marketing com qualificação e indicadores do CRM", a
   assert.match(app, /leadQualification/);
   assert.match(app, /Link do post/);
   assert.match(app, /Selecionar campanha publicada/);
-  assert.match(indicators, /Campanhas e qualificação/);
-  assert.match(indicators, /Qualificação por semana do mês/);
-  assert.match(indicators, /Melhor campanha/);
+  assert.match(indicators, /CommercialTrafficIndicators entries=\{campaigns\}/);
+  assert.match(traffic, /Leads por campanha/);
+  assert.match(traffic, /Receita por campanha/);
   assert.match(workflow, /"Planejada", "Em desenvolvimento", "Publicada"/);
   assert.match(css, /\.campaign-kanban/);
   assert.match(css, /\.commercial-campaign-fields/);
