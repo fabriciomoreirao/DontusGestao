@@ -71,9 +71,11 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var statusNames = statuses.ToDictionary(status => status.Id);
 
         var scheduledIds = statuses.Where(status => new string(status.Name.Where(char.IsLetter).ToArray()).Equals("Agendado", StringComparison.OrdinalIgnoreCase)).Select(status => status.Id).ToHashSet();
-        var cutoff = clock.GetUtcNow().AddDays(-3);
+        var brasiliaOffset = TimeSpan.FromHours(-3);
+        var cutoffDate = DateOnly.FromDateTime(clock.GetUtcNow().ToOffset(brasiliaOffset).DateTime).AddDays(-3);
         var alerts = commitments.Where(commitment => commitment.ResponsibleUserId == actorUser.Id && scheduledIds.Contains(commitment.AgendaStatusId)
-            && (commitment.StatusChangedAt ?? commitment.CreatedAt) < cutoff)
+            && DateOnly.FromDateTime(commitment.StartsAt.ToOffset(brasiliaOffset).DateTime) <= cutoffDate
+            && DateOnly.FromDateTime((commitment.StatusChangedAt ?? commitment.CreatedAt).ToOffset(brasiliaOffset).DateTime) <= cutoffDate)
             .Select(commitment => new AgendaStaleAlertDto(commitment.Id, commitment.Title, commitment.StartsAt, commitment.StatusChangedAt ?? commitment.CreatedAt)).ToArray();
 
         return new AgendaModuleDto(

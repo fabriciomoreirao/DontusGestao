@@ -373,12 +373,70 @@ public sealed class AgendaServiceTests
     [Fact]
     public async Task Scheduled_alert_survives_description_edit_and_ends_only_when_status_changes()
     {
-        var (db,service,command,actor)=await RecurrenceContext();await using var context=db;
-        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));var commitment=await db.AgendaCommitments.SingleAsync();commitment.StatusChangedAt=DateTimeOffset.UtcNow.AddDays(-4);await db.SaveChangesAsync();
+        var (db,_,command,actor)=await RecurrenceContext();await using var context=db;
+        var service=new AgendaService(db,new AlertClock());
+        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));var commitment=await db.AgendaCommitments.SingleAsync();commitment.StatusChangedAt=DateTimeOffset.Parse("2026-11-01T12:00:00-03:00");await db.SaveChangesAsync();
         Assert.Equal(id,Assert.Single((await service.GetModuleAsync(actor)).Alerts).Id);
         await service.UpdateCommitmentAsync(new(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,command.ResponsibleUserId,command.Title,"Nova descrição",command.StartsAt,command.EndsAt,[]),actor);
         Assert.Single((await service.GetModuleAsync(actor)).Alerts);
         var final=new AgendaStatus{Name="Concluído"};db.Add(final);await db.SaveChangesAsync();await service.ChangeCommitmentStatusAsync(new(id,final.Id),actor);Assert.Empty((await service.GetModuleAsync(actor)).Alerts);
+    }
+
+    [Theory]
+    [InlineData("2026-11-20T12:00:00-03:00", "2026-11-01T12:00:00-03:00", false)]
+    [InlineData("2026-11-12T00:00:00-03:00", "2026-11-01T12:00:00-03:00", false)]
+    [InlineData("2026-11-11T00:00:00-03:00", "2026-11-01T12:00:00-03:00", false)]
+    [InlineData("2026-11-10T00:00:00-03:00", "2026-11-01T12:00:00-03:00", false)]
+    [InlineData("2026-11-09T23:59:59-03:00", "2026-11-01T12:00:00-03:00", true)]
+    [InlineData("2026-11-10T02:30:00Z", "2026-11-01T12:00:00-03:00", true)]
+    [InlineData("2026-11-10T03:00:00Z", "2026-11-01T12:00:00-03:00", false)]
+    [InlineData("2026-11-01T12:00:00-03:00", "2026-11-10T00:00:00-03:00", false)]
+    [InlineData("2026-11-01T12:00:00-03:00", "2026-11-09T23:59:59-03:00", true)]
+    public async Task Scheduled_alert_requires_three_previous_Brasilia_dates_for_appointment_and_status(string startsAt, string changedAt, bool expected)
+    {
+        var (db,_,command,actor)=await RecurrenceContext();await using var context=db;
+        var commitment=ExistingSlot(command,actor);
+        commitment.StartsAt=DateTimeOffset.Parse(startsAt);commitment.EndsAt=commitment.StartsAt.AddHours(1);
+        commitment.StatusChangedAt=DateTimeOffset.Parse(changedAt);
+        db.Add(commitment);await db.SaveChangesAsync();
+        var view=await new AgendaService(db,new AlertClock()).GetModuleAsync(actor);
+        Assert.Equal(expected,view.Alerts.Any());
+        if(expected)Assert.Equal(commitment.Id,Assert.Single(view.Alerts).Id);
+    }
+
+    [Fact]
+    public async Task Scheduled_alert_uses_Brasilia_midnight_and_legacy_creation_date_fallback()
+    {
+        var (db,_,command,actor)=await RecurrenceContext();await using var context=db;
+        var commitment=ExistingSlot(command,actor);
+        commitment.StartsAt=DateTimeOffset.Parse("2026-11-10T02:30:00Z");commitment.EndsAt=commitment.StartsAt.AddHours(1);
+        commitment.CreatedAt=DateTimeOffset.Parse("2026-11-01T12:00:00-03:00");
+        db.Add(commitment);await db.SaveChangesAsync();
+        Assert.Empty((await new AgendaService(db,new AlertClock("2026-11-12T02:59:59Z")).GetModuleAsync(actor)).Alerts);
+        Assert.Single((await new AgendaService(db,new AlertClock("2026-11-12T03:00:00Z")).GetModuleAsync(actor)).Alerts);
+        commitment.CreatedAt=DateTimeOffset.Parse("2026-11-12T00:00:00-03:00");await db.SaveChangesAsync();
+        Assert.Empty((await new AgendaService(db,new AlertClock()).GetModuleAsync(actor)).Alerts);
+    }
+
+    [Fact]
+    public async Task Scheduled_alert_disappears_when_rescheduled_and_is_only_visible_to_its_responsible()
+    {
+        var (db,_,command,actor)=await RecurrenceContext();await using var context=db;
+        var service=new AgendaService(db,new AlertClock());
+        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));
+        var commitment=await db.AgendaCommitments.SingleAsync();commitment.StatusChangedAt=DateTimeOffset.Parse("2026-11-01T12:00:00-03:00");await db.SaveChangesAsync();
+        Assert.Single((await service.GetModuleAsync(actor)).Alerts);
+        var future=DateTimeOffset.Parse("2026-11-20T10:00:00-03:00");
+        await service.UpdateCommitmentAsync(new(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,command.ResponsibleUserId,command.Title,command.Description,future,future.AddHours(1),[]),actor);
+        Assert.Empty((await service.GetModuleAsync(actor)).Alerts);
+        commitment.StartsAt=command.StartsAt;commitment.EndsAt=command.EndsAt;
+        var other=new AppUser{Email="other@test",DisplayName="Outro responsável",CreatedBy="tests"};db.Add(other);commitment.ResponsibleUserId=other.Id;await db.SaveChangesAsync();
+        Assert.Empty((await service.GetModuleAsync(actor)).Alerts);
+    }
+
+    private sealed class AlertClock(string now="2026-11-12T12:00:00-03:00") : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.Parse(now);
     }
     [Fact]
     public async Task Meeting_invitation_shares_only_invited_booking_without_granting_room_access()
