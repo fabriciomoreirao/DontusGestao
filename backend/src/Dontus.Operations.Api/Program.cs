@@ -1277,7 +1277,7 @@ operations.MapPost("", async (
                 request.NextStatus ?? "",
                 request.Version ?? 0,
                 request.Confirmed ?? false,
-                request.BoardMove ?? false), actor, cancellationToken);
+                request.BoardMove ?? false, request.Reason), actor, cancellationToken);
             break;
 
         case "createAppointment":
