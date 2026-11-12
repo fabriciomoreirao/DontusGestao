@@ -89,3 +89,21 @@
 .commercial-lead-drawer.commercial-original-layout .lead-history-item>header>span{font-size:12px;color:var(--muted);}
 .commercial-lead-drawer.commercial-original-layout .lead-history-item>header>time{position:static;margin-left:auto;}
 .commercial-lead-drawer.commercial-original-layout .lead-history-item p{margin:8px 0 0;padding-right:0;}
+
+/* Compact summaries remain visible above the operational boards. */
+.app-shell .cs-pipeline-metrics{grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;}
+.app-shell .cs-pipeline-metrics>article{min-height:94px;padding:10px 12px;gap:4px 8px;grid-template-columns:26px minmax(0,1fr);}
+.app-shell .cs-pipeline-metrics>article>span{width:26px;height:26px;}
+.app-shell .cs-pipeline-metrics>article>strong{font-size:20px;}
+.app-shell .cs-pipeline-metrics>article>p{margin:0;font-size:10px!important;}
+.app-shell .enterprise-kpis>article{min-height:76px;padding:10px 12px;gap:3px;}
+.app-shell .enterprise-kpis>article>strong{font-size:21px;}
+.commercial-stage-row:has(.commercial-monthly-reset){display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+.commercial-stage-row:has(.commercial-monthly-reset)>input:not([type=color]){flex:1 1 180px;min-width:150px;}
+.commercial-monthly-reset{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;}
+.commercial-totals-table{width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);}
+.commercial-totals-table table{width:100%;border-collapse:collapse;text-align:left;font-size:13px;}
+.commercial-totals-table :is(th,td){padding:12px;border-bottom:1px solid var(--line);white-space:nowrap;}
+.commercial-totals-table caption{padding:14px;text-align:left;font-weight:800;}
+.commercial-totals-table tfoot{font-weight:800;background:var(--surface-alt);}
+@media(max-width:620px){.app-shell .cs-pipeline-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}

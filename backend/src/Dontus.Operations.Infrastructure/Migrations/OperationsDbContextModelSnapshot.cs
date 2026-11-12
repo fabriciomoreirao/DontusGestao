@@ -1855,8 +1855,7 @@ namespace Dontus.Operations.Infrastructure.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(600)
-                        .HasColumnType("character varying(600)");
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()

@@ -71,6 +71,7 @@ public sealed class CommissionConfirmationService(OperationsDbContext db, IDataP
                 throw new DomainException("Atualize todos os clientes: aprove ou reprove e informe o motivo antes de enviar.", 409);
             if (month != command.Competence || !referral && Text(detail, "scope") != command.Scope)
                 throw new DomainException("Os lançamentos não correspondem à competência e aos filtros.", 409);
+            await CommercialCommissionSource.ValidateDecisionAsync(db, item, ct);
             var key = EmployeeKey(item, detail);
             if (!groups.ContainsKey(key))
             {
@@ -94,7 +95,9 @@ public sealed class CommissionConfirmationService(OperationsDbContext db, IDataP
                 Text(journey, "firstMeetingCompletedAt") is { Length: > 0 } kickoff ? kickoff : Text(journey, "firstMeetingAt"),
                 Text(journey, "trainingCompletedAt") is { Length: > 0 } training ? training : Text(journey, "trainingAt"),
                 Text(journey, "singleAlignmentCompletedAt") is { Length: > 0 } alignment ? alignment : Text(journey, "singleAlignmentAt"),
-                Text(detail, "sector"), Text(detail, "manualCustomerCode"), Text(detail, "manual") == "true"));
+                Text(detail, "sector"), Text(detail, "manualCustomerCode"), Text(detail, "manual") == "true",
+                Text(detail, "scope") == "lia" && source is not null ? LiaJourneyTimeline.CommissionStages(journey, source.Status).ToDictionary(x => x.Key, x => x.Value?.ToString() ?? "")
+                : detail["liaStages"] is JsonObject liaStages ? liaStages.ToDictionary(x => x.Key, x => x.Value?.ToString() ?? "") : null));
         }
         var output = new List<object>();
         foreach (var (key, group) in groups)
@@ -198,6 +201,9 @@ public sealed class CommissionConfirmationService(OperationsDbContext db, IDataP
         var versions = await db.WorkItems.AsNoTracking().Where(x => ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Version, ct);
         if (rows.Any(x => !versions.TryGetValue(x.Id, out var version) || version != x.Version))
             throw new DomainException("Os valores ou decisões mudaram. Solicite um novo link de confirmação.", 409);
+        if (entry.Module == "commissions" && entry.Scope == "commercial")
+            foreach (var item in await db.WorkItems.AsNoTracking().Where(x => ids.Contains(x.Id)).ToListAsync(ct))
+                await CommercialCommissionSource.ValidateDecisionAsync(db, item, ct);
     }
     internal static async Task InvalidatePendingAsync(OperationsDbContext db, WorkItem item, CancellationToken ct)
     {

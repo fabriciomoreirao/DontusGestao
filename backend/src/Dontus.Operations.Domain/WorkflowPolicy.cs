@@ -8,7 +8,7 @@ public static class WorkflowPolicy
             ["commercial"] = ["NovoLead", "EmContato", "Qualificado", "Diagnostico", "Apresentacao", "Negociacao", "Ganho", "Perdido", "Cancelado"],
             ["cs"] = ["PendenteAgendamento", "Agendado", "TreinamentoRealizado", "EmAcompanhamento", "AguardandoCliente", "Pausado", "EmValidacaoFinal", "Finalizado", "TransferidoSuporte", "Cancelado"],
             ["cancellations"] = ["Fila de espera", "Em processo", "Follow up", "Convertido", "Não convertido"],
-            ["lia"] = ["AguardandoKickoff", "KickoffAgendado", "ConfiguracaoInicial", "EmTesteCliente", "EmAjustes", "AguardandoAprovacao", "GoLiveAgendado", "EmProducaoAssistida", "ImplantacaoPrincipalConcluida", "ConfigurandoCRC", "Concluida", "BloqueadaPeloCliente", "Pausada", "Cancelada"],
+            ["lia"] = ["AguardandoKickoff", "KickoffAgendado", "ConfiguracaoInicial", "EmTesteCliente", "EmAjustes", "AguardandoAprovacao", "GoLiveAgendado", "EmProducaoAssistida", "ImplantacaoPrincipalConcluida", "ConfigurandoCRC", "AcompanhamentoFinal", "Concluida", "BloqueadaPeloCliente", "Pausada", "Cancelada"],
             ["hr"] = ["Experiência", "Ativos", "Desligados"],
             ["marketing"] = ["Recebida", "Em planejamento", "Em produção", "Em revisão", "Concluída", "Planejada", "Em desenvolvimento", "Publicada"],
             ["referrals"] = ["Em acompanhamento", "Em conferência", "Aprovado", "Reprovado"],
@@ -59,6 +59,8 @@ public static class WorkflowPolicy
         // sequencial, mas não deve bloquear o envio para conferência.
         if (module.Equals("lia", StringComparison.OrdinalIgnoreCase) && current == "EmTesteCliente")
             result.Add("AguardandoAprovacao");
+        if (module.Equals("lia", StringComparison.OrdinalIgnoreCase) && current is "EmAjustes" or "AguardandoAprovacao" or "EmProducaoAssistida" or "ImplantacaoPrincipalConcluida" or "ConfigurandoCRC")
+            result.AddRange(current == "AguardandoAprovacao" ? ["EmAjustes", "ConfigurandoCRC"] : current == "EmAjustes" ? ["AguardandoAprovacao"] : ["AcompanhamentoFinal"]);
 
         switch (module.ToLowerInvariant())
         {

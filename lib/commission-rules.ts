@@ -1,8 +1,14 @@
 export type CommissionScope = "commercial" | "cs" | "lia";
 export type ScoreTier = { min: number; max: number | null; percentage: number };
+export type SalesTier = { minCents: number; maxCents: number | null; percentage: number };
+export const defaultSalesTiers: SalesTier[] = [
+  { minCents: 0, maxCents: 300000, percentage: 35 },
+  { minCents: 300000, maxCents: 450000, percentage: 40 },
+  { minCents: 450000, maxCents: null, percentage: 50 },
+];
 export type CommissionRule = {
   kind: "commissionRule"; scope: CommissionScope; employeeId: string; employeeName: string;
-  product: string; type: "percentage" | "fixed"; value: number; scoreTiers?: ScoreTier[];
+  product: string; type: "percentage" | "fixed"; value: number; scoreTiers?: ScoreTier[]; salesTiers?: SalesTier[];
 };
 
 export const normalizeCommissionName = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLowerCase();
@@ -20,7 +26,10 @@ export function parseCommissionRule(raw: string): CommissionRule | null {
 
 export function findCommissionRule(rules: CommissionRule[], row: {scope: CommissionScope; employeeId: string; employeeName: string; product: string}) {
   const candidates = rules.filter(rule => rule.scope === row.scope && (rule.employeeId && row.employeeId
-    ? rule.employeeId.toLowerCase() === row.employeeId.toLowerCase() : normalize(rule.employeeName) === normalize(row.employeeName)));
+    ? rule.employeeId.toLowerCase() === row.employeeId.toLowerCase() : normalize(rule.employeeName) === normalize(row.employeeName)))
+    .sort((a,b) => Number(Boolean(b.employeeId)) - Number(Boolean(a.employeeId)));
+  if (row.scope !== "cs") return candidates.find(rule => rule.product === "*")
+    ?? candidates.find(rule => normalize(rule.product) === normalize(row.product));
   return candidates.find(rule => normalize(rule.product) === normalize(row.product))
     ?? candidates.find(rule => rule.product === "*") ?? (row.scope === "cs" ? candidates[0] : undefined);
 }
@@ -38,7 +47,7 @@ export function commissionDate(value: unknown): string | null {
 }
 
 export function journeyCommissionDate(scope: "cs" | "lia", detail: Record<string, unknown>, createdAt: string): string | null {
-  if (scope === "lia") return detail.startDate ? commissionDate(detail.startDate) : detail.startedAt ? commissionDate(detail.startedAt) : null;
+  if (scope === "lia") return detail.startDate ? commissionDate(detail.startDate) : detail.startedAt ? commissionDate(detail.startedAt) : commissionDate(createdAt);
   if (["validation", "onboarding", "activation"].includes(String(detail.phase))) return null;
   return detail.trackingStartedAt ? commissionDate(detail.trackingStartedAt)
     : ["tracking", "evolution"].includes(String(detail.phase)) ? commissionDate(detail.startDate) : null;
@@ -74,8 +83,30 @@ export function commissionScoreTiers(tiers:ScoreTier[]):ScoreTier[]{
   return [{min:0,max:50,percentage:0},{min:50,max:75,percentage:tiers[0]?.percentage??5},{min:75,max:100,percentage:tiers[1]?.percentage??10},{min:100,max:null,percentage:tiers[2]?.percentage??15}];
 }
 
-export function calculateCommission(rule: CommissionRule, saleCents: number, score: number | null) {
+export function validSalesTiers(tiers: unknown): tiers is SalesTier[] {
+  if (!Array.isArray(tiers) || !tiers.length || tiers.length > 20) return false;
+  let cursor = 0;
+  return tiers.every((tier, index) => {
+    if (!tier || !Number.isSafeInteger(tier.minCents) || tier.minCents !== cursor || tier.minCents < 0 || tier.minCents > 100000000000
+      || typeof tier.percentage !== "number" || !Number.isFinite(tier.percentage) || tier.percentage < 0 || tier.percentage > 100) return false;
+    if (index === tiers.length - 1) return tier.maxCents === null;
+    if (!Number.isSafeInteger(tier.maxCents) || tier.maxCents <= cursor || tier.maxCents > 100000000000) return false;
+    cursor = tier.maxCents;
+    return true;
+  });
+}
+
+export function calculateCommission(rule: CommissionRule, saleCents: number, score: number | null, monthlySalesCents = saleCents, commissionOffsetCents?: number) {
   const currency = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+  if (rule.scope === "commercial" && rule.salesTiers) {
+    if (!validSalesTiers(rule.salesTiers) || !Number.isSafeInteger(monthlySalesCents) || monthlySalesCents < 0) return null;
+    const tier = rule.salesTiers.find(entry => monthlySalesCents >= entry.minCents && (entry.maxCents === null || monthlySalesCents < entry.maxCents));
+    if (!tier) return null;
+    const cents = commissionOffsetCents === undefined ? Math.round(Math.max(0, saleCents) * tier.percentage / 100)
+      : Math.round((commissionOffsetCents + Math.max(0, saleCents)) * tier.percentage / 100) - Math.round(commissionOffsetCents * tier.percentage / 100);
+    return { cents,
+      label: `${tier.percentage}% sobre ${currency(saleCents)} · total vendido no mês: ${currency(monthlySalesCents)} · comissão do total: ${currency(Math.round(monthlySalesCents * tier.percentage / 100))}` };
+  }
   if (rule.scope === "cs" && rule.scoreTiers) {
     if (!validScoreTiers(rule.scoreTiers) || score === null || !Number.isFinite(score) || score < 0) return null;
     const tiers=commissionScoreTiers(rule.scoreTiers);

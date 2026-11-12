@@ -17,7 +17,7 @@ public static class SalesCelebrationService
         if (item.Module != "commercial") return;
         var detail = Detail(item.Description);
         if (Text(detail, "kind") is not ("commercialLead" or "directSale")) return;
-        detail["stage"] = stage; item.Description = detail.ToJsonString();
+        detail["stage"] = stage; item.Description = CommercialStageTimeline.Normalize(detail.ToJsonString(), item.Description, item.CreatedAt);
     }
     private static JsonObject Detail(string value) { try { return JsonNode.Parse(value) as JsonObject ?? new(); } catch (JsonException) { return new(); } }
     private static string Text(JsonObject detail, string key) => detail[key] is JsonValue value && value.TryGetValue<string>(out var text) ? text ?? "" : "";

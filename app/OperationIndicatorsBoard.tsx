@@ -14,7 +14,7 @@ import { useFieldIndicatorAnalysis } from "@/app/FieldIndicatorAnalysis";
 import { isCriticalIndicatorRecord, isOverdueIndicatorRecord } from "@/lib/field-indicators";
 import { csOutcome } from "@/lib/cs-journey";
 import { enterpriseUnitScore } from "@/lib/enterprise-score";
-import { scopeCommercialIndicatorItems } from "@/lib/commercial-indicators";
+import { scopeCommercialIndicatorItems, commercialSaleDate } from "@/lib/commercial-indicators";
 
 type Item = {
   id: string; module: string; record_type: string; title: string; customer_name?: string; owner: string; team: string;
@@ -540,7 +540,7 @@ function commercialEntries(items: Item[], contextKey: string): CommercialEntry[]
       origin: stringOf(detail.origin, detail.source) || "Não informada",
       date: stringOf(detail.saleDate, detail.entryDate, item.created_at).slice(0, 10),
       amount: numberOf(detail.totalCents, detail.valueCents, item.amount_cents, productAmount),
-      won: direct || /ganho|vendid|fechad|contrat|conclu/.test(clean(`${stage} ${item.status}`)),
+      won: direct || Boolean(detail.wonAt) || /ganho|vendid|fechad|contrat|conclu/.test(clean(`${stage} ${item.status}`)),
       lia: clean(detail.followUpTrack) === "lia" || /\blia\b/.test(clean(item.description)),
       follows: arrayOf(detail.follows).filter((entry): entry is Detail => Boolean(entry && typeof entry === "object")),
     };
@@ -548,14 +548,15 @@ function commercialEntries(items: Item[], contextKey: string): CommercialEntry[]
 }
 
 function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClose }: { title: string; contextKey: string; items: Item[]; employees: Employee[]; onClose: () => void }) {
-  const [tab, setTab] = useState<"overview" | "funnel" | "team" | "campaigns" | "fields">("overview");
+  const [tab, setTab] = useState<"overview" | "funnel" | "team" | "campaigns" | "fields" | "direct" | "totals">("overview");
   const [snapshotTime] = useState(() => Date.now());
   const [month, setMonth] = useState(new Date().toLocaleDateString("en-CA").slice(0, 7));
   const [seller, setSeller] = useState("all"); const [stage, setStage] = useState("all"); const [origin, setOrigin] = useState("all");
   const [crm, setCrm] = useState("all");
-  const flowEntries = useMemo(() => commercialEntries(items, contextKey), [items, contextKey]);
+  const combinedView=tab==="direct"||tab==="totals";
+  const flowEntries = useMemo(() => commercialEntries(items, combinedView?"commercial:combined":contextKey).map(entry=>combinedView?{...entry,date:entry.won?commercialSaleDate(entry.detail,entry.date):entry.date}:entry), [items, contextKey, combinedView]);
   const crmOptions = [...new Set(flowEntries.map(entry => String(entry.detail.funnel || "Sem CRM")))];
-  const rawEntries = flowEntries.filter(entry => crm === "all" || String(entry.detail.funnel || "Sem CRM") === crm);
+  const rawEntries = flowEntries.filter(entry => (tab!=="direct"||entry.direct) && (combinedView || crm === "all" || String(entry.detail.funnel || "Sem CRM") === crm));
   const campaigns = paidTrafficCohort(items).filter(entry => (crm==="all"||String(entry.detail.funnel||"Sem CRM")===crm) && entry.date.startsWith(month) && (seller === "all" || String(entry.detail.seller || entry.item.owner) === seller));
   const fieldAnalysis = useFieldIndicatorAnalysis(rawEntries.map(entry => entry.item));
   const all = rawEntries.filter(entry => fieldAnalysis.matches(entry.item));
@@ -594,8 +595,8 @@ function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClos
   const activityCards = [{ label: "Leads novos", value: leads.length, delta: delta(leads.length, previous.filter((entry) => !entry.direct).length) }, { label: "Contatos realizados", value: contacts, delta: delta(contacts, previousContacts) }, { label: "Demonstrações", value: demos, delta: delta(demos, previousDemos) }, { label: "Propostas enviadas", value: proposals, delta: delta(proposals, previousProposals) }, { label: "Vendas sistema", value: systemSales.length, delta: delta(systemSales.length, previousSales.filter((entry) => !entry.lia).length) }, { label: "Vendas LIA", value: liaSales.length, delta: delta(liaSales.length, previousSales.filter((entry) => entry.lia).length) }];
   return <main className="operation-bi-page cancellation-bi-style" aria-labelledby="operation-bi-title"><section className="operation-bi-board commercial-bi-board">
     <header><div><span className="operation-bi-mark"><BarChart3 /></span><span><small>INDICADORES · CRM</small><h1 id="operation-bi-title">{title}</h1><p>Metas, receita, funil e desempenho calculados pelos registros reais do CRM.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para a funcionalidade"><ArrowLeft /><span>Voltar</span></button></header>
-    <IndicatorTabs id="commercial" value={tab} onChange={setTab} tabs={[{id:"overview",label:"Visão geral"},{id:"funnel",label:"Funil e receita"},{id:"team",label:"Equipe e oportunidades"},{id:"campaigns",label:"Campanhas e qualificação"},{id:"fields",label:"Campos preenchidos"}]} />
-    <section className="operation-bi-filters commercial-bi-filters"><Filter /><label>CRM<select aria-label="Filtrar indicadores por CRM" value={crm} onChange={event=>{setCrm(event.target.value);setStage("all")}}><option value="all">Todos os CRMs</option>{crmOptions.sort().map(name=><option key={name}>{name}</option>)}</select></label><label>Competência<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><label>Vendedor<SearchablePeopleSelect searchLabel="Vendedor" value={seller} onChange={(event) => setSeller(event.target.value)}><option value="all">Todos</option>{[...new Set(all.map((entry) => entry.seller))].sort().map((entry) => <option key={entry}>{entry}</option>)}</SearchablePeopleSelect></label><label>Etapa<select value={stage} onChange={(event) => setStage(event.target.value)}><option value="all">Todas</option>{[...new Set(all.map((entry) => entry.stage))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Origem<select value={origin} onChange={(event) => setOrigin(event.target.value)}><option value="all">Todas</option>{[...new Set(all.map((entry) => entry.origin))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><button onClick={() => { setSeller("all"); setStage("all"); setOrigin("all"); setCrm("all"); }}>Limpar</button><strong>{scoped.length} oportunidade(s)</strong></section>
+    <IndicatorTabs id="commercial" value={tab} onChange={value=>{setTab(value);if(value==="direct"||value==="totals"){setCrm("all");setStage("all")}}} tabs={[{id:"overview",label:"Visão geral"},{id:"funnel",label:"Funil e receita"},{id:"team",label:"Equipe e oportunidades"},{id:"campaigns",label:"Campanhas e qualificação"},{id:"fields",label:"Campos preenchidos"},{id:"direct",label:"Vendas diretas"},{id:"totals",label:"Totais em conjunto"}]} />
+    <section className="operation-bi-filters commercial-bi-filters"><Filter /><label>CRM<select aria-label="Filtrar indicadores por CRM" disabled={combinedView} value={combinedView?"all":crm} onChange={event=>{setCrm(event.target.value);setStage("all")}}><option value="all">Todos os CRMs</option>{crmOptions.sort().map(name=><option key={name}>{name}</option>)}</select></label><label>Competência<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><label>Vendedor<SearchablePeopleSelect searchLabel="Vendedor" value={seller} onChange={(event) => setSeller(event.target.value)}><option value="all">Todos</option>{[...new Set(all.map((entry) => entry.seller))].sort().map((entry) => <option key={entry}>{entry}</option>)}</SearchablePeopleSelect></label><label>Etapa<select value={stage} onChange={(event) => setStage(event.target.value)}><option value="all">Todas</option>{[...new Set(all.map((entry) => entry.stage))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Origem<select value={origin} onChange={(event) => setOrigin(event.target.value)}><option value="all">Todas</option>{[...new Set(all.map((entry) => entry.origin))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><button onClick={() => { setSeller("all"); setStage("all"); setOrigin("all"); setCrm("all"); }}>Limpar</button><strong>{scoped.length} oportunidade(s)</strong></section>
     <section role="tabpanel" id={`commercial-panel-${tab}`} aria-labelledby={`commercial-tab-${tab}`} className="indicator-panel">
     {tab === "fields" && fieldAnalysis.panel(scoped.map(entry => ({ ...entry.item, amount_cents: entry.amount })))}
     {tab === "overview" && <>
@@ -611,8 +612,40 @@ function CommercialIndicatorsBoard({ title, contextKey, items, employees, onClos
     </section>}
     {tab === "team" && <section className="commercial-bi-bottom"><article><header>Ranking da equipe (mês)</header><div className="commercial-ranking">{team.length ? team.map((entry, index) => <span key={entry.name}><b>#{index + 1}</b><strong>{entry.name}</strong><em>{money(entry.revenue)}</em><small>{entry.sales} vendas · {entry.lia} LIA · {entry.conversion}%</small></span>) : <p>Sem vendas neste recorte.</p>}</div></article><article><header>Atividades pendentes</header><div className="commercial-pending"><span><b>{overdue}</b> follow-ups atrasados</span><span><b>{withoutContact}</b> oportunidades sem contato</span><span><b>{todayFollowups}</b> interações hoje</span><span><b>{directSales.length}</b> vendas diretas</span></div></article><article><header>Oportunidades quentes</header><div className="commercial-hot">{hot.length ? hot.map((entry) => <span key={entry.item.id}><strong>{entry.item.title}</strong><small>{entry.stage}</small><b>{money(entry.amount)}</b></span>) : <p>Nenhuma oportunidade quente no filtro.</p>}</div></article><article><header>Desempenho vs mês anterior</header><div className="commercial-performance"><span>Receita <MetricChange value={delta(revenue, previousRevenue)}/></span><span>Leads <MetricChange value={delta(leads.length, previous.filter((entry) => !entry.direct).length)}/></span><span>Vendas <MetricChange value={delta(sales.length, previousSales.length)}/></span><span>Conversão <b>{percent(sales.length, scoped.length)}</b></span></div></article></section>}
     {tab === "campaigns" && <CommercialCampaignIndicators entries={campaigns} />}
+    {(tab==="direct"||tab==="totals")&&<CommercialSalesSummary entries={scoped} history={all.filter(entry=>(seller==="all"||entry.seller===seller)&&(stage==="all"||entry.stage===stage)&&(origin==="all"||entry.origin===origin))} month={month} directOnly={tab==="direct"}/>}
     </section>
   </section></main>;
+}
+
+function CommercialSalesSummary({entries,history,month,directOnly}:{entries:CommercialEntry[];history:CommercialEntry[];month:string;directOnly:boolean}) {
+  const sales=entries.filter(entry=>entry.won),revenue=sales.reduce((sum,entry)=>sum+entry.amount,0);
+  const group=(entry:CommercialEntry)=>entry.direct?"Vendas diretas":String(entry.detail.funnel||"Sem CRM");
+  const groups=[...new Set(entries.map(group))].sort().map(name=>{
+    const rows=entries.filter(entry=>group(entry)===name),won=rows.filter(entry=>entry.won);
+    return{name,opportunities:rows.length,sales:won.length,revenue:won.reduce((sum,entry)=>sum+entry.amount,0)};
+  });
+  const months=Array.from({length:6},(_,index)=>{
+    const date=new Date(`${month}-01T12:00:00`);date.setMonth(date.getMonth()-(5-index));const key=date.toLocaleDateString("en-CA").slice(0,7);
+    return{label:monthLabel(key),value:history.filter(entry=>entry.won&&entry.date.startsWith(key)).reduce((sum,entry)=>sum+entry.amount,0)};
+  });
+  const productCounts=new Map<string,number>();for(const entry of sales)for(const product of arrayOf(entry.detail.products)){const detail=product as Detail;const name=String(detail?.product||"Produto não informado");productCounts.set(name,(productCounts.get(name)||0)+Math.max(1,numberOf(detail?.quantity)));}
+  const products=distributionEntries([...productCounts].map(([label,count])=>({label,count})),12);
+  return <>
+    <p className="bi-chart-footnote">{directOnly?"Vendas registradas diretamente, com receita, vendedores e produtos.":"Consolidado de todos os funis comerciais, qualificação e vendas diretas. O filtro de CRM não restringe esta visão."}</p>
+    <section className="commercial-bi-primary commercial-sales-summary">
+      <article><small>{directOnly?"Vendas diretas":"Oportunidades totais"}</small><strong>{entries.length}</strong></article>
+      <article><small>Vendas realizadas</small><strong>{sales.length}</strong></article>
+      <article><small>Receita de vendas</small><strong>{money(revenue)}</strong></article>
+      <article><small>Ticket médio</small><strong>{money(Math.round(revenue/Math.max(1,sales.length)))}</strong></article>
+    </section>
+    <section className="commercial-bi-charts">
+      <article><header>Evolução da receita · últimos 6 meses</header><TrendChart title={directOnly?"Receita das vendas diretas":"Receita consolidada de todos os funis"} entries={months} currency/></article>
+      <article><header>{directOnly?"Vendas por vendedor":"Vendas por funil"}</header><DistributionChart title={directOnly?"Vendas diretas por vendedor":"Vendas por funil e origem"} entries={counted(sales.map(entry=>directOnly?entry.seller:group(entry)),12)} unit="vendas" donut/></article>
+      <article><header>Receita por vendedor</header><TrendChart title="Receita por vendedor" entries={[...new Set(sales.map(entry=>entry.seller))].map(name=>({label:name,value:sales.filter(entry=>entry.seller===name).reduce((sum,entry)=>sum+entry.amount,0)}))} currency/></article>
+      <article><header>Produtos vendidos</header><DistributionChart title="Produtos presentes nas vendas" entries={products} unit="itens vendidos"/></article>
+    </section>
+    <div className="commercial-totals-table"><table><caption>{directOnly?"Resumo das vendas diretas":"Totais por funil"}</caption><thead><tr><th>CRM / origem</th><th>Oportunidades</th><th>Vendas</th><th>Receita</th><th>Ticket médio</th></tr></thead><tbody>{groups.map(row=><tr key={row.name}><th scope="row">{row.name}</th><td>{row.opportunities}</td><td>{row.sales}</td><td>{money(row.revenue)}</td><td>{money(Math.round(row.revenue/Math.max(1,row.sales)))}</td></tr>)}{!groups.length&&<tr><td colSpan={5}>Nenhum registro no período e filtros selecionados.</td></tr>}</tbody><tfoot><tr><th>Total</th><td>{entries.length}</td><td>{sales.length}</td><td>{money(revenue)}</td><td>{money(Math.round(revenue/Math.max(1,sales.length)))}</td></tr></tfoot></table></div>
+  </>;
 }
 
 function MetricChange({value}:{value:number|null}) { return <b className={value===null?"":value>=0?"positive":"negative"}>{value===null?"Sem base":(value>=0?"+":"")+value+"%"}</b>; }

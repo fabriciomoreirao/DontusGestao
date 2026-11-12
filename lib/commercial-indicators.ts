@@ -1,5 +1,15 @@
 type CommercialFlow = "qualification" | "crm" | "retention";
 type CommercialItem = { module: string; record_type: string; description?: string };
+
+export function commercialSaleDate(detail:Record<string,unknown>,fallback:string) {
+  const value=[detail.saleDate,detail.wonAt,detail.closedAt,fallback].find(value=>typeof value==='string'&&value.trim()) as string;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(value))return value;
+  const date=new Date(value);
+  if(!Number.isFinite(date.getTime()))return fallback.slice(0,10);
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+  const part=(type:string)=>parts.find(part=>part.type===type)?.value;
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
 const normalize = (value: unknown) => typeof value === "string" ? value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase() : "";
 
 function flowFrom(value: unknown): CommercialFlow | undefined {
@@ -25,6 +35,7 @@ export function commercialIndicatorFlow(item: CommercialItem): CommercialFlow {
 }
 
 export function scopeCommercialIndicatorItems<T extends CommercialItem>(items: T[], contextKey: string): T[] {
+  if(contextKey==="commercial:combined")return items.filter(item=>item.module==="commercial"&&commercialIndicatorFlow(item)!=="retention");
   const context = contextKey.split(":");
   const selected = flowFrom(context[0] === "commercial" ? context[1] : contextKey) ?? "crm";
   return items.filter(item => item.module === "commercial" && commercialIndicatorFlow(item) === selected);
