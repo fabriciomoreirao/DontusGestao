@@ -2996,8 +2996,21 @@ function CommercialLeadList({ leads, stages, remindersByLead, now, canEdit, onOp
 }
 
 function RetentionLeadCard({ item, stages, reminders, now, statuses, canEdit, canDelete, onOpen, onEdit, onDelete, onStatusChange, onDragStart, onDragEnd }: { item: WorkItem; stages: CrmActivityStage[]; reminders: ScheduledReminder[]; now: number; statuses: CustomerCatalogOption[]; canEdit: boolean; canDelete: boolean; onOpen: () => void; onEdit: () => void; onDelete: () => void; onStatusChange: (status: string) => void; onDragStart: (event: React.DragEvent<HTMLElement>) => void; onDragEnd: () => void }) {
-  const lead=parseCommercialLead(item.description);
-  return <article className="retention-lead-card crm-compact-card" data-reminder-entity-id={item.id} data-reminder-client-id={lead?.clientId} data-reminder-customer-name={lead?.customer||item.customer_name||item.title} draggable={canEdit} onDragStart={onDragStart} onDragEnd={onDragEnd}><div className="crm-compact-card-open" role="button" tabIndex={0} onClick={onOpen} onKeyDown={event=>{if(event.target===event.currentTarget&&(event.key==="Enter"||event.key===" ")){event.preventDefault();onOpen()}}}><strong className="crm-compact-name">{lead?.customer||item.title}</strong><span className="crm-compact-days"><Clock3 size={14}/>{crmInactivityDays(item,lead,stages,now)} dia(s) sem interação</span><div className="crm-compact-value"><span>{lead?.temperature||"Sem temperatura"}</span><strong>{item.amount_cents?formatMoney(item.amount_cents):"—"}</strong></div>{!!lead?.labels.length&&<span className="commercial-card-labels">{lead.labels.map(label=><em key={label} style={{"--label-color":commercialLabelColor(label)} as CSSProperties}>{label}</em>)}</span>}</div></article>;
+  const lead = parseCommercialLead(item.description);
+  const temperature = lead?.temperature || "Frio";
+  const status = lead?.retentionStatus || "";
+  const statusColor = commercialDetails(statuses.find((entry) => entry.name === status)?.description ?? "").color || "var(--muted)";
+  return <article className="retention-lead-card" data-reminder-entity-id={item.id} data-reminder-client-id={lead?.clientId} data-reminder-customer-name={lead?.customer||item.title} draggable={canEdit} onDragStart={onDragStart} onDragEnd={onDragEnd} style={{ "--retention-status-color": statusColor } as CSSProperties}>
+    <div className="retention-card-main" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }}>
+      <div className="retention-card-head"><strong>#{lead?.clientId || item.title}</strong><span className="retention-card-status" onClick={(event) => event.stopPropagation()}><i /><select aria-label={`Status de ${lead?.customer || item.title}`} value={status} disabled={!canEdit} onChange={(event) => onStatusChange(event.target.value)}><option value="">Status</option>{status && !statuses.some((entry) => entry.name === status) && <option value={status}>{status}</option>}{statuses.map((entry) => <option key={entry.id} value={entry.name}>{entry.name}</option>)}</select></span></div>
+      <span className="retention-card-company" title={lead?.customer || item.title}>{lead?.customer || item.title}</span>
+      <span className="retention-card-phone"><PhoneLink phone={lead?.phone || "WhatsApp não informado"}/></span>
+      <div className="retention-card-meta"><span>{lead?.version || "Sem versão"}</span><span className={`retention-temperature ${temperature.toLocaleLowerCase("pt-BR")}`}><i />{temperature}</span></div>
+      <small className="retention-card-owner"><UserRound size={12} />{crmResponsible(item) || "Sem responsável"}</small>
+      <CrmCardActivity item={item} lead={lead} stages={stages} reminders={reminders} now={now} />
+    </div>
+    {(canEdit || canDelete) && <div className="retention-card-actions">{canEdit && <button type="button" onClick={onEdit} title="Editar cliente" aria-label="Editar cliente"><Pencil size={13} /></button>}{canDelete && <button type="button" onClick={onDelete} title="Excluir cliente" aria-label="Excluir cliente"><Trash2 size={13} /></button>}</div>}
+  </article>;
 }
 
 function RetentionLeadModal({ funnel, details, catalogs, employees, currentUser, busy, onClose, onSave }: { funnel: CustomerCatalogOption; details: CommercialDetails; catalogs: CustomerCatalogOption[]; employees: AssignmentEmployee[]; currentUser: AppData["user"]; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
