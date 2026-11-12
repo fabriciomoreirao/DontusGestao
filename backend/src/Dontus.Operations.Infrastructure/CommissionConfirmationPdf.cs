@@ -118,6 +118,11 @@ public static class CommissionConfirmationPdf
             Grid(("Produto / serviço",row.Product),("Identificação do cliente",row.CustomerCode),("Status do cliente",row.CustomerStatus),
                 ("Acompanhamento",row.SourceStatus),("Score de utilização",row.Score.HasValue?row.Score.Value.ToString(Pt)+"%":"Não informado"),("Utilização",row.UsageStatus),
                 ("Kick off",Stamp(row.KickOffAt)),("Treinamento",Stamp(row.TrainingAt)),("Alinhamento único",Stamp(row.SingleAlignmentAt)));
+            if (row.LiaStages is not null)
+            {
+                string Stage(string key) => row.LiaStages.TryGetValue(key, out var value) ? DateTimeOffset.TryParse(value, out _) ? Stamp(value) : value : "Não informado";
+                Grid(("Configuração Inicial", Stage("configuration")), ("Testes do Cliente", Stage("tests")), ("Liberação", Stage("release")), ("Status atual da LIA", Stage("current")));
+            }
             Panel("REGRA E MEMÓRIA DE CÁLCULO",$"Base: {Money(row.SaleValueCents)}\n{row.RuleLabel}\nValor a pagar: {Money(row.CommissionCents)}"+(row.Decision=="rejected"?" - Reprovado, sem pagamento.":""),Brush(235,245,255),Brush(35,82,128));
             Panel("MOTIVO DA "+(row.Decision=="approved"?"APROVAÇÃO":"REPROVAÇÃO"),row.Reason+"\n"+row.DecidedBy+" - "+Stamp(row.DecidedAt)+" (Brasília)");
             y+=10;

@@ -50,7 +50,7 @@ export const STATE_MACHINES: Record<string, readonly string[]> = {
   lia: [
     "AguardandoKickoff", "KickoffAgendado", "ConfiguracaoInicial", "EmTesteCliente",
     "EmAjustes", "AguardandoAprovacao", "GoLiveAgendado", "EmProducaoAssistida",
-    "ImplantacaoPrincipalConcluida", "ConfigurandoCRC", "Concluida",
+    "ImplantacaoPrincipalConcluida", "ConfigurandoCRC", "AcompanhamentoFinal", "Concluida",
     "BloqueadaPeloCliente", "Pausada", "Cancelada",
   ],
   hr: ["Experiência", "Ativos", "Desligados"],
@@ -99,6 +99,9 @@ export function allowedNextStatuses(module: string, current: string): string[] {
   const next = states[index + 1];
   const options = next ? [next] : [];
   if (module === "lia" && current === "EmTesteCliente") options.push("AguardandoAprovacao");
+  if (module === "lia" && current === "AguardandoAprovacao") options.push("EmAjustes", "ConfigurandoCRC");
+  if (module === "lia" && current === "EmAjustes") options.push("AguardandoAprovacao");
+  if (module === "lia" && ["EmProducaoAssistida", "ImplantacaoPrincipalConcluida", "ConfigurandoCRC"].includes(current)) options.push("AcompanhamentoFinal");
   if (module === "commercial") options.push("Perdido", "Cancelado");
   if (module === "cs") options.push("AguardandoCliente", "Pausado", "Cancelado");
   if (module === "lia") options.push("BloqueadaPeloCliente", "Pausada", "Cancelada");

@@ -2,9 +2,9 @@
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
-import { Save, Settings, UsersRound } from "lucide-react";
+import { Plus, Save, Settings, Trash2, UsersRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { commissionScoreTiers, parseCommissionRule, validScoreTiers, type CommissionRule, type CommissionScope, type ScoreTier } from "@/lib/commission-rules";
+import { commissionScoreTiers, defaultSalesTiers, normalizeCommissionName, parseCommissionRule, validSalesTiers, validScoreTiers, type CommissionRule, type CommissionScope, type SalesTier, type ScoreTier } from "@/lib/commission-rules";
 
 type Catalog = { id: string; catalog: string; name: string; description: string; active: boolean };
 type Employee = { id: string; displayName: string; departmentName: string };
@@ -24,9 +24,8 @@ export default function CommissionSettings({ catalogs, employees, busy, operate,
   const [employeeId, setEmployeeId] = useState("");
   const employee = employees.find(entry => entry.id === employeeId);
   const rules = catalogs.map(parseRule).filter((entry): entry is SavedRule => Boolean(entry));
-  const products = [...new Set(catalogs.filter(entry => entry.active && entry.catalog === "commercialProduct").map(entry => entry.name))];
-  const entries = scope === "cs" ? ["*"] : ["*", ...products];
-  const save = async (product: string, values: Pick<CommissionRule, "type" | "value" | "scoreTiers">, existing?: SavedRule) => {
+  const entries = ["*"];
+  const save = async (product: string, values: Pick<CommissionRule, "type" | "value" | "scoreTiers" | "salesTiers">, existing?: SavedRule) => {
     if (!employee) return;
     const rule: CommissionRule = { kind: "commissionRule", scope, employeeId: employee.id, employeeName: employee.displayName, product, ...values };
     await operate({ action: "saveCustomerCatalog", id: existing?.entry.id, catalog: "commissionRule",
@@ -35,11 +34,13 @@ export default function CommissionSettings({ catalogs, employees, busy, operate,
   return <section className="commission-settings">
     <header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Settings /></span><span className="module-page-copy"><span className="eyebrow">COMISSÕES · CONFIGURAÇÕES</span><h1>Regras por colaborador</h1><p>Configure as comissões de cada área e a remuneração por faixa de score em CS.</p></span></div><button className="secondary-button" onClick={onBack}>← Voltar às comissões</button></header>
     <nav className="commission-tabs">{(["commercial", "cs", "lia"] as const).map(value => <button key={value} className={scope === value ? "active" : ""} onClick={() => setScope(value)}>{scopeLabel(value)}</button>)}</nav>
-    <section className="commission-rule-picker panel"><label>Colaborador<SearchablePeopleSelect searchLabel="Colaborador" value={employeeId} onChange={event => setEmployeeId(event.target.value)}><option value="">Selecionar colaborador</option>{employees.map(entry => <option key={entry.id} value={entry.id}>{entry.displayName} · {entry.departmentName}</option>)}</SearchablePeopleSelect></label><p>{scope === "cs" ? "O score do cliente determina o percentual da comissão. Configure os limites e os percentuais abaixo." : "Configure a regra geral ou um valor específico por produto. A LIA segue o valor da venda, sem score."}</p></section>
+    <section className="commission-rule-picker panel"><label>Colaborador<SearchablePeopleSelect searchLabel="Colaborador" value={employeeId} onChange={event => setEmployeeId(event.target.value)}><option value="">Selecionar colaborador</option>{employees.map(entry => <option key={entry.id} value={entry.id}>{entry.displayName} · {entry.departmentName}</option>)}</SearchablePeopleSelect></label><p>{scope === "cs" ? "O score do cliente determina o percentual da comissão. Configure os limites e os percentuais abaixo." : scope === "commercial" ? "O total vendido no mês, pela data do ganho no CRM Comercial, define o percentual aplicado a todas as vendas do colaborador." : "Um percentual individual aplicado sobre o valor de cada cliente. Exemplo: R$ 500,00 × 50% = R$ 250,00."}</p></section>
     {!employee ? <div className="commission-empty"><UsersRound /><h2>Selecione um colaborador</h2><p>As regras serão abertas após a seleção.</p></div> : <section className="commission-rule-list">{entries.map(product => {
-      const existing = rules.find(entry => entry.rule.scope === scope && entry.rule.employeeId === employee.id && entry.rule.product === product);
+      const existing = rules.find(entry => entry.rule.scope === scope && entry.rule.employeeId === employee.id && entry.rule.product === product)
+        ?? rules.find(entry => entry.rule.scope === scope && !entry.rule.employeeId && normalizeCommissionName(entry.rule.employeeName) === normalizeCommissionName(employee.displayName) && entry.rule.product === product);
       const key = `${scope}-${employee.id}-${product}-${existing?.entry.description ?? "new"}`;
       return scope === "cs" ? <ScoreRuleForm key={key} existing={existing} busy={busy} onSave={tiers => save(product, { type: "percentage", value: 0, scoreTiers: tiers }, existing)} /> :
+        scope === "commercial" ? <SalesRuleForm key={key} existing={existing} busy={busy} onSave={tiers => save(product, { type: "percentage", value: 0, salesTiers: tiers }, existing)} /> :
         <ProductRuleForm key={key} product={product === "*" ? "Regra geral · todos os produtos" : product} existing={existing} busy={busy} onSave={values => save(product, values, existing)} />;
     })}</section>}
   </section>;
@@ -48,11 +49,20 @@ export default function CommissionSettings({ catalogs, employees, busy, operate,
 function ProductRuleForm({ product, existing, busy, onSave }: {
   product: string; existing?: SavedRule; busy: boolean; onSave: (values: Pick<CommissionRule, "type" | "value">) => Promise<void>;
 }) {
-  const [type, setType] = useState<CommissionRule["type"]>(existing?.rule.type ?? "percentage");
+  const type = "percentage" as const;
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); const form = new FormData(event.currentTarget); void onSave({ type, value: Number(form.get("value")) });
   };
-  return <form onSubmit={submit}><span><strong>{product}</strong><small>{existing?.entry.active ? "Regra configurada" : "Sem regra ativa"}</small></span><label>Tipo<select value={type} onChange={event => setType(event.target.value as CommissionRule["type"])}><option value="percentage">Porcentagem</option><option value="fixed">Valor fixo</option></select></label><label>{type === "percentage" ? "Percentual (%)" : "Valor fixo (R$)"}<input name="value" type="number" min="0" max={type === "percentage" ? 100 : undefined} step="0.01" required defaultValue={existing?.rule.value ?? 0} /></label><button className="primary-button" disabled={busy}><Save />{existing ? "Atualizar" : "Salvar"}</button></form>;
+  return <form onSubmit={submit}><span><strong>{product}</strong><small>{existing?.entry.active ? "Regra configurada" : "Sem regra ativa"}</small></span><label>Percentual por cliente (%)<input name="value" type="number" min="0" max="100" step="0.01" required defaultValue={existing?.rule.type === "percentage" ? existing.rule.value : 0} /></label><button className="primary-button" disabled={busy}><Save />{existing ? "Atualizar" : "Salvar"}</button></form>;
+}
+
+function SalesRuleForm({ existing, busy, onSave }: { existing?: SavedRule; busy: boolean; onSave: (tiers: SalesTier[]) => Promise<void> }) {
+  const [tiers, setTiers] = useState<SalesTier[]>(validSalesTiers(existing?.rule.salesTiers) ? existing.rule.salesTiers : defaultSalesTiers.map(tier => ({ ...tier })));
+  const [error, setError] = useState("");
+  function submit(event: FormEvent) { event.preventDefault(); if (!validSalesTiers(tiers)) { setError("As faixas devem começar em zero, ser contínuas e ter percentuais entre 0% e 100%."); return; } setError(""); void onSave(tiers); }
+  return <form className="commission-score-rule" onSubmit={submit}><header><span><small>COMERCIAL · TOTAL MENSAL</small><h2>Faixas de vendas do colaborador</h2><p>O percentual da faixa incide sobre todo o valor vendido no mês.</p></span><b>{existing?.rule.salesTiers ? "Faixas configuradas" : "Configure as faixas"}</b></header>
+    <div className="commission-sales-tiers">{tiers.map((tier, index) => <article key={index}><label>A partir de (R$)<input aria-label={`Início da faixa ${index + 1}`} type="number" min="0" max="1000000000" step="0.01" required disabled={index === 0 || busy} value={tier.minCents / 100} onChange={event => { const cents = Math.round(Number(event.target.value) * 100); setTiers(values => values.map((value, position) => position === index ? { ...value, minCents: cents } : position === index - 1 ? { ...value, maxCents: cents } : value)); }} /></label><span>{tier.maxCents === null ? "Sem limite superior" : `Até R$ ${(tier.maxCents / 100 - 0.01).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}</span><label>Comissão (%)<input aria-label={`Percentual da faixa ${index + 1}`} type="number" min="0" max="100" step="0.01" required value={tier.percentage} disabled={busy} onChange={event => setTiers(values => values.map((value, position) => position === index ? { ...value, percentage: Number(event.target.value) } : value))} /></label>{index > 0 && <button type="button" className="icon-button" disabled={busy} aria-label={`Excluir faixa ${index + 1}`} onClick={() => setTiers(values => values.filter((_, position) => position !== index).map((value, position, remaining) => ({ ...value, maxCents: remaining[position + 1]?.minCents ?? null })))}><Trash2 size={16}/></button>}</article>)}</div>
+    <footer><span>{error ? <strong role="alert">{error}</strong> : "R$ 3.000,00 e R$ 4.500,00 já pertencem às faixas seguintes no exemplo inicial."}</span><button type="button" className="secondary-button" disabled={busy || tiers.length >= 20} onClick={() => setTiers(values => { const minCents = values.at(-1)!.minCents + 100000; return [...values.map((value, index) => index === values.length - 1 ? { ...value, maxCents: minCents } : value), { minCents, maxCents: null, percentage: values.at(-1)!.percentage }]; })}><Plus size={16}/>Adicionar faixa</button><button className="primary-button" disabled={busy}><Save size={16}/>Salvar faixas de comissão</button></footer></form>;
 }
 
 function ScoreRuleForm({ existing, busy, onSave }: { existing?: SavedRule; busy: boolean; onSave: (tiers: ScoreTier[]) => Promise<void> }) {

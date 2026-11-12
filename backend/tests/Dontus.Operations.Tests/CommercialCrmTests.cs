@@ -8,6 +8,25 @@ namespace Dontus.Operations.Tests;
 public sealed class CommercialCrmTests
 {
     [Fact]
+    public async Task Lead_saves_track_stage_entry_without_resetting_it_on_a_comment()
+    {
+        await using var db=Context();
+        var service=new OperationsService(db);var actor=Actor("commercial");
+        var id=await service.CreateWorkItemAsync(new("commercial","Lead comercial","Etapa mensal",null,"Cliente","Vendedor","Comercial","P3",null,null,10000,
+            """{"kind":"commercialLead","funnel":"Alpha","stage":"Novo","comments":[]}""",[],null,null),actor);
+        var item=await db.WorkItems.SingleAsync(entry=>entry.Id==id);
+        var detail=System.Text.Json.Nodes.JsonNode.Parse(item.Description)!;
+        Assert.False(string.IsNullOrEmpty(detail["stageEnteredAt"]?.ToString()));
+        detail["stageEnteredAt"]="2026-10-15T15:00:00Z";item.Description=detail.ToJsonString();await db.SaveChangesAsync();
+        detail["comments"]=new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject{["text"]="Comentário atual"});
+        await service.UpdateWorkItemAsync(new(id,item.Title,item.Owner,item.AmountCents,detail.ToJsonString(),null,item.CustomerName,item.Version),actor);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-15T15:00:00Z"),DateTimeOffset.Parse(System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["stageEnteredAt"]!.ToString()));
+        detail["stage"]="Proposta";
+        await service.UpdateWorkItemAsync(new(id,item.Title,item.Owner,item.AmountCents,detail.ToJsonString(),null,item.CustomerName,item.Version),actor);
+        Assert.True(DateTimeOffset.Parse(System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["stageEnteredAt"]!.ToString())>DateTimeOffset.Parse("2026-10-15T15:00:00Z"));
+    }
+
+    [Fact]
     public async Task Sellers_require_an_active_commercial_membership_including_secondary_departments()
     {
         await using var db = Context();

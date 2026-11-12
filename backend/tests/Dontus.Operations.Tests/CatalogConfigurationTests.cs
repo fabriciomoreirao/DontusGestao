@@ -7,6 +7,17 @@ namespace Dontus.Operations.Tests;
 
 public sealed class CatalogConfigurationTests
 {
+    [Fact]
+    public async Task Funnel_with_many_monthly_reset_stages_round_trips_its_complete_configuration()
+    {
+        await using var db=Context();
+        var description=System.Text.Json.JsonSerializer.Serialize(new { f="c",s=Enumerable.Range(1,20).Select(index=>new object[]{$"Etapa de acompanhamento {index}","#2563eb",0,0,0,1,1,202611}).ToArray() });
+        Assert.True(description.Length>600);
+        var id=await new OperationsService(db).SaveCustomerCatalogAsync(null,"funnelStage","Funil completo",description,true,Actor("commercial"));
+        var saved=await db.CustomerCatalogOptions.SingleAsync(entry=>entry.Id==id);
+        Assert.Equal(description,saved.Description);
+    }
+
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ActorContext Actor(string module) => new("teste@dontus.local", "Gestor de testes", "Gestor", "Gestão", [new EffectivePermission(module, true, true, true, true, true)]);
 

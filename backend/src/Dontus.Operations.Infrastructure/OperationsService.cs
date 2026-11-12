@@ -933,6 +933,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     {
         if (catalog == "commissionRule")
         {
+            ValidateIndividualCommissionRule(description);
             ValidateCommissionScoreTiers(description);
             return;
         }
@@ -961,6 +962,26 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         {
             throw new DomainException("As etapas do fluxo estão inválidas. Confira os nomes e as flags antes de salvar.");
         }
+    }
+
+    private static void ValidateIndividualCommissionRule(string? description)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(description ?? "{}"); var root = json.RootElement;
+            if (!root.TryGetProperty("scope", out var scope) || scope.GetString() is not ("commercial" or "lia")) return;
+            if ((!root.TryGetProperty("employeeId", out var employee) || string.IsNullOrWhiteSpace(employee.GetString())) &&
+                (!root.TryGetProperty("employeeName", out var name) || string.IsNullOrWhiteSpace(name.GetString()))) throw new DomainException("Selecione o colaborador da comissão.");
+            if (!root.TryGetProperty("type", out var type) || type.GetString() != "percentage" || !root.TryGetProperty("value", out var rate) || rate.GetDecimal() is < 0 or > 100)
+                throw new DomainException("Configure a comissão individual somente por percentual, entre 0% e 100%.");
+            if (root.TryGetProperty("salesTiers", out var tiers))
+            {
+                if (scope.GetString() != "commercial") throw new DomainException("As faixas de vendas são exclusivas do Comercial.");
+                CommissionSalesBands.Parse(tiers);
+            }
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or FormatException or OverflowException)
+        { throw new DomainException("Informe uma configuração individual de comissão válida."); }
     }
 
     private static void ValidateCommissionScoreTiers(string? description)
@@ -1116,6 +1137,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         };
 
         GoalProgress.Validate(item.Module, item.Description);
+        if (item.Module == "lia") item.Description = LiaJourneyTimeline.Normalize(item.Description, item.Status);
         if (item.Module == "cs")
         {
             item.Description = CsJourneyTimeline.Normalize(item.Description);
@@ -1124,6 +1146,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var commissionDecisionData = await CommissionDecisionPolicy.PrepareAsync(db, item.Module, item.Description, null, item.AmountCents, actor, cancellationToken, item.CreatedBy);
         item.Description = commissionDecisionData.Description; item.AmountCents = commissionDecisionData.Amount;
         if(item.Module == "commissions") item.Status = CommissionDecisionPolicy.RecordStatus(item.Description) ?? item.Status;
+        if (item.Module == "commercial") item.Description = CommercialStageTimeline.Normalize(item.Description);
+        await CommercialCommissionSource.SynchronizeWinAsync(db, item, null, cancellationToken);
         if (item.Module == "cancellations")
         {
             var assignment = CancellationResponsibilityPolicy.Create(item.Description);
@@ -1443,7 +1467,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         command = await ValidateWaitingQueueEditAsync(item, command, actor, cancellationToken);
         var previouslyWon = SalesCelebrationService.IsWon(item);
         if (item.Module == "commercial")
-            command = command with { Description = SalesCelebrationService.PreserveWinDate(item, command.Description) };
+            command = command with { Description = CommercialStageTimeline.Normalize(SalesCelebrationService.PreserveWinDate(item, command.Description), item.Description, item.CreatedAt) };
         if (item.Module == "cancellations")
         {
             var assignment = CancellationResponsibilityPolicy.Update(item.Description, command.Description, item.Owner);
@@ -1482,6 +1506,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             }
         }
         command = command with { Description = await SyncDevelopmentCommentsAsync(item, command.Description, actor, cancellationToken) };
+        if (item.Module == "lia") command = command with { Description = LiaJourneyTimeline.Normalize(command.Description ?? "", item.Status, item) };
         if (distribution is not null) AddAudit(actor, CsDistributionService.AuditAction, "work_item", item.Id.ToString(), "cs", distribution);
 
         if (!string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -1493,6 +1518,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         item.Title = command.Title.Trim();
         item.Owner = string.IsNullOrWhiteSpace(command.Owner) ? item.Owner : command.Owner.Trim();
         item.AmountCents = Math.Max(0, command.AmountCents);
+        var previousCommercialDescription = item.Description;
         item.Description = item.Module == "cancellations"
             ? CancellationProtocolService.PreserveProtocol(item.Description, command.Description)
             : command.Description?.Trim() ?? "";
@@ -1508,11 +1534,12 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 throw new DomainException("Tipo de lead inv\u00e1lido.");
             item.RecordType = recordType;
         }
-        if (item.Module is "commercial" or "cs" && command.CustomerName is not null)
+        if (item.Module is "commercial" or "cs" or "lia" && command.CustomerName is not null)
             item.CustomerName = command.CustomerName.Trim();
         item.UpdatedAt = DateTimeOffset.UtcNow;
         item.Version++;
         SalesCelebrationService.RecordWin(db, item, previouslyWon, actor);
+        await CommercialCommissionSource.SynchronizeWinAsync(db, item, previousCommercialDescription, cancellationToken);
         db.Activities.Add(new Activity
         {
             EntityType = "work_item",
@@ -1601,8 +1628,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (!CanEditCustomerEngagement(item, actor)) actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor, deleting: true);
         await RequireCommissionScopeAsync(item, actor, true, cancellationToken);
-        if (await db.LiaFormRequests.AnyAsync(entry => entry.WorkItemId == id, cancellationToken))
-            throw new DomainException("Este acompanhamento possui formulários vinculados e não pode ser excluído. Preserve-o no histórico de concluídos.", 409);
+        var forms = await db.LiaFormRequests.Where(entry => entry.WorkItemId == id).ToListAsync(cancellationToken);
+        if (forms.Any(entry => entry.SubmittedAt.HasValue) && !actor.HasPermission("lia", "approve") && !actor.HasPermission("lia", "manage"))
+            throw new DomainException("Somente coordenadores com permissão de aprovação ou administração da LIA podem excluir cards com formulário preenchido.", 403);
+        db.LiaFormRequests.RemoveRange(forms);
         await CommissionConfirmationService.InvalidatePendingAsync(db, item, cancellationToken);
         db.WorkItems.Remove(item);
         db.Activities.Add(new Activity
@@ -1663,6 +1692,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (WorkflowPolicy.RequiresExplicitConfirmation(item.Module, command.NextStatus) && !command.Confirmed)
             throw new DomainException("Esta ação sensível exige confirmação explícita e evidência registrada.", 409);
 
+        if (item.Module == "lia") item.Description = LiaJourneyTimeline.Normalize(item.Description, command.NextStatus, item);
+        var previousCommercialDescription = item.Description;
         var previouslyWon = SalesCelebrationService.IsWon(item);
         var previous = item.Status;
         SalesCelebrationService.SynchronizeStage(item, command.NextStatus);
@@ -1689,6 +1720,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         });
         SalesCelebrationService.RecordWin(db, item, previouslyWon, actor);
         AddAudit(actor, "Transition", "work_item", item.Id.ToString(), item.Module, new { From = previous, To = item.Status });
+        await CommercialCommissionSource.SynchronizeWinAsync(db, item, previousCommercialDescription, cancellationToken);
 
         var routesToCancellation = item.Module != "cancellations"
             && command.NextStatus.Contains("cancel", StringComparison.OrdinalIgnoreCase)

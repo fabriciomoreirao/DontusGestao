@@ -51,6 +51,7 @@ internal static class CommissionDecisionPolicy
         var pending = !referral && !manual && Text(detail,"kind") == "commissionRecord" && next == "pending";
         if (!referral && !manual && Text(detail,"kind") == "commissionRecord")
         {
+            if (Text(detail, "scope") == "commercial") await CommercialCommissionSource.PrepareAsync(db, detail, ct);
             if (Number(detail,"saleValueCents") is < 0 or > 100000000000)
                 throw new DomainException("Informe um valor base válido para o cliente.");
             if (Guid.TryParse(Text(detail,"sourceId"),out var sourceId) && Text(detail,"scope") is "cs" or "lia")
@@ -66,6 +67,15 @@ internal static class CommissionDecisionPolicy
                         if(start>today)throw new DomainException("O início do acompanhamento não pode estar no futuro.");
                         detail["competence"]=start.Value.ToString("yyyy-MM",CultureInfo.InvariantCulture);
                         detail["routedAt"]=$"{start:yyyy-MM-dd}T00:00:00-03:00";
+                    }
+                    if (source.Module == "lia")
+                    {
+                        var collaborators = await db.Users.AsNoTracking().Select(x => new { x.Id, x.DisplayName }).ToListAsync(ct);
+                        var collaborator = collaborators.FirstOrDefault(x => Normalize(x.DisplayName) == Normalize(source.Owner));
+                        detail["employeeName"] = source.Owner;
+                        detail["employeeId"] = collaborator?.Id.ToString() ?? "";
+                        detail["liaStages"] = LiaJourneyTimeline.CommissionStages(Detail(source.Description), source.Status);
+                        detail["sourceStatus"] = Text((JsonObject)detail["liaStages"]!, "current");
                     }
                 }
             }
@@ -100,8 +110,12 @@ internal static class CommissionDecisionPolicy
         {
             var scope = Text(detail, "scope"); var employeeId = Text(detail, "employeeId");
             var candidates = rules.Where(x => Text(x, "scope") == scope && (Text(x, "employeeId") != "" && employeeId != ""
-                ? Text(x, "employeeId") == employeeId : Normalize(Text(x, "employeeName")) == Normalize(Text(detail, "employeeName")))).ToList();
-            rule = candidates.FirstOrDefault(x => Normalize(Text(x, "product")) == Normalize(Text(detail, "product")))
+                ? Text(x, "employeeId").Equals(employeeId, StringComparison.OrdinalIgnoreCase) : Normalize(Text(x, "employeeName")) == Normalize(Text(detail, "employeeName"))))
+                .Where(x => scope == "cs" || Text(x, "type") == "percentage" && (scope != "commercial" || x["salesTiers"] is JsonArray))
+                .OrderByDescending(x => Text(x, "employeeId") != "").ToList();
+            rule = scope != "cs" ? candidates.FirstOrDefault(x => Text(x, "product") == "*")
+                ?? candidates.FirstOrDefault(x => Normalize(Text(x, "product")) == Normalize(Text(detail, "product"))) :
+                candidates.FirstOrDefault(x => Normalize(Text(x, "product")) == Normalize(Text(detail, "product")))
                 ?? candidates.FirstOrDefault(x => Text(x, "product") == "*") ?? (scope == "cs" ? candidates.FirstOrDefault() : null);
         }
         long proposed = 0; var label = "Sem regra configurada";
@@ -109,6 +123,15 @@ internal static class CommissionDecisionPolicy
         {
             var type = Text(rule, "type"); var rate = Number(rule, referral ? "percentage" : "value");
             var tierLabel = "";
+            if (!referral && Text(rule, "scope") == "commercial" && rule["salesTiers"] is JsonArray salesTiers)
+            {
+                using var json = System.Text.Json.JsonDocument.Parse(salesTiers.ToJsonString());
+                var total = Cents(detail, "monthlySalesCents");
+                rate = CommissionSalesBands.Select(CommissionSalesBands.Parse(json.RootElement), total).Percentage;
+                detail["appliedPercentage"] = rate;
+                detail["monthlyCommissionCents"] = Round(total * rate / 100);
+                tierLabel = $" · total vendido no mês: {Money(total)} · comissão do total: {Money(Round(total * rate / 100))}";
+            }
             if (!referral && Text(rule, "scope") == "cs" && rule["scoreTiers"] is JsonArray tiers)
             {
                 var score = Number(detail, "score");
@@ -123,6 +146,11 @@ internal static class CommissionDecisionPolicy
             if (next == "approved" && type == "percentage" && rate > 0 && sale == 0)
                 throw new DomainException("Informe o valor base do cliente antes de aprovar a comissão.");
             proposed = type == "percentage" ? Round(sale * rate / 100) : referral ? Cents(rule, "fixedCents") : Round(rate * 100);
+            if (!referral && Text(rule, "scope") == "commercial" && rule["salesTiers"] is JsonArray)
+            {
+                var offset = Cents(detail, "commissionOffsetCents");
+                proposed = Round((offset + sale) * rate / 100) - Round(offset * rate / 100);
+            }
             if (proposed < 0) throw new DomainException("O valor da comissão é inválido.");
             label = type == "percentage" ? $"{rate}% sobre {Money(sale)} = {Money(proposed)}{tierLabel}" : $"{Money(proposed)} fixos por lançamento";
         }

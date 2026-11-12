@@ -234,7 +234,6 @@ export default function CustomerSuccessJourneyModule({
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [indicatorView,setIndicatorView]=useState(false);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<WorkItem | null>(null);
   useActivityClock();
@@ -246,7 +245,7 @@ export default function CustomerSuccessJourneyModule({
     .filter((entry) => entry.active && ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog) && catalogFeatureIsBase(entry))
     .map((entry) => entry.name)), [catalogs]);
 
-  useEffect(() => { setTab("validation"); setIndicatorView(false); }, [flow]);
+  useEffect(() => { setTab("validation"); }, [flow]);
 
   const records = useMemo(() => items
     .filter((item) => item.module === "cs")
@@ -355,10 +354,7 @@ export default function CustomerSuccessJourneyModule({
 
 
 
-    <nav className="cs-pipeline-tabs" aria-label="Etapas do acompanhamento">
-      {PHASES.map((phase) => <button key={phase.id} className={!indicatorView&&tab === phase.id ? "active" : ""} onClick={() => {setIndicatorView(false);setTab(phase.id)}}>{phase.label}<b>{counts[phase.id]}</b></button>)}
-    <button type="button" className={indicatorView?"active":""} onClick={()=>setIndicatorView(true)}><BarChart3 size={16}/>Indicadores</button></nav>
-    {indicatorView&&<section className="cs-pipeline-metrics">
+    <section className="cs-pipeline-metrics">
       <article><span><Activity size={17} /></span><small>EM ACOMPANHAMENTO</small><strong>{counts.tracking}</strong><p>{totalTrackingDays} dias acumulados</p></article>
       <article><span><CheckCircle2 size={17} /></span><small>FINALIZADOS</small><strong>{counts.finished}</strong><p>Jornadas concluídas</p></article>
       <article><span><ShieldCheck size={17} /></span><small>HEALTH SCORE MÉDIO</small><strong>{averageHealth}%</strong><p>Funcionalidades cadastradas em uso</p></article>
@@ -366,19 +362,20 @@ export default function CustomerSuccessJourneyModule({
       <article><span><CalendarDays size={17} /></span><small>KICK OFFS</small><strong>{kickOffCount}</strong><p>{records.filter((entry) => entry.journey.firstMeetingCompletedAt).length} concluído(s)</p></article>
       <article><span><CalendarDays size={17} /></span><small>TREINAMENTOS</small><strong>{trainingCount}</strong><p>{records.filter((entry) => entry.journey.trainingCompletedAt).length} concluído(s)</p></article>
       <article><span><CheckCircle2 size={17} /></span><small>ALINHAMENTOS ÚNICOS</small><strong>{singleAlignmentCount}</strong><p>{records.filter((entry) => entry.journey.singleAlignmentCompletedAt).length} concluído(s)</p></article>
-    </section>}
+    </section>
 
-    {!indicatorView&&<section className="cs-pipeline-toolbar reminder-filter-toolbar compact-operational-filters cs-compact-filters" aria-label="Filtros do acompanhamento">{reminderFilter.control}
+    <nav className="cs-pipeline-tabs" aria-label="Etapas do acompanhamento">{PHASES.map(phase=><button key={phase.id} className={tab===phase.id?"active":""} onClick={()=>setTab(phase.id)}>{phase.label}<b>{counts[phase.id]}</b></button>)}</nav>
+    <section className="cs-pipeline-toolbar reminder-filter-toolbar compact-operational-filters cs-compact-filters" aria-label="Filtros do acompanhamento">{reminderFilter.control}
       <label className="cs-pipeline-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, ID, responsável ou telefone" /></label>
       <SearchablePeopleSelect searchLabel="Responsável" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Filtrar responsável"><option value="all">Todos os responsáveis</option>{[...new Set([...employees.filter(entry=>entry.active).map(entry=>entry.displayName),...records.map(entry=>entry.item.owner)].filter(Boolean))].map((owner) => <option key={owner}>{owner}</option>)}</SearchablePeopleSelect>
       <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filtrar status"><option value="all">Todos os status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select>
       <span>{visible.length} resultado(s)</span>
       <div className="cs-view-switch"><button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Visualizar em cards"><Columns3 size={16} /></button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="Visualizar em lista"><List size={16} /></button></div>
-    </section>}
+    </section>
 
     {distributionIndicators && distributionBoard && <CsDistributionIndicators board={distributionBoard} onClose={() => setDistributionIndicators(false)} />}
 
-    {!indicatorView&&(visible.length === 0 ? <div className="cs-pipeline-empty"><ClipboardCheckIcon /><h2>Nenhum cliente nesta etapa</h2><p>Os clientes aparecem automaticamente conforme avançam na jornada.</p></div> : view === "grid" ? <div className="cs-pipeline-grid">{visible.map(({ item, journey }) => <JourneyCard key={item.id} item={item} journey={journey} featureUniverse={featureUniverse} commercial={items.find((entry) => entry.id === journey.sourceLeadId)} employee={employees.find(employee => employee.displayName === item.owner)} canEdit={canEdit} canDelete={canDelete} onOpen={() => setSelected(item)} onEdit={() => setEditing(item)} onDelete={() => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />)}</div> : <JourneyList records={visible} sourceItems={items} featureUniverse={featureUniverse} canDelete={canDelete} canEdit={canEdit} onEdit={setEditing} onOpen={setSelected} onDelete={(item) => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />)}
+    {visible.length === 0 ? <div className="cs-pipeline-empty"><ClipboardCheckIcon /><h2>Nenhum cliente nesta etapa</h2><p>Os clientes aparecem automaticamente conforme avançam na jornada.</p></div> : view === "grid" ? <div className="cs-pipeline-grid">{visible.map(({ item, journey }) => <JourneyCard key={item.id} item={item} journey={journey} featureUniverse={featureUniverse} commercial={items.find((entry) => entry.id === journey.sourceLeadId)} employee={employees.find(employee => employee.displayName === item.owner)} canEdit={canEdit} canDelete={canDelete} onOpen={() => setSelected(item)} onEdit={() => setEditing(item)} onDelete={() => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />)}</div> : <JourneyList records={visible} sourceItems={items} featureUniverse={featureUniverse} canDelete={canDelete} canEdit={canEdit} onEdit={setEditing} onOpen={setSelected} onDelete={(item) => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />}
 
     {selected && <JourneyDrawer distribution={distribution?.find(board=>board.track===track)} item={selected} journey={parseJourney(selected.description)!} commercialSource={items.find((entry) => entry.id === parseJourney(selected.description)?.sourceLeadId)} catalogs={catalogs.filter((entry) => entry.active)} customers={customers} agendaModule={agendaModule} taskModule={taskModule} employees={employees.filter((entry) => entry.active)} currentUser={currentUser} busy={busy} canEdit={canEdit} canCreateTask={canCreateTask} onEdit={() => setEditing(selected)} onClose={() => { setSelected(null); const url = new URL(window.location.href); url.searchParams.delete("client"); url.searchParams.delete("card"); openedSharedCard.current = ""; window.history.replaceState({}, "", url); }} operate={operate} onSave={saveSelected} />}
     {editing && <ManualJourneyModal key={editing.id + ":" + editing.version} item={editing} initialJourney={parseJourney(editing.description)!} track={track} customers={customers} existingRecords={records} employees={employees.filter(entry => entry.active)} statuses={statuses} defaultBaseFeatures={featureUniverse} currentUser={currentUser} busy={busy} onClose={() => setEditing(null)} onSave={async payload => { const result = await operate(payload, "Dados do acompanhamento atualizados."); if (result) setEditing(null); }} />}

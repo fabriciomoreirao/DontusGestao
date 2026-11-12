@@ -53,13 +53,13 @@ internal static class CsJourneyTimeline
     {
         if (scope == "lia") return !string.IsNullOrWhiteSpace(detail["startDate"]?.ToString()) ? ReadDate(detail["startDate"]!.ToString())
             : !string.IsNullOrWhiteSpace(detail["startedAt"]?.ToString()) ? ReadDate(detail["startedAt"]!.ToString())
-            : null;
+            : ReadDate(createdAt.ToString("O"));
         if (detail["phase"]?.ToString() is "validation" or "onboarding" or "activation") return null;
         return !string.IsNullOrWhiteSpace(detail["trackingStartedAt"]?.ToString()) ? ReadDate(detail["trackingStartedAt"]!.ToString())
             : detail["phase"]?.ToString() is "tracking" or "evolution" ? ReadDate(detail["startDate"]?.ToString()) : null;
     }
 
-    private static DateOnly? ReadDate(string? value)
+    internal static DateOnly? ReadDate(string? value)
     {
         if (DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)) return day;
         return value?.Contains('T') == true && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var timestamp)

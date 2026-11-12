@@ -229,7 +229,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         {
             entity.Property(x => x.Catalog).HasMaxLength(64);
             entity.Property(x => x.Name).HasMaxLength(160);
-            entity.Property(x => x.Description).HasMaxLength(600);
+            entity.Property(x => x.Description).HasColumnType("text");
             entity.HasIndex(x => new { x.Catalog, x.Name }).IsUnique();
             entity.HasIndex(x => new { x.Catalog, x.Active });
         });

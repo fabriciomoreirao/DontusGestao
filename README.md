@@ -109,9 +109,10 @@ ativas das contas estratégicas. A tela, seus indicadores e o painel externo
 calculam o mesmo progresso e mostram **Meta batida** a partir de 100%. No painel
 externo, a aba **Metas** também participa da rotação quando há metas no período.
 
-A competência de CS e LIA considera o início efetivo do acompanhamento; registros
-sem data válida não geram novos lançamentos. Decisões de comissão já aprovadas ou
-reprovadas preservam sua competência histórica. Cancelamentos usam a data da
+A competência de CS considera o início efetivo do acompanhamento. Na LIA, o cliente
+entra na comissão desde o onboarding, pela data inicial informada ou pela criação
+do card quando não há data. Datas informadas inválidas não geram novos lançamentos.
+Decisões de comissão já aprovadas ou reprovadas preservam sua competência histórica. Cancelamentos usam a data da
 solicitação para os indicadores e o valor do card como recuperação de registros
 antigos. O seletor de documentos do cancelamento faz o envio pela própria seta.
 A reserva da sala exige escolher o tipo cadastrado do compromisso.
@@ -248,6 +249,28 @@ No filtro **Lembretes** do CRM, escolha **Lembretes para hoje**, **Com lembrete 
 
 ## Comissões e indicações: confirmação por competência
 
+Em **Comissões → Configurar comissões → Comercial**, selecione o colaborador e
+configure as faixas do total mensal vendido. O exemplo inicial usa 35% abaixo de
+R$ 3.000,00, 40% de R$ 3.000,00 até R$ 4.499,99 e 50% a partir de R$ 4.500,00.
+O percentual da faixa incide sobre o total inteiro, mantendo a decisão por cliente.
+Os totais consideram os cards ganhos do CRM Comercial pela data do ganho em Brasília,
+inclusive etapas configuradas com a marca Ganho. Retenção, qualificação e venda direta
+mantêm seus fluxos próprios. Filtros da lista não alteram o total usado na faixa.
+As diferenças de arredondamento são distribuídas entre os lançamentos para fechar
+o percentual do total. Alterações que mudem os valores exigem revisão da aprovação
+antes de gerar ou assinar uma confirmação; documentos já assinados são preservados.
+A migration `CommercialCommissionWinDates` fixa a data dos ganhos antigos sem esse
+campo, usando os registros de ganho e movimentação disponíveis e, na ausência deles,
+a data comercial ou a última atualização anterior à migration.
+
+Em **LIA**, configure um único percentual individual sobre o valor de cada cliente.
+Por exemplo, R$ 500,00 a 50% gera R$ 250,00. Clientes aparecem desde o onboarding;
+o registro, a aprovação e os novos documentos de assinatura exibem Configuração Inicial,
+Testes do Cliente, Liberação e o status atual, incluindo Acompanhamento e Concluído.
+Regras antigas e decisões históricas continuam legíveis. Para novos cálculos,
+reconfigure regras comerciais antigas como faixas e regras fixas da LIA como
+percentual; valores fixos antigos não são convertidos automaticamente em percentuais.
+
 Na lista de Comissões, aprove ou reprove cada cliente e informe o motivo. Clique no nome do cliente para consultar dados gerais, utilização e datas de kick off, treinamento e alinhamento único. As regras e os valores são calculados novamente na API ao registrar a decisão; reprovações têm valor a pagar igual a zero.
 
 Em CS, abaixo de 50% de score a comissão é zero; de 50% a menos de 75%, de 75% até 100% (inclusive) e acima de 100% há percentuais editáveis por colaborador, inicialmente 5%, 10% e 15%. Scores de 200% ou mais continuam na última faixa. Configurações antigas mantêm seus três percentuais nas três faixas remuneradas. O valor base usa o lançamento ou a venda vinculada, os produtos contratados e, quando ausentes, a mensalidade do cliente. A supervisão pode revisar a base na aprovação; uma comissão percentual positiva exige valor base informado. PDFs já assinados permanecem preservados; novas assinaturas usam o layout atualizado.
@@ -261,6 +284,14 @@ Para assinar, o responsável marca **Concordo**, desenha sua rubrica no quadro e
 Supervisores podem usar **Adicionar valor manual** para informar cliente, identificação, produto, valor do cliente, comissão e justificativa. O lançamento fica pendente de aprovação ou reprovação e participa do relatório e da assinatura da competência como os demais.
 
 ## Formulários do acompanhamento LIA
+
+Entre **Liberação e Ativação CRC** e **Concluídos**, a aba **Acompanhamento Final**
+mantém o cliente em observação por três dias de calendário de Brasília. Depois desse
+prazo, o responsável pode concluir o card. O servidor impede saltar essa etapa ou
+alterar retroativamente o início da observação. Apenas coordenadores com permissão
+de aprovar ou administrar a LIA podem excluir cards com formulário respondido;
+cards com apenas links pendentes seguem a permissão de edição. A exclusão autorizada
+remove os formulários vinculados na mesma transação.
 
 Em **Configurações da LIA → Formulários do cliente**, crie modelos com perguntas obrigatórias ou opcionais de texto curto, texto longo, seleção, e-mail, data e número. A manutenção exige a permissão de administrar a LIA.
 

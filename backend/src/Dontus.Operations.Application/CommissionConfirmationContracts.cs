@@ -10,6 +10,7 @@ public sealed record AgreeCommissionConfirmation(bool Agree, IReadOnlyList<Signa
 public sealed record CommissionReportRow(Guid Id, long Version, string CustomerName, string Product,
     string CustomerStatus, string SourceStatus, decimal? Score, string UsageStatus, long SaleValueCents,
     long CommissionCents, string RuleLabel, string Decision, string Reason, string DecidedBy, string DecidedAt,
-    string KickOffAt, string TrainingAt, string SingleAlignmentAt, string Sector, string CustomerCode = "", bool Manual = false);
+    string KickOffAt, string TrainingAt, string SingleAlignmentAt, string Sector, string CustomerCode = "", bool Manual = false,
+    Dictionary<string, string>? LiaStages = null);
 public sealed record CommissionReportSnapshot(string Module, string Scope, string Competence, string EmployeeName,
     Dictionary<string, string> Filters, IReadOnlyList<CommissionReportRow> Rows, long TotalCents);
