@@ -17,7 +17,7 @@ export function useReminderFilter(module: string) {
   const { reminders, now } = useContext(ReminderFilterContext);
   const [mode, setMode] = useState<ReminderFilterMode>("all");
   const matches = useCallback((context: Omit<ReminderLinkContext, "module">) => matchesReminderFilter(reminders, { ...context, module }, mode, now), [reminders, module, mode, now]);
-  return { mode, matches, control: <ReminderFilterControl value={mode} onChange={setMode} /> };
+  return { mode, setMode, matches, control: <ReminderFilterControl value={mode} onChange={setMode} /> };
 }
 
 export function ReminderFilterControl({ value, onChange }: { value: ReminderFilterMode; onChange: (value: ReminderFilterMode) => void }) {

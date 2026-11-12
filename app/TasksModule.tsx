@@ -1,4 +1,5 @@
 "use client";
+import "./task-search-filters.css";
 import { canInteractWithTask } from "@/lib/task-interaction";
 import { LinkedDevelopmentDrawer } from "@/app/DevelopmentModule";
 import { desktopWhatsappUrl } from "@/lib/whatsapp";
@@ -21,7 +22,7 @@ import { useReminderFilter } from "@/app/ReminderFilters";
 import {
   ClipboardList, Zap, FileSpreadsheet, Layers, Flag, Network, Send, ChevronDown, Bell, CalendarDays, Check, CheckCircle2, ChevronRight, CircleDot, Clipboard, Clock3, Columns3,
   Code2, FileText, History, List, MessageSquareText, Paperclip, Pencil, Plus, Search,
-  Power, RotateCcw, Settings, Smile, Trash2, UserRound, UsersRound, X,
+  Power, RotateCcw, Settings, Smile, Trash2, UserRound, UsersRound, X, Filter,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { createContext, FormEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -116,6 +117,7 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
   const [assignee, setAssignee] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
   const [clientNotice, setClientNotice] = useState("Todos");
+  const filterResultsRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<CorporateTask | null>(null);
   const [editRequested, setEditRequested] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -203,16 +205,22 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
           <button className={view === "list" ? "active" : ""} onClick={() => setView("list")}><List size={16} /> Lista</button>
         </div>
       </header>
-      <div className="tasks-toolbar reminder-filter-toolbar compact-operational-filters task-compact-filters" role="group" aria-label="Filtros de tarefas">
-        <label className="task-sector-control"><span>Setor</span><select aria-label="Filtrar tarefas por setor" value={departmentFilter} onChange={(event) => setDepartment(event.target.value)}><option value="">Todos os setores</option>{availableDepartments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <div className="task-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por protocolo, título ou cliente" /></div>{reminderFilter.control}
-        <select value={priorityFilter} onChange={(e) => setPriority(e.target.value)} aria-label="Filtrar prioridade"><option value="">Todas as prioridades</option>{module.priorities.filter((p) => p.active).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select>
-        <SearchablePeopleSelect searchLabel="Responsável" value={assigneeFilter} onChange={(e) => setAssignee(e.target.value)} aria-label="Filtrar responsável"><option value="">Todos os responsáveis</option>{module.collaborators.filter((c) => c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</SearchablePeopleSelect>
-
-        <label className="mine-filter"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Somente minhas</label>
-        <label className="task-client-notice-filter"><span>Comunicação com o cliente</span><select aria-label="Filtrar comunicação com o cliente" value={clientNotice} onChange={event => setClientNotice(event.target.value)}>{["Todos", "Avisar Cliente", "Sem Necessidade", "Cliente Informado", "Pendente"].map(state => <option value={state} key={state}>{state === "Todos" ? "Todos os estados" : state} ({state === "Todos" ? module.tasks.length : module.tasks.filter(task => task.clientNotificationState === state).length})</option>)}</select></label>
-      </div>
-      <div className="task-workspace-content">
+      <form className="tasks-toolbar task-search-filters" role="group" aria-label="Filtros de tarefas" onSubmit={event => { event.preventDefault(); filterResultsRef.current?.focus(); }}>
+        <div className="task-filter-heading"><div className="task-filter-title"><span className="task-filter-icon"><Filter size={23} aria-hidden="true" /></span><h2>Filtros de pesquisa</h2><span className="task-filter-subtitle">Refine os resultados</span></div><div className="task-filter-actions">
+          <label className="mine-filter"><input type="checkbox" checked={onlyMine} onChange={event => setOnlyMine(event.target.checked)} />Somente minhas</label>
+          <button type="button" className="secondary-button task-filter-reset" onClick={() => { setQuery(""); setDepartment(""); setPriority(""); setAssignee(""); setClientNotice("Todos"); setOnlyMine(false); reminderFilter.setMode("all"); }}><RotateCcw size={17} aria-hidden="true" />Limpar filtros</button>
+          <button type="submit" className="primary-button task-filter-submit"><Search size={18} aria-hidden="true" />Filtrar</button>
+        </div></div>
+        <div className="task-filter-controls">
+          <label className="task-query-control"><span><Search size={17} aria-hidden="true" />Pesquisar</span><div className="task-search"><input aria-label="Buscar tarefas" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por protocolo, título ou cliente" /></div></label>
+          <label className="task-sector-control"><span><Network size={17} aria-hidden="true" />Setor</span><select aria-label="Filtrar tarefas por setor" value={departmentFilter} onChange={event => setDepartment(event.target.value)}><option value="">Todos os setores</option>{availableDepartments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label><span><UsersRound size={17} aria-hidden="true" />Responsável</span><SearchablePeopleSelect searchLabel="Responsável" value={assigneeFilter} onChange={event => setAssignee(event.target.value)} aria-label="Filtrar responsável"><option value="">Todos os responsáveis</option>{module.collaborators.filter(collaborator => collaborator.active).map(collaborator => <option value={collaborator.id} key={collaborator.id}>{collaborator.name}</option>)}</SearchablePeopleSelect></label>
+          <label><span><Flag size={17} aria-hidden="true" />Prioridade</span><select value={priorityFilter} onChange={event => setPriority(event.target.value)} aria-label="Filtrar prioridade"><option value="">Todas as prioridades</option>{module.priorities.filter(priority => priority.active).map(priority => <option value={priority.id} key={priority.id}>{priority.name}</option>)}</select></label>
+          <div className="task-reminder-control"><Bell size={17} aria-hidden="true" />{reminderFilter.control}</div>
+          <label className="task-client-notice-filter"><span><MessageSquareText size={17} aria-hidden="true" />Comunicação com o cliente</span><select aria-label="Filtrar comunicação com o cliente" value={clientNotice} onChange={event => setClientNotice(event.target.value)}>{["Todos", "Avisar Cliente", "Sem Necessidade", "Cliente Informado", "Pendente"].map(state => <option value={state} key={state}>{state === "Todos" ? "Todos os estados" : state} ({state === "Todos" ? module.tasks.length : module.tasks.filter(task => task.clientNotificationState === state).length})</option>)}</select></label>
+        </div>
+      </form>
+      <div className="task-workspace-content" ref={filterResultsRef} tabIndex={-1} role="region" aria-label="Resultados das tarefas">
         {view === "kanban" && <Kanban tasks={filtered} statuses={module.statuses} collaborators={module.collaborators} departmentId={departmentFilter} canEdit={canEdit} canDrag={task=>canDragTask(task,movementAccessFor(task))} canMoveTo={canMoveTo} busy={busy} onOpen={openTask} onEdit={task=>openTask(task,true)} onMove={move} onDelete={task=>{void operate({action:"deleteTask",taskId:task.id,version:task.version},"Tarefa excluída com sucesso.")}} />}
         {view === "list" && <TaskList tasks={filtered} collaborators={module.collaborators} onOpen={openTask} />}
       </div>
