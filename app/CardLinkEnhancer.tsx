@@ -44,6 +44,7 @@ export default function CardLinkEnhancer({ module, records }: { module: string; 
       });
       const opened = currentRecords.find(record => record.id === openedId && (!record.module || record.module === module));
       if (module !== "tasks") document.querySelectorAll<HTMLElement>(".drawer-head,.suggestion-detail-actions,.journey-drawer>header,.goal-detail-modal .modal-head,.commission-decision-modal .modal-head,.enterprise-detail-page>header,.retention-detail-page>header").forEach(header => {
+        if (header.closest('[data-detail-enhancement="disabled"]')) return;
         const record = header.dataset.cardDetailId ? recordsById.get(header.dataset.cardDetailId) : opened;
         if (!record || record.module && record.module !== module) return;
         const actionHost = header.querySelector<HTMLElement>(".customer-drawer-actions,.lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions,.marketing-drawer-head-actions,.cancellation-header-actions") ?? header;

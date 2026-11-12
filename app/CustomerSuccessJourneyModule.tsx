@@ -228,7 +228,7 @@ export default function CustomerSuccessJourneyModule({
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
   onOpenSettings?: () => void;
 }) {
-  const [tab, setTab] = useState<CsPhase>(flow === "evolution" ? "tracking" : "validation");
+  const [tab, setTab] = useState<CsPhase>("validation");
   const [selected, setSelected] = useState<WorkItem | null>(null);
   const [query, setQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("all");
@@ -246,7 +246,7 @@ export default function CustomerSuccessJourneyModule({
     .filter((entry) => entry.active && ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog) && catalogFeatureIsBase(entry))
     .map((entry) => entry.name)), [catalogs]);
 
-  useEffect(() => setTab(flow === "evolution" ? "tracking" : "validation"), [flow]);
+  useEffect(() => { setTab("validation"); setIndicatorView(false); }, [flow]);
 
   const records = useMemo(() => items
     .filter((item) => item.module === "cs")

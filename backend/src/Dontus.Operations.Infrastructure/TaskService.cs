@@ -183,7 +183,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         else if (!manages)
         {
             query = query.Where(x => !tasksWithParticipants.Contains(x.Id)
-                || x.AssigneeUserId == null && memberDepartments.Contains(x.CurrentDepartmentId)
+                || memberDepartments.Contains(x.CurrentDepartmentId)
                 || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
                 || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id));
             if (!viewAllDepartments)
@@ -191,7 +191,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                     ? query.Where(x => memberDepartments.Contains(x.CurrentDepartmentId)
                         || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id))
                     : query.Where(x => x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
-                        || x.AssigneeUserId == null && memberDepartments.Contains(x.CurrentDepartmentId)
+                        || memberDepartments.Contains(x.CurrentDepartmentId)
                         || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id));
         }
 
@@ -420,6 +420,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     {
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         var status = await db.TaskStatuses.SingleOrDefaultAsync(x => x.Id == command.StatusId && x.Active, cancellationToken)
             ?? throw new DomainException("Status inválido ou inativo.");
         if (!status.ManualMovement)
@@ -513,6 +514,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("Informe o motivo do encaminhamento.");
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         if (task.AssigneeUserId != user.Id)
         {
             actor.RequirePermission("tasks", "edit");
@@ -697,6 +699,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("O comentário não pode ficar vazio.");
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         var mentions = command.MentionedUserIds?.Distinct().ToList() ?? [];
         var comment = new TaskComment
         {
@@ -719,6 +722,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var body = CommentFiles.Validate(command.Body,4000);
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         var comment = await db.TaskComments.SingleOrDefaultAsync(entry => entry.Id == command.CommentId && entry.TaskId == task.Id, cancellationToken)
             ?? throw new DomainException("Comentário não encontrado.", 404);
         if (comment.AuthorUserId != user.Id)
@@ -733,6 +737,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     {
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         var action = command.Action.Trim();
         var normalized = action.ToLowerInvariant() switch
         {
@@ -1135,6 +1140,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     {
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
+        await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         if (!actor.HasPermission("tasks", "edit") && !(actor.HasPermission("tasks", "create") && task.CreatorUserId == user.Id))
             actor.RequirePermission("tasks", "edit");
         if (command.CommentId.HasValue && !await db.TaskComments.AnyAsync(
@@ -1243,6 +1249,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var attachment = await db.TaskAttachments.SingleOrDefaultAsync(x => x.Id == attachmentId, cancellationToken)
             ?? throw new DomainException("Anexo não encontrado.", 404);
         var task = await LoadVisibleTaskAsync(attachment.TaskId, user, actor, cancellationToken);
+        await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         var storageKey = attachment.StorageKey;
         var fileName = attachment.FileName;
         var databaseContent = await db.TaskAttachmentContents.SingleOrDefaultAsync(x => x.AttachmentId == attachmentId, cancellationToken);
@@ -1325,8 +1332,19 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     {
         actor.RequirePermission("tasks", "edit");
         var task = await LoadVisibleTaskAsync(taskId, user, actor, cancellationToken);
+        await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         if (task.Version != version) throw new DomainException("A tarefa foi alterada por outro usuário.", 409);
         return task;
+    }
+
+    private async Task RequireTaskInteractionAsync(CorporateTask task, AppUser user, ActorContext actor, CancellationToken ct)
+    {
+        if (actor.HasPermission("tasks", "manage") || task.CreatorUserId == user.Id || task.AssigneeUserId == user.Id) return;
+        if (await db.TaskParticipants.AnyAsync(link => link.TaskId == task.Id && link.UserId == user.Id, ct)) return;
+        if (await db.UserDepartments.AnyAsync(link => link.UserId == user.Id &&
+            (link.IsCoordinator && (link.DepartmentId == task.CurrentDepartmentId || link.DepartmentId == task.SourceDepartmentId)
+                || !task.AssigneeUserId.HasValue && link.DepartmentId == task.CurrentDepartmentId), ct)) return;
+        throw new DomainException("Você possui somente acesso de leitura a esta tarefa.", 403);
     }
 
     private static void RequireCreatorOrAssignee(CorporateTask task, AppUser user)
@@ -1365,7 +1383,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (actor.HasPermission("tasks", "manage")) return task;
         if (task.CreatorUserId == user.Id || task.AssigneeUserId == user.Id) return task;
         if (task.CompletedAt.HasValue && !task.Cancelled && await db.TaskComments.AnyAsync(comment => comment.TaskId == task.Id && comment.AuthorUserId == user.Id, cancellationToken)) return task;
-        if (!task.AssigneeUserId.HasValue && await db.UserDepartments.AnyAsync(x => x.UserId == user.Id
+        if (await db.UserDepartments.AnyAsync(x => x.UserId == user.Id
             && x.DepartmentId == task.CurrentDepartmentId, cancellationToken)) return task;
         if (await db.TaskParticipants.AnyAsync(x => x.TaskId == task.Id && x.UserId == user.Id, cancellationToken))
             return task;
