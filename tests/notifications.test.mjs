@@ -117,3 +117,9 @@ test('aparência é isolada por usuário, valida cores e imagens e mantém contr
   assert.equal(value.backgroundImage,'');assert.equal(value.backgroundColor,'');assert.equal(chatTextColor('#ffffff'),'#142824');assert.equal(chatTextColor('#005c4b'),'#f7fffb');
   assert.equal(chatAppearanceStyle(value)['--chat-sent'],'#005c4b');assert.equal(parseChatAppearance('{invalid').sentColor,'');
 });
+
+test('chegadas da fila para si ou para seu setor não são silenciadas ao criar o encaminhamento',()=>{
+ const data=base();data.items=[{...item('waitingQueue',{kind:'waitingQueue',state:'waiting',departmentName:'Suporte',responsibleName:''}),created_by:data.user.email}];
+ const notifications=buildNotifications(data,now);assert.equal(notifications.filter(entry=>entry.category==='arrival').length,1);
+ assert.deepEqual(ownMutationNotificationIds([],notifications,{action:'createWorkItem',module:'waitingQueue'},'record-1'),[]);
+});

@@ -94,3 +94,9 @@ test('recuperação HTTP fica limitada ao período sem socket', async t => {
   await tick(15_000); await tick(300); assert.equal(state.operations, 0); assert.equal(state.chat, 1);
   await tick(45_000); await tick(300); assert.equal(state.operations, 1);
 });
+
+test('pulsos de digitação chegam sem baixar chat ou operações e sem interromper uma edição',async t=>{
+ const typing=[];const{state,socket,tick}=setup(t,{typing:changes=>typing.push(...changes)});state.busy=true;
+ for(let i=0;i<20;i++)socket.message({type:'changed',typing:[{roomId:'r',userId:'u',sessionId:'s',isTyping:true,at:new Date().toISOString()}]});
+ await tick(5000);assert.equal(typing.length,20);assert.equal(state.chat,0);assert.equal(state.operations,0);
+});

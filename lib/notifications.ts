@@ -68,7 +68,7 @@ export function buildNotifications(data:NotificationData,now:number):AppNotifica
       ||["waitingQueue","cancellations","lia","serviceRequests","serviceFollowup"].includes(item.module)
       ||(item.module==="marketing"&&detail.kind==="marketingRequest")
       ||(item.module==="ti"&&detail.kind==="developmentTask");
-    if(arrivalAllowed&&receives(item)&&!isSelf(incomingFrom))add({id:`arrival-${item.id}-${item.assigned_at||"created"}`,sourceId:item.id,category:"arrival",title:`${item.title} chegou para você`,meta:item.module==="cs"?(detail.track==="retention"?"Acompanhamento Retenção":"Acompanhamento Ativação"):labels[item.module]||item.module,module:item.module,at:assignmentAt,targetUrl:url});
+    if(arrivalAllowed&&receives(item)&&(!isSelf(incomingFrom)||item.module==="waitingQueue"))add({id:`arrival-${item.id}-${item.assigned_at||"created"}`,sourceId:item.id,category:"arrival",title:`${item.title} chegou para você`,meta:item.module==="cs"?(detail.track==="retention"?"Acompanhamento Retenção":"Acompanhamento Ativação"):labels[item.module]||item.module,module:item.module,at:assignmentAt,targetUrl:url});
     if(detail.kind==="enterpriseNetwork"&&receives(item))for(const value of array(detail.units)){
       const unit=object(value),unitId=string(unit.id);if(!unitId)continue;
       const history=array(detail.history).map(object).find(entry=>entry.unitId===unitId&&/cadastro|vincul|direcion/.test(normalize(entry.type||entry.kind||entry.text)));
@@ -136,5 +136,5 @@ export function newlyReceived(previous:Iterable<string>,notifications:AppNotific
 
 export function ownMutationNotificationIds(before:AppNotification[],after:AppNotification[],payload:Record<string,unknown>,createdId?:string){
   const previous=new Set(before.map(entry=>entry.id));const sources=new Set([payload.id,payload.strategicNetworkId,createdId].filter(Boolean));
-  return after.filter(entry=>!previous.has(entry.id)&&sources.has(entry.sourceId)&&["arrival","comment"].includes(entry.category)).map(entry=>entry.id);
+  return after.filter(entry=>!previous.has(entry.id)&&sources.has(entry.sourceId)&&["arrival","comment"].includes(entry.category)&&!(entry.module==="waitingQueue"&&entry.category==="arrival")).map(entry=>entry.id);
 }

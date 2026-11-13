@@ -99,6 +99,7 @@ app.MapOpenApi();
 app.MapLiaForms();
 app.MapEmployeeProfiles();
 app.MapRealtime();
+app.MapInternalChatTyping();
 app.MapDontusIntegration();
 app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));

@@ -1,3 +1,5 @@
+import type { ChatTyping } from "./chat-typing.ts";
+
 type Socket = Pick<WebSocket, "close" | "onopen" | "onmessage" | "onclose" | "onerror">;
 type Changes = { operations?: boolean; internalChat?: boolean };
 type Presence = {userId:string;isOnline:boolean;lastSeenAt:string|null};
@@ -13,6 +15,7 @@ type SyncOptions = {
   status: (connected: boolean) => void;
   unauthorized: (message?: string) => void;
   presence?: (users:Presence[]) => void;
+  typing?: (changes:ChatTyping[]) => void;
 };
 
 // One socket with independent chat and operations requests. Bursts coalesce within each channel.
@@ -72,6 +75,7 @@ export function createRealtimeSync(options: SyncOptions) {
       let message;
       try { message = JSON.parse(String(event.data)); } catch { return; }
       if(options.canChat&&Array.isArray(message.presence))options.presence?.(message.presence.filter((entry:Presence)=>entry&&typeof entry.userId==="string"&&typeof entry.isOnline==="boolean"&&(entry.lastSeenAt===null||typeof entry.lastSeenAt==="string")));
+      if(options.canChat&&Array.isArray(message.typing))options.typing?.(message.typing);
       if (message.type === "ready") {
         clearTimeout(openTimer); attempts = 0; setStatus(true);
         // A cursor captured before the initial snapshot avoids downloading it twice on normal startup.

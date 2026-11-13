@@ -488,3 +488,17 @@ um modal central com nome, responsável, WhatsApp, plano e origem. Somente o
 responsável atual pode editar esses dados, mesmo que outro usuário tenha
 permissão de gestão; a validação inicial da fila continua disponível à equipe
 com permissão de edição da LIA. As regras também são verificadas pelo servidor.
+
+### Digitação, áudios e avisos da fila
+
+Os áudios do chat exibem a foto do remetente junto ao player, inclusive os enviados
+pelo próprio usuário. O menu de envio oferece 102 emojis. O indicador de digitação
+exibe a foto e três pontos animados somente para participantes da conversa. Os
+pulsos são limitados, expiram após a pausa e trafegam pela conexão em tempo real
+sem texto digitado, gravação de mensagens ou recarga do chat e das operações.
+
+Novas chegadas à fila notificam o responsável definido; sem responsável, notificam
+os membros do setor. O aviso central fica por 30 segundos, sem confetes, sem
+capturar foco e com cliques passando para as ferramentas por trás (exceto o botão
+para dispensar o próprio aviso). Chegadas simultâneas são exibidas em sequência.
+O botão de Retomar ou Aprovar e concluir nas tarefas fica verde no cabeçalho.

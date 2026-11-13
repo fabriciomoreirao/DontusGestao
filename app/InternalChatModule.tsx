@@ -1,4 +1,6 @@
 "use client";
+import ChatTypingIndicator from "@/app/ChatTypingIndicator";
+import useChatTypingPublisher from "@/app/useChatTypingPublisher";
 import useVoiceRecorder from "@/app/useVoiceRecorder";
 import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import MessageText from "@/app/MessageText";
@@ -68,7 +70,8 @@ type Conversation = {
 
 type ImageDraft = { id: string; file: File };
 
-const stickers = ["😀", "😂", "😍", "🥳", "👏", "👍", "🙏", "🔥", "💙", "🎉", "✅", "🚀"];
+const stickers = ["😀","😃","😄","😁","😆","😅","😂","🤣","😊","🙂","🙃","😉","😍","🥰","😘","😎","🤓","🧐","🤩","🥳","😇","🤗","🤔","🤫","🤭","🫡","😴","🥱","😢","😭","🥹","😮","😲","😱","😬","🙄","😤","😡","😔","😌","🥺","🤯","😋","😜","🤪","🤠","🤑","🤝","👍","👎","👏","🙌","🙏","💪","👌","✌️","🤞","🫶","👋","🤙","❤️","💙","💚","💛","🧡","💜","🩷","🤍","🖤","💔","💕","💯","🔥","✨","⭐","🌟","🎉","🎊","🎂","🎁","🏆","🥇","🚀","💡","📌","📝","📚","📅","⏰","✅","❌","⚠️","☕","🍕","🍀","🌞","🌈","💐","🐶","🐱","🦷","💻"];
+
 const messagePageSize = 100;
 const messageTime = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const roomTime = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -132,6 +135,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const selectedConversation = conversations.find((entry) => entry.key === effectiveSelectedKey);
   const selectedRoom = selectedConversation?.room;
   const voice=useVoiceRecorder(effectiveSelectedKey);
+  const publishTyping=useChatTypingPublisher(selectedRoom?.id,canCreate&&voice.state!=="recording"&&voice.state!=="requesting");
   const pastedImages = imageDrafts[effectiveSelectedKey] ?? [];
   const visibleMessages = useMemo(() => [...new Map([...(olderMessages[selectedRoom?.id || ""] || []), ...(selectedRoom?.messages || [])].map(message => [message.id, message])).values()].sort((a,b) => a.createdAt.localeCompare(b.createdAt)), [olderMessages, selectedRoom?.id, selectedRoom?.messages]);
   const messageLimit = messageLimits[selectedRoom?.id || ""] ?? messagePageSize;
@@ -260,6 +264,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
 
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault();
+    publishTyping(false);
     const message = drafts.get(effectiveSelectedKey);
     const body = message.trim();
     if (!canCreate || busy || !selectedConversation || (!body && !pastedImages.length) || sendingRef.current) return;
@@ -438,15 +443,16 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
           {pastedImages.length > 0 && <section className="internal-chat-pasted-images" aria-label="Imagens para enviar"><header><strong>{pastedImages.length} imagem(ns) para enviar</strong><span>Clique em Enviar mensagem para confirmar.</span></header><div>{pastedImages.map(image => <PastedImagePreview key={image.id} image={image} disabled={busy} onRemove={() => setImageDrafts(current => ({ ...current, [effectiveSelectedKey]: (current[effectiveSelectedKey] ?? []).filter(entry => entry.id !== image.id) }))} />)}</div></section>}
           {replyToMessageId && replyMessage && <section className="internal-chat-reply-draft" aria-label="Mensagem selecionada para responder"><Reply size={16}/><div><strong>Respondendo a {replyMessage.senderName}</strong><span>{chatReplyPreview(replyMessage)}</span></div><button type="button" aria-label="Cancelar resposta" onClick={() => clearReply(effectiveSelectedKey, replyToMessageId)}><X size={16}/></button></section>}
           {(voice.state!=="idle"||voice.error)&&<div className="internal-chat-voice-panel" role="status">{voice.error&&<p role="alert">{voice.error}</p>}{voice.state==="requesting"&&<span>Aguardando acesso ao microfone…</span>}{voice.state==="recording"&&<><span className="voice-recording"><Mic size={16}/>Gravando áudio…</span><button type="button" onClick={voice.stop}><Square size={15}/>Concluir gravação</button></>}{voice.state==="processing"&&<span>Preparando áudio…</span>}{voice.draft&&<><audio controls preload="metadata" src={voice.draft.url}/><button type="button" disabled={busy} onClick={()=>{const draft=voice.draft;if(draft)void upload([draft.file]).then(sent=>{if(sent)voice.cancel()})}}><Send size={16}/>Enviar áudio</button></>}<button type="button" disabled={busy} onClick={voice.cancel}><X size={15}/>Cancelar áudio</button></div>}
+          {selectedRoom&&<ChatTypingIndicator roomId={selectedRoom.id} self={module.currentUserId} members={selectedRoom.memberUserIds} users={module.users}/>}
           <form className="internal-chat-composer" onSubmit={sendMessage}>
             <input ref={fileInput} hidden type="file" multiple onChange={(event) => void upload(event.target.files)} />
             <button type="button" className="internal-chat-tool" onClick={() => fileInput.current?.click()} disabled={busy || !canCreate} aria-label="Anexar arquivo"><Paperclip size={19} /></button>
-            <div className="internal-chat-sticker-wrap"><button type="button" className="internal-chat-tool" onClick={() => setStickersOpen((value) => !value)} disabled={busy || !canCreate} aria-label="Enviar figurinha"><SmilePlus size={19} /></button>{stickersOpen && <div className="internal-chat-stickers">{stickers.map((sticker) => <button type="button" key={sticker} disabled={busy || !canCreate} onClick={() => void sendSticker(sticker)}>{sticker}</button>)}</div>}</div>
+            <div className="internal-chat-sticker-wrap"><button type="button" className="internal-chat-tool" onClick={() => setStickersOpen((value) => !value)} disabled={busy || !canCreate} aria-label="Enviar figurinha" title="Emojis e figurinhas"><SmilePlus size={19} /></button>{stickersOpen && <div className="internal-chat-stickers">{stickers.map((sticker) => <button type="button" key={sticker} aria-label={`Enviar emoji ${sticker}`} disabled={busy || !canCreate} onClick={() => void sendSticker(sticker)}>{sticker}</button>)}</div>}</div>
             <input ref={gifInput} hidden type="file" accept="image/gif" onChange={event=>void upload(event.target.files)}/>
             <button type="button" className="internal-chat-tool gif" disabled={busy||!canCreate} onClick={()=>gifInput.current?.click()} aria-label="Enviar GIF" title="Enviar GIF">GIF</button>
             <button type="button" className="internal-chat-tool voice" disabled={busy||!canCreate||voice.state!=="idle"} onClick={()=>void voice.start()} aria-label="Gravar áudio" title="Gravar áudio"><Mic size={19}/></button>
             {selectedRoom?.isGroup && <button type="button" className="internal-chat-tool poll" onClick={() => setPollOpen(true)} disabled={busy || !canCreate} aria-label="Criar enquete" title="Criar enquete"><BarChart3 size={19} /></button>}
-            <InternalChatDraftComposer drafts={drafts} conversationKey={effectiveSelectedKey} inputRef={composerInput} busy={busy} canCreate={canCreate} recording={voice.state === "recording" || voice.state === "requesting"} hasAttachments={pastedImages.length > 0} onPaste={pasteImages} />
+            <InternalChatDraftComposer drafts={drafts} conversationKey={effectiveSelectedKey} inputRef={composerInput} busy={busy} canCreate={canCreate} recording={voice.state === "recording" || voice.state === "requesting"} hasAttachments={pastedImages.length > 0} onPaste={pasteImages} onTyping={publishTyping} />
           </form>
         </>}
       </main>
@@ -504,14 +510,14 @@ function MessageBubble({ message, onReply, showSeenReceipt, now, onReact, own, b
   const react=async(emoji:string)=>{if(own||!canCreate||busy||message.deletedAt)return;const reacted=message.reactions?.some(entry=>entry.emoji===emoji&&entry.userIds.includes(currentUserId))??false;if(await onReact(message,emoji,!reacted))setReactionsOpen(false)};
   const fileUrl = `/api/internal-chat-files/${message.id}`;
   return <article data-chat-message-id={message.id} className={`internal-chat-message ${own ? "own" : ""}`}>
-    {!own && <Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator} />}
+    {!own && message.type!=="audio" && <Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator} />}
     <div className="internal-chat-bubble-wrap">{!own && <strong>{birthday && <BirthdayGift name={message.senderName} />}{message.senderName}</strong>}{!message.deletedAt && (canCreate || group && canEdit) && <div className="internal-chat-message-toolbar">{group && canEdit && <button type="button" className={message.isPinned ? "active" : ""} disabled={busy} onClick={() => onPin(message)} aria-label={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={11}/> : <Pin size={11}/>}</button>}{canCreate && <button type="button" disabled={busy} onClick={() => onReply(message)} aria-label="Responder mensagem" title="Responder mensagem"><Reply size={12}/></button>}</div>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
       {!message.deletedAt && message.replyTo && <div className="internal-chat-quoted-message"><strong>{message.replyTo.senderName}</strong><span>{chatReplyPreview(message.replyTo)}</span></div>}
       {message.deletedAt ? <p className="internal-chat-deleted-message">Mensagem excluída</p> : editing ? <form className="internal-chat-message-editor" onSubmit={async event=>{event.preventDefault();if(editBody.trim()&&await onEdit(message,editBody.trim()))setEditing(false);}}><textarea aria-label="Editar mensagem" autoFocus rows={3} maxLength={4000} value={editBody} onChange={event=>setEditBody(event.target.value)} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setEditing(false)}}}/><div><button type="button" disabled={busy} onClick={()=>setEditing(false)}>Cancelar</button><button type="submit" disabled={busy||!editBody.trim()}>Salvar</button></div></form> : message.type === "text" && <p><MessageText text={message.body}/></p>}
       {!message.deletedAt && message.type === "sticker" && <span className="internal-chat-sticker-message">{message.body}</span>}
       {!message.deletedAt && message.type === "image" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Imagem enviada",video:false})}><img src={fileUrl} alt={message.fileName || "Imagem enviada"} loading="lazy" /></button>}
       {!message.deletedAt && message.type === "video" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Vídeo enviado",video:true})}><video muted preload="metadata"><source src={fileUrl} type={message.contentType} />Seu navegador não suporta vídeo.</video></button>}
-      {!message.deletedAt && message.type === "audio" && <audio className="internal-chat-audio" controls preload="metadata" src={fileUrl}/> }
+      {!message.deletedAt && message.type === "audio" && <div className="internal-chat-audio-row"><Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator}/><audio className="internal-chat-audio" controls preload="metadata" src={fileUrl}/></div> }
       {!message.deletedAt && message.type === "file" && <a className="internal-chat-file" href={fileUrl} download={message.fileName}><FileText size={24} /><span><b>{message.fileName}</b><small>{message.contentType || "Arquivo"}</small></span><Download size={18} /></a>}
       {!message.deletedAt && message.type === "poll" && <PollMessage message={message} currentUserId={currentUserId} busy={busy || !canCreate} onVote={onVote} />}
 

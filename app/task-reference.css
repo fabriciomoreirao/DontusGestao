@@ -235,3 +235,9 @@ html:has(.app-shell .task-reference-overlay.task-detail-overlay){overflow:hidden
 /* Keep participant choices inside the form flow so the modal can scroll the whole list. */
 .task-create-form .checkbox-multiselect-popover,.task-edit-form .checkbox-multiselect-popover{position:static!important;inset:auto!important;width:100%;max-height:none;margin-top:6px;box-sizing:border-box;}
 .task-create-form .checkbox-multiselect-options,.task-edit-form .checkbox-multiselect-options{max-height:min(240px,35dvh);overflow-y:auto;overscroll-behavior:contain;}
+
+.task-header-workflow{display:flex;gap:8px;align-items:center;flex:0 0 auto;margin-left:auto}.task-header-workflow:empty{display:none}
+.app-shell .task-reference-overlay.task-detail-overlay .task-ideal-header .task-header-workflow>button{border-color:#15803d;background:#15803d;color:#fff;min-height:38px;font-weight:700}.app-shell .task-reference-overlay.task-detail-overlay .task-ideal-header .task-header-workflow>button:hover{background:#166534;border-color:#166534}
+.app-shell .task-reference-overlay.task-detail-overlay .task-action-buttons{margin-bottom:0}.app-shell .task-reference-overlay.task-detail-overlay .task-actions-panel{padding-bottom:16px}
+@media(max-width:1100px){.task-ideal-header-bottom{flex-wrap:wrap;gap:12px}.task-header-workflow{margin-left:auto}}
+@media(max-width:640px){.task-header-workflow{justify-content:flex-end;width:100%}.app-shell .task-reference-overlay.task-detail-overlay .task-ideal-header .task-header-workflow>button{min-height:44px}}
