@@ -24,6 +24,7 @@ public sealed class LiaJourneyTests
         Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.TransitionWorkItemAsync(new(id,"AguardandoKickoff",item.Version,true,true),Editor))).StatusCode);
         var detail=JsonNode.Parse(item.Description)!.AsObject();detail["validationConfirmedAt"]=DateTimeOffset.UtcNow.ToString("O");detail["validationConfirmedBy"]="Ana";
         await Assert.ThrowsAsync<DomainException>(()=>service.UpdateWorkItemAsync(new(id,item.Title,"Outra pessoa",item.AmountCents,detail.ToJsonString(),null,null,item.Version),Editor));
+        db.LiaFormRequests.Add(new LiaFormRequest{WorkItemId=id,FormName="Diagnóstico",CreatedBy="tests"});await db.SaveChangesAsync();
         await service.UpdateWorkItemAsync(new(id,item.Title,"Ana",item.AmountCents,detail.ToJsonString(),null,null,item.Version),Editor);
         Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.TransitionWorkItemAsync(new(id,"ConfiguracaoInicial",item.Version,true,true),Editor))).StatusCode);
         await service.TransitionWorkItemAsync(new(id,"AguardandoKickoff",item.Version,true),Editor);
@@ -141,6 +142,63 @@ public sealed class LiaJourneyTests
     {
         await using var db=Context();var service=new OperationsService(db);db.Users.Add(new AppUser{Email="ana@test",DisplayName="Ana",CreatedBy="tests"});
         var item=new WorkItem{Module="lia",RecordType="Projeto LIA",Title="Clínica",Owner="Coordenação de LIA",Status="Validacao",Description=Detail().ToJsonString(),CreatedBy="tests"};db.Add(item);await db.SaveChangesAsync();
+        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateWorkItemAsync(new(item.Id,item.Title,"Ana",0,item.Description,null,null,item.Version),Editor))).StatusCode);
+        db.LiaFormRequests.Add(new LiaFormRequest{WorkItemId=item.Id,FormName="Diagnóstico",CreatedBy="tests"});await db.SaveChangesAsync();
+        var detail=JsonNode.Parse(item.Description)!.AsObject();detail["validationConfirmedAt"]=DateTimeOffset.UtcNow.ToString("O");detail["validationConfirmedBy"]="Ana";
+        await service.UpdateWorkItemAsync(new(item.Id,item.Title,item.Owner,0,detail.ToJsonString(),null,null,item.Version),Editor);
         await service.UpdateWorkItemAsync(new(item.Id,item.Title,"Ana",0,item.Description,null,null,item.Version),Editor);Assert.Equal("Ana",item.Owner);
     }
+    [Theory]
+    [InlineData("KickoffAgendado")]
+    [InlineData("Concluida")]
+    public async Task Commercial_entry_always_starts_unassigned_in_validation_and_discards_forged_confirmation(string status)
+    {
+        await using var db=Context();var service=new OperationsService(db);var detail=Detail();detail["sourceLeadId"]=Guid.NewGuid().ToString();detail["validationConfirmedAt"]="2020-01-01";detail["validationConfirmedBy"]="Vendedor";detail["importedCompleted"]=true;
+        var id=await service.CreateWorkItemAsync(Create(detail,status,"Vendedor"),Editor);
+        var item=await db.WorkItems.SingleAsync(x=>x.Id==id);Assert.Equal("Validacao",item.Status);Assert.Equal("Fila compartilhada",item.Owner);
+        Assert.Null(JsonNode.Parse(item.Description)!["validationConfirmedAt"]);Assert.Equal("Performance",JsonNode.Parse(item.Description)!["liaPlan"]!.ToString());
+    }
+    [Fact]
+    public async Task Link_then_check_then_assign_are_separate_persisted_steps_even_before_form_is_answered()
+    {
+        await using var db=Context();var service=new OperationsService(db);db.Users.Add(new AppUser{Email="bia@test",DisplayName="Bia",CreatedBy="tests"});await db.SaveChangesAsync();
+        var detail=Detail();detail["sourceLeadId"]=Guid.NewGuid().ToString();var id=await service.CreateWorkItemAsync(Create(detail),Editor);var item=await db.WorkItems.SingleAsync(x=>x.Id==id);
+        detail=JsonNode.Parse(item.Description)!.AsObject();detail["validationConfirmedAt"]="2020-01-01T00:00:00Z";detail["validationConfirmedBy"]="Forjado";
+        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateWorkItemAsync(new(id,item.Title,item.Owner,item.AmountCents,detail.ToJsonString(),null,null,item.Version),Editor))).StatusCode);
+        db.LiaFormRequests.Add(new LiaFormRequest{WorkItemId=id,FormName="Diagnóstico",CreatedBy="tests"});await db.SaveChangesAsync();
+        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateWorkItemAsync(new(id,item.Title,"Bia",item.AmountCents,detail.ToJsonString(),null,null,item.Version),Editor))).StatusCode);
+        await service.UpdateWorkItemAsync(new(id,item.Title,item.Owner,item.AmountCents,detail.ToJsonString(),null,null,item.Version),Editor);
+        var saved=JsonNode.Parse(item.Description)!;Assert.Equal("Ana",saved["validationConfirmedBy"]!.ToString());Assert.True(DateTimeOffset.Parse(saved["validationConfirmedAt"]!.ToString())>DateTimeOffset.UtcNow.AddMinutes(-1));Assert.Equal("Fila compartilhada",item.Owner);
+        await Assert.ThrowsAsync<DomainException>(()=>service.TransitionWorkItemAsync(new(id,"AguardandoKickoff",item.Version,true),Editor));
+        await service.UpdateWorkItemAsync(new(id,item.Title,"Bia",item.AmountCents,item.Description,null,null,item.Version),Editor);
+        await service.TransitionWorkItemAsync(new(id,"AguardandoKickoff",item.Version,true),Editor);Assert.Equal("AguardandoKickoff",item.Status);Assert.Equal("Bia",item.Owner);
+        Assert.Null((await db.LiaFormRequests.SingleAsync()).SubmittedAt);
+    }
+    [Theory]
+    [InlineData("whatsapp")]
+    [InlineData("liaPlan")]
+    [InlineData("sector")]
+    [InlineData("clientId")]
+    [InlineData("customerName")]
+    public async Task Non_responsible_cannot_edit_client_data_even_with_management_permission(string field)
+    {
+        await using var db=Context();var service=new OperationsService(db);var detail=Detail();
+        var item=new WorkItem{Module="lia",RecordType="Projeto LIA",Title="Clínica",CustomerName="Clínica",Owner="Ana",Status="ConfiguracaoInicial",Description=detail.ToJsonString(),CreatedBy="tests"};db.Add(item);await db.SaveChangesAsync();
+        if(field!="customerName")detail[field]="Alterado";
+        var command=new UpdateWorkItemCommand(item.Id,item.Title,item.Owner,0,detail.ToJsonString(),null,field=="customerName"?"Outro nome":item.CustomerName,item.Version);
+        var manager=Editor with{DisplayName="Gestora"};Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateWorkItemAsync(command,manager))).StatusCode);
+        Assert.Equal(1,item.Version);Assert.Equal("Clínica",item.CustomerName);
+        await service.UpdateWorkItemAsync(command,Editor);Assert.Equal(2,item.Version);
+    }
+    [Fact]
+    public async Task Responsible_edits_all_client_fields_and_can_transfer_ownership_in_the_same_save()
+    {
+        await using var db=Context();var service=new OperationsService(db);db.Users.Add(new AppUser{Email="bia@test",DisplayName="Bia",CreatedBy="tests"});var detail=Detail();
+        var item=new WorkItem{Module="lia",RecordType="Projeto LIA",Title="Clínica",Owner="Ana",Status="ConfiguracaoInicial",Description=detail.ToJsonString(),CreatedBy="tests"};db.Add(item);await db.SaveChangesAsync();
+        detail["whatsapp"]="5511999990000";detail["liaPlan"]="Growth";detail["sector"]="Indicação";
+        await service.UpdateWorkItemAsync(new(item.Id,"Novo cliente","Bia",item.AmountCents,detail.ToJsonString(),null,"Novo cliente",item.Version),Editor);
+        Assert.Equal("Novo cliente",item.Title);Assert.Equal("Novo cliente",item.CustomerName);Assert.Equal("Bia",item.Owner);Assert.Equal("Growth",JsonNode.Parse(item.Description)!["liaPlan"]!.ToString());
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateWorkItemAsync(new(item.Id,"Novo nome",item.Owner,0,item.Description,null,null,item.Version),Editor))).StatusCode);
+    }
+
 }
