@@ -186,7 +186,8 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
     var goalFeatures = await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Active && (entry.Catalog == "csFeatureBase" || entry.Catalog == "csFeature" || entry.Catalog == "csFeatureActive" || entry.Catalog == "csFeaturePlus"))
         .Select(entry => new { entry.Catalog, entry.Name, entry.Description }).ToListAsync(cancellationToken);
     var defaultFeatures = goalFeatures.Where(entry => entry.Catalog == "csFeatureBase" || entry.Description.Contains("\"featureBase\":true") || entry.Description.Contains("\"featureBase\": true")).Select(entry => entry.Name).ToArray();
-    var performanceGoals = goalRecords.Select(entry => GoalProgress.Calculate(entry, sourceRecords, defaultFeatures))
+    var goalFunnels = await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Catalog == "funnelStage").ToListAsync(cancellationToken);
+    var performanceGoals = goalRecords.Select(entry => GoalProgress.Calculate(entry, sourceRecords, defaultFeatures, goalFunnels))
         .Where(entry => entry is not null && entry.Active && string.CompareOrdinal(entry.PeriodStart, localEnd.ToString("yyyy-MM-dd")) < 0 && string.CompareOrdinal(entry.PeriodEnd, localStart.ToString("yyyy-MM-dd")) >= 0)
         .ToList();
     var journeys = workItems.Where(entry => entry.Module == "cs" || entry.Module == "lia")

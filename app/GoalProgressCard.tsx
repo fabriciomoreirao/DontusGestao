@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { formatGoalValue } from "@/lib/goal-target";
 import { goalMetricLabels, type GoalMetric } from "@/lib/goal-progress";
 
-export type GoalCardData = { id: string; title: string; metric: string; cadence: string; target: number; actual: number; progress: number; achieved: boolean; active?: boolean; employee: string; department: string; periodStart: string; periodEnd: string };
+export type GoalCardData = { id: string; title: string; metric: string; cadence: string; target: number; actual: number; progress: number; achieved: boolean; active?: boolean; employee: string; department: string; periodStart: string; periodEnd: string; funnelName?: string };
 const cadence: Record<string, string> = { daily: "Diária", weekly: "Semanal", monthly: "Mensal", annual: "Anual" };
 const date = (value: string) => value.split("-").reverse().join("/");
 
@@ -17,7 +17,7 @@ export default function GoalProgressCard({ goal, actions, onOpen }: { goal: Goal
     <div className="performance-goal-values"><div><small>Realizado</small><strong>{formatGoalValue(goal.actual, goal.metric)}</strong></div><div><small>Objetivo</small><b>{formatGoalValue(goal.target, goal.metric)}</b></div></div>
     <div className="performance-goal-progress-label"><span>Progresso da meta</span><strong>{percent.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</strong></div>
     <div className="performance-goal-track" role="progressbar" aria-label={`Progresso de ${goal.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, percent)} aria-valuetext={`${percent.toLocaleString("pt-BR")}% da meta`}><i style={{ width: `${Math.min(100, percent)}%` }}/></div>
-    <div className="performance-goal-scope"><UsersRound size={15} aria-hidden="true"/><span>{goal.employee || "Todo o setor"}<small>{goal.department || "Todos os setores"}</small></span></div>
+    <div className="performance-goal-scope"><UsersRound size={15} aria-hidden="true"/><span>{goal.employee || "Todo o setor"}<small>{goal.department || "Todos os setores"}</small>{goal.funnelName && <small>Funil: {goal.funnelName}</small>}</span></div>
     <footer><span><CalendarDays size={15} aria-hidden="true"/>{date(goal.periodStart)} a {date(goal.periodEnd)}</span>{actions && <div className="performance-goal-actions">{actions}</div>}</footer>
   </article>;
 }

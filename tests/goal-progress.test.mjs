@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {goalPeriod,goalProgress} from '../lib/goal-progress.ts';
+import {commercialGoalFunnels,goalFunnelName,goalPeriod,goalProgress,isCommercialGoalDepartment} from '../lib/goal-progress.ts';
 import {joinComment,splitComment} from '../lib/comment-files.ts';
 import {desktopWhatsappUrl} from '../lib/whatsapp.ts';
 
@@ -13,6 +13,29 @@ test('metas usam ganhos do CRM, data da venda em Brasília e vendedor, excluindo
  assert.equal(goalProgress({...goal,employeeName:'',departmentName:''},records),3);
  assert.equal(goalProgress(goal,[sale({}, {team:'Comercial · CRM'})]),1);
  assert.equal(goalProgress(goal,[sale({}, {team:'Comercialização'})]),0);
+});
+test('metas de vendas escolhem todos os funis ou apenas o funil específico sem mudar vendedor, setor e datas',()=>{
+ const records=[sale({funnel:'LIA'}),sale({funnel:'Clínicas + Módulos'}),sale({funnel:'LIA Plus'}),sale({funnel:'lia',seller:'Bia'}),sale({funnel:'LIA',wonAt:'2026-12-01'}),sale({funnel:'LIA'}, {team:'Outro'}),sale({funnel:'LIA'}, {record_type:'Lead de retenção'}),sale({funnel:'LIA'}, {record_type:'Lead de qualificação'})];
+ assert.equal(goalProgress(goal,records),3);
+ assert.equal(goalProgress({...goal,funnelId:'lia-id',funnelName:'LIA'},records),1);
+ assert.equal(goalProgress({...goal,metric:'salesValue',funnelId:'lia-id',funnelName:'LIA'},records),159.9);
+ assert.equal(goalProgress({...goal,funnelName:'Clínicas + Módulos'},records),1);
+ assert.equal(goalProgress({...goal,funnelId:'missing'},records),0);
+});
+test('IDs distinguem funis com o mesmo nome e o catálogo preserva vendas após renomear ou inativar',()=>{
+ const scoped={...goal,funnelId:'lia-id',funnelName:'LIA'};
+ const catalogs=[{id:'lia-id',name:'LIA Novo',catalog:'funnelStage',description:'{"f":"c"}',active:false}];
+ const records=[sale({funnel:'LIA'}),sale({funnel:'LIA Novo'}),sale({funnel:'LIA',funnelId:'other-id'})];
+ assert.equal(goalProgress(scoped,records,[],catalogs),2);
+ assert.equal(goalFunnelName(scoped,catalogs),'LIA Novo');
+ assert.equal(goalProgress(scoped,[sale({funnel:'Outro nome',funnelId:'lia-id'})]),1);
+});
+test('a seleção oferece apenas funis ativos do CRM comercial e reconhece o time comercial',()=>{
+ const catalog=(id,description,active=true)=>({id,name:id,catalog:'funnelStage',description,active});
+ const options=commercialGoalFunnels([catalog('comercial','{"f":"c"}'),catalog('legado','{"functionality":"CRM Comercial"}'),catalog('retencao','{"f":"r"}'),catalog('qualificacao','{"f":"q"}'),catalog('desativado','{"f":"c"}',false)]);
+ assert.deepEqual(options.map(entry=>entry.id),['comercial','legado']);
+ for(const value of ['Comercial','Time Comercial','Equipe Comercial','Comercial · CRM'])assert.equal(isCommercialGoalDepartment(value),true);
+ for(const value of ['CS','Financeiro','Comercialização'])assert.equal(isCommercialGoalDepartment(value),false);
 });
 test('a data inicial não retrocede ao início do mês ou ano e inclui o último dia',()=>{
  assert.deepEqual(goalPeriod('2026-11-15','monthly'),{start:'2026-11-15',end:'2026-11-30'});

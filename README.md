@@ -42,6 +42,8 @@ O workspace mantém uma conexão WebSocket autenticada em `/api/realtime`, na me
 
 O **Chat interno** oferece contadores vermelhos com a soma das mensagens não lidas em **Conversas**, **Grupos** e **Arquivadas**, sem filtro de lembretes. Arquivar não confirma leitura, e novas mensagens mantêm o arquivamento do destinatário. A leitura exige abrir a conversa com a janela em foco e chegar ao fim das mensagens; confirma somente até a última mensagem exibida. O horário de visualização registra a leitura real.
 
+O campo de mensagem mantém os rascunhos em uma assinatura própria, sem redesenhar o histórico a cada tecla. Ao abrir uma conversa, são exibidas as 100 mensagens mais recentes. **Mostrar mensagens anteriores** revela o histórico já carregado em lotes de 100 e mantém a posição da rolagem; depois, o carregamento busca os períodos anteriores. Trocar de conversa preserva o texto, e uma falha de envio restaura a mensagem junto do que foi digitado enquanto aguardava.
+
 Em **Acompanhamentos**, os cards de CS permanecem na etapa gravada independentemente dos dias decorridos. O limite da carga geral não remove clientes antigos; usuários com consulta ao módulo veem os cards autorizados e podem filtrar explicitamente o responsável. Ao informar um ID já existente em Ativação, **Abrir card existente** localiza sua etapa, limpa os filtros e abre os detalhes, preservando o histórico. **Tarefas** apresenta o quadro logo após o cabeçalho, sem a faixa de indicadores resumidos.
 
 Uma conexão PostgreSQL `LISTEN/NOTIFY` por instância da API recebe mudanças após o commit, inclusive de outras instâncias e integrações. A migration `RealtimeNotifications` instala os gatilhos; sessões, auditoria e histórico não geram recargas gerais. As capas dos perfis ficam na consulta dedicada do perfil. Os registros de RH ainda podem conter anexos grandes, mas deixam de ser baixados periodicamente.
@@ -112,6 +114,13 @@ colaborador e setor de origem. Os scores incluem Base e Plus do CS e unidades
 ativas das contas estratégicas. A tela, seus indicadores e o painel externo
 calculam o mesmo progresso e mostram **Meta batida** a partir de 100%. No painel
 externo, a aba **Metas** também participa da rotação quando há metas no período.
+
+Nas metas de valor ou quantidade de vendas, selecionar o setor Comercial libera
+**Funil comercial**, com **Todos os funis** ou um funil específico. O filtro acompanha
+a criação e a edição e vale na tela de metas, nos indicadores e no painel externo.
+Metas anteriores sem funil continuam somando todos os funis. As novas opções usam os
+funis ativos do CRM Comercial; funis inativos já vinculados continuam preservados
+na edição e no cálculo. Os cards do cadastro têm espaçamentos e dimensões menores.
 
 A competência de CS considera o início efetivo do acompanhamento. Na LIA, o cliente
 entra na comissão desde o onboarding, pela data inicial informada ou pela criação
@@ -404,6 +413,16 @@ Em **Acesso de suporte**, o motivo permite pesquisar pelo nome e pelo setor, des
 Metas usam quantidades inteiras para vendas e indicações, reais para valor de vendas e porcentagem para score. Os cards compartilham a apresentação com o painel externo. Links HTTP(S) nas mensagens dos chats abrem em nova guia.
 
 Anexos de sugestões mantêm a sessão no proxy e aceitam até 10 arquivos de 25 MB cada. Quando o armazenamento externo está indisponível, o conteúdo é persistido de forma privada em uma tabela separada no PostgreSQL, sem entrar na carga dos cards. Downloads exigem autenticação e suportam intervalos para reprodução de vídeo. Reenvios preservam apenas os anexos pendentes, sem criar outra sugestão.
+
+Nos detalhes de **Sugestões**, status, prioridade, cliente e responsável ficam em
+uma única linha, acima da descrição. Em telas pequenas, essa linha permite rolagem
+horizontal. O título e os botões do cabeçalho também permanecem em uma linha;
+**Editar sugestão** e **Excluir sugestão** ficam abaixo dos comentários.
+Editar os dados, mudar status, arrastar entre etapas, excluir sugestões e remover
+anexos exige a marcação **Coordenador** no colaborador e a permissão de edição do
+módulo, com validação no servidor. O responsável e as permissões administrativas
+não substituem essa marcação. A criação, os anexos enviados pelo próprio criador
+e os comentários continuam seguindo suas permissões de contribuição.
 
 O indicador de atualização mostra o horário de Brasília da última leitura bem-sucedida da API. Quando uma atualização em segundo plano falha, a interface identifica os dados como pendentes de atualização, mantendo a última leitura disponível. O painel da Fila de espera considera os encaminhamentos operacionais em espera.
 
