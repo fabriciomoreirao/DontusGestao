@@ -21,3 +21,14 @@ public sealed class LiaFormRequest : Entity
     public string CreatedBy { get; set; } = "";
     public DateTimeOffset? SubmittedAt { get; set; }
 }
+
+public sealed class LiaFormAttachment : Entity
+{
+    public Guid RequestId { get; set; }
+    public string QuestionId { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "application/octet-stream";
+    public long SizeBytes { get; set; }
+    public string StorageKey { get; set; } = "";
+    public byte[]? Content { get; set; }
+}
