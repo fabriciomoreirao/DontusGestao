@@ -4,6 +4,11 @@ public sealed record LiaFormQuestion(string Id, string Text, string Type, bool R
 public sealed record SaveLiaFormCommand(Guid? Id, string Name, string Description, bool Active, IReadOnlyList<LiaFormQuestion> Questions, long? Version);
 public sealed record GenerateLiaFormCommand(Guid WorkItemId, Guid FormId);
 public sealed record SubmitLiaFormCommand(Dictionary<string, string> Answers);
+public sealed record UploadLiaFormFile(string QuestionId, string FileName, string ContentType, long SizeBytes, Stream Content);
+public sealed record LiaFormAttachmentDto(Guid Id, string QuestionId, string FileName, string ContentType, long SizeBytes);
 public sealed record LiaFormDto(Guid Id, string Name, string Description, bool Active, IReadOnlyList<LiaFormQuestion> Questions, long Version);
 public sealed record LiaFormRequestDto(Guid Id, Guid WorkItemId, Guid FormId, string FormName, string FormDescription,
-    IReadOnlyList<LiaFormQuestion> Questions, DateTimeOffset CreatedAt, DateTimeOffset? SubmittedAt, Dictionary<string, string> Answers, string Token, string ClientName);
+    IReadOnlyList<LiaFormQuestion> Questions, DateTimeOffset CreatedAt, DateTimeOffset? SubmittedAt, Dictionary<string, string> Answers, string Token, string ClientName)
+{
+    public IReadOnlyList<LiaFormAttachmentDto> Attachments { get; init; } = [];
+}

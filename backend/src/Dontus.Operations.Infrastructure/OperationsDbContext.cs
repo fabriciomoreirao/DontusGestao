@@ -12,6 +12,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<CommissionConfirmation> CommissionConfirmations => Set<CommissionConfirmation>();
     public DbSet<LiaForm> LiaForms => Set<LiaForm>();
     public DbSet<LiaFormRequest> LiaFormRequests => Set<LiaFormRequest>();
+    public DbSet<LiaFormAttachment> LiaFormAttachments => Set<LiaFormAttachment>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<CustomerDontusLink> CustomerDontusLinks => Set<CustomerDontusLink>();
     public DbSet<SupportAccessReason> SupportAccessReasons => Set<SupportAccessReason>();
@@ -106,11 +107,20 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         });
         modelBuilder.Entity<LiaFormRequest>(entity => {
             entity.ToTable("lia_form_requests");
+            entity.Property(x => x.Version).IsConcurrencyToken();
             entity.Property(x => x.TokenHash).HasMaxLength(64);
             entity.HasIndex(x => x.TokenHash).IsUnique();
             entity.HasIndex(x => x.WorkItemId);
             entity.HasOne<WorkItem>().WithMany().HasForeignKey(x => x.WorkItemId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<LiaForm>().WithMany().HasForeignKey(x => x.FormId).OnDelete(DeleteBehavior.Restrict);
+        });
+        ConfigureEntity(modelBuilder.Entity<LiaFormAttachment>(), "lia_form_attachments");
+        modelBuilder.Entity<LiaFormAttachment>(entity => {
+            entity.Property(x => x.QuestionId).HasMaxLength(80);
+            entity.Property(x => x.FileName).HasMaxLength(240);
+            entity.Property(x => x.ContentType).HasMaxLength(200);
+            entity.HasIndex(x => new { x.RequestId, x.QuestionId });
+            entity.HasOne<LiaFormRequest>().WithMany().HasForeignKey(x => x.RequestId).OnDelete(DeleteBehavior.Cascade);
         });
         ConfigureEntity(modelBuilder.Entity<Customer>(), "customers");
         ConfigureEntity(modelBuilder.Entity<SupportAccessReason>(), "support_access_reasons");
