@@ -10,7 +10,7 @@ using Dontus.Operations.Application;
 namespace Dontus.Operations.Infrastructure;
 
 [Flags]
-public enum RealtimeChange { None = 0, Operations = 1, InternalChat = 2, Presence = 4 }
+public enum RealtimeChange { None = 0, Operations = 1, InternalChat = 2, Presence = 4, Typing = 8 }
 
 // Notifications carry invalidation flags only. Data continues through authorized HTTP projections.
 public sealed class RealtimeBroker(TimeProvider? clock = null)
@@ -43,11 +43,33 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
         Interlocked.Increment(ref revision);
         if (!available) foreach (var subscriber in subscribers.Values) subscriber.Disconnect();
     }
+    private readonly ConcurrentDictionary<(Guid Room,Guid User,Guid Session),(bool Active,DateTimeOffset At)> typingPulses = new();
+    public bool AllowTyping(Guid room, Guid user, Guid session, bool active)
+    {
+        var key=(room,user,session);var now=Now;
+        if(typingPulses.TryGetValue(key,out var old)&&old.Active==active&&(!active||now-old.At<TimeSpan.FromSeconds(2)))return false;
+        typingPulses[key]=(active,now);
+        foreach(var stale in typingPulses.Where(entry=>now-entry.Value.At>TimeSpan.FromMinutes(1)))typingPulses.TryRemove(stale.Key,out _);
+        return true;
+    }
     public void Publish(string payload)
     {
         using var json = JsonDocument.Parse(payload);
         var topic = json.RootElement.GetProperty("topic").GetString();
         Guid? userId = json.RootElement.TryGetProperty("userId", out var id) && Guid.TryParse(id.GetString(), out var user) ? user : null;
+        if (topic == "typing")
+        {
+            var root=json.RootElement;
+            if(!userId.HasValue||!root.TryGetProperty("roomId",out var room)||!room.TryGetGuid(out var roomId)
+                ||!root.TryGetProperty("sessionId",out var session)||!session.TryGetGuid(out var sessionId)
+                ||!root.TryGetProperty("isTyping",out var typing)||typing.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+                ||!root.TryGetProperty("at",out var stamp)||!stamp.TryGetDateTimeOffset(out var at)
+                ||!root.TryGetProperty("recipients",out var recipients)||recipients.ValueKind!=JsonValueKind.Array)return;
+            var targets=recipients.EnumerateArray().Where(value=>value.ValueKind==JsonValueKind.String&&value.TryGetGuid(out _)).Select(value=>value.GetGuid()).ToHashSet();
+            var change=new ChatTypingDto(roomId,userId.Value,sessionId,typing.GetBoolean(),at);
+            foreach(var subscriber in subscribers.Values.Where(subscriber=>subscriber.Chat&&targets.Contains(subscriber.UserId)))subscriber.NotifyTyping(change);
+            return;
+        }
         if (topic == "presence")
         {
             if (!userId.HasValue || !json.RootElement.TryGetProperty("connectionId", out var connection) || !Guid.TryParse(connection.GetString(), out var connectionId)
@@ -83,6 +105,18 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
         public bool Chat { get; } = chat;
         public CancellationTokenSource Disconnected { get; } = new();
         public Channel<bool> Signal { get; } = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+        private readonly ConcurrentDictionary<(Guid Room,Guid User,Guid Session),ChatTypingDto> typing = new();
+        public void NotifyTyping(ChatTypingDto change)
+        {
+            typing.AddOrUpdate((change.RoomId,change.UserId,change.SessionId),change,(_,old)=>change.At>old.At||change.At==old.At&&!change.IsTyping?change:old);
+            Notify(RealtimeChange.Typing);
+        }
+        public ChatTypingDto[] TakeTyping()
+        {
+            var result=new List<ChatTypingDto>();
+            foreach(var key in typing.Keys)if(typing.TryRemove(key,out var value))result.Add(value);
+            return result.ToArray();
+        }
         public void Notify(RealtimeChange change) { if (Volatile.Read(ref disposed) != 0) return; Interlocked.Or(ref pending, (int)change); Signal.Writer.TryWrite(true); }
         public RealtimeChange Take() { while (Signal.Reader.TryRead(out _)) { } return (RealtimeChange)Interlocked.Exchange(ref pending, 0); }
         public void Disconnect() { try { Disconnected.Cancel(); } catch (ObjectDisposedException) { } }

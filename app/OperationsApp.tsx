@@ -32,6 +32,9 @@ import { commercialIndicatorFlow } from "@/lib/commercial-indicators";
 import { recordSearchText } from "@/lib/record-search";
 import KanbanDragSupport from "@/app/KanbanDragSupport";
 import CommentEnterSupport from "@/app/CommentEnterSupport";
+import QueueArrivalNotice from "@/app/QueueArrivalNotice";
+import { queueArrivals, QUEUE_ARRIVAL_EVENT } from "@/lib/queue-arrival";
+import { chatTypingStore } from "@/lib/chat-typing";
 import {waitingQueueNeedsContact,waitingQueuePendingInUserSector} from "@/lib/waitingQueue";
 import {playNotificationSound,unlockNotificationSound} from "@/lib/notification-sound";
 import SearchablePeopleSelect, { PeopleDirectoryProvider } from "@/app/SearchablePeopleSelect";
@@ -771,6 +774,7 @@ export default function OperationsApp() {
     user: loginRequired ? undefined : data?.user.email,
     canChat: !!data?.user.permissions.some(permission => permission.screen === "internalChat" && permission.canView),
     busy, cursor: () => realtimeCursor.current, operations: () => load(true), chat: refreshInternalChat, unauthorized: expireSession,
+    typing: changes=>chatTypingStore.receive(changes),
     presence: users=>{presenceCache.current=users;setData(current=>current?.internalChatModule?{...current,internalChatModule:applyChatPresence(current.internalChatModule,users)}:current);},
   });
 
@@ -833,8 +837,8 @@ export default function OperationsApp() {
     if (!incoming.length) return;
     try { localStorage.setItem(`dontus:heard-notifications:${data.user.email}`, JSON.stringify([...state.ids].slice(-2000))); } catch { /* O aviso continua funcionando sem persistência local. */ }
     playNotificationSound(incoming.some(entry=>entry.module==="waitingQueue"&&entry.category==="arrival"));
-    const queueArrival=incoming.find(entry=>entry.module==="waitingQueue"&&entry.category==="arrival");
-    if(queueArrival)setToast({kind:"success",message:`Novo cliente na fila de espera: ${queueArrival.title.replace(/ chegou para você$/,"")}`});
+    const queueIncoming=queueArrivals(incoming,data.items);
+    if(queueIncoming.length)window.dispatchEvent(new CustomEvent(QUEUE_ARRIVAL_EVENT,{detail:queueIncoming}));
     const alerts: ChatAlert[] = incoming.filter(entry => entry.category === "chat").flatMap(entry => {
       const room = data.internalChatModule?.rooms.find(room => room.id === entry.roomId);
       const message = room?.messages.filter(message => message.senderUserId !== data.internalChatModule?.currentUserId).at(-1);
@@ -1488,7 +1492,7 @@ export default function OperationsApp() {
   };
 
   return (
-    <PeopleDirectoryProvider people={[...new Map([...(data.assignmentDirectory?.employees??data.waitingQueueDirectory?.employees??[]).map(person=>({id:person.id,name:person.displayName})),...(data.customerModule?.collaborators ?? []).filter(person=>person.active).map(person=>({id:person.id,name:person.displayName})),...(data.taskModule?.collaborators ?? []).filter(person=>person.active).map(person=>({id:person.id,name:person.name})),...(data.access?.employees ?? []).filter(person=>person.active&&!person.blockedAt).map(person=>({id:person.id,name:person.displayName}))].map(person=>[person.id,person])).values()].sort((a,b)=>a.name.localeCompare(b.name,"pt-BR"))}><SalesCelebration/><CommentEnterSupport/><KanbanDragSupport/><ReminderFilterProvider records={data.items.filter((entry) => entry.module === "reminders")}><div className={["app-shell", theme === "dark" ? "theme-dark" : "theme-light", backgroundImage && active !== "internalChat" ? "has-workspace-background" : "", active === "chat" ? "chat-focus-mode" : "", `agenda-visual-${agendaVisual}`, `system-accent-${agendaVisual}`].join(" ")}>
+    <PeopleDirectoryProvider people={[...new Map([...(data.assignmentDirectory?.employees??data.waitingQueueDirectory?.employees??[]).map(person=>({id:person.id,name:person.displayName})),...(data.customerModule?.collaborators ?? []).filter(person=>person.active).map(person=>({id:person.id,name:person.displayName})),...(data.taskModule?.collaborators ?? []).filter(person=>person.active).map(person=>({id:person.id,name:person.name})),...(data.access?.employees ?? []).filter(person=>person.active&&!person.blockedAt).map(person=>({id:person.id,name:person.displayName}))].map(person=>[person.id,person])).values()].sort((a,b)=>a.name.localeCompare(b.name,"pt-BR"))}><SalesCelebration/><QueueArrivalNotice/><CommentEnterSupport/><KanbanDragSupport/><ReminderFilterProvider records={data.items.filter((entry) => entry.module === "reminders")}><div className={["app-shell", theme === "dark" ? "theme-dark" : "theme-light", backgroundImage && active !== "internalChat" ? "has-workspace-background" : "", active === "chat" ? "chat-focus-mode" : "", `agenda-visual-${agendaVisual}`, `system-accent-${agendaVisual}`].join(" ")}>
       <a className="workspace-skip-link" href="#workspace-content">Pular para o conteúdo</a>
       <aside id="workspace-sidebar" className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
         <div className="brand">

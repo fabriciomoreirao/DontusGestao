@@ -34,11 +34,11 @@ export function waitingQueueNeedsContact(item:{description:string;team?:string;o
     const detail=JSON.parse(item.description);
     if(detail.kind!=="waitingQueue"||detail.state==="contacted")return false;
     const self=people.find(person=>normalize(person.email)===normalize(user.email));
-    if(!belongsToWaitingQueueDepartment(self??{departmentName:user.department},{departmentId:detail.departmentId??"",departmentName:detail.departmentName||item.team||""}))return false;
     if(detail.responsibleUserId)return detail.responsibleUserId===self?.id;
-    if(typeof detail.responsibleName==="string"&&!detail.responsibleName.trim())return true;
-    const name=normalize(typeof detail.responsibleName==="string"?detail.responsibleName:item.owner??"");
-    return !name||/^(fila compartilhada|sem responsavel|nao atribuido)$/.test(name)||name===normalize(user.displayName);
+    const explicitEmpty=typeof detail.responsibleName==="string"&&!detail.responsibleName.trim();
+    const name=normalize(explicitEmpty?"":typeof detail.responsibleName==="string"?detail.responsibleName:item.owner??"");
+    if(name&&!/^(fila compartilhada|sem responsavel|nao atribuido)$/.test(name))return name===normalize(user.displayName);
+    return belongsToWaitingQueueDepartment(self??{departmentName:user.department},{departmentId:detail.departmentId??"",departmentName:detail.departmentName||item.team||""});
   } catch {return false;}
 }
 
