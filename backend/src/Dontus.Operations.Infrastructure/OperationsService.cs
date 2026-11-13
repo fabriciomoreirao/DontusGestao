@@ -156,7 +156,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var knownVersionKeys = knownWorkItemVersions?.Select(entry => $"{entry.Key}:{entry.Value}").ToArray() ?? [];
         // Keep authorization and version metadata in SQL, without fetching unchanged embedded files.
         // Commission descriptions still participate in the identity check below.
-        var items = await db.WorkItems.AsNoTracking()
+        var authorizedItems = db.WorkItems.AsNoTracking()
             .Where(x => (visibleModules.Contains(x.Module) || sharedDevelopmentIds.Contains(x.Id))
                 && x.RecordType != "Perfil de colaborador"
                 && (x.Module != "notes" || visibleNoteIds.Contains(x.Id))
@@ -166,9 +166,12 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 && (x.Module != "diary" || x.CreatedBy == actor.Email)
                 && (x.Module != "commissions" || canManageCommissions || x.Owner == actor.DisplayName)
                 && (x.Module != "referrals" || canManageReferrals || x.CreatedBy == actor.Email || x.CreatedBy == "" && x.Owner == actor.DisplayName)
-                && (x.Module != "goals" || canManageGoals || x.Owner == actor.DisplayName || x.Team == actor.Department))
+                && (x.Module != "goals" || canManageGoals || x.Owner == actor.DisplayName || x.Team == actor.Department));
+        // CS cards are persistent workflows: unrelated recent activity must never evict
+        // an existing client while duplicate validation still finds it in the database.
+        var items = await authorizedItems.Where(x => x.Module == "cs")
+            .Union(authorizedItems.Where(x => x.Module != "cs").OrderByDescending(x => x.UpdatedAt).Take(1000))
             .OrderByDescending(x => x.UpdatedAt)
-            .Take(1000)
             .Select(x => new WorkItemDto(
                 x.Id, x.Module, x.RecordType, x.Title, x.CustomerId, x.CustomerName,
                 x.Owner, x.Team, x.Status, x.Priority, x.DueAt, x.SlaDueAt,

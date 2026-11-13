@@ -25,6 +25,7 @@ import EmployeeAccessScheduleEditor, { accessScheduleError, type EmployeeAccessS
 
 import {applyChatPresence,type ChatPresence} from "@/lib/chat-presence";
 import { sendInternalChatFiles } from "@/lib/internal-chat-upload";
+import { mergeInternalChat } from "@/lib/internal-chat-state";
 import { sendTaskFiles } from "@/lib/task-upload";
 import { knownWorkItemVersions, mergeOperationsUpdate, type OperationsChanges } from "@/lib/operations-update";
 import { commercialIndicatorFlow } from "@/lib/commercial-indicators";
@@ -420,6 +421,7 @@ export default function OperationsApp() {
   }, [data?.user]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [chatBusy, setChatBusy] = useState(0);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -659,6 +661,8 @@ export default function OperationsApp() {
 
   const loadInFlight = useRef(false);
   const chatInFlight = useRef(false);
+  const chatRevision = useRef(0);
+  const chatReadsInFlight = useRef(new Set<string>());
   const realtimeCursor = useRef("");
   const mutationRevision = useRef(0);
   const expireSession = useCallback((reason?: string) => {
@@ -695,6 +699,7 @@ export default function OperationsApp() {
     loadInFlight.current = true;
     setSyncing(true);
     const revision = mutationRevision.current;
+    const initialChatRevision = chatRevision.current;
     if (!background) setLoading(true);
     try {
       const current = dataRef.current;
@@ -721,7 +726,10 @@ export default function OperationsApp() {
       const appPayload = current ? mergeOperationsUpdate(current, payload as Partial<AppData> & OperationsChanges<WorkItem>) : payload as AppData;
       if (revision !== mutationRevision.current) return false;
       realtimeCursor.current = response.headers.get("x-dontus-realtime-cursor") ?? realtimeCursor.current;
-      setData(appPayload.internalChatModule?{...appPayload,internalChatModule:applyChatPresence(appPayload.internalChatModule,presenceCache.current)}:appPayload);
+      setData(current => {
+        const chat = initialChatRevision === chatRevision.current ? appPayload.internalChatModule : current?.internalChatModule;
+        return { ...appPayload, internalChatModule: chat ? applyChatPresence(mergeInternalChat(current?.internalChatModule, chat), presenceCache.current) : null };
+      });
       setLastUpdatedAt(Date.now()); setSyncError(false);
       setLoginRequired(false);
       setActive((current) => {
@@ -744,14 +752,16 @@ export default function OperationsApp() {
   const refreshInternalChat = useCallback(async () => {
     if (chatInFlight.current) return false;
     chatInFlight.current = true;
-    const revision = mutationRevision.current;
+    const revision = chatRevision.current;
     try {
       const response = await fetch("/api/internal-chat", { cache: "no-store" });
       if (response.status === 401) { expireSession(await accessDeniedMessage(response)); return true; }
       if (!response.ok) return false;
       const internalChatModule = await response.json() as InternalChatModuleData;
-      if (revision === mutationRevision.current) setData((current) => current ? { ...current, internalChatModule:applyChatPresence(internalChatModule,presenceCache.current) } : current);
-      return revision === mutationRevision.current;
+      if (revision !== chatRevision.current) return false;
+      chatRevision.current += 1;
+      setData((current) => current ? { ...current, internalChatModule:applyChatPresence(mergeInternalChat(current.internalChatModule, internalChatModule),presenceCache.current) } : current);
+      return true;
     } catch {
       return false;
     } finally { chatInFlight.current = false; }
@@ -960,6 +970,26 @@ export default function OperationsApp() {
   };
 
   const executeOperation = async (payload: Record<string, unknown>, success: string): Promise<OperationResult> => {
+    if (String(payload.action ?? "").includes("InternalChat")) {
+      chatRevision.current += 1;
+      setChatBusy(current => current + 1);
+      try {
+        const response = await fetch("/api/operations", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        });
+        if (response.status === 401) { expireSession(await accessDeniedMessage(response)); return false; }
+        const result = await response.json() as { id?: string; detail?: string; internalChatModule?: InternalChatModuleData };
+        if (!response.ok) throw new Error(result.detail || "Não foi possível atualizar o chat.");
+        chatRevision.current += 1;
+        if (result.internalChatModule) setData(current => current ? {
+          ...current, internalChatModule: applyChatPresence(mergeInternalChat(current.internalChatModule, result.internalChatModule!), presenceCache.current),
+        } : current);
+        return result;
+      } catch (caught) {
+        setToast({ kind: "error", message: caught instanceof Error ? caught.message : "Falha no chat." });
+        return false;
+      } finally { setChatBusy(current => current - 1); }
+    }
     const previousSaleItem = dataRef.current?.items.find(item => item.id === payload.id);
     mutationRevision.current += 1;
     setBusy(true);
@@ -990,7 +1020,7 @@ export default function OperationsApp() {
           try { localStorage.setItem(`dontus:read-operational-notifications:${data.user.email}`, JSON.stringify([...nextDismissed].slice(-2000))); } catch { /* A operação permanece válida sem armazenamento local. */ }
         }
       }
-      setData(current=>{const merged=current?mergeOperationsUpdate(current,result as Partial<AppData> & OperationsChanges<WorkItem>):nextData;return merged.internalChatModule?{...merged,internalChatModule:applyChatPresence(merged.internalChatModule,presenceCache.current)}:merged;});
+      setData(current=>{const merged=current?mergeOperationsUpdate(current,result as Partial<AppData> & OperationsChanges<WorkItem>):nextData;return merged.internalChatModule?{...merged,internalChatModule:applyChatPresence(mergeInternalChat(current?.internalChatModule,merged.internalChatModule),presenceCache.current)}:merged;});
       setModal(null);
       setSelectedItem(null);
       setToast({ kind: "success", message: success });
@@ -1197,7 +1227,7 @@ export default function OperationsApp() {
 
   const uploadInternalChatAttachments = async (roomId: string, files: File[], onUploaded?: (files: File[]) => void, replyToMessageId?: string) => {
     if (files.length === 0) return true;
-    mutationRevision.current += 1;
+    chatRevision.current += 1;
     setBusy(true);
     let uploaded = 0;
     try {
@@ -1205,12 +1235,12 @@ export default function OperationsApp() {
         uploaded += batch.length;
         onUploaded?.(batch);
       }, replyToMessageId);
-      mutationRevision.current += 1;
+      chatRevision.current += 1;
       await refreshInternalChat();
       setToast({ kind: "success", message: files.length === 1 ? "Arquivo enviado no chat." : `${files.length} arquivos enviados no chat.` });
       return true;
     } catch (caught) {
-      if (uploaded) { mutationRevision.current += 1; await refreshInternalChat(); }
+      if (uploaded) { chatRevision.current += 1; await refreshInternalChat(); }
       const detail = caught instanceof Error ? caught.message : "Falha no envio dos arquivos.";
       setToast({ kind: "error", message: uploaded ? `${uploaded} arquivo(s) enviado(s). ${detail}` : detail });
       return false;
@@ -1219,19 +1249,26 @@ export default function OperationsApp() {
     }
   };
 
-  const markInternalChatRead = useCallback(async (roomId: string) => {
-    const revision = mutationRevision.current;
+  const markInternalChatRead = useCallback(async (roomId: string, readThroughMessageId: string) => {
+    const key = `${roomId}:${readThroughMessageId}`;
+    if (chatReadsInFlight.current.has(key)) return;
+    chatReadsInFlight.current.add(key);
+    chatRevision.current += 1;
     try {
       const response = await fetch("/api/operations", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "markInternalChatRoomRead", roomId }),
+        body: JSON.stringify({ action: "markInternalChatRoomRead", roomId, readThroughMessageId }),
       });
+      if (response.status === 401) { expireSession(await accessDeniedMessage(response)); return; }
       const result = await response.json().catch(() => null);
-      if (response.ok && result && revision === mutationRevision.current) setData((current) => current ? { ...current, ...result } : result);
+      if (response.ok && result?.internalChatModule) {
+        chatRevision.current += 1;
+        setData(current => current ? { ...current, internalChatModule: applyChatPresence(mergeInternalChat(current.internalChatModule, result.internalChatModule), presenceCache.current) } : current);
+      }
     } catch {
       // A leitura será sincronizada novamente no próximo ciclo do chat.
-    }
-  }, []);
+    } finally { chatReadsInFlight.current.delete(key); }
+  }, [expireSession]);
 
   const operate = (payload: Record<string, unknown>, success: string): Promise<OperationResult> => new Promise((resolve) => {
     const action = String(payload.action ?? "").toLowerCase();
@@ -1547,7 +1584,7 @@ export default function OperationsApp() {
         <div id="workspace-content" tabIndex={-1} className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}>
           <Suspense fallback={<section role="status" className="empty-state">Carregando módulo...</section>}>
           {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext && canViewOperationIndicators ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={assignmentEmployees} catalogs={data.customerModule?.catalogs ?? []} onClose={closeIndicatorsPage} /> : <>
-          {operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
+          {active !== "tasks" && operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
           {active === "dashboard" && (
             dashboardPage === "portal"
               ? <PortalDontus data={data} busy={busy} operate={operate} onBack={() => setDashboardPage("home")} />
@@ -1610,7 +1647,7 @@ export default function OperationsApp() {
               employees={data.access?.employees ?? []}
               canCreate={userCan(data.user, "internalChat", "create")}
               canEdit={userCan(data.user, "internalChat", "edit")}
-              busy={busy}
+              busy={busy || chatBusy > 0}
               operate={executeOperation}
               markRead={markInternalChatRead}
               uploadAttachments={uploadInternalChatAttachments}

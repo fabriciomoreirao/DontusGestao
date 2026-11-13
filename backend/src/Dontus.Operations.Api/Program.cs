@@ -913,13 +913,14 @@ var internalChatFiles = app.MapGroup("/api/internal-chats")
 
 internalChatFiles.MapGet("", async (
     int? historyDays,
+    Guid? roomId,
     ClaimsPrincipal principal,
     IInternalChatService internalChatService,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
-    return Results.Ok(await internalChatService.GetModuleAsync(actor, cancellationToken, historyDays ?? 30));
+    return Results.Ok(await internalChatService.GetModuleAsync(actor, cancellationToken, historyDays ?? 30, roomId));
 });
 
 internalChatFiles.MapGet("/photos/{kind}/{id:guid}", async (
@@ -1762,7 +1763,7 @@ operations.MapPost("", async (
 
         case "markInternalChatRoomRead":
             await internalChatService.MarkReadAsync(new MarkInternalChatRoomReadCommand(
-                request.RoomId ?? throw new DomainException("Conversa obrigatória.")), actor, cancellationToken);
+                request.RoomId ?? throw new DomainException("Conversa obrigatória."), request.ReadThroughMessageId), actor, cancellationToken);
             break;
 
         case "addInternalChatMembers":
@@ -1894,7 +1895,8 @@ operations.MapPost("", async (
     // Chat commands only need the chat projection; rebuilding every module here
     // can time out after a message has already been persisted.
     if (request.Action?.Contains("InternalChat", StringComparison.Ordinal) == true)
-        return Results.Ok(new { ok = true, id, internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) });
+        return Results.Ok(new { ok = true, id, internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken,
+            roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId) });
     if (request.Action is "markNoticeViewed" or "markNoticeRead")
         return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
     if ((request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus"
@@ -2471,6 +2473,7 @@ public sealed class OperationsRequest
     public string? InitialMessage { get; init; }
     public bool? Internal { get; init; }
     public Guid? ReplyToMessageId { get; init; }
+    public Guid? ReadThroughMessageId { get; init; }
     public bool? Favorite { get; init; }
     public bool? MarkRead { get; init; }
     public Guid? ToDepartmentId { get; init; }

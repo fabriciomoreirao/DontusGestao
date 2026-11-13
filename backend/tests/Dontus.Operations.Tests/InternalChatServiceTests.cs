@@ -8,6 +8,51 @@ namespace Dontus.Operations.Tests;
 
 public sealed class InternalChatServiceTests
 {
+    [Fact]
+    public async Task Room_projection_only_loads_the_requested_membership_and_removes_rooms_without_access()
+    {
+        await using var db = CreateContext();
+        var sender = AddUser(db, "sender@test", "Remetente");
+        var reader = AddUser(db, "reader@test", "Leitor");
+        var other = AddUser(db, "other@test", "Outro");
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var first = await service.CreateRoomAsync(new(null, null, false, [reader.Id]), Actor(sender));
+        var second = await service.CreateRoomAsync(new(null, null, false, [other.Id]), Actor(sender));
+        await service.SendMessageAsync(new(first, "Primeira", "text"), Actor(sender));
+        await service.SendMessageAsync(new(second, "Outra", "text"), Actor(sender));
+        var scoped = await service.GetModuleAsync(Actor(sender), roomId: first);
+        Assert.True(scoped.IsPartial); Assert.Equal(first, Assert.Single(scoped.Rooms).Id);
+        Assert.NotEqual(default, scoped.SnapshotAt);
+        var hidden = await service.GetModuleAsync(Actor(reader), roomId: second);
+        Assert.Empty(hidden.Rooms); Assert.Equal(second, Assert.Single(hidden.RemovedRoomIds));
+    }
+
+    [Fact]
+    public async Task Reading_only_visible_messages_does_not_acknowledge_later_messages_or_move_the_read_cursor_backwards()
+    {
+        await using var db = CreateContext();
+        var sender = AddUser(db, "sender@test", "Remetente");
+        var reader = AddUser(db, "reader@test", "Leitor");
+        await db.SaveChangesAsync(); var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new(null, null, false, [reader.Id]), Actor(sender));
+        var first = await service.SendMessageAsync(new(room, "Visível", "text"), Actor(sender));
+        var second = await service.SendMessageAsync(new(room, "Chegou depois", "text"), Actor(sender));
+        var message = await db.InternalChatMessages.SingleAsync(entry => entry.Id == first);
+        message.CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        foreach (var member in db.InternalChatRoomMembers) { member.JoinedAt = DateTimeOffset.UtcNow.AddHours(-1); member.LastReadAt = null; }
+        await db.SaveChangesAsync();
+        var beforeRead = DateTimeOffset.UtcNow;
+        await service.MarkReadAsync(new(room, first), Actor(reader));
+        Assert.Equal(1, (await service.GetModuleAsync(Actor(reader))).Rooms.Single().UnreadCount);
+        Assert.Single(db.InternalChatMessageReceipts);
+        Assert.True(db.InternalChatMessageReceipts.Single().ReadAt >= beforeRead);
+        await service.MarkReadAsync(new(room, second), Actor(reader));
+        await service.MarkReadAsync(new(room, first), Actor(reader));
+        Assert.Equal(0, (await service.GetModuleAsync(Actor(reader))).Rooms.Single().UnreadCount);
+        Assert.Equal(2, db.InternalChatMessageReceipts.Count());
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -264,7 +309,7 @@ public sealed class InternalChatServiceTests
     }
 
     [Fact]
-    public async Task Tracks_unread_messages_and_reopens_an_archived_conversation()
+    public async Task Archived_conversations_preserve_unread_messages_until_actually_read()
     {
         await using var db = CreateContext();
         var creator = AddUser(db, "criador@dontus.local", "Criador");
@@ -284,11 +329,12 @@ public sealed class InternalChatServiceTests
 
         await service.SendMessageAsync(new SendInternalChatMessageCommand(roomId, "Segunda", "text"), creatorActor);
         var reopened = (await service.GetModuleAsync(participantActor)).Rooms.Single();
-        Assert.False(reopened.IsArchived);
-        Assert.Equal(1, reopened.UnreadCount);
+        Assert.True(reopened.IsArchived);
+        Assert.Equal(2, reopened.UnreadCount);
 
         await service.MarkReadAsync(new MarkInternalChatRoomReadCommand(roomId), participantActor);
         Assert.Equal(0, (await service.GetModuleAsync(participantActor)).Rooms.Single().UnreadCount);
+        Assert.True((await service.GetModuleAsync(participantActor)).Rooms.Single().IsArchived);
     }
 
     [Fact]
