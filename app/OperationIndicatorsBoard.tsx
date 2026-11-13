@@ -3,6 +3,7 @@ import LiaPromptIndicators from "@/app/LiaPromptIndicators";
 import "./lia-journey.css";
 
 import { paidTrafficCohort, retainedToOnboarding } from "@/lib/paid-traffic-indicators";
+import type { GoalScope } from "@/lib/goal-scope";
 import { goalProgress, type PerformanceGoal } from "@/lib/goal-progress";
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
@@ -707,7 +708,7 @@ function RetentionIndicatorsBoard({ title, contextKey, items, onClose }: { title
   </section></main>;
 }
 
-type GoalDetail = {
+type GoalDetail = GoalScope & {
   kind: "performanceGoal";
   metric: string;
   cadence: string;
@@ -743,6 +744,9 @@ const parseGoalDetail = (item: Item): GoalDetail | null => {
     target: numberOf(detail.target),
     employeeName: stringOf(detail.employeeName),
     departmentName: stringOf(detail.departmentName),
+    funnels: Array.isArray(detail.funnels) ? detail.funnels as GoalScope["funnels"] : undefined,
+    modules: Array.isArray(detail.modules) ? detail.modules as GoalScope["modules"] : undefined,
+    moduleScope: detail.moduleScope === "moduleFunnels" ? "moduleFunnels" : undefined,
     funnelId: stringOf(detail.funnelId),
     funnelName: stringOf(detail.funnelName),
     periodStart: stringOf(detail.periodStart),

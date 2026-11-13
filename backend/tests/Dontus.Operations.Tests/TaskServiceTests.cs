@@ -53,7 +53,7 @@ public sealed class TaskServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Assignee_can_move_request_approval_complete_and_forward_without_extra_capabilities(bool canEdit)
+    public async Task Assignee_moves_and_requests_approval_but_only_coordination_completes(bool canEdit)
     {
         await using var db=CreateContext();var (service,admin)=await InitializeAsync(db);
         var support=await db.TaskDepartments.SingleAsync(x=>x.Name=="Suporte");var development=await db.TaskDepartments.SingleAsync(x=>x.Name=="Desenvolvimento");
@@ -70,14 +70,44 @@ public sealed class TaskServiceTests
         var cancelled=await db.TaskStatuses.SingleAsync(x=>x.Name=="Cancelada");
         Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,cancelled.Id,"Teste",task.Version),actor))).StatusCode);
         var approval=await db.TaskStatuses.SingleAsync(x=>x.Name=="Aguardando aprovação");
-        var version=task.Version;await service.ChangeStatusAsync(new(task.Id,approval.Id,"Encaminhar",version),actor);
+        var version=task.Version;await service.ChangeStatusAsync(new(task.Id,approval.Id,"Encaminhar",version,true),actor);
         Assert.Contains(db.TaskNotifications,x=>x.TaskId==task.Id&&x.EventType=="approval_requested");
         var final=await db.TaskStatuses.SingleAsync(x=>x.Name=="Resolvida");
         Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,final.Id,"Concluir",version),actor))).StatusCode);
-        await service.ChangeStatusAsync(new(task.Id,final.Id,"Concluir",task.Version),actor);Assert.NotNull(task.CompletedAt);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,final.Id,"Concluir",task.Version),actor))).StatusCode);
+        await service.ChangeStatusAsync(new(task.Id,final.Id,"Aprovada",task.Version),admin);Assert.NotNull(task.CompletedAt);
         await service.TransferAsync(new(task.Id,development.Id,next.Id,"Encaminhar ao desenvolvimento",false,task.Version),actor);
         Assert.Equal(development.Id,task.CurrentDepartmentId);Assert.Equal(next.Id,task.AssigneeUserId);Assert.Null(task.CompletedAt);
         Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.TransferAsync(new(task.Id,support.Id,responsible.Id,"Sem vínculo atual",false,task.Version),actor))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Configured_work_columns_accept_owner_and_approval_requires_card_action_then_local_coordinator()
+    {
+        await using var db=CreateContext();var(service,admin)=await InitializeAsync(db);
+        var department=await db.TaskDepartments.SingleAsync(x=>x.Name=="Suporte");var otherDepartment=await db.TaskDepartments.SingleAsync(x=>x.Name=="Financeiro");var type=await db.TaskTypes.SingleAsync();
+        var owner=new AppUser{Email="flow-owner@test",DisplayName="Responsável",CreatedBy="tests"};
+        var coordinator=new AppUser{Email="flow-coord@test",DisplayName="Coordenação",CreatedBy="tests"};
+        var outsider=new AppUser{Email="flow-outsider@test",DisplayName="Outra coordenação",CreatedBy="tests"};
+        db.Users.AddRange(owner,coordinator,outsider);
+        db.UserDepartments.AddRange(new(){UserId=owner.Id,DepartmentId=department.Id},new(){UserId=coordinator.Id,DepartmentId=department.Id,IsCoordinator=true},new(){UserId=outsider.Id,DepartmentId=otherDepartment.Id,IsCoordinator=true});
+        var pending=new Dontus.Operations.Domain.TaskStatus{Name="Pendente",ManualMovement=true,Active=true};
+        var progress=new Dontus.Operations.Domain.TaskStatus{Name="Em progresso",ManualMovement=true,Active=true};db.TaskStatuses.AddRange(pending,progress);await db.SaveChangesAsync();
+        var created=await service.CreateAsync(new("Fluxo aprovado","Descrição",type.Id,null,null,department.Id,department.Id,owner.Id,null,null,null,"5511999990000",null,null,null,null,false,[],[]),admin);
+        var task=await db.CorporateTasks.SingleAsync(x=>x.Id==created.Id);
+        ActorContext Viewer(AppUser person)=>new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false,["viewOtherDepartments"])]);
+        await service.ChangeStatusAsync(new(task.Id,progress.Id,null,task.Version),Viewer(owner));Assert.Equal(progress.Id,task.StatusId);
+        await service.ChangeStatusAsync(new(task.Id,pending.Id,null,task.Version),Viewer(owner));Assert.Equal(pending.Id,task.StatusId);
+        progress.ManualMovement=false;await db.SaveChangesAsync();await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,progress.Id,null,task.Version),Viewer(owner)));
+        var approval=await db.TaskStatuses.SingleAsync(x=>x.Name=="Aguardando aprovação");approval.ManualMovement=false;await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,approval.Id,null,task.Version),Viewer(owner)));
+        await service.ChangeStatusAsync(new(task.Id,approval.Id,"Enviar",task.Version,true),Viewer(owner));
+        Assert.Equal(approval.Id,task.StatusId);Assert.Null(task.CompletedAt);Assert.Contains(db.TaskNotifications,x=>x.TaskId==task.Id&&x.EventType=="approval_requested");
+        var final=await db.TaskStatuses.SingleAsync(x=>x.Name=="Resolvida");
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),Viewer(owner)))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,pending.Id,null,task.Version),Viewer(owner)))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),Viewer(outsider)))).StatusCode);
+        await service.ChangeStatusAsync(new(task.Id,final.Id,"Aprovada",task.Version),Viewer(coordinator));Assert.NotNull(task.CompletedAt);
     }
 
     [Theory]
@@ -98,7 +128,7 @@ public sealed class TaskServiceTests
         var created=await service.CreateAsync(new("Cliente precisa de retorno","Descrição",type.Id,null,null,support.Id,support.Id,creator.Id,null,null,null,"5511999999999",null,null,null,null,false,[creator.Id],[]),Actor(creator,true,true));
         var task=await db.CorporateTasks.SingleAsync(x=>x.Id==created.Id);
         await service.TransferAsync(new(task.Id,development.Id,sharedQueue?null:responsible.Id,"Análise do desenvolvimento",false,task.Version),Actor(creator));
-        if(!sharedQueue)await service.ChangeStatusAsync(new(task.Id,(await db.TaskStatuses.SingleAsync(x=>x.Name=="Resolvida")).Id,"Resolvido",task.Version),Actor(responsible));
+        if(!sharedQueue)await service.ChangeStatusAsync(new(task.Id,(await db.TaskStatuses.SingleAsync(x=>x.Name=="Resolvida")).Id,"Resolvido",task.Version),admin);
         var sender=sharedQueue?finalCoord:responsible;
         await service.CommunicateWithClientAsync(new(task.Id,"requestContact","Interno","Explique a solução ao cliente."),Actor(sender));
         var expected=new[]{creator.Id,originCoord.Id,finalCoord.Id}.Concat(sharedQueue?[]:new[]{responsible.Id}).Order().ToArray();
@@ -441,8 +471,11 @@ public sealed class TaskServiceTests
         var task = await db.CorporateTasks.SingleAsync(x => x.Id == taskId);
         var next = await db.TaskStatuses.SingleAsync(x => x.Name == "Em andamento");
 
+        var participant=new AppUser{Email="status-participant@test",DisplayName="Participante",CreatedBy="tests"};db.Users.Add(participant);
+        db.TaskParticipants.Add(new TaskParticipant{TaskId=task.Id,UserId=participant.Id});await db.SaveChangesAsync();
         var readOnly = admin with
         {
+            Email=participant.Email, DisplayName=participant.DisplayName,
             FullAccess = false,
             Permissions =
             [
@@ -794,12 +827,12 @@ public sealed class TaskServiceTests
         await service.AssignAsync(new(task.Id,null,task.Version),Viewer(owner));
         Assert.False(Assert.Single((await service.GetModuleAsync(Viewer(commenter))).Tasks).CanModify);
         var final=await db.TaskStatuses.SingleAsync(status=>status.Name=="Resolvida");
-        await service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),Viewer(owner));
+        await service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),admin);
         var expected=new[]{creatorId,owner.Id,coordinator.Id,commenter.Id}.Order().ToArray();
         Assert.Equal(expected,(await db.TaskNotifications.Where(entry=>entry.TaskId==task.Id&&entry.EventType=="task_completed").Select(entry=>entry.RecipientUserId).ToArrayAsync()).Order().ToArray());
         var commentModule=await service.GetModuleAsync(Viewer(commenter));Assert.Equal(created.Id,Assert.Single(commentModule.Tasks).Id);
         Assert.Single(commentModule.Notifications,entry=>entry.EventType=="task_completed");Assert.Single((await service.GetModuleAsync(Viewer(owner))).Notifications,entry=>entry.EventType=="task_completed");
-        await service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),Viewer(owner));
+        await service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),admin);
         Assert.Equal(expected.Length,await db.TaskNotifications.CountAsync(entry=>entry.TaskId==task.Id&&entry.EventType=="task_completed"));
     }
 

@@ -4308,7 +4308,7 @@ function ConfirmationModal({ action, successMessage, busy, onCancel, onConfirm }
     createAccessGroup: "criar este grupo", updateAccessGroup: "salvar as permissões deste grupo", deleteAccessGroup: "excluir este grupo",
     deleteTaskCatalog: "excluir este cadastro",
     updateTask: "salvar as alterações desta tarefa", deleteTask: "excluir esta tarefa", deleteInternalChatMessage: "excluir esta mensagem para todos os participantes",
-    assignTask: "transferir o responsável desta tarefa", changeTaskStatus: "alterar o status desta tarefa",
+    assignTask: "transferir o responsável desta tarefa", changeTaskStatus: "alterar o status desta tarefa", requestTaskApproval: "enviar esta tarefa para aprovação",
     saveNotice: "publicar ou atualizar este aviso", deleteNotice: "excluir este aviso",
     markNoticeRead: "confirmar a leitura deste aviso",
   };

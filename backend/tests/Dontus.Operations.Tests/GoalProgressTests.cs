@@ -40,6 +40,114 @@ public sealed class GoalProgressTests
         invalid["funnelId"]=funnel.Id.ToString(); invalid["metric"]="usageScore";
         Assert.Throws<DomainException>(()=>GoalProgress.Validate("goals",invalid.ToJsonString()));
     }
+    private static readonly Guid ModuleFunnel = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid LiaFunnel = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private static readonly Guid ModuleProduct = Guid.Parse("33333333-3333-3333-3333-333333333333");
+    private static WorkItem ScopedGoal(string metric = "salesValue", bool mixed = false, bool allModules = false)
+    {
+        var goal = Goal(metric); var d = JsonNode.Parse(goal.Description)!.AsObject();
+        d["funnels"] = new JsonArray(new JsonObject { ["id"] = ModuleFunnel.ToString(), ["name"] = "Funil de Módulos" });
+        if (mixed) d["funnels"]!.AsArray().Add(new JsonObject { ["id"] = LiaFunnel.ToString(), ["name"] = "LIA" });
+        d["moduleScope"] = "moduleFunnels";
+        d["modules"] = allModules ? new JsonArray() : JsonNode.Parse($$"""[{"productId":"{{ModuleProduct}}","productName":"Módulos","plan":"Chat Dontus"},{"productId":"{{ModuleProduct}}","productName":"Módulos","plan":"Dontus One"}]""");
+        goal.Description = d.ToJsonString(); return goal;
+    }
+    private static WorkItem ModuleSale(string funnel, string products)
+    {
+        var sale = Sale(); var d = JsonNode.Parse(sale.Description)!.AsObject(); d["funnel"] = funnel; d["products"] = JsonNode.Parse(products);
+        sale.Description = d.ToJsonString(); return sale;
+    }
+    private static WorkItem[] ModuleSales() => [
+        ModuleSale("Funil de Módulos", """[{"product":"Sistema","plan":"Completo","value":500,"quantity":1},{"product":"Módulos","plan":"Chat Dontus","value":69.9,"quantity":2},{"product":"Módulos","plan":"Dontus One","unitValue":99.9,"quantity":1},{"product":"Módulos","plan":"WhatsApp Manual","value":29.9,"quantity":1}]"""),
+        ModuleSale("Funil de Módulos", """[{"product":"Módulos","plan":"WhatsApp Manual","value":29.9}]"""),
+        ModuleSale("LIA", """[{"product":"LIA","value":159.9}]"""), ModuleSale("Clínicas", """[{"product":"Sistema","value":159.9}]""")];
+
+    [Theory]
+    [InlineData(false, false, "salesValue", 239.7)]
+    [InlineData(false, false, "salesCount", 1)]
+    [InlineData(false, true, "salesValue", 299.5)]
+    [InlineData(false, true, "salesCount", 2)]
+    [InlineData(true, false, "salesValue", 399.6)]
+    [InlineData(true, false, "salesCount", 2)]
+    [InlineData(true, true, "salesValue", 459.4)]
+    public void Module_filters_sum_selected_line_items_count_cards_once_and_keep_other_funnels_whole(bool mixed, bool allModules, string metric, decimal expected)
+    {
+        var goal = ScopedGoal(metric, mixed, allModules); GoalProgress.Validate("goals", goal.Description);
+        var result = GoalProgress.Calculate(goal, ModuleSales())!;
+        Assert.Equal(expected, result.Actual);
+        Assert.Equal(allModules ? "Todos os módulos" : "Chat Dontus, Dontus One", result.ModuleName);
+        Assert.Equal(mixed ? "Funil de Módulos, LIA" : "Funil de Módulos", result.FunnelName);
+    }
+    [Fact]
+    public void Multiple_funnels_are_a_union_and_empty_array_overrides_legacy_scope()
+    {
+        var goal = ScopedGoal("salesCount", true); var d = JsonNode.Parse(goal.Description)!.AsObject(); d.Remove("moduleScope"); d["modules"] = new JsonArray();
+        goal.Description = d.ToJsonString(); Assert.Equal(3, GoalProgress.Calculate(goal, ModuleSales())!.Actual);
+        d["funnelId"] = ModuleFunnel.ToString(); d["funnelName"] = "Funil de Módulos"; d["funnels"] = new JsonArray();
+        goal.Description = d.ToJsonString(); GoalProgress.Validate("goals", goal.Description);
+        Assert.Equal(4, GoalProgress.Calculate(goal, ModuleSales())!.Actual);
+        Assert.Equal("", GoalProgress.Calculate(goal, ModuleSales())!.FunnelName);
+    }
+    [Fact]
+    public void Free_matching_modules_count_and_prices_round_per_line_with_exact_plan_matching()
+    {
+        var records = new[] { ModuleSale("Funil de Módulos", """[{"product":"modulos","plan":" Chat Dontus ","value":0}]"""),
+            ModuleSale("Funil de Módulos", """[{"product":"Módulos","plan":"Chat Dontus Plus","value":99}]"""), ModuleSale("Funil de Módulos", "[]") };
+        Assert.Equal(1, GoalProgress.Calculate(ScopedGoal("salesCount"), records)!.Actual);
+        Assert.Equal(0, GoalProgress.Calculate(ScopedGoal(), records)!.Actual);
+        var rounded = ModuleSale("Funil de Módulos", """[{"product":"Módulos","plan":"Chat Dontus","value":1.005},{"product":"Módulos","plan":"Chat Dontus","unitValue":0,"value":999,"quantity":2},{"product":"Módulos","plan":"Chat Dontus","value":-5}]""");
+        Assert.Equal(1.01m, GoalProgress.Calculate(ScopedGoal(), [rounded])!.Actual);
+    }
+    [Fact]
+    public void Module_scopes_keep_owner_department_dates_and_won_crm_filters()
+    {
+        var records = ModuleSales(); records[0].Description = records[0].Description.Replace("Ana", "Bia");
+        records[1].Description = records[1].Description.Replace("2026-11-06T02:30:00Z", "2026-12-01");
+        records[2].Team = "Outro";
+        Assert.Equal(0, GoalProgress.Calculate(ScopedGoal("salesCount", true), records)!.Actual);
+        var direct = ModuleSales()[0]; direct.Description = direct.Description.Replace("commercialLead", "directSale");
+        var retention = ModuleSales()[0]; retention.RecordType = "Lead de retenção";
+        var pending = ModuleSales()[0]; pending.Status = "Proposta";
+        Assert.Equal(0, GoalProgress.Calculate(ScopedGoal("salesCount"), [direct, retention, pending])!.Actual);
+    }
+    [Fact]
+    public void Module_catalog_renames_and_explicit_ids_preserve_history_and_distinguish_sources()
+    {
+        var catalogs = new[] { new CustomerCatalogOption { Id=ModuleFunnel, Catalog="funnelStage", Name="Complementos", Active=false },
+            new CustomerCatalogOption { Id=ModuleProduct, Catalog="commercialProduct", Name="Complementos", Active=false } };
+        var renamed = ModuleSale("Complementos", """[{"product":"Complementos","plan":"Chat Dontus","value":25}]""");
+        var ids = ModuleSale("Outro", $$"""[{"productId":"{{ModuleProduct}}","product":"Outro","plan":"Chat Dontus","value":30}]""");
+        var d = JsonNode.Parse(ids.Description)!.AsObject(); d["funnelId"] = ModuleFunnel.ToString(); ids.Description = d.ToJsonString();
+        var wrongProduct = ModuleSale("Funil de Módulos", $$"""[{"productId":"{{Guid.NewGuid()}}","product":"Módulos","plan":"Chat Dontus","value":90}]""");
+        var wrongFunnel = ModuleSale("Funil de Módulos", """[{"product":"Módulos","plan":"Chat Dontus","value":90}]""");
+        d = JsonNode.Parse(wrongFunnel.Description)!.AsObject(); d["funnelId"] = Guid.NewGuid().ToString(); wrongFunnel.Description = d.ToJsonString();
+        var result = GoalProgress.Calculate(ScopedGoal(), [renamed, ids, wrongProduct, wrongFunnel], catalogs:catalogs)!;
+        Assert.Equal(55, result.Actual); Assert.Equal("Complementos", result.FunnelName);
+    }
+    [Theory]
+    [InlineData("funnels", "{}")]
+    [InlineData("funnels", "[null]")]
+    [InlineData("funnels", "[{\"id\":\"invalid\",\"name\":\"LIA\"}]")]
+    [InlineData("funnels", "[{\"id\":12}]")]
+    [InlineData("funnels", "[{}]")]
+    [InlineData("modules", "[{}]")]
+    [InlineData("modules", "[{\"productId\":\"invalid\"}]")]
+    [InlineData("modules", "[{\"productName\":\"Módulos\",\"plan\":3}]")]
+    [InlineData("moduleScope", "\"invalid\"")]
+    [InlineData("metric", "\"usageScore\"")]
+    public void Malformed_scopes_and_non_sales_filters_are_rejected(string key, string json)
+    {
+        var goal = ScopedGoal(); var d = JsonNode.Parse(goal.Description)!.AsObject(); d[key] = JsonNode.Parse(json);
+        Assert.Throws<DomainException>(() => GoalProgress.Validate("goals", d.ToJsonString()));
+    }
+    [Fact]
+    public void Module_filters_require_a_funnel_and_explicit_module_scope()
+    {
+        var d = JsonNode.Parse(ScopedGoal().Description)!.AsObject(); d.Remove("moduleScope");
+        Assert.Throws<DomainException>(() => GoalProgress.Validate("goals", d.ToJsonString()));
+        d["moduleScope"] = "moduleFunnels"; d["funnels"] = new JsonArray();
+        Assert.Throws<DomainException>(() => GoalProgress.Validate("goals", d.ToJsonString()));
+    }
     private static WorkItem Goal(string metric="salesCount",decimal target=1) => new() { Module="goals",Title="Meta",RecordType="Meta",Status="Ativa",CreatedBy="test",Description=JsonSerializer.Serialize(new {kind="performanceGoal",metric,cadence="monthly",target,employeeName="Ana",departmentName="Comercial",periodStart="2026-11-05",periodEnd="2026-11-30",active=true}) };
     private static WorkItem Sale(string type="Lead comercial",string wonAt="2026-11-06T02:30:00Z") => new() {Module="commercial",RecordType=type,Title="Venda",Owner="Outro",Team="Comercial",Status="Ganho",AmountCents=15990,CreatedBy="test",CreatedAt=DateTimeOffset.Parse("2026-10-01T12:00:00Z"),UpdatedAt=DateTimeOffset.Parse("2026-12-01T12:00:00Z"),Description=JsonSerializer.Serialize(new {kind="commercialLead",seller="Ana",wonAt})};
     [Fact]

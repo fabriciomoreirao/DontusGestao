@@ -40,9 +40,30 @@ test("o arraste respeita setor, fluxo, etapas ativas, justificativas do servidor
   assert.equal(canMoveTask(task,{...status,departmentId:"development"},types,access),false);
   assert.equal(canMoveTask(task,{...status,manualMovement:false},types,access),false);
   assert.equal(canMoveTask(task,{...status,active:false},types,access),false);
-  assert.equal(canMoveTask(task,{...status,id:"unrelated"},types,access),false);
-  assert.equal(canMoveTask(task,{...status,id:"approval",name:"Aguardando aprovação"},types,access),true);
+  assert.equal(canMoveTask(task,{...status,id:"unrelated",name:"Em revisão técnica"},types,access),false);
+  assert.equal(canMoveTask(task,{...status,id:"approval",name:"Aguardando aprovação"},types,access),false);
+  assert.equal(canMoveTask(task,{...status,id:"approval",name:"Aguardando aprovação"},types,access,"requestApproval"),true);
   const cancel={...status,id:"cancel",name:"Cancelada"};
   assert.equal(canMoveTask(task,cancel,types,access),false);
   assert.equal(canMoveTask(task,cancel,types,{...access,canEdit:true,changeStatus:true,cancel:true}),true);
+});
+
+test('etapas configuradas de pendente e progresso aceitam o responsável sem vínculo antigo do tipo',()=>{
+ for(const name of ['Pendente','Em progresso','Em andamento','Aberta'])assert.equal(canMoveTask(task,{...status,id:'new-stage',name},[],access),true);
+ assert.equal(canMoveTask(task,{...status,id:'new-stage',name:'Outro nome',kanbanColumn:'Em progresso'},[],access),true);
+});
+test('aprovação só aceita a ação do card e conclusão exige coordenação após aprovação',()=>{
+ const approval={...status,id:'approval',name:'Aguardando aprovação',manualMovement:false};
+ const final={...status,id:'final',name:'Resolvida',isFinal:true};
+ const flow=[{...types[0],allowedStatusIds:[status.id,'final']}];
+ assert.equal(canMoveTask(task,approval,flow,access),false);
+ assert.equal(canMoveTask(task,approval,flow,access,'requestApproval'),true);
+ assert.equal(canMoveTask(task,status,flow,access,'requestApproval'),false);
+ assert.equal(canMoveTask(task,final,flow,access),false);
+ const pending={...task,statusName:'Aguardando aprovação'};
+ assert.equal(canDragTask(pending,access),false);
+ assert.equal(canMoveTask(pending,status,flow,access),false);
+ assert.equal(canMoveTask(pending,final,flow,{...access,canApprove:true}),true);
+ assert.equal(canMoveTask(task,final,flow,{...access,canApprove:true}),false);
+ assert.equal(canDragTask({...task,completedAt:'2026-11-13'},access),false);
 });

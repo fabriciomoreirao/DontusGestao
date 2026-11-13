@@ -28,7 +28,7 @@ type PublicDepartment = {
   goals: { salesValueCents: number; salesCount: number; trackingCount: number; trackingActual: number; trackingProgress: number };
   topCollaborators: PublicCollaborator[]; activityByDay: PublicDay[]; commercial: PublicCommercial;
 };
-type PublicPerformanceGoal = { id:string;title:string;metric:string;cadence:string;target:number;actual:number;progress:number;achieved:boolean;employee:string;department:string;periodStart:string;periodEnd:string;funnelName?:string };
+type PublicPerformanceGoal = { id:string;title:string;metric:string;cadence:string;target:number;actual:number;progress:number;achieved:boolean;employee:string;department:string;periodStart:string;periodEnd:string;funnelName?:string;moduleName?:string };
 type PublicOverviewData = {
   performanceGoals?: PublicPerformanceGoal[];
   saleEvents?: SaleCelebration[];
