@@ -116,11 +116,15 @@ calculam o mesmo progresso e mostram **Meta batida** a partir de 100%. No painel
 externo, a aba **Metas** também participa da rotação quando há metas no período.
 
 Nas metas de valor ou quantidade de vendas, selecionar o setor Comercial libera
-**Funil comercial**, com **Todos os funis** ou um funil específico. O filtro acompanha
+**Funis comerciais**, com **Todos os funis** ou marcação de um ou mais funis.
+Ao marcar um funil de módulos, o campo **Módulos** permite todos ou vários planos
+do produto Módulos. Nesse funil, a quantidade conta cada card ganho uma vez e o
+valor soma somente os itens correspondentes, considerando preço e quantidade.
+Os demais funis marcados entram integralmente na mesma meta. O filtro acompanha
 a criação e a edição e vale na tela de metas, nos indicadores e no painel externo.
-Metas anteriores sem funil continuam somando todos os funis. As novas opções usam os
-funis ativos do CRM Comercial; funis inativos já vinculados continuam preservados
-na edição e no cálculo. Os cards do cadastro têm espaçamentos e dimensões menores.
+Metas anteriores mantêm o cálculo original. As opções usam os catálogos ativos;
+funis e módulos inativos já vinculados continuam preservados na edição e no
+cálculo. Os cards do cadastro têm espaçamentos e dimensões menores.
 
 A competência de CS considera o início efetivo do acompanhamento. Na LIA, o cliente
 entra na comissão desde o onboarding, pela data inicial informada ou pela criação
@@ -454,3 +458,18 @@ Comentários usam Enter para enviar e Shift+Enter para inserir uma nova linha. A
 Campos de comentário oferecem **Negrito** para o trecho selecionado, também por Ctrl+B ou ⌘B. A marcação `**texto**` é exibida em negrito, com espaços, tabulações e quebras de linha preservados, inclusive nas interações de redes e nos comentários com anexos. O texto é renderizado de forma segura, sem interpretar HTML. Tarefas mantêm o card e o painel lateral conforme `design-system/dontus/pages/tasks.md`.
 
 Lembretes de qualquer funcionalidade usam uma lista própria de colaboradores ativos, incluindo o usuário e seus setores, sem depender do painel administrativo. A contagem e os avisos da fila consideram apenas contatos pendentes do setor do destinatário, compartilhados ou atribuídos a ele. Novas chegadas recebem aviso visual e um alerta sonoro específico; o áudio é liberado na primeira interação no navegador. Alterações simples de cards e comentários retornam as projeções pertinentes, preservando os módulos que não foram alterados.
+
+### Movimentação e digitação
+
+O responsável pode mover sua tarefa entre Pendente e Em progresso (ou Em andamento)
+quando a etapa está ativa, permite movimentação e pertence ao setor da tarefa,
+mesmo se o tipo tiver vínculos antigos de etapas. Para aprovação, use **Enviar para
+aprovação** dentro do card; o arraste e o seletor de status não enviam à aprovação.
+A conclusão e a retomada de tarefas em aprovação ficam com a coordenação dos
+setores envolvidos ou com a administração com gestão de tarefas.
+
+A digitação do chat preserva os rascunhos sem renderizar o histórico por caractere.
+Regras de espaçamento evitam invalidar o estilo do quadro inteiro a cada tecla.
+Nos atendimentos, a lista completa de clientes é carregada no seletor ao receber
+foco e recolhida ao sair; os textos são lidos diretamente do formulário no envio,
+inclusive ao pressionar Enter sem sair do campo.

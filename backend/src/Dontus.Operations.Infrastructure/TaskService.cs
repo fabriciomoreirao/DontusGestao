@@ -423,11 +423,12 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
         var status = await db.TaskStatuses.SingleOrDefaultAsync(x => x.Id == command.StatusId && x.Active, cancellationToken)
             ?? throw new DomainException("Status inválido ou inativo.");
-        if (!status.ManualMovement)
-            throw new DomainException("Este status não permite movimentação manual.");
-        var isApprovalStatus = status.Name.Contains("aguardando aprova", StringComparison.OrdinalIgnoreCase);
+        var isApprovalStatus = IsApprovalStatus(status);
         var cancelling = status.Name.Contains("cancel", StringComparison.OrdinalIgnoreCase);
-        if (task.AssigneeUserId != user.Id || cancelling)
+        var coordinator = await db.UserDepartments.AnyAsync(link => link.UserId == user.Id && link.IsCoordinator
+            && (link.DepartmentId == task.CurrentDepartmentId || link.DepartmentId == task.SourceDepartmentId), cancellationToken);
+        var supervisor = actor.HasPermission("tasks", "manage") || coordinator;
+        if (task.AssigneeUserId != user.Id && !supervisor || cancelling)
         {
             actor.RequirePermission("tasks", "edit");
             RequireCapabilityOrManage(actor, "changeStatus");
@@ -436,8 +437,21 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (task.StatusId == status.Id) return;
         if (status.DepartmentId.HasValue && status.DepartmentId != task.CurrentDepartmentId)
             throw new DomainException("O status não pertence ao setor atual da tarefa.");
+        if (command.RequestApproval != isApprovalStatus)
+            throw new DomainException("Para enviar à aprovação, use o botão Enviar para aprovação dentro da tarefa.");
+        if (!status.ManualMovement && !command.RequestApproval)
+            throw new DomainException("Este status não permite movimentação manual.");
+        var currentStatus = await db.TaskStatuses.SingleAsync(entry => entry.Id == task.StatusId, cancellationToken);
+        if (!supervisor && (task.CompletedAt.HasValue || IsApprovalStatus(currentStatus)))
+            throw new DomainException("Somente a coordenação pode movimentar uma tarefa em aprovação ou concluída.", 403);
+        if (status.IsFinal && !supervisor)
+            throw new DomainException("Envie a tarefa para aprovação. Somente a coordenação pode concluir a tarefa.", 403);
+        if (status.IsFinal && !cancelling && !actor.HasPermission("tasks", "manage") && !IsApprovalStatus(currentStatus))
+            throw new DomainException("A tarefa precisa passar pela aprovação antes de ser resolvida.");
         if (cancelling) RequireCapabilityOrManage(actor, "cancel");
-        if (!isApprovalStatus && !await db.TaskTypeStatuses.AnyAsync(x => x.TaskTypeId == task.TypeId && x.StatusId == status.Id, cancellationToken))
+        var workingStatus = !status.IsFinal && !isApprovalStatus && new[] { status.Name, status.KanbanColumn }
+            .Any(name => System.Text.RegularExpressions.Regex.IsMatch(name.Trim(), @"^(pendente|aberta?|em (andamento|progresso))$", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        if (!isApprovalStatus && !workingStatus && !await db.TaskTypeStatuses.AnyAsync(x => x.TaskTypeId == task.TypeId && x.StatusId == status.Id, cancellationToken))
             throw new DomainException("Movimentação não permitida pelo fluxo do tipo de tarefa.");
         if (status.RequiresJustification && string.IsNullOrWhiteSpace(command.Justification))
             throw new DomainException("Este status exige justificativa.");
@@ -462,6 +476,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             await NotifyWorkflowStakeholdersAsync(task, user.Id, "approval_requested", $"A tarefa {task.Protocol} foi enviada para aprovação.", cancellationToken, true);
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    private static bool IsApprovalStatus(TaskStatusEntity status) => new[] { status.Name, status.KanbanColumn }
+        .Any(name => name.Contains("aguardando aprova", StringComparison.OrdinalIgnoreCase));
 
     public async Task ChangePriorityAsync(ChangeTaskPriorityCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {

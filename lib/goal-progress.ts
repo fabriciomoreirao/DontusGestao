@@ -1,10 +1,12 @@
 import { commissionDate, customerSuccessScore } from './commission-rules.ts';
 import { commercialIndicatorFlow } from './commercial-indicators.ts';
 import { enterpriseHealthScore } from './enterprise-score.ts';
+import { goalSaleValueCents, type GoalScope } from './goal-scope.ts';
+export { goalFunnelName } from './goal-scope.ts';
 
 export type GoalMetric = 'salesValue' | 'salesCount' | 'referralCount' | 'usageScore' | 'clientCount';
 export type GoalCadence = 'daily' | 'monthly' | 'annual' | 'weekly';
-export type PerformanceGoal = { kind: 'performanceGoal'; metric: GoalMetric; cadence: GoalCadence; target: number; employeeId: string; employeeName: string; departmentId: string; departmentName: string; periodStart: string; periodEnd: string; createdBy: string; notes: string; active: boolean; funnelId?: string; funnelName?: string };
+export type PerformanceGoal = GoalScope & { kind: 'performanceGoal'; metric: GoalMetric; cadence: GoalCadence; target: number; employeeId: string; employeeName: string; departmentId: string; departmentName: string; periodStart: string; periodEnd: string; createdBy: string; notes: string; active: boolean };
 export type GoalFunnelCatalog = { id: string; name: string; catalog: string; description: string; active: boolean };
 export type GoalSource = { module: string; record_type: string; owner: string; team: string; status: string; amount_cents: number; description: string; created_at: string; updated_at: string };
 export const goalMetricLabels: Record<GoalMetric, string> = { salesValue: 'Valor de vendas', referralCount: 'Quantidade de indicações', usageScore: 'Médias de score', salesCount: 'Quantidade de vendas', clientCount: 'Quantidade de clientes (legado)' };
@@ -18,15 +20,6 @@ export function commercialGoalFunnels(catalogs: GoalFunnelCatalog[]) {
     const detail = goalDetail(entry.description);
     return !['r', 'q'].includes(String(detail.f)) && !/retencao|qualifica/.test(normalize(detail.functionality));
   });
-}
-export function goalFunnelName(goal: Pick<PerformanceGoal, 'funnelId' | 'funnelName'>, catalogs: GoalFunnelCatalog[] = []) {
-  return catalogs.find(entry => entry.catalog === 'funnelStage' && entry.id === goal.funnelId)?.name || goal.funnelName || '';
-}
-function matchesGoalFunnel(goal: PerformanceGoal, detail: Record<string, unknown>, catalogs: GoalFunnelCatalog[]) {
-  if (!goal.funnelId && !goal.funnelName) return true;
-  if (goal.funnelId && detail.funnelId) return normalize(goal.funnelId) === normalize(detail.funnelId);
-  const names = [goal.funnelName, goalFunnelName(goal, catalogs)].map(normalize).filter(Boolean);
-  return names.includes(normalize(detail.funnel));
 }
 export function goalPeriod(start: string, cadence: GoalCadence) {
   const date = new Date(`${start}T12:00:00Z`);
@@ -49,8 +42,13 @@ export function goalProgress(goal: PerformanceGoal, items: GoalSource[], default
     const day = commissionDate(raw);
     return !!day && day >= goal.periodStart && day <= goal.periodEnd;
   });
-  const sales = source.filter(item => item.module === 'commercial' && commercialIndicatorFlow(item) === 'crm' && goalDetail(item.description).kind !== 'directSale' && matchesGoalFunnel(goal, goalDetail(item.description), catalogs) && /ganho|fechad|vendid/.test(normalize(`${item.status} ${goalDetail(item.description).stage || ''}`)));
-  if (goal.metric === 'salesValue') return sales.reduce((sum,item) => sum + item.amount_cents / 100, 0);
+  const sales = source.flatMap(item => {
+    const detail = goalDetail(item.description);
+    if (item.module !== 'commercial' || commercialIndicatorFlow(item) !== 'crm' || detail.kind === 'directSale' || !/ganho|fechad|vendid/.test(normalize(`${item.status} ${detail.stage || ''}`))) return [];
+    const valueCents = goalSaleValueCents(goal, detail, item.amount_cents, catalogs);
+    return valueCents === null ? [] : [{ valueCents }];
+  });
+  if (goal.metric === 'salesValue') return sales.reduce((sum,item) => sum + item.valueCents, 0) / 100;
   if (goal.metric === 'salesCount') return sales.length;
   if (goal.metric === 'referralCount') return source.filter(item => item.module === 'referrals' && goalDetail(item.description).kind === 'referral').length;
   if (goal.metric === 'clientCount') return source.filter(item => ['cs','lia'].includes(item.module)).length;

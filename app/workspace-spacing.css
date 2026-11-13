@@ -26,7 +26,7 @@
   .suggestions-page,.suggestion-catalog-page,.development-module,
   .notices-module,.notice-admin-module,.portal-links-admin,.catalogs-module,
   .employee-indicators-page,.chat-module,.analytics-workspace:not(.analytics-tv),.internal-chat-page
-):has(>.module-page-header)>:not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
+)>:is(.module-page-header,.module-page-header~*):not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
   min-width:0;
   margin-block:0;
 }
@@ -40,7 +40,7 @@
   row-gap:var(--workspace-block-gap);
   align-content:start;
 }
-.app-shell .content .support-access-page:has(>:is(.support-access-heading,.support-access-subheading))>:not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
+.app-shell .content .support-access-page>:is(.support-access-heading,.support-access-subheading,.support-access-heading~*,.support-access-subheading~*):not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
   min-width:0;
   margin-block:0;
 }
@@ -52,7 +52,7 @@
   row-gap:var(--workspace-block-gap);
   align-content:start;
 }
-.app-shell .content:has(>.module-page-header)>:not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
+.app-shell .content>:is(.module-page-header,.module-page-header~*):not(.modal-backdrop,.drawer-backdrop,[role="dialog"]){
   min-width:0;
   margin-block:0;
 }

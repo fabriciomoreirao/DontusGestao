@@ -87,7 +87,7 @@ public sealed record CreateCorporateTaskCommand(
     IReadOnlyCollection<Guid>? ParticipantUserIds, IReadOnlyCollection<string>? AttachmentLinks);
 
 public sealed record ChangeTaskStatusCommand(
-    Guid TaskId, Guid StatusId, string? Justification, long Version);
+    Guid TaskId, Guid StatusId, string? Justification, long Version, bool RequestApproval = false);
 public sealed record ChangeTaskPriorityCommand(Guid TaskId, Guid PriorityId, long Version);
 public sealed record ChangeTaskSlaCommand(Guid TaskId, Guid? SlaPolicyId, long Version);
 

@@ -11,6 +11,7 @@ public sealed record PerformanceGoalProgress(Guid Id, string Title, string Metri
 {
     public string FunnelId { get; init; } = "";
     public string FunnelName { get; init; } = "";
+    public string ModuleName { get; init; } = "";
 }
 
 public static class GoalProgress
@@ -37,9 +38,7 @@ public static class GoalProgress
         if(metric is "salesCount" or "referralCount" or "clientCount" && target%1!=0)throw new DomainException("A quantidade da meta deve ser um número inteiro.");
         if(metric=="usageScore"&&target>100)throw new DomainException("A meta de score deve estar entre 0,01% e 100%.");
         if(metric is "salesValue" or "usageScore" && decimal.Round(target,2)!=target)throw new DomainException("Use no máximo duas casas decimais na meta.");
-        if(Text(goal,"funnelId")!="" && !Guid.TryParse(Text(goal,"funnelId"),out _))throw new DomainException("Selecione um funil válido.");
-        if((Text(goal,"funnelId")!="" || Text(goal,"funnelName")!="") && metric is not ("salesValue" or "salesCount"))
-            throw new DomainException("O filtro por funil está disponível nas metas de vendas.");
+        GoalScope.Validate(goal, metric);
     }
 
     public static PerformanceGoalProgress? Calculate(WorkItem item,IReadOnlyCollection<WorkItem> items,IReadOnlyCollection<string>? defaultFeatures=null,
@@ -49,16 +48,7 @@ public static class GoalProgress
         var metric=Text(goal,"metric");var start=Day(Text(goal,"periodStart"));var end=Day(Text(goal,"periodEnd"));
         if(start is null||end is null)return null;
         var employee=Text(goal,"employeeName");var department=Text(goal,"departmentName");
-        var funnelId=Text(goal,"funnelId");var storedFunnelName=Text(goal,"funnelName");
-        var funnelName=catalogs?.FirstOrDefault(entry=>entry.Catalog=="funnelStage"&&entry.Id.ToString().Equals(funnelId,StringComparison.OrdinalIgnoreCase))?.Name ?? storedFunnelName;
-        bool MatchesFunnel(JsonObject detail)
-        {
-            if(funnelId=="" && storedFunnelName=="")return true;
-            var sourceId=Text(detail,"funnelId");
-            if(funnelId!="" && sourceId!="")return Normalize(funnelId)==Normalize(sourceId);
-            var sourceName=Normalize(Text(detail,"funnel"));
-            return sourceName!="" && new[]{storedFunnelName,funnelName}.Any(name=>name!=""&&Normalize(name)==sourceName);
-        }
+        var scope = new GoalScope(goal, catalogs);
         var source=items.Select(record=>(Item:record,Detail:Detail(record.Description))).Where(entry=>{
             var d=entry.Detail;var record=entry.Item;var commercial=record.Module=="commercial";
             var owner=commercial?First(Text(d,"seller"),record.Owner):record.Module=="referrals"?First(Text(d,"senderName"),record.Owner):record.Owner;
@@ -70,9 +60,9 @@ public static class GoalProgress
             var day=Day(raw);return day.HasValue&&day>=start&&day<=end;
         }).ToList();
         var sales=source.Where(entry=>entry.Item.Module=="commercial"&&!Regex.IsMatch(Normalize(entry.Item.RecordType),"reten|qualifica|configura")&&Text(entry.Detail,"kind")!="directSale"
-            &&MatchesFunnel(entry.Detail)
-            &&Regex.IsMatch(Normalize($"{entry.Item.Status} {Text(entry.Detail,"stage")}"),"ganho|fechad|vendid")).ToList();
-        decimal actual=metric switch {"salesValue"=>sales.Sum(entry=>entry.Item.AmountCents)/100m,"salesCount"=>sales.Count,
+            &&Regex.IsMatch(Normalize($"{entry.Item.Status} {Text(entry.Detail,"stage")}"),"ganho|fechad|vendid"))
+            .Select(entry => scope.SaleValue(entry.Detail, entry.Item.AmountCents)).Where(value => value.HasValue).Select(value => value!.Value).ToList();
+        decimal actual=metric switch {"salesValue"=>sales.Sum()/100m,"salesCount"=>sales.Count,
             "referralCount"=>source.Count(entry=>entry.Item.Module=="referrals"&&Text(entry.Detail,"kind")=="referral"),
             "clientCount"=>source.Count(entry=>entry.Item.Module is "cs" or "lia"),_=>0};
         if(metric=="usageScore")
@@ -99,6 +89,6 @@ public static class GoalProgress
         var target=Number(goal,"target");
         return new(item.Id,item.Title,metric,Text(goal,"cadence"),target,actual,target>0?Math.Round(actual/target*100,0,MidpointRounding.AwayFromZero):0,target>0&&actual>=target,
             Text(goal,"active")!="false",employee,department,Text(goal,"periodStart"),Text(goal,"periodEnd"))
-            { FunnelId=funnelId, FunnelName=funnelName };
+            { FunnelId=scope.FunnelId, FunnelName=scope.FunnelName, ModuleName=scope.ModuleLabel };
     }
 }

@@ -186,8 +186,8 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
     var goalFeatures = await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Active && (entry.Catalog == "csFeatureBase" || entry.Catalog == "csFeature" || entry.Catalog == "csFeatureActive" || entry.Catalog == "csFeaturePlus"))
         .Select(entry => new { entry.Catalog, entry.Name, entry.Description }).ToListAsync(cancellationToken);
     var defaultFeatures = goalFeatures.Where(entry => entry.Catalog == "csFeatureBase" || entry.Description.Contains("\"featureBase\":true") || entry.Description.Contains("\"featureBase\": true")).Select(entry => entry.Name).ToArray();
-    var goalFunnels = await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Catalog == "funnelStage").ToListAsync(cancellationToken);
-    var performanceGoals = goalRecords.Select(entry => GoalProgress.Calculate(entry, sourceRecords, defaultFeatures, goalFunnels))
+    var goalCatalogs = await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Catalog == "funnelStage" || entry.Catalog == "commercialProduct").ToListAsync(cancellationToken);
+    var performanceGoals = goalRecords.Select(entry => GoalProgress.Calculate(entry, sourceRecords, defaultFeatures, goalCatalogs))
         .Where(entry => entry is not null && entry.Active && string.CompareOrdinal(entry.PeriodStart, localEnd.ToString("yyyy-MM-dd")) < 0 && string.CompareOrdinal(entry.PeriodEnd, localStart.ToString("yyyy-MM-dd")) >= 0)
         .ToList();
     var journeys = workItems.Where(entry => entry.Module == "cs" || entry.Module == "lia")
@@ -1561,11 +1561,12 @@ operations.MapPost("", async (
             createdProtocol = cancellationTask.Protocol;
             break;
 
+        case "requestTaskApproval":
         case "changeTaskStatus":
             await taskService.ChangeStatusAsync(new ChangeTaskStatusCommand(
                 request.TaskId ?? request.Id ?? throw new DomainException("Tarefa obrigatória."),
                 request.StatusId ?? throw new DomainException("Status obrigatório."),
-                request.Justification, request.Version ?? 0), actor, cancellationToken);
+                request.Justification, request.Version ?? 0, request.Action == "requestTaskApproval"), actor, cancellationToken);
             break;
 
         case "changeTaskPriority":
@@ -1900,7 +1901,7 @@ operations.MapPost("", async (
             roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId) });
     if (request.Action is "markNoticeViewed" or "markNoticeRead")
         return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
-    if ((request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus"
+    if ((request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus" or "requestTaskApproval"
         or "changeTaskPriority" or "changeTaskSla" or "transferTask" or "assignTask"
         or "addTaskComment" or "updateTaskComment" or "communicateWithClient" or "markTaskNotificationRead")
         && actor.HasPermission("tasks", "view"))
@@ -1910,7 +1911,7 @@ operations.MapPost("", async (
             ["taskModule"] = await taskService.GetModuleAsync(actor, cancellationToken) };
         if (request.Action == "communicateWithClient" && actor.HasPermission("notices", "view"))
             result["noticesModule"] = await service.GetNoticesModuleAsync(actor, cancellationToken);
-        if (request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus")
+        if (request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus" or "requestTaskApproval")
         {
             // Keep customer open-task protocols current when links or completion change.
             var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false, knownWorkItemVersions: request.KnownWorkItemVersions);
