@@ -3,7 +3,7 @@ import useVoiceRecorder from "@/app/useVoiceRecorder";
 import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import MessageText from "@/app/MessageText";
 
-import { useReminderFilter } from "@/app/ReminderFilters";
+import { chatUnreadTotals } from "@/lib/internal-chat-state";
 
 import {
   Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
@@ -43,6 +43,8 @@ export type InternalChatRoom = {
 
 export type InternalChatModuleData = {
   currentUserId: string; users: InternalChatUser[]; rooms: InternalChatRoom[];
+  isPartial?: boolean; removedRoomIds?: string[];
+  snapshotAt?: string; roomSnapshotTimes?: Record<string, string>; fullSnapshotAt?: string;
 };
 
 type OperationResult = { id?: string } | false;
@@ -53,7 +55,7 @@ type Props = {
   canCreate: boolean;
   canEdit: boolean;
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
-  markRead: (roomId: string) => Promise<void>;
+  markRead: (roomId: string, readThroughMessageId: string) => Promise<void>;
   uploadAttachments: (roomId: string, files: File[], onUploaded?: (files: File[]) => void, replyToMessageId?: string) => Promise<boolean>;
   onOpenProfile: (userId: string) => void;
   initialRoomId?: string;
@@ -110,25 +112,26 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const gifInput=useRef<HTMLInputElement>(null);
   const groupPhotoInput = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const followingMessages = useRef(true);
+  const scrolledRoom = useRef<string | undefined>(undefined);
   const sendingRef = useRef(false);
   const [sendError, setSendError] = useState("");
 
   const canCreateGroup = canCreate && Boolean(module.users.find(user => user.id === module.currentUserId)?.isCoordinator);
-  const conversations = useMemo(() => (groupsView ? [...buildConversations(module,false),...buildConversations(module,true)].filter(entry=>entry.isGroup) : buildConversations(module, archivedView).filter(entry=>!entry.isGroup)).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, groupsView, pinnedConversationKeys]);
-  const reminderFilter = useReminderFilter("internalChat");
+  const conversations = useMemo(() => buildConversations(module, archivedView).filter(entry => archivedView || entry.isGroup === groupsView).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, groupsView, pinnedConversationKeys]);
   const presenceNow=useActivityClock();
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
-    return conversations.filter((entry) => (entry.isGroup===groupsView) && reminderFilter.matches({entityId:entry.user ? `user:${entry.user.id}` : entry.key,title:`Enviar mensagem: ${entry.name}`}) && (!query || `${entry.name} ${entry.user?.departmentName ?? ""}`.toLocaleLowerCase("pt-BR").includes(query)));
-  }, [conversations, search, reminderFilter.matches,archivedView,groupsView]);
-  const effectiveSelectedKey = filteredConversations.some((entry) => entry.key === selectedKey) ? selectedKey : filteredConversations[0]?.key ?? "";
+    return conversations.filter((entry) => !query || `${entry.name} ${entry.user?.departmentName ?? ""}`.toLocaleLowerCase("pt-BR").includes(query));
+  }, [conversations, search]);
+  const effectiveSelectedKey = filteredConversations.some((entry) => entry.key === selectedKey) ? selectedKey : "";
   const message = messageDrafts[effectiveSelectedKey] ?? "";
   const setMessage = (value: string) => setMessageDrafts(current => ({ ...current, [effectiveSelectedKey]: value }));
   const selectedConversation = conversations.find((entry) => entry.key === effectiveSelectedKey);
   const selectedRoom = selectedConversation?.room;
   const voice=useVoiceRecorder(effectiveSelectedKey);
   const pastedImages = imageDrafts[effectiveSelectedKey] ?? [];
-  const visibleMessages = [...new Map([...(olderMessages[selectedRoom?.id || ""] || []), ...(selectedRoom?.messages || [])].map(message => [message.id, message])).values()].sort((a,b) => a.createdAt.localeCompare(b.createdAt));
+  const visibleMessages = useMemo(() => [...new Map([...(olderMessages[selectedRoom?.id || ""] || []), ...(selectedRoom?.messages || [])].map(message => [message.id, message])).values()].sort((a,b) => a.createdAt.localeCompare(b.createdAt)), [olderMessages, selectedRoom?.id, selectedRoom?.messages]);
   const replyDraft = replyDrafts[effectiveSelectedKey];
   const replyMessage = replyDraft ? visibleMessages.find(entry => entry.id === replyDraft.id) ?? replyDraft : undefined;
   const replyToMessageId = replyMessage && !replyMessage.deletedAt ? replyMessage.id : undefined;
@@ -146,7 +149,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     const previousHeight = container?.scrollHeight || 0;
     const previousTop = container?.scrollTop || 0;
     try {
-      const response = await fetch(`/api/internal-chat?historyDays=${days}`, {cache:"no-store"});
+      const response = await fetch(`/api/internal-chat?historyDays=${days}&roomId=${encodeURIComponent(roomId)}`, {cache:"no-store"});
       if (!response.ok) throw new Error("Não foi possível carregar mensagens antigas.");
       const data = await response.json() as InternalChatModuleData;
       const messages = data.rooms.find(room => room.id === roomId)?.messages || [];
@@ -158,7 +161,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     finally { setHistoryLoading(false); }
   };
   const lastSeenMessageId = visibleMessages.findLast(entry=>entry.senderUserId===module.currentUserId && entry.seenAt && !entry.deletedAt)?.id;
-  const archivedCount = module.rooms.filter((room) => room.isArchived && !room.isGroup).length;
+  const unreadTotals = useMemo(() => chatUnreadTotals(module.rooms), [module.rooms]);
   const pinnedMessages = selectedRoom?.messages.filter((entry) => entry.isPinned && !entry.deletedAt) ?? [];
   const employeeBirthdays = useMemo(() => {
     const values = new Map<string, string>();
@@ -178,18 +181,26 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   useEffect(() => {
     const messages = messagesRef.current;
     if (!messages) return;
+    if (scrolledRoom.current !== selectedRoom?.id) { followingMessages.current = true; scrolledRoom.current = selectedRoom?.id; }
+    if (!followingMessages.current) return;
     const frame = window.requestAnimationFrame(() => messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" }));
     return () => window.cancelAnimationFrame(frame);
   }, [selectedRoom?.id, selectedRoom?.messages.at(-1)?.id]);
 
   useEffect(() => {
+    const container = messagesRef.current;
     const readVisibleRoom = () => {
-      if (!document.hidden && selectedRoom?.unreadCount) void markRead(selectedRoom.id);
+      if (!container) return;
+      followingMessages.current = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
+      const lastMessage = selectedRoom?.messages.at(-1);
+      if (!document.hidden && document.hasFocus() && followingMessages.current && selectedRoom?.unreadCount && lastMessage) void markRead(selectedRoom.id, lastMessage.id);
     };
     readVisibleRoom();
     document.addEventListener("visibilitychange", readVisibleRoom);
-    return () => document.removeEventListener("visibilitychange", readVisibleRoom);
-  }, [markRead, selectedRoom?.id, selectedRoom?.unreadCount]);
+    window.addEventListener("focus", readVisibleRoom);
+    container?.addEventListener("scroll", readVisibleRoom, { passive: true });
+    return () => { document.removeEventListener("visibilitychange", readVisibleRoom); window.removeEventListener("focus", readVisibleRoom); container?.removeEventListener("scroll", readVisibleRoom); };
+  }, [markRead, selectedRoom?.id, selectedRoom?.unreadCount, selectedRoom?.messages]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setTodayInBrasilia(brasiliaMonthDay()), 60_000);
@@ -360,12 +371,13 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
 
     <section className={`internal-chat-shell ${selectedKey ? "show-conversation" : ""}`}>
       <aside className="internal-chat-sidebar">
-        <div className="internal-chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar colaboradores ou grupos..." /></div><div className="internal-chat-reminder-filter">{reminderFilter.control}</div>
+        <div className="internal-chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar colaboradores ou grupos..." /></div>
         <div className="internal-chat-view-tabs">
-          <button className={!archivedView&&!groupsView ? "active" : ""} onClick={() => { setArchivedView(false);setGroupsView(false); setSelectedKey(""); }}>Conversas</button>
-          <button className={!archivedView&&groupsView?"active":""} onClick={()=>{setArchivedView(false);setGroupsView(true);setSelectedKey("")}}>Grupos</button>
-          <button className={archivedView ? "active" : ""} onClick={() => { setArchivedView(true); setGroupsView(false); setSelectedKey(""); }}>Arquivadas {archivedCount > 0 && <b>{archivedCount}</b>}</button>
+          <button className={!archivedView&&!groupsView ? "active" : ""} onClick={() => { setArchivedView(false);setGroupsView(false); setSelectedKey(""); }}>Conversas<UnreadBadge count={unreadTotals.conversations} /></button>
+          <button className={!archivedView&&groupsView?"active":""} onClick={()=>{setArchivedView(false);setGroupsView(true);setSelectedKey("")}}>Grupos<UnreadBadge count={unreadTotals.groups} /></button>
+          <button className={archivedView ? "active" : ""} onClick={() => { setArchivedView(true); setGroupsView(false); setSelectedKey(""); }}>Arquivadas<UnreadBadge count={unreadTotals.archived} /></button>
         </div>
+        <span className="sr-only" role="status" aria-atomic="true">{unreadTotals.conversations} mensagens não lidas em conversas, {unreadTotals.groups} em grupos e {unreadTotals.archived} em arquivadas.</span>
         <div className="internal-chat-room-list">
           {filteredConversations.length === 0 && <div className="internal-chat-empty-list"><Archive size={24} /><span>{archivedView ? "Nenhuma conversa arquivada." : "Nenhum colaborador encontrado."}</span></div>}
           {filteredConversations.map((entry) => {
@@ -530,6 +542,10 @@ function CreateGroupModal({ module, busy, onClose, onCreate }: { module: Interna
       <div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || selected.length === 0} type="submit"><UsersRound size={16} /> {busy ? "Criando..." : "Criar grupo"}</button></div>
     </form>
   </div></div>;
+}
+
+function UnreadBadge({ count }: { count: number }) {
+  return count > 0 ? <b className="internal-chat-unread-badge" aria-label={`${count} mensagens não lidas`}>{count}</b> : null;
 }
 
 function Avatar({ name, photo, group = false, coordinator = false }: { name: string; photo?: string; group?: boolean; coordinator?: boolean }) {

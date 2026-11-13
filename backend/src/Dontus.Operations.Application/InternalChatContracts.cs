@@ -29,7 +29,12 @@ public sealed record InternalChatRoomDto(
 public sealed record InternalChatModuleDto(
     Guid CurrentUserId,
     IReadOnlyCollection<InternalChatUserDto> Users,
-    IReadOnlyCollection<InternalChatRoomDto> Rooms);
+    IReadOnlyCollection<InternalChatRoomDto> Rooms)
+{
+    public bool IsPartial { get; init; }
+    public DateTimeOffset SnapshotAt { get; init; }
+    public IReadOnlyCollection<Guid> RemovedRoomIds { get; init; } = [];
+}
 
 public sealed record CreateInternalChatRoomCommand(
     string? Name, string? PhotoDataUrl, bool IsGroup, IReadOnlyCollection<Guid>? MemberUserIds);
@@ -42,7 +47,7 @@ public sealed record VoteInternalChatPollCommand(Guid RoomId, Guid MessageId, in
 public sealed record SetInternalChatMessagePinnedCommand(Guid RoomId, Guid MessageId, bool Pinned);
 public sealed record SetInternalChatMessageReactionCommand(Guid RoomId, Guid MessageId, string Emoji, bool Reacted);
 public sealed record SetInternalChatRoomArchivedCommand(Guid RoomId, bool Archived);
-public sealed record MarkInternalChatRoomReadCommand(Guid RoomId);
+public sealed record MarkInternalChatRoomReadCommand(Guid RoomId, Guid? ReadThroughMessageId = null);
 public sealed record UpdateInternalChatGroupCommand(Guid RoomId, string? Name, string? PhotoDataUrl);
 public sealed record ChangeInternalChatMembersCommand(Guid RoomId, IReadOnlyCollection<Guid>? AddUserIds, Guid? RemoveUserId, bool Leave);
 
@@ -53,7 +58,7 @@ public sealed record InternalChatAttachmentDto(string FullPath, string FileName,
 
 public interface IInternalChatService
 {
-    Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30);
+    Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30, Guid? roomId = null);
     Task<Guid> CreateRoomAsync(CreateInternalChatRoomCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SendMessageAsync(SendInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task EditMessageAsync(EditInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default);

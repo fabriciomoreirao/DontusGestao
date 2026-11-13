@@ -15,38 +15,47 @@ type SyncOptions = {
   presence?: (users:Presence[]) => void;
 };
 
-// One socket and one request queue per mounted workspace. Bursts collapse into one projection fetch.
+// One socket with independent chat and operations requests. Bursts coalesce within each channel.
 export function createRealtimeSync(options: SyncOptions) {
   let socket: Socket | undefined;
-  let stopped = false, connected = false, hadReady = false, running = false;
-  let pending: Changes = {}, attempts = 0, lastFrame = Date.now();
+  let stopped = false, connected = false, hadReady = false, operationsRunning = false, chatRunning = false;
+  const pending: Changes = {};
+  let attempts = 0, lastFrame = Date.now();
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
+  let flushAt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let openTimer: ReturnType<typeof setTimeout> | undefined;
   let lastFallback = Date.now();
   const setStatus = (value: boolean) => { connected = value; options.status(value); };
   const schedule = (delay = 300) => {
-    if (!stopped && !flushTimer) flushTimer = setTimeout(() => { flushTimer = undefined; void flush(); }, delay);
+    const at = Date.now() + delay;
+    if (stopped || flushTimer && flushAt <= at) return;
+    clearTimeout(flushTimer); flushAt = at;
+    flushTimer = setTimeout(() => { flushTimer = undefined; flush(); }, delay);
   };
   const queue = (changes: Changes) => {
     pending.operations ||= changes.operations === true;
     pending.internalChat ||= options.canChat && changes.internalChat === true;
-    schedule();
+    schedule(changes.internalChat ? 75 : 300);
   };
-  const flush = async () => {
-    if (stopped || running) return;
-    if (options.busy()) { schedule(1000); return; }
-    const operations = pending.operations && !options.hidden();
-    const chat = pending.internalChat;
-    if (!operations && !chat) return;
-    if (operations) pending = {}; else pending.internalChat = false;
-    running = true;
+  const run = async (chat: boolean) => {
+    if (chat) { chatRunning = true; pending.internalChat = false; }
+    else { operationsRunning = true; pending.operations = false; }
     let ok = false;
-    try { ok = await (operations ? options.operations() : options.chat()); } catch { /* Retry after a transient HTTP failure. */ }
+    try { ok = await (chat ? options.chat() : options.operations()); } catch { /* Keep the invalidation for recovery. */ }
     finally {
-      running = false;
-      if (!ok) { pending.operations ||= operations; pending.internalChat ||= chat; }
-      if (!stopped && (pending.internalChat || pending.operations && !options.hidden())) schedule(ok ? 300 : 5000);
+      if (chat) { chatRunning = false; pending.internalChat ||= !ok; }
+      else { operationsRunning = false; pending.operations ||= !ok; }
+      if (!stopped && (pending.internalChat && !chatRunning || pending.operations && !operationsRunning && !options.hidden())) schedule(ok ? 75 : 5000);
+    }
+  };
+  const flush = () => {
+    if (stopped) return;
+    // Chat never waits for a slow operational snapshot or an unrelated form save.
+    if (pending.internalChat && !chatRunning) void run(true);
+    if (pending.operations && !operationsRunning && !options.hidden()) {
+      if (options.busy()) schedule(1000);
+      else void run(false);
     }
   };
   const start = () => {

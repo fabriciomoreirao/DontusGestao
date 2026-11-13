@@ -134,10 +134,6 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
   const priorityFilter = module.priorities.some((item) => item.id === priority && item.active) ? priority : "";
   const assigneeFilter = module.collaborators.some((item) => item.id === assignee && item.active) ? assignee : "";
   const selectedDepartment = module.departments.find((item) => item.id === departmentFilter);
-  const openCount = module.tasks.filter((task) => !task.completedAt && !task.cancelled).length;
-  const attentionCount = module.tasks.filter((task) => /Vencido|Próximo/.test(task.slaState)).length;
-  const queueCount = module.tasks.filter((task) => !task.assigneeUserId).length;
-  const unreadCount = module.notifications.filter((notification) => !notification.read).length;
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("pt-BR");
@@ -188,15 +184,6 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
         {canCreate && <button className="primary-button" onClick={() => setCreating(true)}><Plus size={17} /> Nova tarefa</button>}
       </div>
     </header>
-    <div className="tasks-summary" aria-label="Resumo das tarefas">
-      <div><strong>{openCount}</strong><span>Em aberto</span></div>
-      <i />
-      <div><strong>{queueCount}</strong><span>Na fila do setor</span></div>
-      <i />
-      <div className={attentionCount > 0 ? "attention" : ""}><strong>{attentionCount}</strong><span>SLA exige atenção</span></div>
-      <i />
-      <div><strong>{unreadCount}</strong><span>Notificações novas</span></div>
-    </div>
     <section className="task-workspace">
       <header className="task-workspace-heading">
         <div><span>QUADRO ATUAL</span><strong>{selectedDepartment?.name ?? "Visão consolidada"}</strong><small>{filtered.length} tarefa(s) nesta visualização</small></div>

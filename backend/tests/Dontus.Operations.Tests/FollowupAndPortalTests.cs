@@ -8,6 +8,36 @@ namespace Dontus.Operations.Tests;
 
 public sealed class FollowupAndPortalTests
 {
+    [Theory]
+    [InlineData("activation", 91)]
+    [InlineData("retention", 365)]
+    public async Task Old_followups_stay_in_tracking_and_remain_visible_beyond_the_general_snapshot_limit(string track, int days)
+    {
+        await using var db = Context();
+        var service = new OperationsService(db);
+        var actor = Actor("cs") with { Permissions = [new("cs", true, true, true, false, false), new("marketing", true, false, false, false, false)] };
+        var old = new WorkItem { Module = "cs", RecordType = "Acompanhamento", Title = "Cliente antigo", Owner = "Outra responsável", Status = "Em acompanhamento", CreatedBy = actor.Email,
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-days), UpdatedAt = DateTimeOffset.UtcNow.AddDays(-days),
+            Description = JsonSerializer.Serialize(new { kind = "csJourney", track, phase = "tracking", clientId = "200310", trackingStartedAt = DateTimeOffset.UtcNow.AddDays(-days) }) };
+        db.WorkItems.Add(old);
+        db.WorkItems.AddRange(Enumerable.Range(0, 1001).Select(index => new WorkItem { Module = "marketing", RecordType = "Pedido", Title = $"Pedido {index}", Status = "Novo", CreatedBy = actor.Email }));
+        db.WorkItems.Add(new WorkItem { Module = "hr", RecordType = "Privado", Title = "Sem acesso", Status = "Novo", CreatedBy = actor.Email });
+        await db.SaveChangesAsync();
+        var snapshot = await service.GetSnapshotAsync(actor);
+        var card = Assert.Single(snapshot.Items, item => item.Module == "cs");
+        Assert.Equal(old.Id, card.Id);
+        Assert.Equal("tracking", JsonDocument.Parse(card.Description).RootElement.GetProperty("phase").GetString());
+        Assert.DoesNotContain(snapshot.Items, item => item.Module == "hr");
+        Assert.Equal(1000, snapshot.Items.Count(item => item.Module == "marketing"));
+        var known = snapshot.Items.ToDictionary(item => item.Id, item => item.Version);
+        Assert.Contains((await service.GetSnapshotAsync(actor, knownWorkItemVersions: known)).Items, item => item.Id == old.Id);
+        if (track == "activation")
+        {
+            var error = await Assert.ThrowsAsync<DomainException>(() => service.CreateWorkItemAsync(new("cs", "Acompanhamento", "Duplicado", null, "Cliente", "Ana", "CS", "P3", null, null, 0, old.Description, null, null, null, null), actor));
+            Assert.Equal(409, error.StatusCode);
+        }
+    }
+
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ActorContext Actor(string module) => new("ana@test", "Ana", "Colaborador", "Suporte", [new(module, true, true, true, false, false)]);
 
