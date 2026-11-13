@@ -23,6 +23,7 @@ import "./goals-tasks-refinement.css";
 import "./task-reference.css";
 import "./crm-workspace-refinement.css";
 import "./workspace-spacing.css";
+import "./suggestions-refinement.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

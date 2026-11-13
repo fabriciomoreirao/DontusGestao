@@ -714,6 +714,8 @@ type GoalDetail = {
   target: number;
   employeeName?: string;
   departmentName?: string;
+  funnelId?: string;
+  funnelName?: string;
   periodStart: string;
   periodEnd: string;
   active?: boolean;
@@ -741,6 +743,8 @@ const parseGoalDetail = (item: Item): GoalDetail | null => {
     target: numberOf(detail.target),
     employeeName: stringOf(detail.employeeName),
     departmentName: stringOf(detail.departmentName),
+    funnelId: stringOf(detail.funnelId),
+    funnelName: stringOf(detail.funnelName),
     periodStart: stringOf(detail.periodStart),
     periodEnd: stringOf(detail.periodEnd),
     active: detail.active !== false,
@@ -749,7 +753,7 @@ const parseGoalDetail = (item: Item): GoalDetail | null => {
 
 function calculateGoalProgress(goal: GoalDetail, items: Item[], catalogs: Catalog[]) {
   const defaults=catalogs.filter(entry=>entry.active&&(entry.catalog==="csFeatureBase"||["csFeature","csFeatureActive","csFeaturePlus"].includes(entry.catalog)&&parse(entry.description).featureBase===true)).map(entry=>entry.name);
-  return goalProgress(goal as PerformanceGoal,items.map(item=>({...item,description:item.description||""})),defaults);
+  return goalProgress(goal as PerformanceGoal,items.map(item=>({...item,description:item.description||""})),defaults,catalogs);
 }
 
 function GoalsIndicatorsBoard({ title, items, catalogs, onClose }: { title: string; items: Item[]; catalogs: Catalog[]; onClose: () => void }) {

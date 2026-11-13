@@ -1584,7 +1584,7 @@ export default function OperationsApp() {
         <div id="workspace-content" tabIndex={-1} className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}>
           <Suspense fallback={<section role="status" className="empty-state">Carregando módulo...</section>}>
           {historyClientId ? <ClientHistoryPage query={historyClientId} data={data} canEdit={userCan(data.user,"customers","edit")} busy={busy} operate={operate} onClose={closeClientHistoryPage} onNavigate={(module) => { closeClientHistoryPage(); navigate(module); }} /> : indicatorsOpen && operationContext && canViewOperationIndicators ? <OperationIndicatorsBoard title={operationContext.title} module={operationContext.module} contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`} items={indicatorItems} employees={assignmentEmployees} catalogs={data.customerModule?.catalogs ?? []} onClose={closeIndicatorsPage} /> : <>
-          {active !== "tasks" && operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
+          {operationContext && canViewOperationIndicators && <OperationIndicatorsLauncher pageKey={`${active}:${commercialFlow}:${csFlow}`} onOpen={openIndicatorsPage} />}
           {active === "dashboard" && (
             dashboardPage === "portal"
               ? <PortalDontus data={data} busy={busy} operate={operate} onBack={() => setDashboardPage("home")} />

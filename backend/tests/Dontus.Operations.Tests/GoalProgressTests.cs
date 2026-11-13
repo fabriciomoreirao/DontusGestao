@@ -1,11 +1,45 @@
 using Dontus.Operations.Domain;
 using Dontus.Operations.Infrastructure;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Dontus.Operations.Tests;
 
 public sealed class GoalProgressTests
 {
+    [Theory]
+    [InlineData("salesCount", 2)]
+    [InlineData("salesValue", 319.8)]
+    public void Funnel_goals_scope_won_sales_and_keep_the_other_scope_filters(string metric, decimal expected)
+    {
+        var goal = Goal(metric);
+        var detail = JsonNode.Parse(goal.Description)!.AsObject();
+        var funnelId = Guid.NewGuid(); detail["funnelId"] = funnelId.ToString(); detail["funnelName"] = "LIA";
+        goal.Description = detail.ToJsonString(); GoalProgress.Validate("goals",goal.Description);
+        var names = new[]{"LIA","lia","LIA Plus","Clínicas + Módulos"};
+        var sources = names.Select(name => { var sale = Sale(); var d = JsonNode.Parse(sale.Description)!.AsObject(); d["funnel"] = name; sale.Description = d.ToJsonString(); return sale; }).ToList();
+        var otherEmployee = Sale(); otherEmployee.Description = """{"kind":"commercialLead","seller":"Bia","funnel":"LIA","wonAt":"2026-11-06"}"""; sources.Add(otherEmployee);
+        var otherDepartment = Sale(); otherDepartment.Team = "Outro"; sources.Add(otherDepartment);
+        Assert.Equal(expected,GoalProgress.Calculate(goal,sources)!.Actual);
+        Assert.Equal(metric=="salesCount"?4:639.6m,GoalProgress.Calculate(Goal(metric),sources)!.Actual);
+    }
+
+    [Fact]
+    public void Funnel_catalog_handles_renames_and_explicit_ids_without_losing_legacy_all_funnel_goals()
+    {
+        var funnel = new CustomerCatalogOption { Catalog="funnelStage",Name="LIA Novo",Description="{\"f\":\"c\"}",Active=false };
+        var goal = Goal(); var d = JsonNode.Parse(goal.Description)!.AsObject(); d["funnelId"] = funnel.Id.ToString(); d["funnelName"] = "LIA"; goal.Description=d.ToJsonString();
+        var first = Sale(); first.Description="""{"kind":"commercialLead","seller":"Ana","funnel":"LIA","wonAt":"2026-11-06"}""";
+        var renamed = Sale(); renamed.Description=first.Description.Replace("LIA","LIA Novo");
+        var other = Sale(); var saleDetail = JsonNode.Parse(first.Description)!.AsObject(); saleDetail["funnelId"]=Guid.NewGuid().ToString(); other.Description=saleDetail.ToJsonString();
+        var result=GoalProgress.Calculate(goal,[first,renamed,other],catalogs:[funnel])!;
+        Assert.Equal(2,result.Actual); Assert.Equal("LIA Novo",result.FunnelName); Assert.Equal(funnel.Id.ToString(),result.FunnelId);
+        Assert.Equal(3,GoalProgress.Calculate(Goal(),[first,renamed,other])!.Actual);
+        var invalid=JsonNode.Parse(goal.Description)!.AsObject(); invalid["funnelId"]="invalid";
+        Assert.Throws<DomainException>(()=>GoalProgress.Validate("goals",invalid.ToJsonString()));
+        invalid["funnelId"]=funnel.Id.ToString(); invalid["metric"]="usageScore";
+        Assert.Throws<DomainException>(()=>GoalProgress.Validate("goals",invalid.ToJsonString()));
+    }
     private static WorkItem Goal(string metric="salesCount",decimal target=1) => new() { Module="goals",Title="Meta",RecordType="Meta",Status="Ativa",CreatedBy="test",Description=JsonSerializer.Serialize(new {kind="performanceGoal",metric,cadence="monthly",target,employeeName="Ana",departmentName="Comercial",periodStart="2026-11-05",periodEnd="2026-11-30",active=true}) };
     private static WorkItem Sale(string type="Lead comercial",string wonAt="2026-11-06T02:30:00Z") => new() {Module="commercial",RecordType=type,Title="Venda",Owner="Outro",Team="Comercial",Status="Ganho",AmountCents=15990,CreatedBy="test",CreatedAt=DateTimeOffset.Parse("2026-10-01T12:00:00Z"),UpdatedAt=DateTimeOffset.Parse("2026-12-01T12:00:00Z"),Description=JsonSerializer.Serialize(new {kind="commercialLead",seller="Ana",wonAt})};
     [Fact]

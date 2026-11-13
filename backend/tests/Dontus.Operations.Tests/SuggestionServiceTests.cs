@@ -8,6 +8,52 @@ namespace Dontus.Operations.Tests;
 public sealed partial class SuggestionServiceTests
 {
     [Fact]
+    public async Task Responsible_and_administrative_permissions_do_not_replace_the_coordinator_requirement()
+    {
+        await using var db=CreateContext();var user=AddUser(db,"owner@test","Responsável");user.IsCoordinator=false;
+        await db.SaveChangesAsync();var service=new SuggestionService(db);await service.InitializeAsync();
+        var priority=await db.SuggestionPriorities.FirstAsync();var created=await service.CreateSuggestionAsync(new("Sugestão protegida","Descrição",null,priority.Id,false,false),Actor(user));
+        var suggestion=await db.Suggestions.SingleAsync();var status=await db.SuggestionStatuses.FirstAsync(entry=>entry.Id!=suggestion.StatusId);
+        using var bytes=new MemoryStream([1,2,3]);var attachment=await service.UploadAttachmentAsync(new(created.Id,"arquivo.pdf","application/pdf",3,bytes),Actor(user));
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateSuggestionAsync(new(suggestion.Id,"Alterada","Outra descrição",null,priority.Id,false,false,suggestion.Version),Actor(user)))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(suggestion.Id,status.Id,suggestion.Version),Actor(user)))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteSuggestionAsync(suggestion.Id,Actor(user)))).StatusCode);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteAttachmentAsync(attachment,Actor(user)))).StatusCode);
+        await service.AddCommentAsync(new(suggestion.Id,"Comentário permitido."),Actor(user));
+        Assert.Single(db.Suggestions);Assert.Single(db.SuggestionAttachments);Assert.Single(db.SuggestionComments);
+        Assert.Equal("Sugestão protegida",suggestion.Name);
+    }
+
+    [Fact]
+    public async Task Coordinators_with_edit_permission_can_manage_another_responsibles_suggestion()
+    {
+        await using var db=CreateContext();var owner=AddUser(db,"owner@test","Responsável");owner.IsCoordinator=false;
+        var coordinator=AddUser(db,"coordinator@test","Coordenação");await db.SaveChangesAsync();
+        var service=new SuggestionService(db);await service.InitializeAsync();var priority=await db.SuggestionPriorities.FirstAsync();
+        var created=await service.CreateSuggestionAsync(new("Sugestão da equipe","Contexto",null,priority.Id,false,false),Actor(owner));
+        var suggestion=await db.Suggestions.SingleAsync();var actor=Actor(coordinator) with { Permissions=[new("suggestions",true,false,true,false,false)] };
+        var readOnly=actor with { Permissions=[new("suggestions",true,false,false,false,false)] };
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteSuggestionAsync(suggestion.Id,readOnly))).StatusCode);
+        await service.UpdateSuggestionAsync(new(suggestion.Id,"Revisada","Contexto revisado",null,priority.Id,true,false,suggestion.Version),actor);
+        var status=await db.SuggestionStatuses.FirstAsync(entry=>entry.Name=="Em análise");
+        await service.ChangeStatusAsync(new(suggestion.Id,status.Id,suggestion.Version),actor);
+        Assert.Equal("Revisada",suggestion.Name);Assert.Equal(status.Id,suggestion.StatusId);
+        await service.DeleteSuggestionAsync(created.Id,actor);Assert.Empty(db.Suggestions);
+    }
+
+    [Fact]
+    public async Task Non_coordinators_can_upload_their_own_creation_files_but_cannot_change_another_suggestions_files()
+    {
+        await using var db=CreateContext();var owner=AddUser(db,"owner@test","Responsável");owner.IsCoordinator=false;
+        var other=AddUser(db,"other@test","Outro");other.IsCoordinator=false;await db.SaveChangesAsync();
+        var service=new SuggestionService(db);await service.InitializeAsync();var priority=await db.SuggestionPriorities.FirstAsync();
+        var created=await service.CreateSuggestionAsync(new("Sugestão com anexo","Contexto",null,priority.Id,false,false),Actor(owner));
+        using var bytes=new MemoryStream([1,2,3]);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UploadAttachmentAsync(new(created.Id,"arquivo.pdf","application/pdf",3,bytes),Actor(other)))).StatusCode);
+        var id=await service.UploadAttachmentAsync(new(created.Id,"arquivo.pdf","application/pdf",3,bytes),Actor(owner));
+        Assert.Equal(id,Assert.Single(db.SuggestionAttachments).Id);
+    }
+    [Fact]
     public async Task Creates_sequential_protocols_and_uses_the_creator_as_responsible()
     {
         await using var db = CreateContext();
@@ -138,7 +184,7 @@ public sealed partial class SuggestionServiceTests
 
     private static AppUser AddUser(OperationsDbContext db, string email, string name)
     {
-        var user = new AppUser { Email = email, DisplayName = name, Department = "Produto", CreatedBy = "tests@dontus.local" };
+        var user = new AppUser { Email = email, DisplayName = name, Department = "Produto", IsCoordinator = true, CreatedBy = "tests@dontus.local" };
         db.Users.Add(user);
         return user;
     }

@@ -238,7 +238,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
 
     public async Task UpdateSuggestionAsync(UpdateSuggestionCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("suggestions", "edit");
+        await RequireCoordinatorEditAsync(actor, cancellationToken);
         var suggestion = await db.Suggestions.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Sugestão não encontrada.", 404);
         if (suggestion.Version != command.Version)
@@ -264,7 +264,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
 
     public async Task ChangeStatusAsync(ChangeSuggestionStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("suggestions", "edit");
+        await RequireCoordinatorEditAsync(actor, cancellationToken);
         var suggestion = await db.Suggestions.SingleOrDefaultAsync(entry => entry.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Sugestão não encontrada.", 404);
         if (suggestion.Version != command.Version)
@@ -312,8 +312,8 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
         var suggestion = await db.Suggestions.AsNoTracking().SingleOrDefaultAsync(entry => entry.Id == command.SuggestionId, cancellationToken)
             ?? throw new DomainException("Sugestão não encontrada.", 404);
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
-        if (!actor.HasPermission("suggestions", "edit") && !(actor.HasPermission("suggestions", "create") && suggestion.ResponsibleUserId == actorUser.Id))
-            actor.RequirePermission("suggestions", "edit");
+        if (!(actor.HasPermission("suggestions", "create") && suggestion.ResponsibleUserId == actorUser.Id))
+            await RequireCoordinatorEditAsync(actor, cancellationToken);
         if (command.SizeBytes <= 0 || command.SizeBytes > MaximumAttachmentSizeBytes)
             throw new DomainException("Cada anexo deve ter no máximo 25 MB.");
         var fileName = Path.GetFileName(command.FileName).Trim();
@@ -324,7 +324,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
 
     public async Task DeleteAttachmentAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("suggestions","edit");
+        await RequireCoordinatorEditAsync(actor, cancellationToken);
         var attachment=await db.SuggestionAttachments.SingleOrDefaultAsync(entry=>entry.Id==attachmentId,cancellationToken) ?? throw new DomainException("Anexo não encontrado.",404);
         var content=await db.SuggestionAttachmentContents.SingleOrDefaultAsync(entry=>entry.AttachmentId==attachmentId,cancellationToken);
         if(content is not null) db.SuggestionAttachmentContents.Remove(content);
@@ -366,12 +366,9 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
 
     public async Task DeleteSuggestionAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
     {
-        actor.RequirePermission("suggestions", "edit");
+        await RequireCoordinatorEditAsync(actor, cancellationToken);
         var suggestion = await db.Suggestions.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
             ?? throw new DomainException("Sugestão não encontrada.", 404);
-        var actorUser = await GetActorUserAsync(actor, cancellationToken);
-        if (suggestion.ResponsibleUserId != actorUser.Id && !actor.HasPermission("admin", "manage"))
-            throw new DomainException("Apenas o responsável ou a coordenação pode excluir esta sugestão.", 403);
         db.SuggestionComments.RemoveRange(db.SuggestionComments.Where(entry => entry.SuggestionId == id));
         db.Suggestions.Remove(suggestion);
         AddAudit(actor, "Delete", "suggestion", id, new { suggestion.Protocol, suggestion.Name });
@@ -381,6 +378,14 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
     private async Task<AppUser> GetActorUserAsync(ActorContext actor, CancellationToken cancellationToken) =>
         await db.Users.SingleOrDefaultAsync(entry => entry.Email == actor.Email, cancellationToken)
         ?? throw new DomainException("O colaborador autenticado não foi encontrado.", 404);
+
+    private async Task RequireCoordinatorEditAsync(ActorContext actor, CancellationToken cancellationToken)
+    {
+        actor.RequirePermission("suggestions", "edit");
+        if (!await db.Users.AsNoTracking().AnyAsync(user => user.Email == actor.Email && user.Active
+            && user.BlockedAt == null && user.IsCoordinator, cancellationToken))
+            throw new DomainException("Apenas coordenadores podem alterar ou excluir sugestões.", 403);
+    }
 
     private static SuggestionPriorityDto ToDto(SuggestionPriority entry) =>
         new(entry.Id, entry.Name, entry.Description, entry.Color, entry.DisplayOrder, entry.Active);

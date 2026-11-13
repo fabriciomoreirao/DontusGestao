@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { formatGoalValue, goalTargetError, goalTargetKind, parseGoalTarget } from "@/lib/goal-target";
 import { goalMetricLabels } from "@/lib/goal-progress";
 
-export default function GoalTargetFields({ metric: initialMetric = "salesValue", target }: { metric?: string; target?: number }) {
+export default function GoalTargetFields({ metric: initialMetric = "salesValue", target, onMetricChange }: { metric?: string; target?: number; onMetricChange?: (metric: string) => void }) {
   const [metric, setMetric] = useState(initialMetric);
   const [raw, setRaw] = useState(target === undefined ? "" : String(target).replace(".", ","));
   const [touched, setTouched] = useState(false);
@@ -16,7 +16,7 @@ export default function GoalTargetFields({ metric: initialMetric = "salesValue",
   const label = kind === "money" ? "Valor da meta" : kind === "percentage" ? "Score desejado" : "Quantidade desejada";
   const hint = kind === "money" ? "Valor em reais, com até duas casas decimais." : kind === "percentage" ? "Porcentagem entre 0,01% e 100%." : "Quantidade em número inteiro, sem casas decimais.";
   return <>
-    <label>Tipo *<select name="metric" required value={metric} onChange={event => { setMetric(event.target.value); setRaw(""); setTouched(false); }}>
+    <label>Tipo *<select name="metric" required value={metric} onChange={event => { setMetric(event.target.value); onMetricChange?.(event.target.value); setRaw(""); setTouched(false); }}>
       {(["salesValue", "salesCount", "usageScore", "referralCount"] as const).map(key => <option key={key} value={key}>{goalMetricLabels[key]}</option>)}
       {initialMetric === "clientCount" && <option value="clientCount">{goalMetricLabels.clientCount}</option>}
     </select></label>
