@@ -1145,7 +1145,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             var liaDetail = CommissionConfirmationService.Detail(item.Description);
             if (liaDetail?["kind"]?.ToString() == "liaJourney")
             {
-                if (item.Status != "Concluida") item.Status = "Validacao";
+                if (LiaJourneyValidationPolicy.FromCommercial(liaDetail) || item.Status != "Concluida") item.Status = "Validacao";
+                if (LiaJourneyValidationPolicy.FromCommercial(liaDetail)) item.Owner = LiaJourneyValidationPolicy.SharedQueue;
+                liaDetail.Remove("validationConfirmedAt"); liaDetail.Remove("validationConfirmedBy");
+                item.Description = liaDetail.ToJsonString();
                 var liaClientId = liaDetail["clientId"]?.ToString()?.Trim();
                 if (!string.IsNullOrEmpty(liaClientId))
                 {
@@ -1483,16 +1486,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (item.Version != command.Version)
             throw new DomainException("O registro foi alterado por outro usuário. Atualize a tela e tente novamente.", 409);
 
-        if (item.Module == "lia" && CommissionConfirmationService.Detail(item.Description)["kind"]?.ToString() == "liaJourney"
-            && !string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
-        {
-            var initialQueueAssignment = item.Status == "Validacao" && (actor.HasPermission("lia", "approve") || actor.HasPermission("lia", "manage"))
-                && !await db.Users.AnyAsync(user => user.Active && user.BlockedAt == null && user.DisplayName == item.Owner, cancellationToken);
-            if (!string.Equals(item.Owner, actor.DisplayName, StringComparison.OrdinalIgnoreCase) && !initialQueueAssignment)
-                throw new DomainException("Somente o responsável atual pelo card pode alterar o responsável.", 403);
-            if (!await db.Users.AnyAsync(user => user.Active && user.BlockedAt == null && user.DisplayName == command.Owner.Trim(), cancellationToken))
-                throw new DomainException("Selecione um colaborador ativo para assumir o acompanhamento LIA.");
-        }
+        command = await LiaJourneyValidationPolicy.PrepareUpdateAsync(db, item, command, actor, cancellationToken);
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Informe o título do registro.");
 
@@ -1729,6 +1723,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             if (item.Status == "Validacao" && command.NextStatus != item.Status &&
                 !await db.Users.AnyAsync(user => user.Active && user.BlockedAt == null && user.DisplayName == item.Owner, cancellationToken))
                 throw new DomainException("Selecione um colaborador ativo como responsável pelo onboarding.", 409);
+            if (item.Status == "Validacao" && command.NextStatus != item.Status && CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "kind") == "liaJourney"
+                && !await db.LiaFormRequests.AnyAsync(request => request.WorkItemId == item.Id, cancellationToken))
+                throw new DomainException("Gere e envie o formulário antes de encaminhar o cliente.", 409);
             item.Description = LiaJourneyTimeline.Normalize(item.Description, command.NextStatus, item, actor, command.Reason);
         }
         var previousCommercialDescription = item.Description;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LIA_STAGES, activeLiaStages, liaStageForStatus, liaContractedPlan, liaPlanOptions, liaClientRowError, liaClientPayload } from "../lib/lia-journey.ts";
+import { LIA_STAGES, activeLiaStages, liaStageForStatus, liaContractedPlan, liaPlanOptions, liaClientRowError, liaClientPayload, liaCanReassign } from "../lib/lia-journey.ts";
 import { directSaleFollowup } from "../lib/direct-sale-routing.ts";
 
 test("o seletor usa apenas as abas atuais, sem reproduzir status internos ou etapas inativas", () => {
@@ -58,4 +58,12 @@ test("vendas diretas propagam o plano selecionado para a LIA", () => {
   const sale = { clientId: "123456", saleId: "260001", saleDate: "2026-11-12", name: "Clínica", seller: "Ana", followUpTrack: "lia", liaPlan: "Growth", version: "Completo", origin: "Indicação", totalCents: 20000, products: [{ product: "Dontus", plan: "Completo", unitValue: 200, quantity: 1 }] };
   const detail = directSaleFollowup(sale, "lead-id", "2026-11-12T12:00:00Z", "history");
   assert.equal(detail.liaPlan, "Growth"); assert.equal(detail.sourceLeadId, "lead-id"); assert.equal(detail.clientId, "123456");
+});
+
+test("a edição e troca de responsável pertencem ao responsável atual, com comparação de nomes normalizada",()=>{
+  assert.equal(liaCanReassign("Ana"," Ana "),true);
+  assert.equal(liaCanReassign("ANA","ana"),true);
+  assert.equal(liaCanReassign("Ana","Coordenação"),false);
+  assert.equal(liaCanReassign("Fila compartilhada","Ana"),false);
+  assert.equal(liaCanReassign("",""),false);
 });

@@ -473,3 +473,18 @@ Regras de espaçamento evitam invalidar o estilo do quadro inteiro a cada tecla.
 Nos atendimentos, a lista completa de clientes é carregada no seletor ao receber
 foco e recolhida ao sair; os textos são lidos diretamente do formulário no envio,
 inclusive ao pressionar Enter sem sair do campo.
+
+### Validação e cadastro do Acompanhamento LIA
+
+Clientes encaminhados pelo Comercial entram em **1. Validação**, com responsável
+**Fila compartilhada**, inclusive quando já existe um Kick off agendado. Gere o
+link do formulário e envie ao cliente; em seguida, clique em **Conferir dados**.
+A conferência fica registrada com data e autor antes de liberar a seleção do
+responsável e o botão **Direcionar para o responsável**. É preciso gerar o link;
+a resposta do formulário não é obrigatória para essa conferência.
+
+O botão de alterar responsável abre a seleção de colaboradores. **Editar** abre
+um modal central com nome, responsável, WhatsApp, plano e origem. Somente o
+responsável atual pode editar esses dados, mesmo que outro usuário tenha
+permissão de gestão; a validação inicial da fila continua disponível à equipe
+com permissão de edição da LIA. As regras também são verificadas pelo servidor.

@@ -14,3 +14,15 @@
 .lia-journey-module .lia-workspace-tabs>.journey-tabs{align-items:stretch!important}.lia-journey-module .lia-workspace-tabs>.journey-tabs>button{align-self:stretch!important;height:100%;min-height:76px!important}.lia-journey-module .journey-drawer-body>.lia-summary-grid{flex:0 0 auto;min-height:108px;max-height:none!important;overflow-y:hidden}
 .lia-journey-module .lia-workspace-tabs>.journey-tabs>button{flex-direction:row!important;gap:7px;min-height:50px!important;padding:9px 4px!important}.lia-journey-module .journey-tabs .lia-tab-name{min-width:0;font:inherit;font-weight:700;line-height:1.3;overflow-wrap:anywhere}.lia-journey-module .journey-tabs .lia-tab-count{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:21px;height:21px;margin:0;padding:0 5px;line-height:1;font-size:10px}
 @media(max-width:760px){.lia-prompt-bi-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.lia-prompt-bi-charts{grid-template-columns:1fr}}
+
+.lia-client-edit-backdrop{z-index:260}
+.standard-modal.lia-client-edit-modal{width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:18px}
+.lia-client-edit-modal>.modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:22px 24px;border-bottom:1px solid var(--line);flex:none}
+.lia-client-edit-modal h2{font-size:23px;margin:5px 0 8px}.lia-client-edit-modal p{font-size:13px;color:var(--muted)}
+.lia-client-edit-modal>form{min-height:0;overflow:auto;padding:22px 24px;scroll-padding-bottom:90px}
+.lia-client-edit-fields{margin:0;padding:0;border:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;min-width:0}
+.lia-client-edit-fields label{display:grid;gap:7px;min-width:0;font-size:13px;font-weight:600}.lia-client-edit-fields .wide{grid-column:1/-1}
+.lia-client-edit-fields :is(input,select){min-width:0;width:100%;min-height:44px;border:1px solid var(--line);border-radius:9px;padding:10px;color:var(--ink);background:var(--input)}
+.lia-client-edit-modal footer{display:flex;justify-content:flex-end;gap:10px;margin-top:22px;border-top:1px solid var(--line);padding-top:18px}
+.lia-client-edit-modal .icon-button,.lia-owner-field>.icon-button{min-width:44px;min-height:44px}.lia-owner-field>.icon-button{position:relative;z-index:1;flex:0 0 auto}
+@media(max-width:600px){.lia-client-edit-fields{grid-template-columns:minmax(0,1fr)}.lia-client-edit-fields .wide{grid-column:auto}.lia-client-edit-modal>.modal-head,.lia-client-edit-modal>form{padding:18px}.lia-client-edit-modal footer{flex-wrap:wrap}}
