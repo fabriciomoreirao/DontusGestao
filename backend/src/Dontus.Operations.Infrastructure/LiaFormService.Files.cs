@@ -103,6 +103,8 @@ public sealed partial class LiaFormService
         actor.RequirePermission("lia", "view");
         var attachment = await db.LiaFormAttachments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct)
             ?? throw new DomainException("Anexo não encontrado.", 404);
+        if (!actor.HasPermission(FollowupValidationPolicy.Screen, "view") && await db.LiaFormRequests.AnyAsync(request => request.Id == attachment.RequestId && db.WorkItems.Any(item => item.Id == request.WorkItemId && item.Status == "Validacao"), ct))
+            throw new DomainException("Seu acesso não permite visualizar a validação dos acompanhamentos.", 403);
         if (!await db.LiaFormRequests.AnyAsync(x => x.Id == attachment.RequestId && x.SubmittedAt != null, ct))
             throw new DomainException("Resposta do formulário não encontrada.", 404);
         if (attachment.Content is not null)

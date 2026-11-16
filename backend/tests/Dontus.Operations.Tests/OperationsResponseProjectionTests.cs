@@ -8,6 +8,22 @@ namespace Dontus.Operations.Tests;
 
 public sealed class OperationsResponseProjectionTests
 {
+    [Fact]
+    public async Task Commercial_history_is_not_evicted_by_recent_activity_in_other_modules()
+    {
+        await using var db = Context();
+        var sale = Item("commercial"); sale.RecordType = "Lead comercial"; sale.UpdatedAt = DateTimeOffset.UtcNow.AddYears(-1); sale.AmountCents = 12345;
+        sale.Description = """{"kind":"commercialLead","stage":"Ganho","wonAt":"2025-11-01T12:00:00Z"}""";
+        db.WorkItems.Add(sale);
+        db.WorkItems.AddRange(Enumerable.Range(0, 1005).Select(_ => Item()));
+        var hiddenSale = Item("commercial"); hiddenSale.Title = "Visível somente com acesso comercial"; db.WorkItems.Add(hiddenSale);
+        await db.SaveChangesAsync();
+        var actor = Actor with { Permissions = [new("marketing", true, false, false, false, false), new("commercial", true, false, false, false, false)] };
+        var snapshot = await new OperationsService(db).GetSnapshotAsync(actor);
+        Assert.Equal(1002, snapshot.Items.Count);
+        Assert.Equal(12345, snapshot.Items.Single(item => item.Id == sale.Id).AmountCents);
+        Assert.DoesNotContain((await new OperationsService(db).GetSnapshotAsync(Actor)).Items, item => item.Module == "commercial");
+    }
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static readonly ActorContext Actor = new("test@dontus.local", "Teste", "Colaborador", "Marketing", [new("marketing", true, false, true, false, false)]);
     private static WorkItem Item(string module = "marketing") => new() { Module = module, RecordType = "Solicitação", Title = "Teste", Status = "Novo", CreatedBy = "teste" };

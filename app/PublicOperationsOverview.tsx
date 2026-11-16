@@ -1,5 +1,6 @@
 "use client";
 import GoalProgressCard from "@/app/GoalProgressCard";
+import PublicGoalCharts from "@/app/PublicGoalCharts";
 
 import {
   Activity, BadgeCheck, BarChart3, BriefcaseBusiness, CalendarDays, CheckCircle2,
@@ -28,7 +29,7 @@ type PublicDepartment = {
   goals: { salesValueCents: number; salesCount: number; trackingCount: number; trackingActual: number; trackingProgress: number };
   topCollaborators: PublicCollaborator[]; activityByDay: PublicDay[]; commercial: PublicCommercial;
 };
-type PublicPerformanceGoal = { id:string;title:string;metric:string;cadence:string;target:number;actual:number;progress:number;achieved:boolean;employee:string;department:string;periodStart:string;periodEnd:string;funnelName?:string;moduleName?:string };
+type PublicPerformanceGoal = { id:string;title:string;metric:string;cadence:string;target:number;actual:number;progress:number;achieved:boolean;employee:string;department:string;periodStart:string;periodEnd:string;funnelName?:string;moduleName?:string;history?:{date:string;actual:number}[] };
 type PublicOverviewData = {
   performanceGoals?: PublicPerformanceGoal[];
   saleEvents?: SaleCelebration[];
@@ -258,5 +259,5 @@ function RankingPanel({ title, icon, entries, max }: { title: string; icon: Reac
 }
 
 function PublicGoalCards({goals}:{goals:PublicPerformanceGoal[]}) {
- return goals.length>0?<section className="public-performance-goals" aria-label="Acompanhamento das metas">{goals.map(goal=><GoalProgressCard key={goal.id} goal={goal}/>)}</section>:null;
+ return goals.length>0?<div className="public-goals-dashboard"><PublicGoalCharts goals={goals}/><section className="public-performance-goals" aria-label="Acompanhamento das metas">{goals.map(goal=><GoalProgressCard key={goal.id} goal={goal}/>)}</section></div>:null;
 }

@@ -52,6 +52,8 @@ public sealed partial class LiaFormService(OperationsDbContext db, IDataProtecti
     {
         actor.RequirePermission("lia", "view");
         var query = db.LiaFormRequests.AsNoTracking().AsQueryable();
+        if (!actor.HasPermission(FollowupValidationPolicy.Screen, "view"))
+            query = query.Where(entry => db.WorkItems.Any(item => item.Id == entry.WorkItemId && item.Status != "Validacao"));
         if (workItemId.HasValue) query = query.Where(x => x.WorkItemId == workItemId.Value);
         var entries = await query.OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
         var workItemIds = entries.Select(x => x.WorkItemId).Distinct().ToList();
@@ -69,9 +71,10 @@ public sealed partial class LiaFormService(OperationsDbContext db, IDataProtecti
 
     public async Task<object> GenerateAsync(GenerateLiaFormCommand command, ActorContext actor, CancellationToken ct)
     {
-        actor.RequirePermission("lia", "edit");
-        if (!await db.WorkItems.AnyAsync(x => x.Id == command.WorkItemId && x.Module == "lia", ct))
-            throw new DomainException("Cliente do acompanhamento LIA não encontrado.", 404);
+        var workItem = await db.WorkItems.SingleOrDefaultAsync(x => x.Id == command.WorkItemId && x.Module == "lia", ct)
+            ?? throw new DomainException("Cliente do acompanhamento LIA não encontrado.", 404);
+        if (!FollowupValidationPolicy.CanEdit(workItem, actor)) actor.RequirePermission("lia", "edit");
+        FollowupValidationPolicy.RequireEdit(workItem, actor);
         var form = await db.LiaForms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.FormId && x.Active, ct)
             ?? throw new DomainException("Escolha um formulário ativo.");
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();

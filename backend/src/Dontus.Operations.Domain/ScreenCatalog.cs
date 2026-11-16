@@ -30,6 +30,7 @@ public static class ScreenCatalog
         new("marketing", "Gestão de Marketing", "Operação", 150, true),
         new("ti", "Desenvolvimento", "Operação", 160, true),
         new("lia", "Acompanhamento LIA", "Operação", 170, true),
+        new("followupValidation", "Aprovador de acompanhamentos", "Operação", 172),
         new("hr", "Gestão RH", "Operação", 175),
         new("commissions", "Comissões", "Operação", 180, true),
         new("goals", "Metas", "Operação", 190, true),

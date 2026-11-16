@@ -8,6 +8,23 @@ namespace Dontus.Operations.Tests;
 
 public sealed class TaskServiceTests
 {
+    [Fact]
+    public async Task Assigned_sector_coordinator_completes_directly_without_approval_request()
+    {
+        await using var db = CreateContext(); var (service, admin) = await InitializeAsync(db);
+        var department = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte"); var type = await db.TaskTypes.SingleAsync();
+        var coordinator = new AppUser { Email = "assigned-coordinator@test", DisplayName = "Coordenação responsável", CreatedBy = "tests" };
+        db.Users.Add(coordinator); db.UserDepartments.Add(new() { UserId = coordinator.Id, DepartmentId = department.Id, IsCoordinator = true }); await db.SaveChangesAsync();
+        var created = await service.CreateAsync(new("Conclusão direta", "Descrição", type.Id, null, null, department.Id, department.Id, coordinator.Id, null, null, null, "5511999990000", null, null, null, null, false, [], []), admin);
+        var task = await db.CorporateTasks.SingleAsync(x => x.Id == created.Id);
+        var actor = new ActorContext(coordinator.Email, coordinator.DisplayName, "Colaborador", "Suporte", [new("tasks", true, false, false, false, false)]);
+        var approval = await db.TaskStatuses.SingleAsync(x => x.Name == "Aguardando aprovação");
+        await Assert.ThrowsAsync<DomainException>(() => service.ChangeStatusAsync(new(task.Id, approval.Id, null, task.Version, true), actor));
+        var final = await db.TaskStatuses.SingleAsync(x => x.Name == "Resolvida");
+        await service.ChangeStatusAsync(new(task.Id, final.Id, "Concluída", task.Version), actor);
+        Assert.NotNull(task.CompletedAt); Assert.Equal(final.Id, task.StatusId);
+        Assert.DoesNotContain(db.TaskNotifications, entry => entry.TaskId == task.Id && entry.EventType == "approval_requested");
+    }
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

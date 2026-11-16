@@ -39,7 +39,7 @@ public sealed class FollowupAndPortalTests
     }
 
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-    private static ActorContext Actor(string module) => new("ana@test", "Ana", "Colaborador", "Suporte", [new(module, true, true, true, false, false)]);
+    private static ActorContext Actor(string module) => new("ana@test", "Ana", "Colaborador", "Suporte", [new(module, true, true, true, false, false), new("followupValidation", true, false, true, false, false)]);
 
     [Theory]
     [InlineData("activation")]

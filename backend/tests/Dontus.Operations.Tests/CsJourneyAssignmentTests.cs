@@ -107,7 +107,7 @@ public sealed class CsJourneyAssignmentTests
         if (calendarExists) db.AgendaCalendars.Add(destination);
         db.UserAgendaCalendarAccesses.AddRange(new UserAgendaCalendarAccess { UserId = source.Id, CalendarId = calendar.Id }, new UserAgendaCalendarAccess { UserId = target.Id, CalendarId = destination.Id });
         await db.SaveChangesAsync();
-        var actor = new ActorContext(source.Email, source.DisplayName, "Colaborador", "Comercial", [new EffectivePermission("cs", true, false, true, false, false)]);
+        var actor = new ActorContext(source.Email, source.DisplayName, "Colaborador", "Comercial", [new EffectivePermission("cs", true, false, true, false, false), new("followupValidation", true, false, true, false, false)]);
         return new(db, actor, source, target, department, customer, journey, [first, second]);
     }
 

@@ -137,7 +137,7 @@ internal sealed class CsDistributionService(OperationsDbContext db)
                 return new CsDistributionQueueDto(version, ordered.Length > 0 ? ordered[0] : null, last?.RecipientUserId,
                     allUsers.FirstOrDefault(user => user.Id == last?.RecipientUserId)?.DisplayName, last?.AssignedAt, ordered);
             }).ToArray();
-            boards.Add(new(track, DateTimeOffset.UtcNow, collaborators, queues, pending.Where(entry => entry.Track == track).Select(entry => entry.Client).ToArray()));
+            boards.Add(new(track, DateTimeOffset.UtcNow, collaborators, queues, pending.Where(entry => entry.Track == track && actor.HasPermission(FollowupValidationPolicy.Screen, "view")).Select(entry => entry.Client).ToArray()));
         }
         return boards;
     }

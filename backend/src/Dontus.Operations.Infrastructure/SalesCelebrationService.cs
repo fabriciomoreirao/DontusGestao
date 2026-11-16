@@ -21,10 +21,11 @@ public static class SalesCelebrationService
     }
     private static JsonObject Detail(string value) { try { return JsonNode.Parse(value) as JsonObject ?? new(); } catch (JsonException) { return new(); } }
     private static string Text(JsonObject detail, string key) => detail[key] is JsonValue value && value.TryGetValue<string>(out var text) ? text ?? "" : "";
-    public static bool IsWon(WorkItem item)
+    public static bool IsWon(WorkItem item, IReadOnlyList<CustomerCatalogOption>? funnels = null)
     {
         if (item.Module != "commercial" || Regex.IsMatch(item.RecordType, "reten|qualifica|configura", RegexOptions.IgnoreCase)) return false;
         var detail = Detail(item.Description);
+        if (funnels is not null && Text(detail, "kind") != "directSale") return CommercialCommissionSource.Won(item, funnels);
         var stage = Text(detail, "stage");
         return Regex.IsMatch(string.IsNullOrWhiteSpace(stage) ? item.Status : stage, "ganho|vendid|fechad|contrat|conclu", RegexOptions.IgnoreCase);
     }
@@ -32,17 +33,19 @@ public static class SalesCelebrationService
     public static string PreserveWinDate(WorkItem item, string? description)
     {
         var before = Detail(item.Description); var next = Detail(description ?? "{}");
+        if (next["notifyPublicWin"] is null && before["notifyPublicWin"] is not null) next["notifyPublicWin"] = before["notifyPublicWin"]!.DeepClone();
         if (IsWon(item)) next["wonAt"] = Text(before, "wonAt") is { Length: > 0 } date ? date : item.UpdatedAt.ToString("O");
         else next.Remove("wonAt");
         return next.ToJsonString();
     }
 
-    public static void RecordWin(OperationsDbContext db, WorkItem item, bool previouslyWon, ActorContext actor)
+    public static void RecordWin(OperationsDbContext db, WorkItem item, bool previouslyWon, ActorContext actor, IReadOnlyList<CustomerCatalogOption>? funnels = null)
     {
-        if (previouslyWon || !IsWon(item)) return;
+        if (previouslyWon || !IsWon(item, funnels)) return;
         var detail = Detail(item.Description);
         detail["wonAt"] = DateTimeOffset.UtcNow.ToString("O");
         item.Description = detail.ToJsonString();
+        if (detail["notifyPublicWin"] is JsonValue flag && flag.TryGetValue<bool>(out var notify) && !notify) return;
         db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = AuditAction, Resource = "work_item", ResourceId = item.Id.ToString(), Module = "commercial",
             DetailsJson = JsonSerializer.Serialize(new { customerName = Text(detail, "customer") is { Length: > 0 } customer ? customer : string.IsNullOrWhiteSpace(item.CustomerName) ? item.Title : item.CustomerName,
                 clientId = Text(detail, "clientId"), seller = Text(detail, "seller") is { Length: > 0 } seller ? seller : item.Owner }) });

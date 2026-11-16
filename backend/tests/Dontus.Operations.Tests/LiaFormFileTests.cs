@@ -9,7 +9,7 @@ namespace Dontus.Operations.Tests;
 
 public sealed class LiaFormFileTests
 {
-    private static readonly ActorContext Admin = new("admin@dontus.local", "Admin", "Admin", "LIA", [new("lia", true, true, true, false, true)]);
+    private static readonly ActorContext Admin = new("admin@dontus.local", "Admin", "Admin", "LIA", [new("lia", true, true, true, false, true), new("followupValidation", true, false, true, false, false)]);
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static readonly LiaFormQuestion[] Questions = [new("name", "Nome", "text", true, []), new("files", "Documentos", "file", true, []), new("optional", "Outros arquivos", "file", false, [])];
     private static async Task<(Guid ClientId, Guid FormId, string Token)> Setup(OperationsDbContext db, LiaFormService service)

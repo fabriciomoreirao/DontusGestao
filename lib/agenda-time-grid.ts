@@ -1,19 +1,27 @@
 export const AGENDA_SLOT_MINUTES = 30;
 export const AGENDA_SLOT_HEIGHT = 42;
-export const agendaTimeSlots = Array.from({ length: 48 }, (_, index) => {
-  const minutes = index * AGENDA_SLOT_MINUTES;
+export const AGENDA_START_MINUTE = 7 * 60;
+export const AGENDA_END_MINUTE = 21 * 60;
+export const agendaTimeSlots = Array.from({ length: (AGENDA_END_MINUTE - AGENDA_START_MINUTE) / AGENDA_SLOT_MINUTES }, (_, index) => {
+  const minutes = AGENDA_START_MINUTE + index * AGENDA_SLOT_MINUTES;
   return { minutes, label: `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}` };
 });
+
+export function agendaWeekdays(anchor: Date) {
+  const monday = new Date(anchor);
+  monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+  return Array.from({ length: 5 }, (_, index) => { const day = new Date(monday); day.setDate(monday.getDate() + index); return day; });
+}
 
 type TimedEntry = { id: string; startsAt: string; endsAt: string };
 export type PositionedAgendaEntry<T> = { entry: T; startMinute: number; endMinute: number; column: number; columns: number };
 
 // Clip at Brasilia midnight and share horizontal space only between overlapping events.
-export function positionAgendaEntries<T extends TimedEntry>(entries: T[], date: string): PositionedAgendaEntry<T>[] {
+export function positionAgendaEntries<T extends TimedEntry>(entries: T[], date: string, range = { startMinute: 0, endMinute: 1440 }): PositionedAgendaEntry<T>[] {
   const dayStart = Date.parse(`${date}T00:00:00-03:00`);
   const rows = entries.map(entry => ({ entry,
-    startMinute: Math.max(0, (Date.parse(entry.startsAt) - dayStart) / 60_000),
-    endMinute: Math.min(1440, (Date.parse(entry.endsAt) - dayStart) / 60_000),
+    startMinute: Math.max(range.startMinute, (Date.parse(entry.startsAt) - dayStart) / 60_000),
+    endMinute: Math.min(range.endMinute, (Date.parse(entry.endsAt) - dayStart) / 60_000),
     column: 0, columns: 1,
   })).filter(row => Number.isFinite(row.startMinute) && Number.isFinite(row.endMinute) && row.startMinute < row.endMinute)
     .sort((a,b) => a.startMinute - b.startMinute || b.endMinute - a.endMinute || a.entry.id.localeCompare(b.entry.id));

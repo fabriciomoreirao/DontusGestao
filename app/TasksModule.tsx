@@ -25,10 +25,11 @@ import {
   Power, RotateCcw, Settings, Smile, Trash2, UserRound, UsersRound, X, Filter,
 } from "lucide-react";
 import { createPortal } from "react-dom";
-import { createContext, FormEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, FormEvent, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import MediaUploadField from "@/app/MediaUploadField";
 import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import TaskClientNoticeModal from "@/app/TaskClientNoticeModal";
+import TaskTransferModal from "@/app/TaskTransferModal";
 import { availableTaskDepartments, taskViewingDepartments, initialTaskStatuses, taskInitialSelection, taskTypesForDepartment } from "@/lib/task-catalogs";
 import { taskUploadBatches } from "@/lib/task-upload";
 
@@ -109,6 +110,17 @@ const dt = (value?: string | null) => value
   ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value))
   : "—";
 
+function TaskDeliveryDeadline({ task, compact = false }: { task: Pick<CorporateTask, "dueAt" | "slaDueAt">; compact?: boolean }) {
+  const value = task.dueAt ?? task.slaDueAt;
+  const date = value ? new Date(value) : null;
+  const valid = date !== null && Number.isFinite(date.getTime());
+  const full = valid ? dt(value) : "Não definido";
+  const label = valid && compact
+    ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date)
+    : full;
+  return <span className={`task-delivery-deadline${compact ? " compact" : ""}`} title={`Prazo de entrega: ${full}`} aria-label={`Prazo de entrega: ${full}`}><CalendarDays size={14}/><span>{compact ? "Entrega: " : "Prazo de entrega: "}{valid ? <time dateTime={value!}>{label}</time> : "Não definido"}</span></span>;
+}
+
 export default function TasksModule({ linkedDevelopmentItems = [], module, customers, user, canCreate, canEdit, canManage, canRemind=false, canSchedule=false, capabilities, busy, month, onMonthChange, operate, onSendToDevelopment, uploadAttachments, deleteAttachment, onOpenSettings }: Props) {
   const [view, setView] = useState<"kanban" | "list">("kanban");
   const [query, setQuery] = useState("");
@@ -126,7 +138,7 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
   const reminderFilter = useReminderFilter("tasks");
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const currentCollaborator = module.collaborators.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
-  const movementAccessFor=(task:CorporateTask)=>({userId:currentCollaborator?.id,canEdit,canManage,changeStatus:has("changeStatus"),cancel:has("cancel"),canApprove:canManage||Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId)),canInteract:canInteractWithTask(task,currentCollaborator,canManage)});
+  const movementAccessFor=(task:CorporateTask)=>({directComplete:task.assigneeUserId===currentCollaborator?.id&&Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId)),userId:currentCollaborator?.id,canEdit,canManage,changeStatus:has("changeStatus"),cancel:has("cancel"),canApprove:canManage||Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId)),canInteract:canInteractWithTask(task,currentCollaborator,canManage)});
   const canMoveTo=(task:CorporateTask,statusId:string)=>{const status=module.statuses.find(entry=>entry.id===statusId);return !busy&&Boolean(status&&canMoveTask(task,status,module.types,movementAccessFor(task)));};
   const creationDepartments = availableTaskDepartments(module.departments, currentCollaborator, has("viewOtherDepartments"));
   const availableDepartments = taskViewingDepartments(module.departments, currentCollaborator, has("viewOtherDepartments"), module.tasks.filter(task=>task.assigneeUserId===currentCollaborator?.id).map(task=>task.currentDepartmentId));
@@ -253,7 +265,7 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, canDrag
         <div className="task-card-heading"><strong className="task-card-title">{task.title}</strong><TaskClientStateBadge state={task.clientNotificationState}/></div>
         <div className="task-card-labels"><span className="task-card-type"><CircleDot size={13}/>{task.typeName}</span></div>
         <div className="task-card-meta"><span className="task-card-priority"><i style={{ background: task.priorityColor }}/>{task.priorityName}</span><span className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}><Clock3 size={12} /> {task.completedAt ? "Concluída" : `${task.slaState} · ${dt(task.slaDueAt)}`}</span></div>
-        <footer><span className="task-card-department"><UsersRound size={14} /> {task.departmentName}</span><span className="task-card-owner"><CollaboratorAvatar collaborator={collaborators.find((item) => item.id === task.assigneeUserId)} /><span><small>Responsável</small><b>{task.assigneeName}</b></span><ChevronRight size={17} className="task-card-open-icon" /></span></footer>{canEdit && task.canModify && <div className="task-card-bottom-actions"><span className="task-card-actions"><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></span></div>}
+        <footer><div className="task-card-sector-deadline"><span className="task-card-department"><UsersRound size={14} /> {task.departmentName}</span><TaskDeliveryDeadline task={task} compact/></div><span className="task-card-owner"><CollaboratorAvatar collaborator={collaborators.find((item) => item.id === task.assigneeUserId)} /><span><small>Responsável</small><b>{task.assigneeName}</b></span><ChevronRight size={17} className="task-card-open-icon" /></span></footer>{canEdit && task.canModify && <div className="task-card-bottom-actions"><span className="task-card-actions"><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></span></div>}
       </article>)}{column.length > visibleTasks.length && <button type="button" className="task-column-more" onClick={() => setLimits((current) => ({ ...current, [status.id]: limit + 10 }))}>Ver mais ({column.length - visibleTasks.length})</button>}</div>
     </section>;
   })}</div>;
@@ -339,10 +351,10 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
         <label>Cliente<select name="customerId" disabled={customerLocked} value={customerId} onChange={(event) => selectCustomer(event.target.value)}><option value="">Sem cliente vinculado</option>{customers.map((c) => <option value={c.id} key={c.id}>{c.trade_name}</option>)}</select></label>
         <label>WhatsApp do cliente *<PhoneInput name="clientWhatsApp" type="tel" required minLength={10} defaultValue={initial?.clientWhatsApp} placeholder="(11) 99999-9999" /></label>
         <label>Setor responsável *<select name="departmentId" required value={departmentId} onChange={event => { setDepartmentId(event.target.value); setRequestedTypeId(""); }}><option value="">Selecione o setor</option>{module.departments.filter(department => department.active && departmentIds.includes(department.id)).map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select>{!departmentIds.length && <small>Nenhum setor ativo disponível para seu usuário. Confira os vínculos ou as permissões de Tarefas.</small>}</label>
-        <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators.find(person => person.id === selectedDepartment?.approverUserId)?.name || "Coordenador do setor não cadastrado"}</strong><small>A conclusão ficará pendente até a aprovação do coordenador.</small></div>
+        <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators.find(person => person.id === selectedDepartment?.approverUserId)?.name || "Coordenador do setor não cadastrado"}</strong><small>A tarefa atribuída ao próprio coordenador pode ser concluída diretamente. Os demais responsáveis enviam para aprovação.</small></div>
         <label className="wide">Tipo de tarefa *<select name="typeId" required value={selectedType?.id ?? ""} onChange={event => setRequestedTypeId(event.target.value)}><option value="">Selecionar...</option>{validTypes.map((t) => <option value={t.id} key={t.id}>{t.name}</option>)}</select>{departmentId && !validTypes.length && <small>Nenhum tipo ativo vinculado a este setor. Configure o vínculo em Cadastros → Tipos de tarefa.</small>}</label>
         {selectedType && <div className="task-readonly-field wide"><span>Etapa inicial</span><strong>{initialStatus?.name ?? "Este tipo precisa de uma etapa inicial ativa. Revise o cadastro do tipo."}</strong></div>}
-        <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={initial?.description} placeholder="Explique o problema, o resultado esperado e as informações necessárias para a análise." /></label>
+        <label className="wide">Resumo detalhado *<textarea name="description" required rows={10} defaultValue={initial?.description} placeholder="Explique o problema, o resultado esperado e as informações necessárias para a análise." /></label>
       </div>
     </section>}
     <section className="task-form-section wide">
@@ -389,7 +401,7 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
     <label>ID do cliente<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
     <label>WhatsApp do cliente *<PhoneInput name="clientWhatsApp" required minLength={10} defaultValue={task.clientWhatsApp} /></label>
     <label>Tipo *<select name="typeId" required defaultValue={task.typeId}>{validTypes.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>
-    <label className="wide">Resumo detalhado *<textarea name="description" required rows={6} defaultValue={task.description} /></label>
+    <label className="wide">Resumo detalhado *<textarea name="description" required rows={10} defaultValue={task.description} /></label>
     <CheckboxMultiSelect label="Colaboradores participantes" name="participantUserIds" options={module.collaborators.filter(item => item.active).map(item => ({ id: item.id, label: item.name }))} defaultValue={task.participantUserIds} disabled={busy} />
     <div className="task-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? "Salvando..." : "Salvar alterações"}</button></div>
   </form></Overlay>;
@@ -401,12 +413,22 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
   const [comment, setComment] = useState("");
   const [commentLimit, setCommentLimit] = useState(5);
   const [historyLimit, setHistoryLimit] = useState(5);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyCard = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const card = historyCard.current;
+    if (!historyOpen || !card) return;
+    const reveal = () => card.scrollIntoView({ block: "nearest", behavior: "instant" });
+    const observer = new ResizeObserver(reveal);
+    observer.observe(card);
+    if (card.parentElement) observer.observe(card.parentElement);
+    reveal();
+    return () => observer.disconnect();
+  }, [historyOpen]);
   const commentsByDate = [...task.comments].sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt));
   const historyByDate = [...task.history].sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));
-  useEffect(()=>{setCommentLimit(5);setHistoryLimit(5)},[task.id]);
-  const [transferDepartment, setTransferDepartment] = useState(module.departments.find((department) => department.active && department.id !== task.currentDepartmentId)?.id ?? "");
-  const [transferAssignee, setTransferAssignee] = useState(task.assigneeUserId ?? "");
-  const [transferReason, setTransferReason] = useState("");
+  useEffect(()=>{setCommentLimit(5);setHistoryLimit(5);setHistoryOpen(false)},[task.id]);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -429,13 +451,14 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
   const currentUserId = currentCollaborator?.id;
   const {canClaim,canTransfer:canTransferResponsible} = taskAssignmentAccess(task,currentCollaborator);
   const responsibleChoices = canClaim ? availableAssignees.filter(collaborator=>collaborator.id===currentUserId) : availableAssignees;
-  useEffect(()=>{setResponsibleUserId(task.assigneeUserId??"");setTransferAssignee(task.assigneeUserId??"")},[task.id,task.assigneeUserId]);
+  useEffect(()=>{setResponsibleUserId(task.assigneeUserId??"");},[task.id,task.assigneeUserId]);
   const isAssignee = Boolean(currentUserId && task.assigneeUserId === currentUserId);
   const canApprove = canManage || Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId));
+  const directComplete = isAssignee && Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId));
   const canRunWorkflow = isAssignee || canApprove || canEdit && has("changeStatus");
   const canForwardTask = isAssignee || canEdit && has("forward") && (canManage || user.isCoordinator);
   const taskType = module.types.find((type) => type.id === task.typeId);
-  const movementAccess={userId:currentUserId,canEdit,canManage,canApprove,changeStatus:has("changeStatus"),cancel:has("cancel")};
+  const movementAccess={directComplete,userId:currentUserId,canEdit,canManage,canApprove,changeStatus:has("changeStatus"),cancel:has("cancel")};
   const availableStatuses = module.statuses.filter(status=>status.id===task.statusId||canMoveTask(task,status,module.types,movementAccess));
   const finalStatus = module.statuses.find(status=>status.isFinal&&!/cancel/i.test(status.name)&&canMoveTask(task,status,module.types,movementAccess));
   const approvalStatus = module.statuses.find(status=>canMoveTask(task,status,module.types,movementAccess,"requestApproval"));
@@ -479,7 +502,7 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
       setFileInputKey((value) => value + 1);
     }
   };
-  return <Overlay title={task.title} titleAccessory={<TaskProtocolChip protocol={task.protocol}/>} eyebrow="Detalhes da tarefa" onClose={onClose} wide side detail headerMeta={<>
+  return <Overlay title={task.title} titleAccessory={<><TaskProtocolChip protocol={task.protocol}/><span className="task-current-department" title={task.departmentName}><UsersRound size={15}/>{task.departmentName || "Setor não informado"}</span><TaskDeliveryDeadline task={task}/></>} eyebrow="Detalhes da tarefa" onClose={onClose} wide side detail headerMeta={<>
     <TaskClientStateBadge state={task.clientNotificationState}/>
     <span className="task-header-subtitle">Última atualização em {dt(task.updatedAt)}</span>
   </>} headerActions={<>
@@ -488,7 +511,7 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
     {(linkedDevelopment || developmentSubtaskId) ? <button className="task-dev-detail-action" type="button" onClick={() => { if(linkedDevelopment)setLinkedDrawer(true);else window.location.href = `/?mod=ti&subtask=${developmentSubtaskId}`; }}><Code2 size={15} /> Acessar subtarefa de TI</button> : canEdit && <button className="task-dev-detail-action" type="button" disabled={busy || sentToDevelopment} title="Enviar esta tarefa para a triagem de desenvolvimento" onClick={() => { void onSendToDevelopment(task).then((result) => { if (result) { setSentToDevelopment(true); setDevelopmentSubtaskId(result.id ?? ""); } }); }}><Code2 size={15} /> {sentToDevelopment ? "Enviada para Desenvolvimento" : "Enviar para Desenvolvimento"}</button>}
     {canSchedule&&<button type="button" className="task-agenda-action agenda-detail-action" onClick={()=>openAgendaComposer({module:"tasks",entityId:task.id,clientId:task.customerCode,customerName:task.customerName,title:task.title,summary:task.description})}><CalendarDays size={15}/>Agendar</button>}
   </>} headerWorkflow={<>
-        {canApprove && finalStatus && awaitingApproval && <button className="task-complete-button" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: finalStatus.id, justification: "Aprovada pela coordenação.", version: task.version }, "Tarefa aprovada e concluída com sucesso.")}><CheckCircle2 size={17} /> Aprovar e concluir</button>}
+        {canApprove && finalStatus && (awaitingApproval || directComplete && !task.completedAt) && <button className="task-complete-button" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: finalStatus.id, justification: directComplete ? "Concluída pelo coordenador responsável." : "Aprovada pela coordenação.", version: task.version }, directComplete ? "Tarefa concluída com sucesso." : "Tarefa aprovada e concluída com sucesso.")}><CheckCircle2 size={17} /> {directComplete ? "Concluir tarefa" : "Aprovar e concluir"}</button>}
         {canApprove && task.completedAt && resumeStatus && <button className="task-resume-control" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: resumeStatus.id, justification: "Tarefa retomada.", version: task.version }, "Tarefa retomada com sucesso.")}><RotateCcw size={16} /> Retomar tarefa</button>}
       </>}>
     <div className="task-detail-layout"><main className="task-detail-main-column">    <section className="task-description-card"><div className="task-description-surface"><h3><FileText size={22} /> Descrição da tarefa</h3><p>{task.description}</p></div></section>
@@ -521,7 +544,8 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
         {canRunWorkflow && approvalStatus && !task.completedAt && task.statusId !== approvalStatus.id && <button className="task-complete-button" type="button" disabled={busy} onClick={() => void operate({ action: "requestTaskApproval", taskId: task.id, statusId: approvalStatus.id, justification: "Encaminhada para aprovação.", version: task.version }, "Tarefa enviada para aprovação.")}><CheckCircle2 size={17} /> Enviar para aprovação</button>}
 
       </div>
-</section>      <section className="task-history-card"><header><h3><History size={17} /> Histórico</h3><span>({Math.min(historyLimit,task.history.length)} últimos)</span></header><div className="task-history">{historyByDate.slice(0,historyLimit).map((h) => <article key={h.id}><i /><div><b>{h.summary}</b><small>{h.actorName} · {dt(h.createdAt)}</small>{h.justification && <p>Justificativa: {h.justification}</p>}</div></article>)}</div>{task.history.length>historyLimit&&<button type="button" className="task-see-more" onClick={()=>setHistoryLimit(value=>value+5)}><ChevronDown size={15}/>Ver mais histórico ({task.history.length-historyLimit})</button>}</section><div className="task-detail-footer">{canForwardTask && module.departments.some((department) => department.active && department.id !== task.currentDepartmentId) && <details className="task-transfer-disclosure"><summary><ChevronDown size={15}/>Encaminhar para outro setor</summary><div className="task-transfer"><div><span>TRANSFERÊNCIA DE SETOR</span><h3>Encaminhar tarefa</h3><p>Ela sairá do quadro de <b>{task.departmentName}</b> e entrará na etapa inicial do setor de destino.</p></div><label>Setor de destino<select value={transferDepartment} onChange={(e) => { setTransferDepartment(e.target.value); }}><option value="">Selecionar setor</option>{module.departments.filter((d) => d.active && d.id !== task.currentDepartmentId).map((d) => <option value={d.id} key={d.id}>{d.name}</option>)}</select></label><label>Novo responsável<SearchablePeopleSelect searchLabel="Novo responsável" disabled={!!task.assigneeUserId&&!isAssignee} value={transferAssignee} onChange={(e) => setTransferAssignee(e.target.value)}><option value="">Fila compartilhada</option>{availableAssignees.map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</SearchablePeopleSelect></label><label className="task-transfer-reason">Motivo<input value={transferReason} onChange={(event) => setTransferReason(event.target.value)} placeholder="Explique o encaminhamento" /></label><button disabled={busy || !transferDepartment || !transferReason.trim()} onClick={async () => { const result = await operate({ action: "transferTask", taskId: task.id, departmentId: transferDepartment, assigneeUserId: transferAssignee || null, reason: transferReason.trim(), recalculateSla: true, version: task.version }, "Tarefa encaminhada para o novo setor."); if (result) onClose(); }}>Encaminhar tarefa</button></div></details>}    {canEdit && task.canModify && <section className="task-owner-controls"><button onClick={() => setEditing(true)}><Pencil size={15} /> Editar tarefa</button><button className="delete" onClick={async () => { const result = await operate({ action: "deleteTask", taskId: task.id, version: task.version }, "Tarefa excluída com sucesso."); if (result) onClose(); }}><Trash2 size={15} /> Excluir tarefa</button></section>}</div></aside></div>
+</section>      <section ref={historyCard} className="task-history-card"><header><h3><History size={17} /> Histórico</h3><button type="button" className="task-history-toggle" aria-expanded={historyOpen} aria-controls={`task-history-${task.id}`} onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? "Recolher" : "Abrir"}<ChevronDown size={15}/></button></header><div className="task-history-content" id={`task-history-${task.id}`} hidden={!historyOpen}><div className="task-history">{historyByDate.slice(0,historyLimit).map((h) => <article key={h.id}><i /><div><b>{h.summary}</b><small>{h.actorName} · {dt(h.createdAt)}</small>{h.justification && <p>Justificativa: {h.justification}</p>}</div></article>)}</div>{task.history.length>historyLimit&&<button type="button" className="task-see-more" onClick={()=>setHistoryLimit(value=>value+5)}><ChevronDown size={15}/>Ver mais histórico ({task.history.length-historyLimit})</button>}</div></section>{canForwardTask && module.departments.some(department => department.active && department.id !== task.currentDepartmentId) && <section className="task-transfer-card"><header><h3><Network size={17}/> Encaminhar para outro setor</h3><button type="button" className="task-transfer-trigger" aria-haspopup="dialog" aria-expanded={transferOpen} onClick={() => setTransferOpen(true)}>Encaminhar<ChevronRight size={15}/></button></header></section>}<div className="task-detail-footer">    {canEdit && task.canModify && <section className="task-owner-controls"><button onClick={() => setEditing(true)}><Pencil size={15} /> Editar tarefa</button><button className="delete" onClick={async () => { const result = await operate({ action: "deleteTask", taskId: task.id, version: task.version }, "Tarefa excluída com sucesso."); if (result) onClose(); }}><Trash2 size={15} /> Excluir tarefa</button></section>}</div></aside></div>
+    {transferOpen && canForwardTask && <TaskTransferModal task={task} departments={module.departments} collaborators={availableAssignees} canChangeAssignee={!task.assigneeUserId || isAssignee} busy={busy} onClose={() => setTransferOpen(false)} onTransfer={async (payload) => { const result = await operate({ action: "transferTask", taskId: task.id, version: task.version, recalculateSla: true, ...payload }, "Tarefa encaminhada para o novo setor."); if (result) { setTransferOpen(false); onClose(); } return Boolean(result); }} />}
     {clientNoticeOpen && <TaskClientNoticeModal task={task} message={clientNoticeMessage} onMessageChange={setClientNoticeMessage} busy={busy} onClose={() => setClientNoticeOpen(false)} onSend={async () => { const result = await operate({ action: "communicateWithClient", taskId: task.id, clientAction: "requestContact", channel: "Interno", message: clientNoticeMessage.trim() }, "Criador, responsável e coordenadores dos setores foram avisados para contatar o cliente."); if (result) setClientNoticeOpen(false); return Boolean(result); }} />}
     {editing && <TaskEditPortal><EditTaskModal task={task} module={module} customers={customers} busy={busy} onClose={() => setEditing(false)} onSubmit={async (payload) => { const result = await operate({ action: "updateTask", requireConfirmation: true, taskId: task.id, ...payload }, "Tarefa atualizada com sucesso."); if (result) setEditing(false); }} /></TaskEditPortal>}
     {linkedDrawer && linkedDevelopment && <LinkedDevelopmentDrawer item={linkedDevelopment} taskModule={module} user={user} onClose={()=>setLinkedDrawer(false)}/>}

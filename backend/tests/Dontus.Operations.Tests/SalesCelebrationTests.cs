@@ -7,6 +7,26 @@ namespace Dontus.Operations.Tests;
 
 public sealed class SalesCelebrationTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Notification_choice_changes_only_the_public_event_and_persists_on_later_edits(bool notify)
+    {
+        await using var db = Context(); var service = new OperationsService(db);
+        var item = new WorkItem { Module = "commercial", RecordType = "Lead comercial", Title = "Cliente", Owner = "Vendedor", CreatedBy = Actor.Email, AmountCents = 50000, Status = "Proposta", Description = """{"kind":"commercialLead","stage":"Proposta"}""" };
+        db.WorkItems.Add(item);
+        // A custom funnel explicitly marks its successful stage.
+        db.CustomerCatalogOptions.Add(new() { Catalog = "funnelStage", Name = "Vendas", Description = """{"s":[["Contrato aceito","#aaa",true]]}""" });
+        item.Description = """{"kind":"commercialLead","stage":"Proposta","funnel":"Vendas"}"""; await db.SaveChangesAsync();
+        await service.TransitionWorkItemAsync(new(item.Id, "Contrato aceito", item.Version, true, true, NotifyPublicWin: notify), Actor);
+        var saved = System.Text.Json.Nodes.JsonNode.Parse(item.Description)!;
+        Assert.Equal(notify, saved["notifyPublicWin"]!.GetValue<bool>()); Assert.NotNull(saved["wonAt"]); Assert.Equal(50000, item.AmountCents);
+        Assert.Equal(notify ? 1 : 0, (await SalesCelebrationService.RecentAsync(db, default)).Count);
+        var edited = System.Text.Json.Nodes.JsonNode.Parse(item.Description)!.AsObject(); edited.Remove("notifyPublicWin");
+        await service.UpdateWorkItemAsync(new(item.Id, item.Title, item.Owner, item.AmountCents, edited.ToJsonString(), null, null, item.Version), Actor);
+        Assert.Equal(notify, System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["notifyPublicWin"]!.GetValue<bool>());
+        Assert.Equal(notify ? 1 : 0, (await SalesCelebrationService.RecentAsync(db, default)).Count);
+    }
     private static readonly ActorContext Actor = new("vendedor@test.local", "Vendedor", "Comercial", "Comercial", [new("commercial", true, true, true, true, true)]);
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     [Fact]
