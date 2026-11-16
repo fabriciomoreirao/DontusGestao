@@ -3,6 +3,17 @@ import test from "node:test";
 import { beginKanbanDrag, readKanbanDrop, endKanbanDrag, suppressKanbanClick } from "../lib/kanban-drag.ts";
 import { canDragTask,canMoveTask } from "../lib/task-movement.ts";
 
+test('coordenador responsável conclui diretamente e não solicita aprovação',()=>{
+  const task={assigneeUserId:'coord',currentDepartmentId:'support',typeId:'type',statusName:'Em andamento'};
+  const final={id:'done',name:'Resolvida',departmentId:null,manualMovement:true,active:true,isFinal:true};
+  const approval={...final,id:'approval',name:'Aguardando aprovação',isFinal:false};
+  const types=[{id:'type',allowedStatusIds:['done','approval']}];
+  const access={userId:'coord',canEdit:false,canManage:false,changeStatus:false,cancel:false,canApprove:true,directComplete:true};
+  assert.equal(canMoveTask(task,final,types,access),true);
+  assert.equal(canMoveTask(task,approval,types,access,'requestApproval'),false);
+  assert.equal(canMoveTask(task,final,types,{...access,directComplete:false}),false);
+});
+
 const transfer=()=>{const values=new Map();return {effectAllowed:"none",setData:(type,value)=>values.set(type.toLowerCase(),value),getData:type=>values.get(type.toLowerCase())||""};};
 test("transporta o card de cada quadro com formato nativo e alternativa em texto",()=>{
   for(const type of ["taskId","workItemId","application/x-dontus-work-item","application/x-dontus-candidate","text/suggestion-id","text/plain"]){

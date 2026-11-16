@@ -9,7 +9,7 @@ namespace Dontus.Operations.Tests;
 
 public sealed class LiaJourneyTests
 {
-    private static ActorContext Editor => new("ana@test", "Ana", "Colaborador", "LIA", [new("lia", true, true, true, false, true)]);
+    private static ActorContext Editor => new("ana@test", "Ana", "Colaborador", "LIA", [new("lia", true, true, true, false, true), new("followupValidation", true, false, true, false, false)]);
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static JsonObject Detail() => new() { ["kind"]="liaJourney", ["clientId"]="123456", ["liaPlan"]="Performance", ["startDate"]="2026-10-01" };
     private static CreateWorkItemCommand Create(JsonObject detail, string? status = null, string owner = "Ana") => new("lia","Projeto LIA","Clínica",null,"Clínica",owner,"LIA","P3",null,null,14990,detail.ToJsonString(),[],null,null,status);

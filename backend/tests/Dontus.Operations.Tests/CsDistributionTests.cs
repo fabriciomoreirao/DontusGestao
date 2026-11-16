@@ -34,7 +34,7 @@ public sealed class CsDistributionTests
         db.AccessGroups.Add(group); db.Users.AddRange(users);
         foreach (var version in new[] { "Essencial", "Maxi", "Ultra" }) db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog = "version", Name = version });
         await db.SaveChangesAsync();
-        var actor = new ActorContext("coordinator@test.local", "Coordenação", "Coordenação", "CS", [new("cs", true, true, true, true, true)]);
+        var actor = new ActorContext("coordinator@test.local", "Coordenação", "Coordenação", "CS", [new("cs", true, true, true, true, true), new("followupValidation", true, false, true, false, false)]);
         return new(db, new OperationsService(db), actor, users, group);
     }
     private static WorkItem Journey(string version = "Essencial", string phase = "validation", string track = "activation", string owner = "Comercial") => new()

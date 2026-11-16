@@ -934,6 +934,8 @@ public sealed class AccessControlService(
         {
             if (!byScreen.TryGetValue(screen.Code, out var permission))
                 return new GroupPermissionDto(screen.Code, false, false, false, false, false, []);
+            if (screen.Code == FollowupValidationPolicy.Screen)
+                return new GroupPermissionDto(screen.Code, permission.CanView || permission.CanEdit, false, permission.CanEdit, false, false, []);
             var view = permission.CanView || permission.CanCreate || permission.CanEdit ||
                        permission.CanApprove || permission.CanManage;
             return permission with

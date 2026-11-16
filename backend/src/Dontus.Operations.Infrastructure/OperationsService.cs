@@ -94,6 +94,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             .Select(permission => permission.Screen)
             .ToList();
         var directlyVisibleModules = visibleModules.ToArray();
+        var canViewValidation = actor.HasPermission(FollowupValidationPolicy.Screen, "view");
         var canManageCommissions = actor.HasPermission("commissions", "manage") || actor.HasPermission("commissions", "approve");
         var canManageReferrals = actor.HasPermission("referrals", "manage") || actor.HasPermission("referrals", "approve");
         var canManageGoals = actor.HasPermission("goals", "manage") || actor.HasPermission("goals", "edit");
@@ -158,6 +159,9 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         // Commission descriptions still participate in the identity check below.
         var authorizedItems = db.WorkItems.AsNoTracking()
             .Where(x => (visibleModules.Contains(x.Module) || sharedDevelopmentIds.Contains(x.Id))
+                && (canViewValidation || (x.Module != "lia" || x.Status != "Validacao")
+                    && (x.Module != "cs" || !System.Text.RegularExpressions.Regex.IsMatch(x.Description, "\"kind\"\\s*:\\s*\"csJourney\"")
+                        || System.Text.RegularExpressions.Regex.IsMatch(x.Description, "\"phase\"\\s*:") && !System.Text.RegularExpressions.Regex.IsMatch(x.Description, "\"phase\"\\s*:\\s*(null|\"\"|\"validation\")")))
                 && x.RecordType != "Perfil de colaborador"
                 && (x.Module != "notes" || visibleNoteIds.Contains(x.Id))
                 && (directlyVisibleModules.Contains(x.Module) || sharedDevelopmentIds.Contains(x.Id) || canManageCommissions || x.Owner == actor.DisplayName)
@@ -167,10 +171,10 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 && (x.Module != "commissions" || canManageCommissions || x.Owner == actor.DisplayName)
                 && (x.Module != "referrals" || canManageReferrals || x.CreatedBy == actor.Email || x.CreatedBy == "" && x.Owner == actor.DisplayName)
                 && (x.Module != "goals" || canManageGoals || x.Owner == actor.DisplayName || x.Team == actor.Department));
-        // CS cards are persistent workflows: unrelated recent activity must never evict
-        // an existing client while duplicate validation still finds it in the database.
-        var items = await authorizedItems.Where(x => x.Module == "cs")
-            .Union(authorizedItems.Where(x => x.Module != "cs").OrderByDescending(x => x.UpdatedAt).Take(1000))
+        // Persistent workflows and sales history must remain complete for client lists,
+        // period-based revenue totals and goals, independently of recent activity elsewhere.
+        var items = await authorizedItems.Where(x => x.Module == "cs" || x.Module == "goals" || x.Module == "commercial")
+            .Union(authorizedItems.Where(x => x.Module != "cs" && x.Module != "goals" && x.Module != "commercial").OrderByDescending(x => x.UpdatedAt).Take(1000))
             .OrderByDescending(x => x.UpdatedAt)
             .Select(x => new WorkItemDto(
                 x.Id, x.Module, x.RecordType, x.Title, x.CustomerId, x.CustomerName,
@@ -833,7 +837,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             ["contact"] = customer.TradeName, ["phone"] = customer.Phone, ["email"] = customer.Email,
             ["usageStatus"] = "Não iniciada", ["usagePercent"] = 0, ["lastAnalysis"] = "",
             ["implementationAt"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"), ["status"] = "Não iniciada",
-            ["active"] = true, ["features"] = new JsonArray(),
+            ["active"] = true, ["pendingFollowUp"] = true, ["features"] = new JsonArray(),
             ["notes"] = string.Join("\n", new[] { $"Razão social: {customer.LegalName}", $"Nome: {customer.TradeName}", $"ID: {customer.DocumentMasked}", $"Comercial: {customer.Owner} · CS: {customer.CsOwner}", $"Produto: {customer.Project} · Versão: {customer.ProductVersion}", $"Receita mensal (centavos): {customer.MonthlyRevenueCents}", $"Contato: {customer.Phone} · {customer.Email}", $"Endereço: {customer.Address} · {customer.City}/{customer.State}", customer.Notes })
         });
         var history = detail["history"] as JsonArray ?? new JsonArray();
@@ -842,6 +846,28 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         network.Description = detail.ToJsonString();
         network.Version++;
         network.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    public async Task AcknowledgeStrategicUnitAsync(Guid networkId, string unitId, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("cs", "view");
+        var network = await db.WorkItems.SingleOrDefaultAsync(item => item.Id == networkId && item.Module == "cs", cancellationToken)
+            ?? throw new DomainException("Rede estratégica não encontrada.", 404);
+        JsonObject? detail;
+        try { detail = JsonNode.Parse(network.Description) as JsonObject; }
+        catch (JsonException) { throw new DomainException("Os dados da rede estratégica são inválidos."); }
+        if (detail?["kind"]?.ToString() != "enterpriseNetwork")
+            throw new DomainException("O registro não é uma rede estratégica.");
+        var unit = (detail["units"] as JsonArray)?.OfType<JsonObject>().SingleOrDefault(entry => entry["id"]?.ToString() == unitId)
+            ?? throw new DomainException("Unidade não encontrada nesta rede.", 404);
+        if (unit["pendingFollowUp"]?.ToString().Equals("true", StringComparison.OrdinalIgnoreCase) != true) return;
+        unit["pendingFollowUp"] = false;
+        network.Description = detail.ToJsonString();
+        network.Version++;
+        network.UpdatedAt = DateTimeOffset.UtcNow;
+        // Acknowledging the notice must not count as a customer interaction.
+        AddAudit(actor, "Acknowledge", "workItem", network.Id.ToString(), "cs", new { UnitId = unitId });
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<CustomerModuleDto> GetCustomerModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
@@ -1180,7 +1206,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             await new CancellationProtocolService(db).CreateAsync(item, actor, cancellationToken);
             return item.Id;
         }
-        SalesCelebrationService.RecordWin(db, item, false, actor);
+        SalesCelebrationService.RecordWin(db, item, false, actor, item.Module == "commercial" ? await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Catalog == "funnelStage").ToListAsync(cancellationToken) : []);
         db.WorkItems.Add(item);
         db.Activities.Add(new Activity
         {
@@ -1470,7 +1496,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             ?? throw new DomainException("Registro não encontrado.", 404);
         if (!CanEditCustomerEngagement(item, actor) &&
             !CanRestartRetentionJourney(item, command.Description, actor) &&
-            !CanCoordinateCustomerSuccessJourney(item, actor) &&
+            !CanCoordinateCustomerSuccessJourney(item, actor) && !FollowupValidationPolicy.CanEdit(item, actor) &&
             !(item.Module == "commissions" && (actor.HasPermission("commissions","approve") || actor.HasPermission("commissions","manage"))))
             actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor);
@@ -1486,12 +1512,14 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (item.Version != command.Version)
             throw new DomainException("O registro foi alterado por outro usuário. Atualize a tela e tente novamente.", 409);
 
+        command = FollowupValidationPolicy.Prepare(item, command, actor);
         command = await LiaJourneyValidationPolicy.PrepareUpdateAsync(db, item, command, actor, cancellationToken);
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Informe o título do registro.");
 
         command = await ValidateWaitingQueueEditAsync(item, command, actor, cancellationToken);
-        var previouslyWon = SalesCelebrationService.IsWon(item);
+        var saleFunnels = item.Module == "commercial" ? await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Catalog == "funnelStage").ToListAsync(cancellationToken) : [];
+        var previouslyWon = SalesCelebrationService.IsWon(item, saleFunnels);
         if (item.Module == "commercial")
             command = command with { Description = CommercialStageTimeline.Normalize(SalesCelebrationService.PreserveWinDate(item, command.Description), item.Description, item.CreatedAt) };
         if (item.Module == "cancellations")
@@ -1564,7 +1592,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             item.CustomerName = command.CustomerName.Trim();
         item.UpdatedAt = DateTimeOffset.UtcNow;
         item.Version++;
-        SalesCelebrationService.RecordWin(db, item, previouslyWon, actor);
+        SalesCelebrationService.RecordWin(db, item, previouslyWon, actor, saleFunnels);
         await CommercialCommissionSource.SynchronizeWinAsync(db, item, previousCommercialDescription, cancellationToken);
         db.Activities.Add(new Activity
         {
@@ -1651,6 +1679,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     {
         var item = await db.WorkItems.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken)
             ?? throw new DomainException("Registro não encontrado.", 404);
+        FollowupValidationPolicy.RequireEdit(item, actor);
         if (!CanEditCustomerEngagement(item, actor)) actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor, deleting: true);
         await RequireCommissionScopeAsync(item, actor, true, cancellationToken);
@@ -1680,7 +1709,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
     {
         var item = await db.WorkItems.SingleOrDefaultAsync(x => x.Id == command.Id, cancellationToken)
             ?? throw new DomainException("Registro não encontrado.", 404);
-        actor.RequirePermission(item.Module, "edit");
+        if (!FollowupValidationPolicy.CanEdit(item, actor)) actor.RequirePermission(item.Module, "edit");
+        FollowupValidationPolicy.RequireEdit(item, actor);
         RequirePersonalRecordScope(item, actor);
         if (item.Module == "referrals" && !CanSuperviseReferrals(actor))
             throw new DomainException("Use o envio da sua indicação para conferência; decisões exigem supervisão.", 403);
@@ -1729,9 +1759,11 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             item.Description = LiaJourneyTimeline.Normalize(item.Description, command.NextStatus, item, actor, command.Reason);
         }
         var previousCommercialDescription = item.Description;
-        var previouslyWon = SalesCelebrationService.IsWon(item);
+        var saleFunnels = item.Module == "commercial" ? await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Catalog == "funnelStage").ToListAsync(cancellationToken) : [];
+        var previouslyWon = SalesCelebrationService.IsWon(item, saleFunnels);
         var previous = item.Status;
         SalesCelebrationService.SynchronizeStage(item, command.NextStatus);
+        if (item.Module == "commercial" && command.NotifyPublicWin.HasValue) { var detail = FollowupValidationPolicy.Detail(item.Description); detail["notifyPublicWin"] = command.NotifyPublicWin.Value; item.Description = detail.ToJsonString(); }
         if (item.Module == "serviceRequests")
         {
             var detail = ServiceRequestWorkflow.Read(item.Description) ?? throw new DomainException("Dados do chamado inválidos.");
@@ -1753,7 +1785,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             Summary = $"{previous} → {item.Status}",
             Actor = actor.DisplayName,
         });
-        SalesCelebrationService.RecordWin(db, item, previouslyWon, actor);
+        SalesCelebrationService.RecordWin(db, item, previouslyWon, actor, saleFunnels);
         AddAudit(actor, "Transition", "work_item", item.Id.ToString(), item.Module, new { From = previous, To = item.Status });
         await CommercialCommissionSource.SynchronizeWinAsync(db, item, previousCommercialDescription, cancellationToken);
 

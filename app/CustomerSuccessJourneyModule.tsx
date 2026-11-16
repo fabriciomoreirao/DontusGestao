@@ -1,6 +1,7 @@
 "use client";
 
-import CommentHistory from "@/app/CommentHistory";
+import FollowupHistory from "@/app/FollowupHistory";
+import { followupVersion, hasTrainingPending, isCriticalFollowup } from "@/lib/followup-insights";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
 
@@ -19,7 +20,7 @@ import { useReminderFilter } from "@/app/ReminderFilters";
 import {
   Activity, AlertTriangle, ArrowRight, BadgeCheck, Ban, BarChart3, CalendarDays, Check, CheckCircle2,
   Clock3, Columns3, Copy, ExternalLink, Link2, List, MessageSquareText, Pencil, Phone, Plus, RotateCcw, Save,
-  Search, Send, Settings, ShieldCheck, Trash2, UserRound, X, XCircle,
+  Search, Send, Settings, ShieldCheck, CircleHelp, Trash2, UserRound, X, XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { AgendaModuleData } from "@/app/AgendaModule";
@@ -33,6 +34,7 @@ import { cardShareUrl } from "@/app/CardLinkEnhancer";
 import { canResumeCsJourney, isClosedCsJourney, requestCsConference, resumeCsJourney, type CsPhase } from "@/lib/cs-journey";
 import { csDate, csStartDate, csTrackedDays } from "@/lib/cs-journey";
 import useActivityClock from "@/app/useActivityClock";
+import { followupValidationAccess } from "@/lib/followup-validation";
 
 type WorkItem = {
   id: string; module: string; title: string; customer_id: string | null; customer_name: string;
@@ -42,11 +44,13 @@ type WorkItem = {
 type CatalogOption = { id: string; catalog: string; name: string; description: string; active: boolean };
 type Customer = { id: string; trade_name: string; legal_name: string; document_masked?: string; phone: string; product_version: string; cs_owner: string };
 type Employee = { id: string; displayName: string; email: string; departmentId: string | null; departmentName: string; departmentNames: string[]; photoDataUrl?: string; active: boolean; isCoordinator?: boolean };
-type CurrentUser = { email: string; displayName: string; role: string; department: string; isCoordinator: boolean };
+type CurrentUser = { fullAccess?: boolean; permissions?: { screen: string; canView: boolean; canEdit: boolean }[]; email: string; displayName: string; role: string; department: string; isCoordinator: boolean };
 type HistoryEntry = { text: string; createdAt: string; actor?: string; kind?: string };
 type ScoreEvolutionEntry = { id: string; createdAt: string; actor: string; period: string; score: number; previousScore: number; featuresBase: string[]; featuresActive: string[]; featuresPlus: string[]; summary: string; kind: "Evolução de score" };
 type CsJourney = {
   kind: "csJourney";
+  productVersion?: string;
+  version?: string;
   track: CsTrack;
   phase: CsPhase;
   sourceLeadId?: string;
@@ -110,7 +114,7 @@ type CsJourney = {
 type CommercialLead = {
   phone?: string; source?: string; seller?: string; temperature?: string; stage?: string;
   products?: Array<{ product?: string; plan?: string; quantity?: number; value?: number }>;
-  follows?: Array<{ text?: string; createdAt?: string; author?: string }>;
+  version?: string; follows?: Array<{ type?: string; text?: string; createdAt?: string; author?: string }>;
 };
 
 const PHASES: Array<{ id: CsPhase; label: string }> = [
@@ -228,11 +232,14 @@ export default function CustomerSuccessJourneyModule({
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
   onOpenSettings?: () => void;
 }) {
-  const [tab, setTab] = useState<CsPhase>("validation");
+  const validationAccess = followupValidationAccess(currentUser);
+  const [tab, setTab] = useState<CsPhase>(validationAccess.view ? "validation" : "onboarding");
+  const phaseCanEdit = (phase: CsPhase) => phase === "validation" ? validationAccess.edit : canEdit;
   const [selected, setSelected] = useState<WorkItem | null>(null);
   const [query, setQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [attentionOnly, setAttentionOnly] = useState(false);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<WorkItem | null>(null);
@@ -244,12 +251,12 @@ export default function CustomerSuccessJourneyModule({
     .filter((entry) => entry.active && ["csFeature", "csFeatureBase", "csFeatureActive", "csFeaturePlus"].includes(entry.catalog) && catalogFeatureIsBase(entry))
     .map((entry) => entry.name)), [catalogs]);
 
-  useEffect(() => { setTab("validation"); }, [flow]);
+  useEffect(() => { setTab(validationAccess.view ? "validation" : "onboarding"); }, [flow, validationAccess.view]);
 
   const records = useMemo(() => items
     .filter((item) => item.module === "cs")
     .map((item) => ({ item, journey: parseJourney(item.description) }))
-    .filter((entry): entry is { item: WorkItem; journey: CsJourney } => Boolean(entry.journey && entry.journey.track === track)), [items, track]);
+    .filter((entry): entry is { item: WorkItem; journey: CsJourney } => Boolean(entry.journey && entry.journey.track === track && (entry.journey.phase !== "validation" || validationAccess.view))), [items, track, validationAccess.view]);
   useEffect(() => {
     setSelected(current => current ? items.find(item => item.id === current.id) ?? null : null);
   }, [items]);
@@ -276,14 +283,15 @@ export default function CustomerSuccessJourneyModule({
     return reminderFilter.matches({entityId:item.id,clientId:journey.clientId,title:item.title}) && journey.phase === tab
       && (!needle || normalize(`${item.id} ${journey.clientId} ${item.title} ${item.customer_name} ${item.owner} ${phone}`).includes(needle))
       && (ownerFilter === "all" || item.owner === ownerFilter)
-      && (statusFilter === "all" || (journey.status || "Pendente") === statusFilter);
-  }), [records, tab, query, ownerFilter, statusFilter, items, reminderFilter.matches]);
+      && (statusFilter === "all" || (journey.status || "Pendente") === statusFilter)
+      && (!attentionOnly || isCriticalFollowup(journey, featureUniverse));
+  }), [records, tab, query, ownerFilter, statusFilter, attentionOnly, featureUniverse, items, reminderFilter.matches]);
 
   const openExistingJourney = (existing: WorkItem) => {
     const journey = parseJourney(existing.description);
     if (!journey) return;
     setCreating(false); setEditing(null);
-    setQuery(""); setOwnerFilter("all"); setStatusFilter("all"); reminderFilter.setMode("all");
+    setQuery(""); setOwnerFilter("all"); setStatusFilter("all"); setAttentionOnly(false); reminderFilter.setMode("all");
     setTab(journey.phase); setSelected(existing);
   };
 
@@ -370,18 +378,19 @@ export default function CustomerSuccessJourneyModule({
       <article><span><CheckCircle2 size={17} /></span><small>ALINHAMENTOS ÚNICOS</small><strong>{singleAlignmentCount}</strong><p>{records.filter((entry) => entry.journey.singleAlignmentCompletedAt).length} concluído(s)</p></article>
     </section>
 
-    <nav className="cs-pipeline-tabs" aria-label="Etapas do acompanhamento">{PHASES.map(phase=><button key={phase.id} className={tab===phase.id?"active":""} onClick={()=>setTab(phase.id)}>{phase.label}<b>{counts[phase.id]}</b></button>)}</nav>
+    <nav className="cs-pipeline-tabs" aria-label="Etapas do acompanhamento">{PHASES.filter(phase=>phase.id!=="validation"||validationAccess.view).map(phase=><button key={phase.id} className={tab===phase.id?"active":""} onClick={()=>setTab(phase.id)}>{phase.label}<b>{counts[phase.id]}</b></button>)}</nav>
     <section className="cs-pipeline-toolbar reminder-filter-toolbar compact-operational-filters cs-compact-filters" aria-label="Filtros do acompanhamento">{reminderFilter.control}
       <label className="cs-pipeline-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, ID, responsável ou telefone" /></label>
       <SearchablePeopleSelect searchLabel="Responsável" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Filtrar responsável"><option value="all">Todos os responsáveis</option>{[...new Set([...employees.filter(entry=>entry.active).map(entry=>entry.displayName),...records.map(entry=>entry.item.owner)].filter(Boolean))].map((owner) => <option key={owner}>{owner}</option>)}</SearchablePeopleSelect>
       <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filtrar status"><option value="all">Todos os status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select>
+      <label className="cs-attention-filter"><input type="checkbox" checked={attentionOnly} onChange={event=>setAttentionOnly(event.target.checked)}/><CircleHelp size={15}/> Clientes com atenção</label>
       <span>{visible.length} resultado(s)</span>
       <div className="cs-view-switch"><button className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Visualizar em cards"><Columns3 size={16} /></button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="Visualizar em lista"><List size={16} /></button></div>
     </section>
 
     {distributionIndicators && distributionBoard && <CsDistributionIndicators board={distributionBoard} onClose={() => setDistributionIndicators(false)} />}
 
-    {visible.length === 0 ? <div className="cs-pipeline-empty"><ClipboardCheckIcon /><h2>Nenhum cliente nesta etapa</h2><p>Os clientes aparecem automaticamente conforme avançam na jornada.</p></div> : view === "grid" ? <div className="cs-pipeline-grid">{visible.map(({ item, journey }) => <JourneyCard key={item.id} item={item} journey={journey} featureUniverse={featureUniverse} commercial={items.find((entry) => entry.id === journey.sourceLeadId)} employee={employees.find(employee => employee.displayName === item.owner)} canEdit={canEdit} canDelete={canDelete} onOpen={() => setSelected(item)} onEdit={() => setEditing(item)} onDelete={() => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />)}</div> : <JourneyList records={visible} sourceItems={items} featureUniverse={featureUniverse} canDelete={canDelete} canEdit={canEdit} onEdit={setEditing} onOpen={setSelected} onDelete={(item) => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />}
+    {visible.length === 0 ? <div className="cs-pipeline-empty"><ClipboardCheckIcon /><h2>Nenhum cliente nesta etapa</h2><p>Os clientes aparecem automaticamente conforme avançam na jornada.</p></div> : view === "grid" ? <div className="cs-pipeline-grid">{visible.map(({ item, journey }) => <JourneyCard key={item.id} item={item} journey={journey} featureUniverse={featureUniverse} commercial={items.find((entry) => entry.id === journey.sourceLeadId)} employee={employees.find(employee => employee.displayName === item.owner)} canEdit={phaseCanEdit(journey.phase)} canDelete={canDelete && (journey.phase !== "validation" || validationAccess.edit)} onOpen={() => setSelected(item)} onEdit={() => setEditing(item)} onDelete={() => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />)}</div> : <JourneyList records={visible} sourceItems={items} featureUniverse={featureUniverse} canDelete={canDelete && (tab !== "validation" || validationAccess.edit)} canEdit={phaseCanEdit(tab)} onEdit={setEditing} onOpen={setSelected} onDelete={(item) => void operate({ action: "deleteWorkItem", id: item.id }, "Cliente excluído com sucesso.")} />}
 
     {selected && <JourneyDrawer distribution={distribution?.find(board=>board.track===track)} item={selected} journey={parseJourney(selected.description)!} commercialSource={items.find((entry) => entry.id === parseJourney(selected.description)?.sourceLeadId)} catalogs={catalogs.filter((entry) => entry.active)} customers={customers} agendaModule={agendaModule} taskModule={taskModule} employees={employees.filter((entry) => entry.active)} currentUser={currentUser} busy={busy} canEdit={canEdit} canCreateTask={canCreateTask} onEdit={() => setEditing(selected)} onClose={() => { setSelected(null); const url = new URL(window.location.href); url.searchParams.delete("client"); url.searchParams.delete("card"); openedSharedCard.current = ""; window.history.replaceState({}, "", url); }} operate={operate} onSave={saveSelected} />}
     {editing && <ManualJourneyModal key={editing.id + ":" + editing.version} item={editing} initialJourney={parseJourney(editing.description)!} track={track} customers={customers} existingRecords={records} onOpenExisting={openExistingJourney} employees={employees.filter(entry => entry.active)} statuses={statuses} defaultBaseFeatures={featureUniverse} currentUser={currentUser} busy={busy} onClose={() => setEditing(null)} onSave={async payload => { const result = await operate(payload, "Dados do acompanhamento atualizados."); if (result) setEditing(null); }} />}
@@ -431,7 +440,8 @@ function JourneyCard({ item, journey, featureUniverse, commercial, employee, can
   const score = healthScore(journey, featureUniverse);
   return <article className="cs-client-card" data-reminder-entity-id={item.id} data-reminder-client-id={journey.clientId} data-reminder-customer-name={item.title}>
     <button className="cs-client-card-main" onClick={onOpen}>
-      <header><span><strong>{item.title}</strong>{journey.checkedAt && <CheckCircle2 size={15} aria-label="Dados conferidos" />}</span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{PHASES.find((entry) => entry.id === journey.phase)?.label}</b></header>
+      <header><span><strong>{item.title}</strong>{score < 50 && <CircleHelp className="followup-critical-icon" size={18} aria-label={`Cliente com atenção: score ${score}%`}><title>Score abaixo de 50%</title></CircleHelp>}{journey.checkedAt && <CheckCircle2 size={15} aria-label="Dados conferidos" />}</span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{PHASES.find((entry) => entry.id === journey.phase)?.label}</b></header>
+      {hasTrainingPending(journey) && <span className="training-pending-badge"><AlertTriangle size={14}/>Treinamento em haver</span>}
       <small>ID {journey.clientId || item.id.slice(0, 8)}</small>
       <div className="cs-card-owner" data-collaborator-name={item.owner}><span className={`cs-owner-avatar ${employee?.photoDataUrl ? "has-photo" : ""}`} style={employee?.photoDataUrl ? { backgroundImage: `url("${employee.photoDataUrl}")` } : undefined}>{!employee?.photoDataUrl && <UserRound size={11} />}</span>{item.owner || "Não atribuído"}</div>
       {(journey.phone || lead?.phone) && <div className="cs-card-phone"><PhoneLink phone={journey.phone || lead?.phone}/></div>}
@@ -452,11 +462,11 @@ function JourneyList({ records, sourceItems, featureUniverse, canDelete, canEdit
   return <section className="cs-client-table"><header><span>ID</span><span>CLIENTE</span><span>RESPONSÁVEL</span><span>STATUS</span><span>DIAS</span><span>HEALTH</span><span>AÇÕES</span></header>{records.map(({ item, journey }) => {
     const lead = parseCommercial(sourceItems.find((entry) => entry.id === journey.sourceLeadId)?.description || "");
     const score = healthScore(journey, featureUniverse);
-    return <article data-reminder-entity-id={item.id} key={item.id}><span>{journey.clientId || item.id.slice(0, 8)}</span><span><strong>{item.title}</strong><small><PhoneLink phone={lead?.phone || item.customer_name}/></small></span><span data-collaborator-name={item.owner}>{item.owner}</span><span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{journey.status || PHASES.find((entry) => entry.id === journey.phase)?.label}</b></span><span>{journey.phase === "tracking" ? `${trackedDays(journey, item)} / ${journey.track === "retention" ? 30 : 90}` : "—"}</span><span className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>{score}%</span><span><button onClick={() => onOpen(item)} aria-label="Abrir cliente"><ExternalLink size={14} /></button>{canEdit && <button onClick={() => onEdit(item)} aria-label="Editar cliente"><Pencil size={14}/></button>}{canDelete && <button className="delete" onClick={() => onDelete(item)} aria-label="Excluir cliente"><Trash2 size={14} /></button>}</span></article>;
+    return <article data-reminder-entity-id={item.id} key={item.id}><span>{journey.clientId || item.id.slice(0, 8)}</span><span><strong>{item.title}{score < 50 && <CircleHelp className="followup-critical-icon" size={16} aria-label={`Cliente com atenção: score ${score}%`}/>}</strong>{hasTrainingPending(journey) && <span className="training-pending-badge">Treinamento em haver</span>}<small><PhoneLink phone={lead?.phone || item.customer_name}/></small></span><span data-collaborator-name={item.owner}>{item.owner}</span><span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{journey.status || PHASES.find((entry) => entry.id === journey.phase)?.label}</b></span><span>{journey.phase === "tracking" ? `${trackedDays(journey, item)} / ${journey.track === "retention" ? 30 : 90}` : "—"}</span><span className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>{score}%</span><span><button onClick={() => onOpen(item)} aria-label="Abrir cliente"><ExternalLink size={14} /></button>{canEdit && <button onClick={() => onEdit(item)} aria-label="Editar cliente"><Pencil size={14}/></button>}{canDelete && <button className="delete" onClick={() => onDelete(item)} aria-label="Excluir cliente"><Trash2 size={14} /></button>}</span></article>;
   })}</section>;
 }
 
-export function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, agendaModule, taskModule, employees, currentUser, busy, canEdit, canCreateTask, distribution, strategicContext, onConferenceResolved, onEdit, onClose, operate, onSave }: {
+export function JourneyDrawer({ item, journey, commercialSource, catalogs, customers, agendaModule, taskModule, employees, currentUser, busy, canEdit: moduleCanEdit, canCreateTask, distribution, strategicContext, onConferenceResolved, onEdit, onClose, operate, onSave }: {
   item: WorkItem; journey: CsJourney; commercialSource?: WorkItem; catalogs: CatalogOption[]; customers: Customer[]; agendaModule: AgendaModuleData | null; taskModule: TaskModuleData | null;
   employees: Employee[]; currentUser: CurrentUser; busy: boolean; canEdit: boolean; canCreateTask: boolean; onEdit?: () => void; onClose: () => void;
   distribution?: ClientDistribution;
@@ -464,11 +474,13 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
   onConferenceResolved?: (phase: Extract<CsPhase, "onboarding" | "tracking" | "finished" | "unsuccessful" | "cancelled" | "cancelledWithoutTraining">, status: string) => Promise<void>;
   operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>; onSave: (payload: Record<string, unknown>, success?: string) => Promise<OperationResult>;
 }) {
+  const canEdit = journey.phase === "validation" ? followupValidationAccess(currentUser).edit : moduleCanEdit;
   const commercial = commercialSource ? parseCommercial(commercialSource.description) : null;
   const isStrategic = journey.strategicAccount || Boolean(strategicContext);
   const [responsible, setResponsible] = useState(item.owner || "");
-  const detectedVersion = distribution?.pendingClients.find(client => client.workItemId === item.id)?.version ?? "";
-  const clientDistributionVersion = detectedVersion || unknownClientVersion;
+  const linkedCustomer = customers.find(customer => customer.id === item.customer_id || customer.id === journey.clientId || Boolean(journey.clientId && customer.document_masked === journey.clientId));
+  const detectedVersion = followupVersion(journey, linkedCustomer, commercial ?? undefined);
+  const clientDistributionVersion = distribution?.pendingClients.find(client => client.workItemId === item.id)?.version || (detectedVersion === "Não informada" ? unknownClientVersion : detectedVersion);
   const clientDistributionQueue = distributionQueue(distribution, clientDistributionVersion);
   const dispatchRecipients = distribution?.collaborators.length ? distribution.collaborators.map(employee => ({ id: employee.userId, displayName: employee.displayName })) : employees.map(employee => ({ id: employee.id, displayName: employee.displayName }));
   const [validationResponsibleId, setValidationResponsibleId] = useState("");
@@ -593,7 +605,7 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
     return saved;
   };
 
-  const sourceHistory: HistoryEntry[] = Array.isArray(commercial?.follows) ? commercial.follows.map((entry) => ({ text: entry.text || "Interação comercial", createdAt: entry.createdAt || commercialSource?.created_at || item.created_at, actor: entry.author || commercial?.seller, kind: "Comercial" })) : [];
+  const sourceHistory: HistoryEntry[] = Array.isArray(commercial?.follows) ? commercial.follows.map((entry) => ({ text: entry.text || "Interação comercial", createdAt: entry.createdAt || commercialSource?.created_at || item.created_at, actor: entry.author || commercial?.seller, kind: entry.type || "Comentário comercial" })) : [];
   const history = [...sourceHistory, ...journey.follows].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const onboardingReady = Boolean(journey.singleAlignmentCompletedAt || (journey.firstMeetingCompletedAt && journey.trainingCompletedAt));
   const journeyCustomer = customers.find((entry) => entry.id === item.customer_id || entry.id === journey.clientId || entry.document_masked?.replace(/\D/g, "") === String(journey.clientId || "").replace(/\D/g, ""));
@@ -657,9 +669,10 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
   };
 
   return <div className="drawer-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><aside className="drawer cs-pipeline-drawer" data-reminder-source-module="cs" data-reminder-source-entity-id={item.id} data-reminder-source-client-id={journey.clientId} data-reminder-source-customer-name={item.customer_name || item.title} data-reminder-source-title={item.title}>
-    <header className="cs-drawer-head"><div><span className="eyebrow">{phaseName.toUpperCase()}</span><h2>{item.title} {journey.checkedAt && <CheckCircle2 size={18} />}</h2><p>Cliente ID {journey.clientId || item.id.slice(0, 8)} · {item.customer_name || "Cadastro comercial"}</p></div><div className="cs-drawer-head-actions"><button type="button" className="card-copy-link cs-copy-link" onClick={() => void copyJourneyLink()}><Copy size={15} /><b>{linkCopied ? "Link copiado" : "Copiar link"}</b></button>{canEdit && onEdit && <button className="secondary-button" type="button" onClick={onEdit}><Pencil size={15}/> Editar</button>}<button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div></header>
+    <header className="cs-drawer-head"><div><span className="eyebrow">{phaseName.toUpperCase()}</span><h2>{item.title} <span className="followup-version-badge">{detectedVersion}</span>{score < 50 && <CircleHelp className="followup-critical-icon" size={19} aria-label={`Cliente com atenção: score ${score}%`}/>} {journey.checkedAt && <CheckCircle2 size={18} />}</h2><p>Cliente ID {journey.clientId || item.id.slice(0, 8)} · {item.customer_name || "Cadastro comercial"}</p></div><div className="cs-drawer-head-actions"><button type="button" className="card-copy-link cs-copy-link" onClick={() => void copyJourneyLink()}><Copy size={15} /><b>{linkCopied ? "Link copiado" : "Copiar link"}</b></button>{canEdit && onEdit && <button className="secondary-button" type="button" onClick={onEdit}><Pencil size={15}/> Editar</button>}<button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div></header>
 
     <div className="cs-drawer-content">
+      {hasTrainingPending(journey) && <div className="training-pending-banner"><AlertTriangle size={18}/><strong>Treinamento em haver</strong><span>Conclua o Kick off e o treinamento, ou o alinhamento único.</span></div>}
       {handoffError && <p className="cs-handoff-error" role="alert">{handoffError}</p>}
       {journey.status === "Cliente no CRM Retenção" && <section className="cs-retention-active-banner"><RotateCcw /><span><strong>Cliente está no CRM Retenção</strong><small>O card foi copiado para nova tratativa. Ao concluir o contato com sucesso, esta jornada voltará automaticamente para Onboarding.</small></span></section>}
       <section className="cs-client-overview">
@@ -701,7 +714,8 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
 
       {isClosedCsJourney(journey.phase) && <section className="cs-drawer-panel cs-final-panel"><header><span className="eyebrow">{phaseName.toUpperCase()}</span><h3>{journey.phase === "finished" ? "Jornada concluída" : journey.phase === "unsuccessful" ? "Finalizado por falta de retorno" : "Cliente cancelado"}</h3><p>{(journey.phase === "finished" ? journey.approvalReason : journey.phase === "unsuccessful" ? journey.finalReason : journey.cancellationReason) || "Todas as informações permanecem disponíveis para consulta."}</p></header><div className="cs-decision-summary"><span><small>Status</small><strong>{journey.status || phaseName}</strong></span><span><small>Responsável</small><strong>{item.owner}</strong></span><span><small>Health Score</small><strong>{score}%</strong></span><span><small>Última atualização</small><strong>{dateTime(item.updated_at)}</strong></span></div>{canResumeCsJourney(journey.phase) && <div className="cs-retention-resume"><div><RotateCcw /><span><strong>Retomar acompanhamento</strong><small>Retorna à validação e inicia um novo ciclo. O histórico e os agendamentos anteriores ficam preservados.</small></span></div><button className="primary-button" disabled={!canEdit || busy} onClick={() => void resumeInValidation()}><RotateCcw size={15} /> Retomar cliente</button></div>}{journey.track === "retention" && journey.phase === "finished" && <div className="cs-retention-resume"><div><RotateCcw /><span><strong>Retomar tratativa</strong><small>Cria uma cópia na primeira coluna do CRM Retenção e preserva todo o histórico desta jornada.</small></span></div><button className="primary-button" disabled={!canEdit || busy || journey.status === "Cliente no CRM Retenção"} onClick={() => void resumeInRetention()}><RotateCcw size={15} /> {journey.status === "Cliente no CRM Retenção" ? "Cliente no CRM Retenção" : "Retomar card no CRM Retenção"}</button></div>}</section>}
 
-      <section className="cs-drawer-panel"><header><span className="eyebrow">HISTÓRICO DE INTERAÇÕES</span><h3>Jornada completa do cliente</h3></header>{canEdit && !isClosedCsJourney(journey.phase) && <div data-comment-composer="true" className="cs-comment-form"><CommentInput disabled={busy} data-comment-input="true" value={comment} onChange={(event) => setComment(event.target.value)} rows={3} placeholder="Adicionar comentário de evolução..." /><button className="primary-button" disabled={busy || !comment.trim()} onClick={() => void save({ ...journey }, comment, item.owner, "Comentário").then((result) => { if (result) setComment(""); })}><MessageSquareText size={15} /> Registrar</button></div>}<div className="cs-history"><CommentHistory>{history.length === 0 ? <p>Nenhuma interação registrada.</p> : history.map((entry, index) => <article key={`${entry.createdAt}-${index}`}><i /><div><strong>{entry.kind || "Atualização"}</strong><small>{entry.actor || "Sistema"} · {dateTime(entry.createdAt)}</small><p><CommentContent text={entry.text}/></p></div></article>)}</CommentHistory></div></section>
+      <FollowupHistory key={item.id} entries={history} composer={canEdit && !isClosedCsJourney(journey.phase) ? <div data-comment-composer="true" className="cs-comment-form"><CommentInput disabled={busy} data-comment-input="true" value={comment} onChange={event=>setComment(event.target.value)} rows={5} placeholder="Adicionar comentário de evolução..."/><button className="primary-button" disabled={busy || !comment.trim()} onClick={()=>void save({...journey},comment,item.owner,"Comentário").then(result=>{if(result)setComment("")})}><MessageSquareText size={15}/> Registrar comentário</button></div> : undefined}/>
+
       {journey.phase === "tracking" && <ScoreEvolutionPanel entries={journey.scoreEvolution ?? []} />}
     </div>
     {taskEditor && <CancellationEntryModal customers={customers} catalogs={catalogs} employees={employees} currentUser={currentUser} busy={busy} onClose={() => setTaskEditor(false)} prefill={{ clientId: journey.clientId || item.customer_id || "", customerName: item.customer_name || item.title, adhesionDate: item.created_at.slice(0, 10), plan: commercial?.products?.[0]?.plan || "", monthlyValueCents: item.amount_cents, seller: commercial?.seller || commercialSource?.owner || "", csOwner: item.owner, notes: `Cliente ${item.title} solicitou cancelamento durante ${phaseName}. Registre tratativas, motivo e tentativa de reversão.`, sourceModule: "cs", sourceItemId: item.id, linkedCsItemId: item.id }} onSave={async (detail) => { await requestCancellation(detail); }} />}

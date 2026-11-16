@@ -147,7 +147,7 @@ public sealed record CreateWorkItemCommand(
     Guid? OriginId,
     string? Status = null);
 
-public sealed record TransitionWorkItemCommand(Guid Id, string NextStatus, long Version, bool Confirmed, bool BoardMove = false, string? Reason = null);
+public sealed record TransitionWorkItemCommand(Guid Id, string NextStatus, long Version, bool Confirmed, bool BoardMove = false, string? Reason = null, bool? NotifyPublicWin = null);
 
 public sealed record UpdateWorkItemCommand(
     Guid Id,
@@ -418,6 +418,7 @@ public interface IOperationsService
     Task DeleteCustomerCatalogAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateCustomerAsync(CreateCustomerCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateCustomerAsync(UpdateCustomerCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task AcknowledgeStrategicUnitAsync(Guid networkId, string unitId, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateWorkItemAsync(CreateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateWorkItemAsync(UpdateWorkItemCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task CompleteHrVacationPeriodAsync(Guid id, int entitlementYear, long version, string? observation, ActorContext actor, CancellationToken cancellationToken = default);

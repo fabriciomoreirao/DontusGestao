@@ -6,7 +6,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Edit3, Eye, EyeOff, Filter, Pl
 import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, isCommercialAvailabilityBlock } from "@/lib/commercial-scheduling";
 export { COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, isCommercialAvailabilityBlock, commercialSlotIsBlocked } from "@/lib/commercial-scheduling";
-import { agendaTimeSlots, AGENDA_SLOT_HEIGHT, positionAgendaEntries } from "@/lib/agenda-time-grid";
+import { agendaTimeSlots, agendaWeekdays, AGENDA_START_MINUTE, AGENDA_END_MINUTE, AGENDA_SLOT_HEIGHT, positionAgendaEntries } from "@/lib/agenda-time-grid";
 import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import AgendaRecurrenceField, { type AgendaRecurrenceSelection } from "@/app/AgendaRecurrenceField";
 
@@ -293,23 +293,22 @@ function ScheduleCalendar({ view, anchor, commitments, calendars, specialEvents,
   const scroll = useRef<HTMLDivElement>(null);
   const days = useMemo(() => {
     if (view === "day") return [new Date(anchor)];
-    const start = new Date(anchor); start.setDate(start.getDate() - start.getDay());
-    return Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
+    return agendaWeekdays(anchor);
   }, [anchor, view]);
-  useEffect(() => { if (scroll.current) scroll.current.scrollTop = 8 * 2 * AGENDA_SLOT_HEIGHT; }, [anchor, view]);
+  useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0; }, [anchor, view]);
   const label = view === "day"
     ? new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(days[0])
-    : `${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${days[6].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
-  const gridStyle = { "--schedule-days": days.length, "--slot-height": `${AGENDA_SLOT_HEIGHT}px` } as CSSProperties;
+    : `${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${days[days.length - 1].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
+  const gridStyle = { "--schedule-days": days.length, "--schedule-slot-count": agendaTimeSlots.length, "--slot-height": `${AGENDA_SLOT_HEIGHT}px` } as CSSProperties;
   return <section className={`agenda-calendar-card agenda-time-calendar ${view}`}>
     <header className="agenda-calendar-title"><button className="icon-button" onClick={onPrevious} aria-label="Período anterior"><ChevronLeft size={19} /></button><h2>{label}</h2><button className="icon-button" onClick={onNext} aria-label="Próximo período"><ChevronRight size={19} /></button></header>
     <div className="agenda-time-scroll" ref={scroll} style={gridStyle}>
       <div className="agenda-time-head"><span>Horário</span>{days.map(day => <button key={dayKey(day)} type="button" className={dayKey(day) === dayKey(new Date()) ? "today" : ""} onClick={() => onOpenDay(dayKey(day))}>{day.toLocaleDateString("pt-BR", { weekday:"short", day:"2-digit", month:"2-digit" })}</button>)}</div>
       {specialEvents.some(event => days.some(day => dayKey(day) === event.date)) && <div className="agenda-time-special"><span>Dia inteiro</span>{days.map(day => <div key={dayKey(day)}>{specialEvents.filter(event => event.date === dayKey(day)).map(event => <span key={event.id} style={{ "--event-color": event.color } as CSSProperties}>{event.title}</span>)}</div>)}</div>}
-      <div className="agenda-time-body"><div className="agenda-time-labels">{agendaTimeSlots.map(slot => <time key={slot.minutes}>{slot.label}</time>)}</div>
+      <div className="agenda-time-body"><div className="agenda-time-labels">{agendaTimeSlots.map(slot => <time key={slot.minutes}>{slot.label}</time>)}<time className="agenda-time-end">21:00</time></div>
         {days.map(day => { const key = dayKey(day); return <div className="agenda-time-day" key={key} aria-label={day.toLocaleDateString("pt-BR")}>
-          {agendaTimeSlots.map(slot => <button key={slot.minutes} type="button" className="agenda-time-slot" style={{ top: slot.minutes / 30 * AGENDA_SLOT_HEIGHT }} aria-label={`Ver compromissos de ${key} às ${slot.label}`} onClick={() => onOpenDay(key)} />)}
-          {positionAgendaEntries(commitments, key).map(({ entry, startMinute, endMinute, column, columns }) => <button type="button" className="agenda-time-event" key={entry.id} style={{ "--event-color":entry.statusColor, top: startMinute / 30 * AGENDA_SLOT_HEIGHT, height: Math.max(24, (endMinute-startMinute) / 30 * AGENDA_SLOT_HEIGHT - 3), left: `calc(${column / columns * 100}% + 3px)`, width: `calc(${100 / columns}% - 6px)` } as CSSProperties} title={`${time(entry.startsAt)} – ${time(entry.endsAt)} · ${entry.title} · ${entry.responsibleName}`} onClick={() => onOpenCommitment(entry)}><time>{time(entry.startsAt)} – {time(entry.endsAt)}</time><strong>{calendarCommitmentTitle(entry, calendars)}</strong><small>{entry.responsibleName} · {entry.statusName}</small></button>)}
+          {agendaTimeSlots.map(slot => <button key={slot.minutes} type="button" className="agenda-time-slot" style={{ top: (slot.minutes - AGENDA_START_MINUTE) / 30 * AGENDA_SLOT_HEIGHT }} aria-label={`Ver compromissos de ${key} às ${slot.label}`} onClick={() => onOpenDay(key)} />)}
+          {positionAgendaEntries(commitments, key, { startMinute: AGENDA_START_MINUTE, endMinute: AGENDA_END_MINUTE }).map(({ entry, startMinute, endMinute, column, columns }) => <button type="button" className="agenda-time-event" key={entry.id} style={{ "--event-color":entry.statusColor, top: (startMinute - AGENDA_START_MINUTE) / 30 * AGENDA_SLOT_HEIGHT, height: Math.max(24, (endMinute-startMinute) / 30 * AGENDA_SLOT_HEIGHT - 3), left: `calc(${column / columns * 100}% + 3px)`, width: `calc(${100 / columns}% - 6px)` } as CSSProperties} title={`${time(entry.startsAt)} – ${time(entry.endsAt)} · ${entry.title} · ${entry.responsibleName}`} onClick={() => onOpenCommitment(entry)}><time>{time(entry.startsAt)} – {time(entry.endsAt)}</time><strong>{calendarCommitmentTitle(entry, calendars)}</strong><small>{entry.responsibleName} · {entry.statusName}</small></button>)}
         </div>; })}
       </div>
     </div>

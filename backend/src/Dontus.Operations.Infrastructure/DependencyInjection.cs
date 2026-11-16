@@ -24,6 +24,7 @@ public static class DependencyInjection
                 npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
             }));
         services.AddScoped<LiaFormService>();
+        services.AddScoped<GoalProgressService>();
         services.Configure<DontusIntegrationOptions>(configuration.GetSection("DontusIntegration"));
         services.AddScoped<DontusIntegrationService>();
         services.AddHttpClient<DontusApiClient>(client => client.Timeout = TimeSpan.FromSeconds(12))

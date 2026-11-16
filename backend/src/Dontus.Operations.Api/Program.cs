@@ -97,6 +97,7 @@ app.UseAuthorization();
 
 app.MapOpenApi();
 app.MapLiaForms();
+app.MapGoals();
 app.MapEmployeeProfiles();
 app.MapRealtime();
 app.MapInternalChatTyping();
@@ -188,7 +189,7 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         .Select(entry => new { entry.Catalog, entry.Name, entry.Description }).ToListAsync(cancellationToken);
     var defaultFeatures = goalFeatures.Where(entry => entry.Catalog == "csFeatureBase" || entry.Description.Contains("\"featureBase\":true") || entry.Description.Contains("\"featureBase\": true")).Select(entry => entry.Name).ToArray();
     var goalCatalogs = await db.CustomerCatalogOptions.AsNoTracking().Where(entry => entry.Catalog == "funnelStage" || entry.Catalog == "commercialProduct").ToListAsync(cancellationToken);
-    var performanceGoals = goalRecords.Select(entry => GoalProgress.Calculate(entry, sourceRecords, defaultFeatures, goalCatalogs))
+    var performanceGoals = goalRecords.Select(entry => GoalProgress.Calculate(entry, sourceRecords, defaultFeatures, goalCatalogs, includeHistory: true))
         .Where(entry => entry is not null && entry.Active && string.CompareOrdinal(entry.PeriodStart, localEnd.ToString("yyyy-MM-dd")) < 0 && string.CompareOrdinal(entry.PeriodEnd, localStart.ToString("yyyy-MM-dd")) >= 0)
         .ToList();
     var journeys = workItems.Where(entry => entry.Module == "cs" || entry.Module == "lia")
@@ -1264,6 +1265,11 @@ operations.MapPost("", async (
                 request.ExpectedNextResponsibleUserId), actor, cancellationToken);
             break;
 
+        case "acknowledgeStrategicUnit":
+            await service.AcknowledgeStrategicUnitAsync(request.Id ?? throw new DomainException("Rede obrigatória."),
+                request.StrategicUnitId ?? throw new DomainException("Unidade obrigatória."), actor, cancellationToken);
+            break;
+
         case "completeHrVacationPeriod":
             await service.CompleteHrVacationPeriodAsync(request.Id ?? throw new DomainException("Colaborador obrigatório."),
                 request.EntitlementYear ?? throw new DomainException("Período aquisitivo obrigatório."), request.Version ?? 0, request.Description, actor, cancellationToken);
@@ -1280,7 +1286,7 @@ operations.MapPost("", async (
                 request.NextStatus ?? "",
                 request.Version ?? 0,
                 request.Confirmed ?? false,
-                request.BoardMove ?? false, request.Reason), actor, cancellationToken);
+                request.BoardMove ?? false, request.Reason, request.NotifyPublicWin), actor, cancellationToken);
             break;
 
         case "createAppointment":
@@ -1922,7 +1928,7 @@ operations.MapPost("", async (
     }
     if ((request.Action is "addSuggestionComment" or "updateSuggestionComment" or "deleteSuggestionAttachment") && actor.HasPermission("suggestions", "view"))
         return Results.Ok(new { ok = true, id, suggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) });
-    if (request.Action is "createWorkItem" or "updateWorkItem" or "transitionWorkItem" or "deleteWorkItem")
+    if (request.Action is "createWorkItem" or "updateWorkItem" or "transitionWorkItem" or "deleteWorkItem" or "acknowledgeStrategicUnit")
     {
         // Generic card edits do not change chat rooms, task catalogs or administrative access.
         // Preserve those client projections instead of rebuilding all of them on every keystroke/save.
@@ -2384,6 +2390,8 @@ public sealed class OperationsRequest
     public string? GroupDescription { get; init; }
     public IReadOnlyCollection<GroupPermissionDto>? Permissions { get; init; }
     public Guid? TaskId { get; init; }
+    public string? StrategicUnitId { get; init; }
+    public bool? NotifyPublicWin { get; init; }
     public Guid? TypeId { get; init; }
     public Guid? PriorityId { get; init; }
     public Guid? StatusId { get; init; }

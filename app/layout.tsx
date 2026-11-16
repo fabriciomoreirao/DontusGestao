@@ -24,6 +24,9 @@ import "./task-reference.css";
 import "./crm-workspace-refinement.css";
 import "./workspace-spacing.css";
 import "./suggestions-refinement.css";
+import "./public-goal-charts.css";
+import "./november-adjustments.css";
+import "./followup-analytics-refinement.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
