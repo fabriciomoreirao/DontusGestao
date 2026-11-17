@@ -779,10 +779,11 @@ export default function OperationsApp() {
     } finally { chatInFlight.current = false; }
   }, [expireSession]);
 
+  const [attendanceRevision, setAttendanceRevision] = useState(0);
   const realtimeConnected = useRealtimeSync({
     user: loginRequired ? undefined : data?.user.email,
     canChat: !!data?.user.permissions.some(permission => permission.screen === "internalChat" && permission.canView),
-    busy, cursor: () => realtimeCursor.current, operations: () => load(true), chat: refreshInternalChat, unauthorized: expireSession,
+    busy, cursor: () => realtimeCursor.current, operations: async () => { const ok = await load(true); if (ok) setAttendanceRevision(value => value + 1); return ok; }, chat: refreshInternalChat, unauthorized: expireSession,
     typing: changes=>chatTypingStore.receive(changes),
     presence: users=>{presenceCache.current=users;setData(current=>current?.internalChatModule?{...current,internalChatModule:applyChatPresence(current.internalChatModule,users)}:current);},
   });
@@ -1020,6 +1021,10 @@ export default function OperationsApp() {
       }
       if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "A operação não foi concluída.");
       mutationRevision.current += 1;
+      if (String(payload.action).includes("Chat") || ["completeWhatsAppCoexistence", "retryWhatsAppCoexistence"].includes(String(payload.action))) {
+        setToast({ kind: "success", message: success });
+        return result as { id?: string; createdProtocol?: string };
+      }
       const nextData = data ? mergeOperationsUpdate(data, result as Partial<AppData> & OperationsChanges<WorkItem>) : result as unknown as AppData;
       const nextSaleItem = nextData.items?.find(item => item.id === (payload.id || result.id));
       const sale = saleTransition(previousSaleItem, nextSaleItem, dataRef.current?.customerModule?.catalogs ?? []);
@@ -1714,9 +1719,10 @@ export default function OperationsApp() {
             />
           )}
           {active === "ti" && <DevelopmentModule taskModule={data.taskModule} items={kanbanItems} employees={assignmentEmployees} user={data.user} canCreate={userCan(data.user, "ti", "create")} canEdit={userCan(data.user, "ti", "edit")} busy={busy} operate={operate} />}
-          {active === "chat" && data.chatModule && (
+          {active === "chat" && userCan(data.user, "chat", "view") && (
             <ChatModule
-              module={data.chatModule}
+              refreshVersion={attendanceRevision}
+              onUnauthorized={expireSession}
               canCreate={userCan(data.user, "chat", "create")}
               canEdit={userCan(data.user, "chat", "edit")}
               canManage={userCan(data.user, "chat", "manage")}

@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class ChatService(
+public sealed partial class ChatService(
     OperationsDbContext db,
     IDataProtectionProvider protectionProvider,
     HttpClient httpClient,
@@ -69,10 +69,11 @@ public sealed class ChatService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<ChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
+    public async Task<ChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, ChatInboxQuery? query = null)
     {
+        query ??= new ChatInboxQuery();
         actor.RequirePermission("chat", "view");
-        var currentUser = await CurrentUserAsync(actor, cancellationToken);
+        var currentUserId = await db.Users.AsNoTracking().Where(x => x.Email == actor.Email).Select(x => x.Id).SingleAsync(cancellationToken);
         var allDepartments = actor.HasPermission("chat", "manage") || actor.HasCapability("chat", "viewOtherDepartments");
         var canViewHistory = actor.HasPermission("chat", "manage") || actor.HasCapability("chat", "viewHistory");
         var visibleDepartmentIds = await VisibleDepartmentIdsAsync(actor, allDepartments, cancellationToken);
@@ -92,17 +93,47 @@ public sealed class ChatService(
         var users = await db.Users.AsNoTracking().Where(x => x.Active).OrderBy(x => x.DisplayName)
             .Select(x => new { x.Id, x.DisplayName, x.Email, x.Active }).ToListAsync(cancellationToken);
         var memberships = await db.UserDepartments.AsNoTracking().ToListAsync(cancellationToken);
-        var conversations = await db.ChatConversations.AsNoTracking()
+        var visible = db.ChatConversations.AsNoTracking()
             .Where(x => (allDepartments || visibleDepartmentIds.Contains(x.DepartmentId)) &&
-                        (canViewHistory || x.Status != "Encerrada"))
-            .OrderByDescending(x => x.LastMessageAt).Take(300).ToListAsync(cancellationToken);
+                        (canViewHistory || x.Status != "Encerrada"));
+        var filtered = visible;
+        var search = query.Search?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(search))
+        {
+            var matchingContacts = db.ChatContacts.Where(x => x.Name.ToLower().Contains(search)
+                || x.Phone.Contains(search) || x.CompanyName.ToLower().Contains(search)).Select(x => x.Id);
+            filtered = filtered.Where(x => matchingContacts.Contains(x.ContactId)
+                || x.Protocol.ToLower().Contains(search) || x.Subject.ToLower().Contains(search)
+                || x.GroupName.ToLower().Contains(search));
+        }
+        if (!string.IsNullOrEmpty(query.Status) && query.Status != "Todos")
+            filtered = filtered.Where(x => x.Status == query.Status);
+        if (query.DepartmentId.HasValue)
+            filtered = filtered.Where(x => x.DepartmentId == query.DepartmentId.Value);
+        var contactsCount = await filtered.CountAsync(x => !x.IsGroup, cancellationToken);
+        var groupsCount = await filtered.CountAsync(x => x.IsGroup, cancellationToken);
+        const int pageSize = 10;
+        var total = query.IsGroup ? groupsCount : contactsCount;
+        var page = Math.Clamp(query.Page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)));
+        var conversations = await filtered.Where(x => x.IsGroup == query.IsGroup)
+            .OrderByDescending(x => x.LastMessageAt).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        var selectedId = conversations.FirstOrDefault(x => x.Id == query.ConversationId)?.Id
+            ?? conversations.FirstOrDefault()?.Id;
         var conversationIds = conversations.Select(x => x.Id).ToArray();
         var contactIds = conversations.Select(x => x.ContactId).ToArray();
         var contacts = await db.ChatContacts.AsNoTracking()
             .Where(x => contactIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        // The inbox needs one preview per row, never the history of every conversation.
         var messages = await db.ChatMessages.AsNoTracking()
-            .Where(x => conversationIds.Contains(x.ConversationId))
-            .OrderBy(x => x.CreatedAt).ToListAsync(cancellationToken);
+            .Where(x => conversationIds.Contains(x.ConversationId) && x.ConversationId != selectedId)
+            .GroupBy(x => x.ConversationId)
+            .Select(group => group.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).First())
+            .ToListAsync(cancellationToken);
+        var selectedMessages = selectedId.HasValue
+            ? await GetMessagesAsync(selectedId.Value, null, actor, cancellationToken)
+            : new ChatMessagePageDto([], false);
+        var messageLookup = messages.Select(ToMessageDto).Concat(selectedMessages.Messages).ToLookup(x => x.ConversationId);
         var tags = await db.ChatTags.AsNoTracking()
             .Where(x => !x.DepartmentId.HasValue || allDepartments || visibleDepartmentIds.Contains(x.DepartmentId.Value))
             .OrderBy(x => x.Name).ToListAsync(cancellationToken);
@@ -121,12 +152,16 @@ public sealed class ChatService(
         var contactMap = contacts.ToDictionary(x => x.Id);
         var tagMap = tags.ToDictionary(x => x.Id);
 
-        var now = DateTimeOffset.UtcNow;
-        var closedToday = conversations.Count(x => x.ClosedAt >= now.Date);
-        var firstResponses = conversations.Where(x => x.FirstResponseAt.HasValue)
-            .Select(x => (x.FirstResponseAt!.Value - x.CreatedAt).TotalMinutes).ToArray();
-        var resolutions = conversations.Where(x => x.ClosedAt.HasValue)
-            .Select(x => (x.ClosedAt!.Value - x.CreatedAt).TotalMinutes).ToArray();
+        var today = new DateTimeOffset(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3)).Date,
+            TimeSpan.FromHours(-3)).ToUniversalTime();
+        var metrics = await visible.GroupBy(x => 1).Select(group => new ChatMetricsDto(
+            group.Count(x => x.Status == "Aberta" || x.Status == "Em atendimento"),
+            group.Count(x => x.Status == "Aguardando cliente"),
+            group.Count(x => !x.AssigneeUserId.HasValue && x.Status != "Encerrada"),
+            group.Count(x => x.ClosedAt >= today),
+            group.Average(x => x.FirstResponseAt.HasValue ? (double?)(x.FirstResponseAt.Value - x.CreatedAt).TotalMinutes : null) ?? 0,
+            group.Average(x => x.ClosedAt.HasValue ? (double?)(x.ClosedAt.Value - x.CreatedAt).TotalMinutes : null) ?? 0
+        )).SingleOrDefaultAsync(cancellationToken) ?? new ChatMetricsDto(0, 0, 0, 0, 0, 0);
 
         return new ChatModuleDto(
             conversations.Select(c =>
@@ -143,7 +178,7 @@ public sealed class ChatService(
                     c.Status, c.Priority, c.Favorite, c.UnreadCount, c.CreatedAt, c.LastMessageAt,
                     c.FirstResponseAt, c.ClosedAt, c.SlaDueAt, c.AiSummary, c.Sentiment, c.Version,
                     c.SatisfactionScore, c.SatisfactionComment, c.SatisfactionRespondedAt,
-                    messages.Where(x => x.ConversationId == c.Id).Select(ToMessageDto).ToArray(),
+                    messageLookup[c.Id].ToArray(),
                     conversationTags.Where(x => x.ConversationId == c.Id && tagMap.ContainsKey(x.TagId))
                         .Select(x => ToTagDto(tagMap[x.TagId])).ToArray(),
                     transfers.Where(x => x.ConversationId == c.Id).Select(x => new ChatTransferDto(
@@ -169,14 +204,10 @@ public sealed class ChatService(
                 !string.IsNullOrWhiteSpace(x.AppSecretProtected), x.Active)).ToArray(),
             tags.Select(ToTagDto).ToArray(),
             quickReplies.Select(x => new ChatQuickReplyDto(x.Id, x.Shortcut, x.Title, x.Body, x.DepartmentId, x.Active)).ToArray(),
-            new ChatMetricsDto(
-                conversations.Count(x => x.Status is "Aberta" or "Em atendimento"),
-                conversations.Count(x => x.Status == "Aguardando cliente"),
-                conversations.Count(x => !x.AssigneeUserId.HasValue && x.Status != "Encerrada"),
-                closedToday,
-                firstResponses.Length == 0 ? 0 : Math.Round(firstResponses.Average(), 1),
-                resolutions.Length == 0 ? 0 : Math.Round(resolutions.Average(), 1)),
-            currentUser.Id);
+            metrics with { AverageFirstResponseMinutes = Math.Round(metrics.AverageFirstResponseMinutes, 1),
+                AverageResolutionMinutes = Math.Round(metrics.AverageResolutionMinutes, 1) },
+            currentUserId, new ChatInboxPageDto(page, pageSize, total, contactsCount, groupsCount),
+            selectedId, selectedMessages.HasMore);
     }
 
     public async Task<Guid> CreateConversationAsync(CreateChatConversationCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -1025,8 +1056,8 @@ public sealed class ChatService(
     private async Task<Guid[]> VisibleDepartmentIdsAsync(ActorContext actor, bool all, CancellationToken cancellationToken)
     {
         if (all) return await db.TaskDepartments.Select(x => x.Id).ToArrayAsync(cancellationToken);
-        var user = await CurrentUserAsync(actor, cancellationToken);
-        var ids = await db.UserDepartments.Where(x => x.UserId == user.Id).Select(x => x.DepartmentId).ToArrayAsync(cancellationToken);
+        var userId = await db.Users.AsNoTracking().Where(x => x.Email == actor.Email).Select(x => x.Id).SingleAsync(cancellationToken);
+        var ids = await db.UserDepartments.Where(x => x.UserId == userId).Select(x => x.DepartmentId).ToArrayAsync(cancellationToken);
         if (ids.Length > 0) return ids;
         return await db.TaskDepartments.Where(x => x.Name == actor.Department).Select(x => x.Id).ToArrayAsync(cancellationToken);
     }

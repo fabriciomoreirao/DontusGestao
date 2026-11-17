@@ -28,6 +28,20 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 ### Atualização em tempo real
 
+Em **Atendimentos**, a lista exibe dez registros por página, com **Anterior** e
+**Seguinte**. A pesquisa e os filtros consideram os registros carregados e retornam
+à primeira página; a última página se ajusta após exclusões. Somente as dez linhas
+visíveis são renderizadas, e a consulta às fotos dos responsáveis reutiliza um índice.
+
+O **WhatsApp** carrega seus dados somente ao abrir o módulo, sem bloquear a carga
+inicial ou as gravações das outras telas. A caixa de entrada consulta dez conversas
+por página no servidor, com pesquisa e permissões aplicadas antes da paginação.
+Cada linha traz uma prévia; a conversa aberta carrega as cinquenta mensagens mais
+recentes. **Mostrar mensagens anteriores** busca mais cinquenta usando a última
+referência exibida, inclusive quando várias mensagens têm o mesmo horário.
+Os indicadores consultam o período separadamente, sem baixar o histórico de mensagens,
+e a tabela do relatório também mostra dez registros por página.
+
 No **Chat interno**, a última mensagem enviada com confirmação de leitura mostra **Visualizado: hoje/ontem/data às horário**, no horário de Brasília. Grupos informam leituras parciais. O primeiro registro de leitura de cada mensagem é preservado; a migration `InternalChatReceiptsAndReactions` conserva a última confirmação disponível dos registros antigos, pois o histórico anterior não armazenava horários individuais.
 
 Use **Reagir à mensagem** para escolher um emoji. Cada participante pode manter uma reação por mensagem, trocar o emoji ou clicar novamente para remover. Os totais e os nomes dos participantes acompanham a sincronização, respeitando o acesso privado à conversa. Mensagens excluídas deixam de exibir reações.
