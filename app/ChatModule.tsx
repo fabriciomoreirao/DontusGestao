@@ -1,5 +1,7 @@
 "use client";
 import MessageText from "@/app/MessageText";
+import ChatMessageComposer from "@/app/ChatMessageComposer";
+import { createChatDraftStore } from "@/lib/chat-drafts";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
@@ -220,8 +222,7 @@ function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities,
   const setStatus = (status: string) => onFilters({ status });
   const setDepartmentId = (departmentId: string) => onFilters({ departmentId });
   const [newConversation, setNewConversation] = useState(false);
-  const [composer, setComposer] = useState("");
-  const [internal, setInternal] = useState(false);
+  const [drafts] = useState(createChatDraftStore);
   const [selection, setSelectedConversationIds] = useState<string[]>([]);
   const conversationKind = filters.isGroup ? "groups" : "contacts";
   const setConversationKind = (kind: "contacts" | "groups") => onFilters({ isGroup: kind === "groups" });
@@ -234,12 +235,6 @@ function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities,
   const selected = module.conversations.find((conversation) => conversation.id === selectedId && (conversationKind === "groups" ? conversation.isGroup : !conversation.isGroup)) ?? visibleConversations[0] ?? null;
   const batchCandidates = visibleConversations.filter((conversation) => conversation.status !== "Encerrada");
   const selectedConversationIds = selection.filter(id => batchCandidates.some(conversation => conversation.id === id));
-
-  const send = async () => {
-    if (!selected || !composer.trim()) return;
-    const ok = await operate({ action: "sendChatMessage", conversationId: selected.id, body: composer, internal }, internal ? "Nota interna registrada." : "Mensagem enviada.");
-    if (ok) setComposer("");
-  };
 
   return <section className="chat-module">
     <header className="chat-page-head module-page-header">
@@ -327,24 +322,10 @@ function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities,
             </article>)}
             {selected.transfers.map((transfer) => <div className="transfer-event" key={transfer.id}><ArrowRightLeft size={15} /><span><b>Transferência de setor</b>{transfer.reason} · por {transfer.actorName}</span><time>{formatDate(transfer.createdAt)}</time></div>)}
           </div>
-          {canEdit && <footer className={`chat-composer ${internal ? "internal" : ""}`}>
-            <div className="composer-mode">
-              <button className={!internal ? "active" : ""} onClick={() => setInternal(false)} disabled={!has("sendMessages")}><MessageCircleMore size={15} /> Responder</button>
-              <button className={internal ? "active" : ""} onClick={() => setInternal(true)} disabled={!has("internalNotes")}><ShieldCheck size={15} /> Nota interna</button>
-              <select aria-label="Resposta rápida" value="" onChange={(event) => {
-                const reply = module.quickReplies.find((item) => item.id === event.target.value);
-                if (reply) setComposer(reply.body);
-              }}><option value="">Respostas rápidas</option>{module.quickReplies.filter((item) => item.active && (!item.departmentId || item.departmentId === selected.departmentId)).map((reply) => <option value={reply.id} key={reply.id}>{reply.shortcut} · {reply.title}</option>)}</select>
-            </div>
-            <textarea rows={4} value={composer} onChange={(event) => setComposer(event.target.value)} placeholder={internal ? "Escreva uma nota visível apenas para a equipe…" : "Digite sua mensagem para o cliente…"} onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void send(); }
-            }} />
-            <div className="composer-actions"><span>Ctrl + Enter para enviar</span><div><label className="composer-attachment"><Paperclip size={16} /><span>Anexar</span><input type="file" multiple onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              if (files.length) void uploadAttachments(selected.id, files, internal);
-              event.target.value = "";
-            }} /></label><button disabled={busy || !composer.trim()} onClick={() => void send()}><Send size={16} /> {internal ? "Salvar nota" : "Enviar mensagem"}</button></div></div>
-          </footer>}
+          {canEdit && <ChatMessageComposer drafts={drafts} conversationId={selected.id} departmentId={selected.departmentId} quickReplies={module.quickReplies} busy={busy}
+            canSendMessages={has("sendMessages")} canInternalNotes={has("internalNotes")}
+            onSend={(body, internal) => operate({ action: "sendChatMessage", conversationId: selected.id, body, internal }, internal ? "Nota interna registrada." : "Mensagem enviada.")}
+            onUpload={(files, internal) => uploadAttachments(selected.id, files, internal)} />}
         </>}
       </main>
 

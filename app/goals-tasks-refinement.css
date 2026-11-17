@@ -186,3 +186,6 @@ button.performance-goal-title {cursor:pointer;border-radius:8px;}
   .app-shell .task-detail-overlay .task-conversation-card>form>footer>small {display:none;}
   .app-shell .task-detail-overlay .task-conversation-card>form>textarea {font-size:16px;}
 }
+.app-shell .content .task-card .task-card-type {max-width:100%;white-space:normal;line-height:1.4;align-items:flex-start;}
+.app-shell .content .task-card .task-card-type>svg {flex:0 0 auto;margin-top:1px;}
+.app-shell .content .task-card .task-card-type>span {min-width:0;overflow-wrap:anywhere;}

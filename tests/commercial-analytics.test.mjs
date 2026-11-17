@@ -45,3 +45,20 @@ test('cada CRM contabiliza todos os ganhos pelo responsável atual e usa o valor
  const report=summarizeCommercialPeriod(rows.filter(row=>row.seller==='Maria'),commercialAnalyticsPeriod('month','2026-11'));
  assert.equal(report.sales.length,2);assert.equal(report.revenue,35990);assert.deepEqual(report.sales.map(row=>row.funnel),['Sistema','LIA']);
 });
+test('total por vendedor reúne comercial e módulos por ID do CRM e normaliza variações do nome',()=>{
+ const catalogs=[{id:'comercial',catalog:'funnelStage',name:'CRM Comercial',description:JSON.stringify({f:'c',s:[['Venda confirmada','#fff',1]]})},{id:'modulos',catalog:'funnelStage',name:'CRM Módulos',description:JSON.stringify({f:'c',s:[['Módulo contratado','#fff',1]]})}];
+ const rows=commercialAnalyticsEntries([
+   item('comercial',{funnelId:'comercial',funnel:'Nome antigo',stage:'Venda confirmada',seller:'Márcia Silva',wonAt:'2026-11-17'},{amount_cents:21990}),
+   item('modulos',{funnelId:'modulos',funnel:'CRM Módulos',stage:'módulo contratado ',seller:'  MARCIA   SILVA ',wonAt:'2026-11-17'},{amount_cents:6990}),
+   item('outro',{funnelId:'modulos',stage:'Módulo contratado',seller:'Outra pessoa',wonAt:'2026-11-17'},{amount_cents:9990})
+ ],'commercial:combined',catalogs);
+ const report=summarizeCommercialPeriod(rows.filter(row=>row.seller==='Márcia Silva'),commercialAnalyticsPeriod('month','2026-11'));
+ assert.equal(report.revenue,28980);assert.equal(report.sales.length,2);
+ assert.deepEqual(report.sales.map(row=>row.funnel),['CRM Comercial','CRM Módulos']);
+});
+
+test('totais incluem todos os cards de todos os CRMs, além do limite visual de mil registros',()=>{
+ const records=Array.from({length:1205},(_,index)=>item(String(index),{funnel:index%2?'CRM Módulos':'CRM Comercial',stage:'Ganho',seller:'Ana',wonAt:'2026-11-17'},{amount_cents:101}));
+ const report=summarizeCommercialPeriod(commercialAnalyticsEntries([...records,records[0]],'commercial:combined'),commercialAnalyticsPeriod('month','2026-11'));
+ assert.equal(report.sales.length,1205);assert.equal(report.revenue,121705);
+});
