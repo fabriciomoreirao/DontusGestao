@@ -674,8 +674,8 @@ public sealed class AccessControlService(
         var coordinatorIds = command.CoordinatorUserIds?.Distinct().ToArray();
         if (coordinatorIds is not null && await db.Users.CountAsync(user => coordinatorIds.Contains(user.Id) && user.Active && user.BlockedAt == null, cancellationToken) != coordinatorIds.Length)
             throw new DomainException("Selecione coordenadores ativos e válidos.");
-        if (command.ApproverUserId.HasValue && (coordinatorIds is null || !coordinatorIds.Contains(command.ApproverUserId.Value)))
-            throw new DomainException("Selecione um dos coordenadores do setor como aprovador.");
+        if (command.ApproverUserId.HasValue && !await db.Users.AnyAsync(user => user.Id == command.ApproverUserId && user.Active && user.BlockedAt == null, cancellationToken))
+            throw new DomainException("Selecione um aprovador ativo e válido.");
         var department = command.Id.HasValue
             ? await db.TaskDepartments.SingleOrDefaultAsync(entry => entry.Id == command.Id.Value, cancellationToken)
                 ?? throw new DomainException("Setor não encontrado.", 404)

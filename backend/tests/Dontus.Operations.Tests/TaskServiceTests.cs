@@ -9,6 +9,33 @@ namespace Dontus.Operations.Tests;
 public sealed class TaskServiceTests
 {
     [Fact]
+    public async Task Current_designated_approver_can_complete_pending_tasks_after_live_reassignment_without_coordinator_membership()
+    {
+        await using var db = CreateContext(); var (service, admin) = await InitializeAsync(db);
+        var department = await db.TaskDepartments.SingleAsync(x => x.Name == "Suporte"); var type = await db.TaskTypes.SingleAsync();
+        var owner = new AppUser { Email = "owner-approval@test", DisplayName = "Responsável", CreatedBy = "tests" };
+        var old = new AppUser { Email = "old-approval@test", DisplayName = "Anterior", CreatedBy = "tests" };
+        var next = new AppUser { Email = "next-approval@test", DisplayName = "Novo aprovador", CreatedBy = "tests" };
+        db.Users.AddRange(owner, old, next); db.UserDepartments.Add(new() { UserId = owner.Id, DepartmentId = department.Id });
+        db.UserDepartments.Add(new() { UserId = old.Id, DepartmentId = department.Id, IsCoordinator = true });
+        department.ApproverUserId = old.Id; await db.SaveChangesAsync();
+        var created = await service.CreateAsync(new("Aprovação dinâmica", "Descrição obrigatória", type.Id, null, null, department.Id, department.Id, owner.Id, null, null, null, "5511999990000", null, null, null, null, false, [], []), admin);
+        var task = await db.CorporateTasks.SingleAsync(x => x.Id == created.Id);
+        ActorContext Actor(AppUser person) => new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false)]);
+        var approval = await db.TaskStatuses.SingleAsync(x => x.Name == "Aguardando aprovação");
+        await service.ChangeStatusAsync(new(task.Id,approval.Id,null,task.Version,true),Actor(owner));
+        Assert.Contains(await db.TaskNotifications.ToArrayAsync(),entry=>entry.TaskId==task.Id&&entry.RecipientUserId==old.Id&&entry.EventType=="approval_requested");
+        await service.SaveDepartmentAsync(new(department.Id,department.Name,department.Description,true,false,[old.Id],next.Id),admin);
+        var visible = Assert.Single((await service.GetModuleAsync(Actor(next))).Tasks);
+        Assert.Equal(next.Id,visible.ApproverUserId);
+        var final = await db.TaskStatuses.SingleAsync(x=>x.Name=="Resolvida"); final.ManualMovement=false;
+        db.TaskTypeStatuses.RemoveRange(await db.TaskTypeStatuses.Where(x=>x.StatusId==final.Id).ToArrayAsync());await db.SaveChangesAsync();
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeStatusAsync(new(task.Id,final.Id,"Anterior",task.Version),Actor(old)))).StatusCode);
+        await service.ChangeStatusAsync(new(task.Id,final.Id,"Aprovada",task.Version),Actor(next));
+        Assert.Equal(final.Id,task.StatusId);Assert.NotNull(task.CompletedAt);
+    }
+
+    [Fact]
     public async Task Assigned_sector_coordinator_completes_directly_without_approval_request()
     {
         await using var db = CreateContext(); var (service, admin) = await InitializeAsync(db);
@@ -106,6 +133,7 @@ public sealed class TaskServiceTests
         var owner=new AppUser{Email="flow-owner@test",DisplayName="Responsável",CreatedBy="tests"};
         var coordinator=new AppUser{Email="flow-coord@test",DisplayName="Coordenação",CreatedBy="tests"};
         var outsider=new AppUser{Email="flow-outsider@test",DisplayName="Outra coordenação",CreatedBy="tests"};
+        department.ApproverUserId=coordinator.Id;
         db.Users.AddRange(owner,coordinator,outsider);
         db.UserDepartments.AddRange(new(){UserId=owner.Id,DepartmentId=department.Id},new(){UserId=coordinator.Id,DepartmentId=department.Id,IsCoordinator=true},new(){UserId=outsider.Id,DepartmentId=otherDepartment.Id,IsCoordinator=true});
         var pending=new Dontus.Operations.Domain.TaskStatus{Name="Pendente",ManualMovement=true,Active=true};
@@ -814,7 +842,8 @@ public sealed class TaskServiceTests
         Assert.Contains(await db.TaskParticipants.Where(entry => entry.TaskId == created.Id).ToArrayAsync(), entry => entry.UserId == coordinator.Id);
         var next = new AppUser { Email = "next-approver@test.local", DisplayName = "Próximo aprovador", CreatedBy = "tests" };
         db.Users.Add(next); await db.SaveChangesAsync();
-        await Assert.ThrowsAsync<DomainException>(() => access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, [coordinator.Id], next.Id), actor));
+        await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, [coordinator.Id], next.Id), actor);
+        Assert.Equal(next.Id, (await tasks.GetModuleAsync(actor)).Tasks.Single(entry => entry.Id == created.Id).ApproverUserId);
         await access.SaveEmployeeDepartmentAsync(new(support.Id, support.Name, support.Description, true, [coordinator.Id, next.Id], next.Id), actor);
         Assert.Equal(next.Id, (await tasks.GetModuleAsync(actor)).Tasks.Single(entry => entry.Id == created.Id).ApproverUserId);
         db.TaskComments.AddRange(new TaskComment { TaskId = created.Id, AuthorUserId = coordinator.Id, Body = $"[APROVADOR:{coordinator.Id}]" },

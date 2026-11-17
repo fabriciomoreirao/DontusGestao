@@ -8,6 +8,21 @@ namespace Dontus.Operations.Tests;
 
 public sealed class InternalChatServiceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Muting_is_personal_persistent_and_does_not_acknowledge_unread_messages(bool group)
+    {
+        await using var db = CreateContext();var sender=AddUser(db,"mute-sender@test","Remetente");sender.IsCoordinator=true;var reader=AddUser(db,"mute-reader@test","Leitor");var outsider=AddUser(db,"mute-outsider@test","Outro");await db.SaveChangesAsync();
+        var service=CreateService(db);var room=await service.CreateRoomAsync(new(group?"Equipe":null,null,group,[reader.Id]),Actor(sender));
+        await service.SendMessageAsync(new(room,"Mensagem não lida","text"),Actor(sender));
+        await service.SetMutedAsync(new(room,true),Actor(reader));
+        var muted=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms);Assert.True(muted.IsMuted);Assert.Equal(1,muted.UnreadCount);
+        Assert.False(Assert.Single((await service.GetModuleAsync(Actor(sender))).Rooms).IsMuted);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMutedAsync(new(room,true),Actor(outsider)))).StatusCode);
+        await service.SetMutedAsync(new(room,false),Actor(reader));Assert.False(Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms).IsMuted);
+    }
+
     [Fact]
     public async Task Room_projection_only_loads_the_requested_membership_and_removes_rooms_without_access()
     {

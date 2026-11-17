@@ -1,4 +1,5 @@
 import {commercialIndicatorFlow,commercialSaleDate} from './commercial-indicators.ts';
+import {retentionOnboardingLeadIds} from './retention-indicators.ts';
 type RecordItem = {id: string; module: string; record_type: string; description?: string; created_at: string; updated_at: string; status: string; title: string;owner?:string;amount_cents?:number};
 const norm=(value:unknown)=>String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
 const read=(raw?:string):Record<string,unknown>=>{try{const value=JSON.parse(raw||"{}");return value&&typeof value==='object'&&!Array.isArray(value)?value:{}}catch{return {}}};
@@ -36,5 +37,5 @@ export function paidTrafficCohort<T extends RecordItem>(items:T[]) {
 }
 export function retainedToOnboarding(id:string,detail:Record<string,unknown>,items:RecordItem[]){
  if(detail.onboarding && typeof detail.onboarding==="object" && Boolean((detail.onboarding as Record<string,unknown>).sentAt))return true;
- return items.some(item=>{const journey=read(item.description);return item.module==="cs"&&journey.kind==="csJourney"&&journey.track==="retention"&&(journey.sourceLeadId===id || (Array.isArray(journey.cycles)&&journey.cycles.some(cycle=>cycle?.sourceRetentionLeadId===id)))});
+ return retentionOnboardingLeadIds(items).has(id);
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { DistributionChart } from "./AnalyticsCharts";
 import { groupIndicatorRecords, indicatorFields, indicatorValues, matchesIndicatorFilters, type IndicatorFilter, type IndicatorRecord } from "@/lib/field-indicators";
@@ -10,10 +10,10 @@ export function useFieldIndicatorAnalysis(records: IndicatorRecord[]) {
   const [split, setSplit] = useState("");
   const fields = useMemo(() => indicatorFields(records), [records]);
   const validKeys = new Set(fields.map(entry => entry.key));
-  const activeFilters = filters.filter(filter => validKeys.has(filter.field));
+  const activeFilters = useMemo(() => filters.filter(filter => fields.some(entry => entry.key === filter.field)), [filters, fields]);
   const dimension = validKeys.has(field) ? field : "status";
   const secondary = validKeys.has(split) && split !== dimension ? split : "";
-  const matches = (item: IndicatorRecord) => matchesIndicatorFilters(item, activeFilters);
+  const matches = useCallback((item: IndicatorRecord) => matchesIndicatorFilters(item, activeFilters), [activeFilters]);
   const panel = (scoped: IndicatorRecord[]) => {
     const groups = groupIndicatorRecords(scoped, dimension, secondary);
     const title = `${fields.find(entry => entry.key === dimension)?.label || "Status"}${secondary ? ` por ${fields.find(entry => entry.key === secondary)?.label}` : ""}`;

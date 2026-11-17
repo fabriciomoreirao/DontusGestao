@@ -15,6 +15,7 @@ export function canDragTask(task:Task,access:Access) {
 export function canMoveTask(task:Task,status:Status,types:Type[],access:Access,intent:"move"|"requestApproval"="move") {
   if(!canDragTask(task,access)||!status.active||(status.departmentId&&status.departmentId!==task.currentDepartmentId))return false;
   if(intent==="requestApproval")return !access.directComplete&&isTaskApprovalStatus(status)&&!status.isFinal&&!task.completedAt;
+  if(status.isFinal&&!/cancel/i.test(status.name)&&(access.directComplete||access.canManage||access.canApprove&&isTaskApprovalStatus({name:task.statusName||""})))return true;
   if(!status.manualMovement||isTaskApprovalStatus(status))return false;
   if(status.isFinal&&!access.directComplete&&!access.canManage&&(!access.canApprove||!isTaskApprovalStatus({name:task.statusName||""})))return false;
   if(/cancel/i.test(status.name)&&!(access.canEdit&&(access.canManage||access.changeStatus)&&(access.canManage||access.cancel)))return false;

@@ -38,3 +38,10 @@ test('conversão de uma semana não usa ganhos que só ocorreram em semanas post
   const report=summarizeCommercialPeriod(rows,commercialAnalyticsPeriod('week','2026-10-20'));
   assert.equal(report.cohort.length,1);assert.equal(report.conversion,0);assert.equal(report.sales.length,0);
 });
+
+test('cada CRM contabiliza todos os ganhos pelo responsável atual e usa o valor persistido do card',()=>{
+ const catalogs=['Sistema','LIA'].map(name=>({catalog:'funnelStage',name,description:JSON.stringify({f:'c',s:[['Aceite','#fff',1]]})}));
+ const rows=commercialAnalyticsEntries([item('sistema',{funnel:'Sistema',stage:'Aceite',seller:'Maria',totalCents:1,wonAt:'2026-11-16'},{owner:'Responsável legado',amount_cents:25990}),item('lia',{funnel:'LIA',stage:'Aceite',seller:'Maria',wonAt:'2026-11-16'},{owner:'Responsável legado',amount_cents:10000}),item('outro',{funnel:'Sistema',stage:'Aceite',wonAt:'2026-11-16'},{owner:'João',amount_cents:30000})],'commercial:combined',catalogs);
+ const report=summarizeCommercialPeriod(rows.filter(row=>row.seller==='Maria'),commercialAnalyticsPeriod('month','2026-11'));
+ assert.equal(report.sales.length,2);assert.equal(report.revenue,35990);assert.deepEqual(report.sales.map(row=>row.funnel),['Sistema','LIA']);
+});

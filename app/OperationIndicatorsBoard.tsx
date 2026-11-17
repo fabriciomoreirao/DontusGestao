@@ -4,7 +4,7 @@ import FollowupRiskIndicators from "@/app/FollowupRiskIndicators";
 import LiaPromptIndicators from "@/app/LiaPromptIndicators";
 import "./lia-journey.css";
 
-import { retainedToOnboarding } from "@/lib/paid-traffic-indicators";
+import RetentionIndicatorsBoard from "@/app/RetentionIndicatorsBoard";
 import type { GoalScope } from "@/lib/goal-scope";
 import { goalProgress, type PerformanceGoal } from "@/lib/goal-progress";
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
@@ -532,78 +532,6 @@ function GenericOperationIndicatorsBoard({ title, module, contextKey = "", items
   </section></main>;
 }
 
-type CommercialEntry = { item: Item; detail: Detail; date: string; seller: string; stage: string; origin: string; amount: number; direct: boolean; won: boolean; lia: boolean; follows: Detail[] };
-
-function commercialEntries(items: Item[], contextKey: string): CommercialEntry[] {
-  return scopeItems(items, "commercial", contextKey).map((item) => {
-    const detail = parse(item.description); const direct = detail.kind === "directSale";
-    const stage = stringOf(detail.stage, item.status) || "Sem etapa";
-    const products = arrayOf(detail.products);
-    const productAmount = products.reduce((sum, product) => sum + (typeof product === "object" && product ? numberOf((product as Detail).unitValue, (product as Detail).value) * Math.max(1, numberOf((product as Detail).quantity)) * 100 : 0), 0);
-    return {
-      item, detail, direct, stage, seller: stringOf(detail.seller, detail.sellerName, item.owner) || "Não atribuído",
-      origin: stringOf(detail.origin, detail.source) || "Não informada",
-      date: stringOf(detail.saleDate, detail.entryDate, item.created_at).slice(0, 10),
-      amount: numberOf(detail.totalCents, detail.valueCents, item.amount_cents, productAmount),
-      won: direct || Boolean(detail.wonAt) || /ganho|vendid|fechad|contrat|conclu/.test(clean(`${stage} ${item.status}`)),
-      lia: clean(detail.followUpTrack) === "lia" || /\blia\b/.test(clean(item.description)),
-      follows: arrayOf(detail.follows).filter((entry): entry is Detail => Boolean(entry && typeof entry === "object")),
-    };
-  });
-}
-
-
-
-function RetentionIndicatorsBoard({ title, contextKey, items, onClose }: { title: string; contextKey: string; items: Item[]; onClose: () => void }) {
-  const [tab, setTab] = useState<"overview" | "versions" | "team" | "fields">("overview");
-  const [month, setMonth] = useState("all");
-  const [owner, setOwner] = useState("all");
-  const [version, setVersion] = useState("all");
-  const [crm,setCrm]=useState("all");
-  const flowEntries=useMemo(()=>commercialEntries(items,contextKey),[items,contextKey]);
-  const crmOptions=[...new Set(flowEntries.map(entry=>String(entry.detail.funnel||"Sem CRM")))];
-  const rawEntries=flowEntries.filter(entry=>crm==="all"||String(entry.detail.funnel||"Sem CRM")===crm);
-  const fieldAnalysis = useFieldIndicatorAnalysis(rawEntries.map(entry => entry.item));
-  const all = rawEntries.filter(entry => fieldAnalysis.matches(entry.item));
-  const scoped = useMemo(() => all.filter((entry) => (month === "all" || entry.date.startsWith(month)) && (owner === "all" || entry.seller === owner) && (version === "all" || stringOf(entry.detail.version) === version)), [all, month, owner, version]);
-  const outcome = (entry: CommercialEntry) => {
-    const value = clean(`${entry.stage} ${entry.item.status}`);
-    if (/sem sucesso|perdid|cancelad|reprovad/.test(value)) return "failure" as const;
-    if (retainedToOnboarding(entry.item.id, entry.detail, items)) return "success" as const;
-    return "process" as const;
-  };
-  const total = scoped.length;
-  const success = scoped.filter((entry) => outcome(entry) === "success").length;
-  const failure = scoped.filter((entry) => outcome(entry) === "failure").length;
-  const process = total - success - failure;
-  const conversion = total ? Math.round(success / total * 1000) / 10 : 0;
-  const funnel = counted(scoped.map((entry) => entry.stage), 12);
-  const maxFunnel = Math.max(1, ...funnel.map((entry) => entry.count));
-  const versions = [...new Set(all.map((entry) => stringOf(entry.detail.version) || "Sem versão"))].sort();
-  const owners = [...new Set(all.map((entry) => entry.seller))].sort();
-  const summarize = (rows: CommercialEntry[]) => {
-    const successful = rows.filter((entry) => outcome(entry) === "success").length;
-    const unsuccessful = rows.filter((entry) => outcome(entry) === "failure").length;
-    return { total: rows.length, process: rows.length - successful - unsuccessful, success: successful, failure: unsuccessful, conversion: rows.length ? Math.round(successful / rows.length * 1000) / 10 : 0 };
-  };
-  const versionRows = versions.map((name) => ({ name, ...summarize(scoped.filter((entry) => (stringOf(entry.detail.version) || "Sem versão") === name)) })).filter((entry) => entry.total > 0).sort((a, b) => b.total - a.total);
-  const ownerRows = owners.map((name) => ({ name, ...summarize(scoped.filter((entry) => entry.seller === name)) })).filter((entry) => entry.total > 0).sort((a, b) => b.total - a.total);
-  const maxOwner = Math.max(1, ...ownerRows.map((entry) => entry.total));
-  return <main className="operation-bi-page cancellation-bi-style" aria-labelledby="operation-bi-title"><section className="operation-bi-board retention-bi-board">
-    <header><div><span className="operation-bi-mark"><TrendingUp /></span><span><small>INDICADORES · CRM RETENÇÃO</small><h1 id="operation-bi-title">{title}</h1><p>Análise de conversão, desempenho do funil, versões e responsáveis.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para CRM Retenção"><ArrowLeft /><span>Voltar</span></button></header>
-    <section className="operation-bi-filters retention-bi-filters"><Filter /><label>CRM<select aria-label="Filtrar indicadores de retenção por CRM" value={crm} onChange={event=>setCrm(event.target.value)}><option value="all">Todos os CRMs</option>{crmOptions.sort().map(name=><option key={name}>{name}</option>)}</select></label><label>Competência<select value={month} onChange={(event) => setMonth(event.target.value)}><option value="all">Todo o período</option>{[...new Set(all.map((entry) => entry.date.slice(0, 7)).filter(Boolean))].sort().reverse().map((entry) => <option key={entry} value={entry}>{monthLabel(entry)}</option>)}</select></label><label>Responsável<SearchablePeopleSelect searchLabel="Responsável" value={owner} onChange={(event) => setOwner(event.target.value)}><option value="all">Todos</option>{owners.map((entry) => <option key={entry}>{entry}</option>)}</SearchablePeopleSelect></label><label>Versão<select value={version} onChange={(event) => setVersion(event.target.value)}><option value="all">Todas</option>{versions.map((entry) => <option key={entry}>{entry}</option>)}</select></label><button onClick={() => { setMonth("all"); setOwner("all"); setVersion("all"); setCrm("all"); }}>Limpar</button><strong>{total} cliente(s)</strong></section>
-    <IndicatorTabs id="retention" value={tab} onChange={setTab} tabs={[{id:"overview",label:"Visão geral"},{id:"versions",label:"Versões"},{id:"team",label:"Responsáveis"},{id:"fields",label:"Campos preenchidos"}]} />
-    <section role="tabpanel" id={`retention-panel-${tab}`} aria-labelledby={`retention-tab-${tab}`} className="indicator-panel">
-    {tab === "fields" && fieldAnalysis.panel(scoped.map(entry => entry.item))}
-    {tab === "overview" && <><section className="retention-bi-kpis"><article className="total"><span><UsersRound /></span><small>Total</small><strong>{total}</strong><em>clientes no funil</em></article><article className="process"><span><Activity /></span><small>Em processo</small><strong>{process}</strong><em>{percent(process, total)} do total</em></article><article className="success"><span><CheckCircle2 /></span><small>Sucesso</small><strong>{success}</strong><em>{percent(success, total)} do total</em></article><article className="failure"><span><Clock3 /></span><small>Sem sucesso</small><strong>{failure}</strong><em>{percent(failure, total)} do total</em></article><article className="conversion"><span><Gauge /></span><small>Conversão</small><strong>{conversion.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</strong><em>sucesso sobre o total</em></article></section>
-    <section className="retention-bi-panel retention-funnel-panel"><header><span><BarChart3 />Distribuição no funil</span><b>QUANTIDADE E PARTICIPAÇÃO</b></header><DistributionChart title="Etapas do funil de retenção" entries={funnel} unit="clientes" donut /></section>
-    </>}
-    {tab === "versions" && <section className="retention-bi-panel retention-version-panel"><header><span><BarChart3 />Distribuição por versão</span><b>{versionRows.length} versão(ões)</b></header><div className="retention-bi-table"><div className="head"><span>Versão</span><span>Total</span><span>Em processo</span><span>Sucesso</span><span>Sem sucesso</span><span>Conversão</span></div>{versionRows.length ? versionRows.map((entry) => <div key={entry.name}><strong>{entry.name}</strong><b>{entry.total}</b><span>{entry.process}</span><span className="positive">{entry.success}</span><span className="negative">{entry.failure}</span><em>{entry.conversion.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</em></div>) : <p>Sem dados de versão para o filtro atual.</p>}</div></section>}
-    {tab === "team" && <section className="retention-bi-bottom"><article className="retention-bi-panel"><header><span><UsersRound />Conversão por responsável</span><b>{ownerRows.length} responsável(is)</b></header><div className="retention-owner-bars">{ownerRows.length ? ownerRows.map((entry) => <div key={entry.name}><strong>{entry.name}</strong><span><i className="process" style={{ width: `${entry.process / maxOwner * 100}%` }} /><i className="success" style={{ width: `${entry.success / maxOwner * 100}%` }} /><i className="failure" style={{ width: `${entry.failure / maxOwner * 100}%` }} /></span><b>{entry.conversion.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</b></div>) : <p>Sem responsáveis no filtro atual.</p>}<footer><span><i className="process" />Em processo</span><span><i className="success" />Sucesso</span><span><i className="failure" />Sem sucesso</span></footer></div></article>
-      <article className="retention-bi-panel"><header><span><UsersRound />Detalhamento por responsável</span><b>{total} cliente(s)</b></header><div className="retention-bi-table owner-table"><div className="head"><span>Responsável</span><span>Total</span><span>Processo</span><span>Sucesso</span><span>Sem sucesso</span><span>Conversão</span></div>{ownerRows.length ? ownerRows.map((entry) => <div key={entry.name}><strong>{entry.name}</strong><b>{entry.total}</b><span>{entry.process}</span><span className="positive">{entry.success}</span><span className="negative">{entry.failure}</span><em>{entry.conversion.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</em></div>) : <p>Sem dados para detalhar.</p>}</div></article></section>}
-    </section>
-  </section></main>;
-}
 
 type GoalDetail = GoalScope & {
   kind: "performanceGoal";

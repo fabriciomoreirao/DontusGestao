@@ -128,6 +128,7 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
   const [priority, setPriority] = useState("");
   const [assignee, setAssignee] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
+  const [approvalFilter, setApprovalFilter] = useState("");
   const [clientNotice, setClientNotice] = useState("Todos");
   const filterResultsRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<CorporateTask | null>(null);
@@ -138,10 +139,10 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
   const reminderFilter = useReminderFilter("tasks");
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const currentCollaborator = module.collaborators.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
-  const movementAccessFor=(task:CorporateTask)=>({directComplete:task.assigneeUserId===currentCollaborator?.id&&Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId)),userId:currentCollaborator?.id,canEdit,canManage,changeStatus:has("changeStatus"),cancel:has("cancel"),canApprove:canManage||Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId)),canInteract:canInteractWithTask(task,currentCollaborator,canManage)});
+  const movementAccessFor=(task:CorporateTask)=>({directComplete:task.assigneeUserId===currentCollaborator?.id&&Boolean(currentCollaborator&&(task.approverUserId===currentCollaborator.id||currentCollaborator.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId))),userId:currentCollaborator?.id,canEdit,canManage,changeStatus:has("changeStatus"),cancel:has("cancel"),canApprove:canManage||Boolean(currentCollaborator && task.approverUserId===currentCollaborator.id),canInteract:canInteractWithTask(task,currentCollaborator,canManage)});
   const canMoveTo=(task:CorporateTask,statusId:string)=>{const status=module.statuses.find(entry=>entry.id===statusId);return !busy&&Boolean(status&&canMoveTask(task,status,module.types,movementAccessFor(task)));};
   const creationDepartments = availableTaskDepartments(module.departments, currentCollaborator, has("viewOtherDepartments"));
-  const availableDepartments = taskViewingDepartments(module.departments, currentCollaborator, has("viewOtherDepartments"), module.tasks.filter(task=>task.assigneeUserId===currentCollaborator?.id).map(task=>task.currentDepartmentId));
+  const availableDepartments = taskViewingDepartments(module.departments, currentCollaborator, has("viewOtherDepartments"), module.tasks.filter(task=>task.assigneeUserId===currentCollaborator?.id || task.approverUserId===currentCollaborator?.id).map(task=>task.currentDepartmentId));
   const departmentFilter = availableDepartments.some((item) => item.id === department) ? department : "";
   const priorityFilter = module.priorities.some((item) => item.id === priority && item.active) ? priority : "";
   const assigneeFilter = module.collaborators.some((item) => item.id === assignee && item.active) ? assignee : "";
@@ -153,12 +154,13 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
       const text = `#${task.number} ${task.protocol} ${task.title} ${task.description} ${task.customerName}`.toLocaleLowerCase("pt-BR");
       return reminderFilter.matches({ entityId: task.id, clientId: task.customerCode, title: task.title }) && (!needle || text.includes(needle))
         && (!departmentFilter || task.currentDepartmentId === departmentFilter)
+        && (!approvalFilter || isTaskApprovalStatus(module.statuses.find(status=>status.id===task.statusId)||{name:task.statusName}) && (approvalFilter==="all" || task.approverUserId===approvalFilter))
         && (!priorityFilter || task.priorityId === priorityFilter)
         && (!assigneeFilter || task.assigneeUserId === assigneeFilter)
         && (clientNotice === "Todos" || task.clientNotificationState === clientNotice)
         && (!onlyMine || (currentCollaborator ? task.assigneeUserId === currentCollaborator.id : task.assigneeName === user.displayName));
     });
-  }, [module.tasks, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, currentCollaborator, user.displayName, reminderFilter.matches]);
+  }, [module.tasks, module.statuses, approvalFilter, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, currentCollaborator, user.displayName, reminderFilter.matches]);
 
   useEffect(() => {
     const taskId = new URLSearchParams(window.location.search).get("task");
@@ -207,10 +209,10 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
       <form className="tasks-toolbar task-search-filters" role="group" aria-label="Filtros de tarefas" onSubmit={event => { event.preventDefault(); filterResultsRef.current?.focus(); }}>
         <div className="task-filter-heading"><div className="task-filter-title"><span className="task-filter-icon"><Filter size={23} aria-hidden="true" /></span><h2>Filtros de pesquisa</h2><span className="task-filter-subtitle">Refine os resultados</span></div><div className="task-filter-actions">
           <label className="mine-filter"><input type="checkbox" checked={onlyMine} onChange={event => setOnlyMine(event.target.checked)} />Somente minhas</label>
-          <button type="button" className="secondary-button task-filter-reset" onClick={() => { setQuery(""); setDepartment(""); setPriority(""); setAssignee(""); setClientNotice("Todos"); setOnlyMine(false); reminderFilter.setMode("all"); }}><RotateCcw size={17} aria-hidden="true" />Limpar filtros</button>
+          <button type="button" className="secondary-button task-filter-reset" onClick={() => { setQuery(""); setDepartment(""); setPriority(""); setAssignee(""); setClientNotice("Todos"); setOnlyMine(false); setApprovalFilter(""); reminderFilter.setMode("all"); }}><RotateCcw size={17} aria-hidden="true" />Limpar filtros</button>
           <button type="submit" className="primary-button task-filter-submit"><Search size={18} aria-hidden="true" />Filtrar</button>
         </div></div>
-        <div className="task-filter-controls">
+        <div className="task-approval-filter"><label><span>Tarefas para aprovação</span><SearchablePeopleSelect searchLabel="Filtrar por aprovador do setor" value={approvalFilter} onChange={event=>setApprovalFilter(event.target.value)}><option value="">Todas as tarefas</option><option value="all">Todas aguardando aprovação</option>{module.collaborators.filter(person=>person.active && module.departments.some(dept=>dept.approverUserId===person.id)).map(person=><option key={person.id} value={person.id}>{person.name}</option>)}</SearchablePeopleSelect></label>{currentCollaborator && <button type="button" className="secondary-button" onClick={()=>setApprovalFilter(currentCollaborator.id)}>Aguardando minha aprovação</button>}</div><div className="task-filter-controls">
           <label className="task-query-control"><span><Search size={17} aria-hidden="true" />Pesquisar</span><div className="task-search"><input aria-label="Buscar tarefas" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por protocolo, título ou cliente" /></div></label>
           <label className="task-sector-control"><span><Network size={17} aria-hidden="true" />Setor</span><select aria-label="Filtrar tarefas por setor" value={departmentFilter} onChange={event => setDepartment(event.target.value)}><option value="">Todos os setores</option>{availableDepartments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label><span><UsersRound size={17} aria-hidden="true" />Responsável</span><SearchablePeopleSelect searchLabel="Responsável" value={assigneeFilter} onChange={event => setAssignee(event.target.value)} aria-label="Filtrar responsável"><option value="">Todos os responsáveis</option>{module.collaborators.filter(collaborator => collaborator.active).map(collaborator => <option value={collaborator.id} key={collaborator.id}>{collaborator.name}</option>)}</SearchablePeopleSelect></label>
@@ -310,7 +312,6 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
   const initialStatus = module.statuses.find(status => status.id === selectedType?.initialStatusId && status.active && status.acceptsNewTasks && !status.isFinal
     && (!status.departmentId || status.departmentId === departmentId));
   const selectedDepartment = module.departments.find((department) => department.id === departmentId);
-  const sectorCoordinators = module.collaborators.filter((item) => item.active && selectedDepartment?.coordinatorUserIds.includes(item.id)).sort((a,b) => a.name.localeCompare(b.name, "pt-BR"));
   const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
   const [customerCode, setCustomerCode] = useState(initial?.customerCode ?? publicCustomerCode(customers.find(customer => customer.id === initial?.customerId)));
   const [files, setFiles] = useState<File[]>([]);
@@ -351,7 +352,7 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
         <label>Cliente<select name="customerId" disabled={customerLocked} value={customerId} onChange={(event) => selectCustomer(event.target.value)}><option value="">Sem cliente vinculado</option>{customers.map((c) => <option value={c.id} key={c.id}>{c.trade_name}</option>)}</select></label>
         <label>WhatsApp do cliente *<PhoneInput name="clientWhatsApp" type="tel" required minLength={10} defaultValue={initial?.clientWhatsApp} placeholder="(11) 99999-9999" /></label>
         <label>Setor responsável *<select name="departmentId" required value={departmentId} onChange={event => { setDepartmentId(event.target.value); setRequestedTypeId(""); }}><option value="">Selecione o setor</option>{module.departments.filter(department => department.active && departmentIds.includes(department.id)).map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select>{!departmentIds.length && <small>Nenhum setor ativo disponível para seu usuário. Confira os vínculos ou as permissões de Tarefas.</small>}</label>
-        <div className="task-readonly-field"><span>Aprovador</span><strong>{sectorCoordinators.find(person => person.id === selectedDepartment?.approverUserId)?.name || "Coordenador do setor não cadastrado"}</strong><small>A tarefa atribuída ao próprio coordenador pode ser concluída diretamente. Os demais responsáveis enviam para aprovação.</small></div>
+        <div className="task-readonly-field"><span>Aprovador</span><strong>{module.collaborators.find(person => person.id === selectedDepartment?.approverUserId)?.name || "Coordenador do setor não cadastrado"}</strong><small>A tarefa atribuída ao próprio coordenador pode ser concluída diretamente. Os demais responsáveis enviam para aprovação.</small></div>
         <label className="wide">Tipo de tarefa *<select name="typeId" required value={selectedType?.id ?? ""} onChange={event => setRequestedTypeId(event.target.value)}><option value="">Selecionar...</option>{validTypes.map((t) => <option value={t.id} key={t.id}>{t.name}</option>)}</select>{departmentId && !validTypes.length && <small>Nenhum tipo ativo vinculado a este setor. Configure o vínculo em Cadastros → Tipos de tarefa.</small>}</label>
         {selectedType && <div className="task-readonly-field wide"><span>Etapa inicial</span><strong>{initialStatus?.name ?? "Este tipo precisa de uma etapa inicial ativa. Revise o cadastro do tipo."}</strong></div>}
         <label className="wide">Resumo detalhado *<textarea name="description" required rows={10} defaultValue={initial?.description} placeholder="Explique o problema, o resultado esperado e as informações necessárias para a análise." /></label>
@@ -453,8 +454,8 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
   const responsibleChoices = canClaim ? availableAssignees.filter(collaborator=>collaborator.id===currentUserId) : availableAssignees;
   useEffect(()=>{setResponsibleUserId(task.assigneeUserId??"");},[task.id,task.assigneeUserId]);
   const isAssignee = Boolean(currentUserId && task.assigneeUserId === currentUserId);
-  const canApprove = canManage || Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId));
-  const directComplete = isAssignee && Boolean(currentCollaborator?.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId));
+  const canApprove = canManage || Boolean(currentCollaborator && task.approverUserId === currentCollaborator.id);
+  const directComplete = isAssignee && Boolean(currentCollaborator && (task.approverUserId===currentCollaborator.id||currentCollaborator.coordinatorDepartmentIds.some(id=>id===task.currentDepartmentId||id===task.sourceDepartmentId)));
   const canRunWorkflow = isAssignee || canApprove || canEdit && has("changeStatus");
   const canForwardTask = isAssignee || canEdit && has("forward") && (canManage || user.isCoordinator);
   const taskType = module.types.find((type) => type.id === task.typeId);
@@ -511,7 +512,7 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
     {(linkedDevelopment || developmentSubtaskId) ? <button className="task-dev-detail-action" type="button" onClick={() => { if(linkedDevelopment)setLinkedDrawer(true);else window.location.href = `/?mod=ti&subtask=${developmentSubtaskId}`; }}><Code2 size={15} /> Acessar subtarefa de TI</button> : canEdit && <button className="task-dev-detail-action" type="button" disabled={busy || sentToDevelopment} title="Enviar esta tarefa para a triagem de desenvolvimento" onClick={() => { void onSendToDevelopment(task).then((result) => { if (result) { setSentToDevelopment(true); setDevelopmentSubtaskId(result.id ?? ""); } }); }}><Code2 size={15} /> {sentToDevelopment ? "Enviada para Desenvolvimento" : "Enviar para Desenvolvimento"}</button>}
     {canSchedule&&<button type="button" className="task-agenda-action agenda-detail-action" onClick={()=>openAgendaComposer({module:"tasks",entityId:task.id,clientId:task.customerCode,customerName:task.customerName,title:task.title,summary:task.description})}><CalendarDays size={15}/>Agendar</button>}
   </>} headerWorkflow={<>
-        {canApprove && finalStatus && (awaitingApproval || directComplete && !task.completedAt) && <button className="task-complete-button" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: finalStatus.id, justification: directComplete ? "Concluída pelo coordenador responsável." : "Aprovada pela coordenação.", version: task.version }, directComplete ? "Tarefa concluída com sucesso." : "Tarefa aprovada e concluída com sucesso.")}><CheckCircle2 size={17} /> {directComplete ? "Concluir tarefa" : "Aprovar e concluir"}</button>}
+        {(canApprove || directComplete) && finalStatus && (awaitingApproval || directComplete && !task.completedAt) && <button className="task-complete-button" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: finalStatus.id, justification: directComplete ? "Concluída pelo coordenador responsável." : "Aprovada pela coordenação.", version: task.version }, directComplete ? "Tarefa concluída com sucesso." : "Tarefa aprovada e concluída com sucesso.")}><CheckCircle2 size={17} /> {directComplete ? "Concluir tarefa" : "Aprovar e concluir"}</button>}
         {canApprove && task.completedAt && resumeStatus && <button className="task-resume-control" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: resumeStatus.id, justification: "Tarefa retomada.", version: task.version }, "Tarefa retomada com sucesso.")}><RotateCcw size={16} /> Retomar tarefa</button>}
       </>}>
     <div className="task-detail-layout"><main className="task-detail-main-column">    <section className="task-description-card"><div className="task-description-surface"><h3><FileText size={22} /> Descrição da tarefa</h3><p>{task.description}</p></div></section>

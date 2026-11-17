@@ -132,7 +132,7 @@ public sealed class InternalChatService(
                 room.CreatedByUserId == actorUser.Id || roomMembers.Any(member => member.UserId == actorUser.Id && member.IsAdmin),
                 actorMembership.ArchivedAt.HasValue,
                 unreadByRoom.GetValueOrDefault(room.Id),
-                room.LastMessageAt, roomMembers.Select(member => member.UserId).ToArray(), roomMessages);
+                room.LastMessageAt, roomMembers.Select(member => member.UserId).ToArray(), roomMessages) { IsMuted = actorMembership.IsMuted };
         }).ToArray();
 
         return new InternalChatModuleDto(
@@ -432,6 +432,16 @@ public sealed class InternalChatService(
             throw;
         }
         return message.Id;
+    }
+
+    public async Task SetMutedAsync(SetInternalChatRoomMutedCommand command, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        actor.RequirePermission("internalChat", "view");
+        var actorUser = await GetActorUserAsync(actor, cancellationToken);
+        var membership = await db.InternalChatRoomMembers.SingleOrDefaultAsync(member => member.RoomId == command.RoomId && member.UserId == actorUser.Id, cancellationToken)
+            ?? throw new DomainException("Você não participa desta conversa.", 403);
+        membership.IsMuted = command.Muted;
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task SetArchivedAsync(SetInternalChatRoomArchivedCommand command, ActorContext actor, CancellationToken cancellationToken = default)

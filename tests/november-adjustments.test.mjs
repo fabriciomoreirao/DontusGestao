@@ -22,7 +22,7 @@ test("utilização segue o acompanhamento da unidade, inclusive zero e plus", ()
   assert.equal(tracking.usageStatus, "Utilizando");
   assert.equal(enterpriseHealthScore([{ ...unit, ...tracking }]), 100);
   assert.equal(enterpriseUnitScore({ ...unit, trackingScore: 0 }), 0);
-  assert.deepEqual(strategicTracking(unit, "network-1", []), {});
+  assert.deepEqual(strategicTracking(unit, "network-1", []), {trainingPending:false});
 });
 
 test("prioriza o vínculo explícito e não mistura unidades ou IDs vazios", () => {

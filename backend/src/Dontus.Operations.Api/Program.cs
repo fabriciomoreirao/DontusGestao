@@ -1765,6 +1765,11 @@ operations.MapPost("", async (
                 request.Pinned ?? true), actor, cancellationToken);
             break;
 
+        case "setInternalChatRoomMuted":
+            await internalChatService.SetMutedAsync(new SetInternalChatRoomMutedCommand(
+                request.RoomId ?? throw new DomainException("Conversa obrigatória."), request.Muted ?? true), actor, cancellationToken);
+            break;
+
         case "setInternalChatRoomArchived":
             await internalChatService.SetArchivedAsync(new SetInternalChatRoomArchivedCommand(
                 request.RoomId ?? throw new DomainException("Conversa obrigatória."), request.Archived ?? true), actor, cancellationToken);
@@ -2468,6 +2473,7 @@ public sealed class OperationsRequest
     public string? GroupName { get; init; }
     public IReadOnlyCollection<string>? GroupParticipants { get; init; }
     public bool? Archived { get; init; }
+    public bool? Muted { get; init; }
     public IReadOnlyCollection<Guid>? MemberUserIds { get; init; }
     public string? MessageType { get; init; }
     public string? PollQuestion { get; init; }

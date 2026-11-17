@@ -1,3 +1,4 @@
+import { crmResponsible } from './crm-responsibles.ts';
 import { commercialIndicatorFlow, commercialSaleDate, scopeCommercialIndicatorItems } from './commercial-indicators.ts';
 import { isWonSale } from './sales-celebration.ts';
 
@@ -11,6 +12,12 @@ const text=(...values:unknown[])=>String(values.find(value=>typeof value==='stri
 const number=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:typeof value==='string'&&value.trim()&&Number.isFinite(Number(value))?Number(value):undefined;
 const validDay=(value:unknown)=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}/.test(value)?commercialSaleDate({},value):'';
 
+export function commercialAmountCents(item:Pick<CommercialAnalyticsItem,'amount_cents'|'description'>,detail:Detail=parse(item.description)) {
+  const products=(Array.isArray(detail.products)?detail.products:[]).filter((product):product is Detail=>!!product&&typeof product==='object');
+  const productAmount=products.reduce((sum,product)=>sum+Math.round(Math.max(0,number(product.unitValue)??number(product.value)??0)*Math.max(1,number(product.quantity)??1)*100),0);
+  return Math.max(0,Math.round(detail.kind==='directSale'?(number(detail.totalCents)??number(detail.valueCents)??item.amount_cents):item.amount_cents>0?item.amount_cents:number(detail.totalCents)??number(detail.valueCents)??productAmount));
+}
+
 export function commercialAnalyticsEntries(items:CommercialAnalyticsItem[], context:string, catalogs:AnalyticsCatalog[]=[]) {
   const unique=new Map(scopeCommercialIndicatorItems(items,context).map(item=>[item.id,item]));
   return [...unique.values()].flatMap(item=>{
@@ -20,13 +27,12 @@ export function commercialAnalyticsEntries(items:CommercialAnalyticsItem[], cont
     const direct=detail.kind==='directSale';
     const stage=text(detail.stage,item.status)||'Sem etapa';
     const products=(Array.isArray(detail.products)?detail.products:[]).filter((product):product is Detail=>!!product&&typeof product==='object');
-    const productAmount=products.reduce((sum,product)=>sum+Math.round(Math.max(0,number(product.unitValue)??number(product.value)??0)*Math.max(1,number(product.quantity)??1)*100),0);
-    const amount=Math.max(0,Math.round(number(detail.totalCents)??number(detail.valueCents)??(item.amount_cents>0?item.amount_cents:productAmount)));
+    const amount=commercialAmountCents(item,detail);
     const won=direct || commercialIndicatorFlow(item)==='crm' && isWonSale(item,catalogs);
     const createdDate=validDay(detail.entryDate)||validDay(item.created_at);
     const stamp=direct?detail.saleDate:detail.wonAt||detail.closedAt||detail.saleDate||detail.stageEnteredAt;
     const saleDate=won?(validDay(stamp)||validDay(item.updated_at)||createdDate):'';
-    return [{item,detail,direct,won,createdDate,saleDate,stage,amount,lost:!won&&/perdid|cancel|desqualif|descart|sem sucesso/.test(normalize(stage)),seller:text(detail.seller,detail.sellerName,item.owner)||'Não atribuído',origin:text(detail.origin,detail.source)||'Não informada',funnel:direct?'Vendas diretas':text(detail.funnel)||'Sem CRM',products:products.map(product=>text(product.product,product.name,product.productName)||'Produto não informado'),follows:(Array.isArray(detail.follows)?detail.follows:[]).filter((follow):follow is Detail=>!!follow&&typeof follow==='object')}];
+    return [{item,detail,direct,won,createdDate,saleDate,stage,amount,lost:!won&&/perdid|cancel|desqualif|descart|sem sucesso/.test(normalize(stage)),seller:crmResponsible(item)||'Não atribuído',origin:text(detail.origin,detail.source)||'Não informada',funnel:direct?'Vendas diretas':text(detail.funnel)||'Sem CRM',products:products.map(product=>text(product.product,product.name,product.productName)||'Produto não informado'),follows:(Array.isArray(detail.follows)?detail.follows:[]).filter((follow):follow is Detail=>!!follow&&typeof follow==='object')}];
   });
 }
 

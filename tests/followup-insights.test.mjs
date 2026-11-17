@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {pendingTrainingSteps,hasTrainingPending,isCriticalFollowup,splitFollowupHistory,followupVersion} from '../lib/followup-insights.ts';
 test('treinamento em haver depende da realização das duas etapas ou do alinhamento único',()=>{
-  const detail={track:'activation',phase:'tracking'};
+  const detail={track:'activation',phase:'onboarding'};
   assert.deepEqual(pendingTrainingSteps(detail),['Kick off','Treinamento']);
   assert.deepEqual(pendingTrainingSteps({...detail,firstMeetingCompletedAt:'2026-11-01'}),['Treinamento']);
   assert.equal(hasTrainingPending({...detail,firstMeetingAt:'2026-11-01',trainingAt:'2026-11-02'}),true);
@@ -27,4 +27,12 @@ test('versão prefere cadastro atual e identifica plano do sistema sem confundir
   assert.equal(followupVersion({productVersion:'Maxi'},{product_version:'Ultra'},{version:'Essencial'}),'Ultra');
   assert.equal(followupVersion({},undefined,{products:[{product:'LIA',plan:'Performance'},{product:'Sistema',plan:'Maxi'}]}),'Maxi');
   assert.equal(followupVersion({},undefined,{products:[{product:'LIA',plan:'Performance'}]}),'Não informada');
+});
+
+test('alerta não retroage para acompanhamento e finalização nem para entradas manuais',()=>{
+ for(const phase of ['tracking','conference','finished','unsuccessful','cancelled'])assert.equal(hasTrainingPending({track:'activation',phase,sourceLeadId:'old',trainingRequired:true}),false);
+ assert.equal(hasTrainingPending({track:'activation',phase:'validation'}),false);
+ assert.equal(hasTrainingPending({track:'activation',phase:'activation'}),true);
+ assert.equal(hasTrainingPending({track:'activation',phase:'validation',sourceLeadId:'new'}),true);
+ assert.equal(hasTrainingPending({track:'activation',phase:'validation',trainingRequired:true}),true);
 });

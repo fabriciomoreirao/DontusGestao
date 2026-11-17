@@ -24,7 +24,10 @@ public sealed record InternalChatRoomDto(
     Guid Id, string Name, string PhotoDataUrl, bool IsGroup, Guid CreatedByUserId, bool CanManage,
     bool IsArchived, int UnreadCount,
     DateTimeOffset LastMessageAt, IReadOnlyCollection<Guid> MemberUserIds,
-    IReadOnlyCollection<InternalChatMessageDto> Messages);
+    IReadOnlyCollection<InternalChatMessageDto> Messages)
+{
+    public bool IsMuted { get; init; }
+}
 
 public sealed record InternalChatModuleDto(
     Guid CurrentUserId,
@@ -46,6 +49,7 @@ public sealed record CreateInternalChatPollCommand(Guid RoomId, string? Question
 public sealed record VoteInternalChatPollCommand(Guid RoomId, Guid MessageId, int OptionIndex);
 public sealed record SetInternalChatMessagePinnedCommand(Guid RoomId, Guid MessageId, bool Pinned);
 public sealed record SetInternalChatMessageReactionCommand(Guid RoomId, Guid MessageId, string Emoji, bool Reacted);
+public sealed record SetInternalChatRoomMutedCommand(Guid RoomId, bool Muted);
 public sealed record SetInternalChatRoomArchivedCommand(Guid RoomId, bool Archived);
 public sealed record MarkInternalChatRoomReadCommand(Guid RoomId, Guid? ReadThroughMessageId = null);
 public sealed record UpdateInternalChatGroupCommand(Guid RoomId, string? Name, string? PhotoDataUrl);
@@ -67,6 +71,7 @@ public interface IInternalChatService
     Task VotePollAsync(VoteInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task SetMessagePinnedAsync(SetInternalChatMessagePinnedCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task SetMessageReactionAsync(SetInternalChatMessageReactionCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task SetMutedAsync(SetInternalChatRoomMutedCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task SetArchivedAsync(SetInternalChatRoomArchivedCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task MarkReadAsync(MarkInternalChatRoomReadCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateGroupAsync(UpdateInternalChatGroupCommand command, ActorContext actor, CancellationToken cancellationToken = default);

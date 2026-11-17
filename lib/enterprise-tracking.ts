@@ -1,9 +1,9 @@
 import { customerSuccessScore } from "./commission-rules.ts";
 import { hasTrainingPending } from "./followup-insights.ts";
 
-type UnitIdentity = { id: string; customerId?: string; externalId: string };
+type UnitIdentity = { trainingRequired?: boolean; id: string; customerId?: string; externalId: string };
 type JourneyRecord = { id: string; module?: string; customer_id?: string | null; description: string; updated_at: string };
-type Tracking = { kind?: string; track?: string; phase?: string; firstMeetingCompletedAt?: string; trainingCompletedAt?: string; singleAlignmentCompletedAt?: string; clientId?: string; strategicNetworkId?: string; strategicUnitId?: string; featuresBase?: string[]; featuresActive?: string[]; featuresPlus?: string[]; usage?: string; follows?: { createdAt: string; kind?: string }[] };
+type Tracking = { trainingRequired?: boolean; sourceLeadId?: string; kind?: string; track?: string; phase?: string; firstMeetingCompletedAt?: string; trainingCompletedAt?: string; singleAlignmentCompletedAt?: string; clientId?: string; strategicNetworkId?: string; strategicUnitId?: string; featuresBase?: string[]; featuresActive?: string[]; featuresPlus?: string[]; usage?: string; follows?: { createdAt: string; kind?: string }[] };
 type Candidate = { record: JourneyRecord; detail: Tracking };
 const lookupCache = new WeakMap<JourneyRecord[], { units: Map<string, Candidate[]>; customers: Map<string, Candidate[]> }>();
 
@@ -36,7 +36,7 @@ export function strategicUnitJourney(unit: UnitIdentity, networkId: string, reco
 
 export function strategicTracking(unit: UnitIdentity, networkId: string, records: JourneyRecord[]) {
   const match = strategicUnitJourney(unit, networkId, records);
-  if (!match) return {};
+  if (!match) return { trainingPending: unit.trainingRequired === true };
   const lastInteractionAt = (match.detail.follows ?? []).filter(entry => !/^(Conta estratégica|Origem comercial|Edição cadastral|Inserção manual)$/.test(entry.kind || ""))
     .map(entry => entry.createdAt).filter(Boolean).sort().at(-1);
   return { trainingPending: hasTrainingPending(match.detail), trackingScore: customerSuccessScore(match.detail), usageStatus: match.detail.usage || "Não iniciada", lastAnalysis: match.record.updated_at, lastInteractionAt };
