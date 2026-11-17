@@ -99,6 +99,7 @@ app.MapOpenApi();
 app.MapLiaForms();
 app.MapGoals();
 app.MapEmployeeProfiles();
+app.MapChatInbox();
 app.MapRealtime();
 app.MapInternalChatTyping();
 app.MapDontusIntegration();
@@ -757,8 +758,6 @@ operations.MapGet("", async (
         snapshot = snapshot with { SuggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("tasks", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("ti", "view"))
         snapshot = snapshot with { TaskModule = await taskService.GetModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("chat", "view"))
-        snapshot = snapshot with { ChatModule = await chatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("internalChat", "view"))
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))
@@ -1911,6 +1910,9 @@ operations.MapPost("", async (
     if (request.Action?.Contains("InternalChat", StringComparison.Ordinal) == true)
         return Results.Ok(new { ok = true, id, internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken,
             roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId) });
+    if (request.Action?.Contains("Chat", StringComparison.Ordinal) == true
+        || request.Action is "completeWhatsAppCoexistence" or "retryWhatsAppCoexistence")
+        return Results.Ok(new { ok = true, id });
     if (request.Action is "markNoticeViewed" or "markNoticeRead")
         return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
     if ((request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus" or "requestTaskApproval"
@@ -1962,8 +1964,6 @@ operations.MapPost("", async (
         snapshot = snapshot with { SuggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("tasks", "view") || actor.HasPermission("catalogs", "view"))
         snapshot = snapshot with { TaskModule = await taskService.GetModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("chat", "view"))
-        snapshot = snapshot with { ChatModule = await chatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("internalChat", "view"))
         snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
     if (actor.HasPermission("notices", "view"))

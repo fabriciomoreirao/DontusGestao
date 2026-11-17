@@ -109,6 +109,102 @@ public sealed class ChatServiceTests
         Assert.NotNull(first.SatisfactionRespondedAt);
     }
 
+    [Fact]
+    public async Task Inbox_pages_ten_records_and_searches_beyond_the_old_limit()
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        var rows = await SeedInboxAsync(db, 315);
+        var first = await service.GetModuleAsync(actor);
+        var second = await service.GetModuleAsync(actor, query: new ChatInboxQuery(Page: 2));
+        Assert.Equal(10, first.Conversations.Count);
+        Assert.Equal(10, second.Conversations.Count);
+        Assert.Empty(first.Conversations.Select(x => x.Id).Intersect(second.Conversations.Select(x => x.Id)));
+        Assert.Equal(315, second.Page.Total);
+        Assert.Equal(315, first.Metrics.Open);
+        var last = await service.GetModuleAsync(actor, query: new ChatInboxQuery(Page: int.MaxValue));
+        Assert.Equal(32, last.Page.Number);
+        Assert.Equal(5, last.Conversations.Count);
+        var search = await service.GetModuleAsync(actor, query: new ChatInboxQuery(Search: rows[^1].Protocol));
+        Assert.Equal(rows[^1].Id, Assert.Single(search.Conversations).Id);
+    }
+
+    [Fact]
+    public async Task Inbox_returns_previews_and_only_fifty_messages_for_selected_conversation()
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        var rows = await SeedInboxAsync(db, 12);
+        var timestamp = DateTimeOffset.UtcNow.AddHours(-1);
+        foreach (var conversation in rows)
+            db.ChatMessages.AddRange(Enumerable.Range(0, 120).Select(i => new ChatMessage {
+                ConversationId = conversation.Id, Body = $"Mensagem {i}", CreatedAt = timestamp,
+            }));
+        await db.SaveChangesAsync();
+        var module = await service.GetModuleAsync(actor);
+        Assert.True(module.HasMoreMessages);
+        Assert.Equal(59, module.Conversations.Sum(x => x.Messages.Count));
+        var selected = module.Conversations.Single(x => x.Id == module.SelectedConversationId);
+        Assert.Equal(50, selected.Messages.Count);
+        var middle = await service.GetMessagesAsync(selected.Id, selected.Messages.First().Id, actor);
+        var oldest = await service.GetMessagesAsync(selected.Id, middle.Messages.First().Id, actor);
+        Assert.True(middle.HasMore);
+        Assert.False(oldest.HasMore);
+        Assert.Equal(20, oldest.Messages.Count);
+        Assert.Equal(120, selected.Messages.Concat(middle.Messages).Concat(oldest.Messages).Select(x => x.Id).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Inbox_and_message_history_enforce_department_and_closed_history_permissions()
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        var rows = await SeedInboxAsync(db, 3);
+        var user = await db.Users.SingleAsync(x => x.Email == actor.Email);
+        db.UserDepartments.RemoveRange(await db.UserDepartments.Where(x => x.UserId == user.Id && x.DepartmentId != rows[0].DepartmentId).ToListAsync());
+        if (!await db.UserDepartments.AnyAsync(x => x.UserId == user.Id && x.DepartmentId == rows[0].DepartmentId))
+            db.UserDepartments.Add(new UserDepartment { UserId = user.Id, DepartmentId = rows[0].DepartmentId });
+        rows[1].Status = "Encerrada";
+        rows[2].DepartmentId = (await db.TaskDepartments.FirstAsync(x => x.Id != rows[0].DepartmentId)).Id;
+        await db.SaveChangesAsync();
+        var restricted = actor with { FullAccess = false, Permissions = [new("chat", true, false, false, false, false)] };
+        Assert.Equal(rows[0].Id, Assert.Single((await service.GetModuleAsync(restricted)).Conversations).Id);
+        foreach (var id in new[] { rows[1].Id, rows[2].Id })
+            Assert.Equal(404, (await Assert.ThrowsAsync<DomainException>(() => service.GetMessagesAsync(id, null, restricted))).StatusCode);
+        Assert.Empty((await service.GetModuleAsync(restricted, query: new ChatInboxQuery(DepartmentId: rows[2].DepartmentId))).Conversations);
+    }
+
+    [Fact]
+    public async Task Reports_include_the_period_across_inbox_pages_without_message_histories()
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        var rows = await SeedInboxAsync(db, 25);
+        db.ChatMessages.Add(new ChatMessage { ConversationId = rows[0].Id, Body = "Histórico privado extenso" });
+        await db.SaveChangesAsync();
+        var report = await service.GetReportAsync(DateTimeOffset.UtcNow.AddDays(-2), DateTimeOffset.UtcNow.AddDays(1), actor);
+        Assert.Equal(25, report.Count);
+        Assert.All(report, x => Assert.Empty(x.Messages));
+        var restricted = actor with { FullAccess = false, Permissions = [new("chat", true, false, false, false, false, ["viewOtherDepartments"])] };
+        Assert.Empty(await service.GetReportAsync(DateTimeOffset.UtcNow.AddDays(-2), DateTimeOffset.UtcNow.AddDays(1), restricted));
+    }
+
+    private static async Task<ChatConversation[]> SeedInboxAsync(OperationsDbContext db, int count)
+    {
+        var channel = await db.ChatChannels.FirstAsync();
+        var contact = new ChatContact { Name = "Cliente de validação", Phone = "5511999990000" };
+        db.ChatContacts.Add(contact);
+        var at = DateTimeOffset.UtcNow;
+        var rows = Enumerable.Range(0, count).Select(i => new ChatConversation {
+            Number = i + 1, Protocol = $"CHAT-TEST-{i:D5}", ContactId = contact.Id,
+            ChannelId = channel.Id, DepartmentId = channel.DepartmentId, QueueId = channel.DefaultQueueId!.Value,
+            Subject = $"Assunto {i}", CreatedAt = at.AddMinutes(-i), LastMessageAt = at.AddMinutes(-i),
+        }).ToArray();
+        db.ChatConversations.AddRange(rows);
+        await db.SaveChangesAsync();
+        return rows;
+    }
+
     private static async Task<(ChatService Service, ActorContext Actor)> InitializeAsync(OperationsDbContext db)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

@@ -5,12 +5,13 @@ import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import {
-  Archive, ArrowLeft, ArrowRightLeft, BarChart3, CalendarRange, Check, CheckCheck, ChevronRight, CirclePlus, Clock3,
+  Archive, ArrowLeft, ArrowRightLeft, BarChart3, CalendarRange, Check, CheckCheck, ChevronLeft, ChevronRight, CirclePlus, Clock3,
   Hash, Headphones, Inbox, MessageCircleMore, MessageSquareText, MoreHorizontal,
   Paperclip, Pencil, Phone, Plus, RefreshCw, Save, Search, Send, Settings2, ShieldCheck, Smile, Star, Tag, UserCheck, Users,
   Wifi, X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import "./chat-pagination.css";
 
 export type ChatMessage = {
   id: string; conversationId: string; externalId: string; direction: string; type: string;
@@ -50,10 +51,12 @@ export type ChatModuleData = {
   quickReplies: Array<{ id: string; shortcut: string; title: string; body: string; departmentId: string | null; active: boolean }>;
   metrics: { open: number; waiting: number; unassigned: number; closedToday: number; averageFirstResponseMinutes: number; averageResolutionMinutes: number };
   currentUserId: string;
+  page: { number: number; size: number; total: number; contacts: number; groups: number };
+  selectedConversationId: string | null;
+  hasMoreMessages: boolean;
 };
 
-type Props = {
-  module: ChatModuleData;
+type WorkspaceProps = {
   busy: boolean;
   canCreate: boolean;
   canEdit: boolean;
@@ -62,6 +65,14 @@ type Props = {
   operate: (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>;
   uploadAttachments: (conversationId: string, files: File[], internal: boolean) => Promise<boolean>;
   onExit: () => void;
+  refreshVersion: number;
+  onUnauthorized: () => void;
+};
+type InboxFilters = { page: number; search: string; status: string; departmentId: string; isGroup: boolean; conversationId: string };
+type Props = WorkspaceProps & {
+  module: ChatModuleData; loading: boolean; filters: InboxFilters;
+  onFilters: (patch: Partial<InboxFilters>) => void;
+  onLoadEarlier: () => Promise<void>; loadingEarlier: boolean;
 };
 type View = "inbox" | "dashboard" | "settings";
 type SettingsSection = "queues" | "channels" | "whatsapp" | "tags" | "replies";
@@ -116,55 +127,113 @@ const formatTime = (value: string) => new Intl.DateTimeFormat("pt-BR", { hour: "
 const formatDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
-export default function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities, operate, uploadAttachments, onExit }: Props) {
+export default function ChatWorkspace(props: WorkspaceProps) {
+  const [module, setModule] = useState<ChatModuleData | null>(null);
+  const [filters, setFilters] = useState<InboxFilters>(() => ({ page: 1, search: typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("phone") ?? "", status: "Todos", departmentId: "", isGroup: false, conversationId: "" }));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const requestVersion = useRef(0);
+  const latestProps = useRef(props);
+  useEffect(() => { latestProps.current = props; });
+  const selectedId = module?.selectedConversationId;
+  useEffect(() => {
+    const controller = new AbortController();
+    const version = ++requestVersion.current;
+    const timer = window.setTimeout(async () => {
+      setLoading(true); setError("");
+      try {
+        const query = new URLSearchParams({ page: String(filters.page), search: filters.search, status: filters.status, isGroup: String(filters.isGroup) });
+        if (filters.departmentId) query.set("departmentId", filters.departmentId);
+        if (filters.conversationId) query.set("conversationId", filters.conversationId);
+        const response = await fetch(`/api/chat?${query}`, { cache: "no-store", signal: controller.signal });
+        if (response.status === 401) { latestProps.current.onUnauthorized(); return; }
+        const next = await response.json();
+        if (!response.ok) throw new Error(next.detail ?? "Não foi possível carregar o atendimento.");
+        if (version === requestVersion.current) setModule(current => {
+          const previous = current?.selectedConversationId === next.selectedConversationId
+            ? current?.conversations.find(c => c.id === next.selectedConversationId) : undefined;
+          const selected = (next as ChatModuleData).conversations.find(c => c.id === next.selectedConversationId);
+          if (previous && selected && previous.messages.length > 50) {
+            const messages = new Map(previous.messages.map(message => [message.id, message]));
+            selected.messages.forEach(message => messages.set(message.id, message));
+            selected.messages = [...messages.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+            next.hasMoreMessages = current!.hasMoreMessages;
+          }
+          return next;
+        });
+      } catch (caught) {
+        if (!controller.signal.aborted && version === requestVersion.current) setError(caught instanceof Error ? caught.message : "Falha ao carregar o atendimento.");
+      } finally { if (version === requestVersion.current && !controller.signal.aborted) setLoading(false); }
+    }, filters.search.trim() ? 250 : 0);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [filters, revision, props.refreshVersion]);
+
+  const onFilters = (patch: Partial<InboxFilters>) => {
+    setLoading(true);
+    setFilters(current => ({ ...current, page: 1, conversationId: "", ...patch }));
+  };
+  const refresh = () => setRevision(current => current + 1);
+  const operate: WorkspaceProps["operate"] = async (payload, success) => {
+    const result = await props.operate(payload, success);
+    if (result) {
+      if (payload.action === "createChatConversation") onFilters({ search: "", status: "Todos", departmentId: "", isGroup: payload.isGroup === true, conversationId: result.id ?? "" });
+      else { if (selectedId) setFilters(current => ({ ...current, conversationId: typeof payload.conversationId === "string" ? payload.conversationId : current.conversationId || selectedId })); else refresh(); }
+    }
+    return result;
+  };
+  const onLoadEarlier = async () => {
+    if (!module || !selectedId || loadingEarlier) return;
+    const first = module.conversations.find(c => c.id === selectedId)?.messages[0];
+    if (!first) return;
+    const version = requestVersion.current;
+    setLoadingEarlier(true);
+    try {
+      const response = await fetch(`/api/chat/messages?conversationId=${encodeURIComponent(selectedId)}&beforeMessageId=${encodeURIComponent(first.id)}`, { cache: "no-store" });
+      if (response.status === 401) { props.onUnauthorized(); return; }
+      const batch = await response.json();
+      if (!response.ok) throw new Error(batch.detail ?? "Não foi possível carregar as mensagens anteriores.");
+      if (version === requestVersion.current) setModule(current => current?.selectedConversationId === selectedId ? {
+        ...current, hasMoreMessages: batch.hasMore,
+        conversations: current.conversations.map(c => c.id === selectedId ? { ...c, messages: [...batch.messages, ...c.messages.filter(m => !batch.messages.some((old: ChatMessage) => old.id === m.id))] } : c),
+      } : current);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Falha ao carregar mensagens anteriores."); }
+    finally { setLoadingEarlier(false); }
+  };
+  return <>
+    {error && <div className="chat-load-error" role="alert"><span>{error}</span><button onClick={refresh}>Tentar novamente</button></div>}
+    {!module ? <div className="chat-load-state" role="status">{loading ? "Carregando atendimento…" : "Atendimento indisponível."}</div> :
+      <ChatModule {...props} busy={props.busy || loading} canEdit={props.canEdit && !loading} module={module} loading={loading} filters={filters} onFilters={onFilters} operate={operate}
+        uploadAttachments={async (...args) => { const result = await props.uploadAttachments(...args); if (result) refresh(); return result; }}
+        onLoadEarlier={onLoadEarlier} loadingEarlier={loadingEarlier} />}
+  </>;
+}
+
+function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities, operate, uploadAttachments, onExit, loading, filters, onFilters, onLoadEarlier, loadingEarlier, refreshVersion, onUnauthorized }: Props) {
   const [view, setView] = useState<View>("inbox");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("queues");
-  const [selectedId, setSelectedId] = useState(module.conversations[0]?.id ?? "");
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("Todos");
-  const [departmentId, setDepartmentId] = useState("");
+  const { search, status, departmentId } = filters;
+  const selectedId = module.selectedConversationId ?? "";
+  const setSelectedId = (conversationId: string) => onFilters({ page: module.page.number, conversationId });
+  const setSearch = (search: string) => onFilters({ search });
+  const setStatus = (status: string) => onFilters({ status });
+  const setDepartmentId = (departmentId: string) => onFilters({ departmentId });
   const [newConversation, setNewConversation] = useState(false);
   const [composer, setComposer] = useState("");
   const [internal, setInternal] = useState(false);
-  const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
-  const [conversationKind, setConversationKind] = useState<"contacts" | "groups">("contacts");
+  const [selection, setSelectedConversationIds] = useState<string[]>([]);
+  const conversationKind = filters.isGroup ? "groups" : "contacts";
+  const setConversationKind = (kind: "contacts" | "groups") => onFilters({ isGroup: kind === "groups" });
   const [prefill, setPrefill] = useState<{ phone: string; subject: string } | null>(null);
   const [mediaPreview, setMediaPreview] = useState<{ url: string; name: string; type: string } | null>(null);
   const has = (capability: string) => canManage || capabilities.includes(capability);
   const effectiveDepartmentId = module.departments.some((department) => department.id === departmentId && department.active) ? departmentId : "";
 
-  useEffect(() => {
-    if (!selectedId && module.conversations[0]) setSelectedId(module.conversations[0].id);
-  }, [module.conversations, selectedId]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const phone = (params.get("phone") ?? "").replace(/\D/g, "");
-    if (!phone) return;
-    const existing = module.conversations.find((conversation) => conversation.contact.phone.replace(/\D/g, "") === phone);
-    if (existing) {
-      setSelectedId(existing.id);
-      setConversationKind(existing.isGroup ? "groups" : "contacts");
-      setNewConversation(false);
-      setPrefill(null);
-    } else {
-      setSelectedId("");
-      setConversationKind("contacts");
-      setSearch(phone);
-      setNewConversation(false);
-      setPrefill(null);
-    }
-  }, [module.conversations, canCreate]);
-
-  const filtered = useMemo(() => module.conversations.filter((conversation) => {
-    const query = search.trim().toLocaleLowerCase("pt-BR");
-    return (!query || `${conversation.protocol} ${conversation.contact.name} ${conversation.contact.phone} ${conversation.subject}`.toLocaleLowerCase("pt-BR").includes(query))
-      && (status === "Todos" || conversation.status === status)
-      && (!effectiveDepartmentId || conversation.departmentId === effectiveDepartmentId);
-  }), [module.conversations, search, status, effectiveDepartmentId]);
-  const visibleConversations = filtered.filter((conversation) => conversationKind === "groups" ? conversation.isGroup : !conversation.isGroup);
+  const visibleConversations = module.conversations;
   const selected = module.conversations.find((conversation) => conversation.id === selectedId && (conversationKind === "groups" ? conversation.isGroup : !conversation.isGroup)) ?? visibleConversations[0] ?? null;
   const batchCandidates = visibleConversations.filter((conversation) => conversation.status !== "Encerrada");
+  const selectedConversationIds = selection.filter(id => batchCandidates.some(conversation => conversation.id === id));
 
   const send = async () => {
     if (!selected || !composer.trim()) return;
@@ -185,7 +254,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
     {view === "inbox" && <div className="chat-workspace">
       <aside className="chat-inbox-column">
         <div className="chat-inbox-head">
-          <div><h2>{conversationKind === "groups" ? "Grupos" : "Conversas"}</h2><span>{visibleConversations.length} atendimentos</span></div>
+          <div><h2>{conversationKind === "groups" ? "Grupos" : "Conversas"}</h2><span>{module.page.total} atendimentos</span></div>
           {canCreate && <button className="chat-new-button" onClick={() => setNewConversation(true)} aria-label="Novo atendimento"><Plus size={18} /></button>}
         </div>
         <label className="chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar nome ou protocolo" /></label>
@@ -198,7 +267,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
             {module.departments.filter((department) => department.active).map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}
           </select>
         </div>
-        <div className="chat-list-tabs"><button className={conversationKind === "contacts" ? "active" : ""} onClick={() => setConversationKind("contacts")}><MessageCircleMore size={15} /> Clientes <b>{filtered.filter((item) => !item.isGroup).length}</b></button><button className={conversationKind === "groups" ? "active" : ""} onClick={() => setConversationKind("groups")}><Users size={15} /> Grupos <b>{filtered.filter((item) => item.isGroup).length}</b></button></div>
+        <div className="chat-list-tabs"><button className={conversationKind === "contacts" ? "active" : ""} onClick={() => setConversationKind("contacts")}><MessageCircleMore size={15} /> Clientes <b>{module.page.contacts}</b></button><button className={conversationKind === "groups" ? "active" : ""} onClick={() => setConversationKind("groups")}><Users size={15} /> Grupos <b>{module.page.groups}</b></button></div>
         {canEdit && has("batchClose") && batchCandidates.length > 0 && <div className="chat-batch-toolbar">
           <label><input type="checkbox" checked={batchCandidates.every((conversation) => selectedConversationIds.includes(conversation.id))} onChange={(event) => setSelectedConversationIds(event.target.checked ? batchCandidates.map((conversation) => conversation.id) : [])} /> Selecionar</label>
           <button disabled={busy || selectedConversationIds.length === 0} onClick={async () => {
@@ -207,7 +276,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
             if (result) setSelectedConversationIds([]);
           }}><CheckCheck size={14} /> Finalizar ({selectedConversationIds.length})</button>
         </div>}
-        <div className="conversation-list">
+        <div className="conversation-list" aria-busy={loading}>
           {visibleConversations.length === 0 && <div className="chat-empty"><MessageCircleMore size={26} /><b>{conversationKind === "groups" ? "Nenhum grupo" : "Nenhuma conversa"}</b><span>Ajuste os filtros ou inicie um atendimento.</span></div>}
           {visibleConversations.map((conversation) => {
             const last = conversation.messages.at(-1);
@@ -230,6 +299,7 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
             </div>;
           })}
         </div>
+        <ChatPagination page={module.page.number} total={module.page.total} loading={loading} onPage={page => { setSelectedConversationIds([]); onFilters({ page }); }} />
       </aside>
 
       <main className="chat-thread-column">
@@ -247,7 +317,8 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
             <span><Clock3 size={14} /> SLA {selected.slaDueAt ? formatDate(selected.slaDueAt) : "não definido"}</span>
           </div>
           <div className="message-timeline">
-            <div className="timeline-start">Atendimento iniciado em {formatDate(selected.messages[0]?.createdAt ?? selected.lastMessageAt)}</div>
+            {module.hasMoreMessages && <button className="chat-earlier-button" disabled={loading || loadingEarlier} onClick={() => void onLoadEarlier()}>{loadingEarlier ? "Carregando…" : "Mostrar mensagens anteriores"}</button>}
+            <div className="timeline-start">Atendimento iniciado em {formatDate(selected.createdAt)}</div>
             {selected.messages.map((message) => <article key={message.id} className={`${message.internal ? "internal" : message.direction === "Saida" ? "outbound" : "inbound"}`}>
               <div className="message-meta"><strong>{message.senderName || (message.direction === "Entrada" ? selected.contact.name : "Equipe Dontus")}</strong><span>{message.internal ? "Nota interna" : message.direction}</span><time>{formatTime(message.createdAt)}</time></div>
               <p><MessageText text={message.body}/></p>
@@ -280,14 +351,24 @@ export default function ChatModule({ module, busy, canCreate, canEdit, canManage
       {selected && <ConversationDetails conversation={selected} module={module} busy={busy} canEdit={canEdit} has={has} operate={operate} />}
     </div>}
 
-    {view === "dashboard" && <ChatDashboard module={module} busy={busy} has={has} operate={operate} />}
+    {view === "dashboard" && <ChatDashboard module={module} busy={busy} has={has} operate={operate} refreshVersion={refreshVersion} onUnauthorized={onUnauthorized} />}
     {view === "settings" && canManage && <ChatSettings module={module} section={settingsSection} onSection={setSettingsSection} busy={busy} has={has} operate={operate} />}
     {mediaPreview && <div className="chat-media-preview-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMediaPreview(null)}><section className="chat-media-preview" role="dialog" aria-modal="true" aria-label={`Visualizar ${mediaPreview.name}`}><header><strong>{mediaPreview.name}</strong><button type="button" onClick={() => setMediaPreview(null)} aria-label="Fechar"><X size={20} /></button></header>{mediaPreview.type.startsWith("video/") ? <video src={mediaPreview.url} controls autoPlay /> : <img src={mediaPreview.url} alt={mediaPreview.name} />}<a href={mediaPreview.url} target="_blank" rel="noreferrer">Abrir arquivo original</a></section></div>}
     {newConversation && <NewConversationModal module={module} busy={busy} initialPhone={prefill?.phone} initialSubject={prefill?.subject} onClose={() => { setNewConversation(false); setPrefill(null); }} onSubmit={async (payload) => {
       const result = await operate({ action: "createChatConversation", ...payload }, "Atendimento criado.");
-      if (result) { setNewConversation(false); setPrefill(null); if (result.id) setSelectedId(result.id); }
+      if (result) { setNewConversation(false); setPrefill(null); }
     }} />}
   </section>;
+}
+
+function ChatPagination({ page, total, loading, onPage }: { page: number; total: number; loading: boolean; onPage: (page: number) => void }) {
+  const pages = Math.max(1, Math.ceil(total / 10));
+  return <nav className="chat-pagination" aria-label="Páginas de atendimentos">
+    <span role="status" aria-live="polite">{loading ? "Carregando…" : total ? `${(page - 1) * 10 + 1}–${Math.min(page * 10, total)} de ${total}` : "0 atendimentos"}</span>
+    <div><button type="button" disabled={loading || page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft size={15} aria-hidden="true" /> Anterior</button>
+      <span aria-label={`Página ${page} de ${pages}`}>{page}/{pages}</span>
+      <button type="button" disabled={loading || page >= pages} onClick={() => onPage(page + 1)}>Seguinte <ChevronRight size={15} aria-hidden="true" /></button></div>
+  </nav>;
 }
 
 function ConversationDetails({ conversation, module, busy, canEdit, has, operate }: {
@@ -343,8 +424,9 @@ function ConversationDetails({ conversation, module, busy, canEdit, has, operate
   </aside>;
 }
 
-function ChatDashboard({ module, busy, has, operate }: {
+function ChatDashboard({ module, busy, has, operate, refreshVersion, onUnauthorized }: {
   module: ChatModuleData; busy: boolean; has: (capability: string) => boolean; operate: Props["operate"];
+  refreshVersion: number; onUnauthorized: () => void;
 }) {
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -355,14 +437,39 @@ function ChatDashboard({ module, busy, has, operate }: {
   const [subject, setSubject] = useState("");
   const [clientId, setClientId] = useState("");
   const [editing, setEditing] = useState<ChatConversation | null>(null);
+  const [report, setReport] = useState<ChatConversation[]>([]);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState("");
+  const [reportRevision, setReportRevision] = useState(0);
+  const [reportPage, setReportPage] = useState(1);
+  const latestUnauthorized = useRef(onUnauthorized);
+  useEffect(() => { latestUnauthorized.current = onUnauthorized; }, [onUnauthorized]);
+  useEffect(() => {
+    if (!dateFrom || !dateTo) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setReportLoading(true); setReportError("");
+      try {
+        const end = new Date(`${dateTo}T00:00:00`); end.setDate(end.getDate() + 1);
+        const query = new URLSearchParams({ from: new Date(`${dateFrom}T00:00:00`).toISOString(), to: end.toISOString() });
+        const response = await fetch(`/api/chat/report?${query}`, { cache: "no-store", signal: controller.signal });
+        if (response.status === 401) { latestUnauthorized.current(); return; }
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail ?? "Não foi possível carregar os indicadores.");
+        if (!controller.signal.aborted) setReport(result.map((c: ChatConversation) => ({ ...c, assigneeName: module.users.find(user => user.id === c.assigneeUserId)?.name ?? "" })));
+      } catch (caught) { if (!controller.signal.aborted) setReportError(caught instanceof Error ? caught.message : "Falha ao carregar indicadores."); }
+      finally { if (!controller.signal.aborted) setReportLoading(false); }
+    }, 200);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [dateFrom, dateTo, refreshVersion, reportRevision, module.users]);
   const canViewAll = has("viewAllReports");
 
-  const subjects = [...new Set(module.conversations.map((item) => item.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  const clients = [...new Map(module.conversations.map((item) => [item.contact.id, { id: item.contact.id, name: item.contact.companyName || item.contact.name }])).values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const subjects = [...new Set(report.map((item) => item.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const clients = [...new Map(report.map((item) => [item.contact.id, { id: item.contact.id, name: item.contact.companyName || item.contact.name }])).values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const conversations = useMemo(() => {
     const start = new Date(`${dateFrom}T00:00:00`);
     const end = new Date(`${dateTo}T23:59:59.999`);
-    return module.conversations.filter((conversation) => {
+    return report.filter((conversation) => {
       const created = new Date(conversation.createdAt);
       return (canViewAll || conversation.assigneeUserId === module.currentUserId)
         && created >= start && created <= end
@@ -370,9 +477,11 @@ function ChatDashboard({ module, busy, has, operate }: {
         && (!subject || conversation.subject === subject)
         && (!clientId || conversation.contact.id === clientId);
     });
-  }, [module.conversations, module.currentUserId, canViewAll, dateFrom, dateTo, assigneeId, subject, clientId]);
+  }, [report, module.currentUserId, canViewAll, dateFrom, dateTo, assigneeId, subject, clientId]);
 
   const closed = conversations.filter((item) => item.closedAt);
+  const currentReportPage = Math.min(reportPage, Math.max(1, Math.ceil(conversations.length / 10)));
+  const reportRows = conversations.slice((currentReportPage - 1) * 10, currentReportPage * 10);
   const durations = closed.map((item) => Math.max(0, (new Date(item.closedAt!).getTime() - new Date(item.createdAt).getTime()) / 60000));
   const averageDuration = durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0;
   const satisfaction = conversations.filter((item) => item.satisfactionScore !== null);
@@ -404,6 +513,8 @@ function ChatDashboard({ module, busy, has, operate }: {
   ] as const;
 
   return <div className="chat-dashboard chat-reporting">
+    {reportError && <div className="chat-load-error" role="alert">{reportError}<button onClick={() => setReportRevision(value => value + 1)}>Tentar novamente</button></div>}
+    {reportLoading && <div role="status">Carregando indicadores…</div>}
     <header className="chat-report-head">
       <div><span className="eyebrow">RELATÓRIOS E INDICADORES</span><h2>Desempenho dos atendimentos</h2><p>{canViewAll ? "Visão consolidada de todos os colaboradores." : "Visão limitada aos seus próprios atendimentos."}</p></div>
       <div className="chat-report-scope"><ShieldCheck size={15} /> {canViewAll ? "Relatório completo" : "Relatório individual"}</div>
@@ -425,10 +536,10 @@ function ChatDashboard({ module, busy, has, operate }: {
       <article className="panel chat-satisfaction-panel"><header><div><span className="eyebrow">SATISFAÇÃO</span><h3>Avaliação dos atendimentos</h3></div><strong>{satisfaction.length} resposta{satisfaction.length === 1 ? "" : "s"}</strong></header><div className="satisfaction-score"><b>{satisfaction.length ? satisfactionAverage.toFixed(1) : "—"}</b><span>{"★".repeat(Math.round(satisfactionAverage))}{"☆".repeat(5 - Math.round(satisfactionAverage))}</span></div><div className="satisfaction-bars">{[5, 4, 3, 2, 1].map((score) => { const count = satisfaction.filter((item) => item.satisfactionScore === score).length; return <div key={score}><span>{score} estrelas</span><i><b style={{ width: `${satisfaction.length ? count / satisfaction.length * 100 : 0}%` }} /></i><strong>{count}</strong></div>; })}</div></article>
     </div>
 
-    <article className="panel chat-report-table-panel"><header><div><span className="eyebrow">DETALHAMENTO</span><h3>Relatório de atendimentos</h3></div><span>{conversations.length} registro{conversations.length === 1 ? "" : "s"}</span></header><div className="chat-report-table-wrap"><table className="chat-report-table"><thead><tr><th>Protocolo</th><th>Cliente</th><th>Assunto</th><th>Colaborador</th><th>Início</th><th>Término</th><th>Duração</th><th>Transferência</th><th>Satisfação</th>{has("editReports") && <th>Ações</th>}</tr></thead><tbody>{conversations.map((conversation) => { const duration = conversation.closedAt ? (new Date(conversation.closedAt).getTime() - new Date(conversation.createdAt).getTime()) / 60000 : null; return <tr key={conversation.id}><td><b>{conversation.protocol}</b></td><td>{conversation.contact.companyName || conversation.contact.name}</td><td>{conversation.subject}</td><td>{conversation.assigneeName || "Não atribuído"}</td><td>{formatDate(conversation.createdAt)}</td><td>{conversation.closedAt ? formatDate(conversation.closedAt) : "Em andamento"}</td><td>{duration === null ? "—" : formatDuration(duration)}</td><td>{conversation.transfers.length ? `Sim (${conversation.transfers.length})` : "Não"}</td><td>{conversation.satisfactionScore ? `${conversation.satisfactionScore}/5` : "Pendente"}</td>{has("editReports") && <td><button className="chat-report-edit" onClick={() => setEditing(conversation)}><Pencil size={13} /> Editar</button></td>}</tr>; })}{conversations.length === 0 && <tr><td colSpan={has("editReports") ? 10 : 9}><div className="chat-report-empty">Nenhum atendimento encontrado com estes filtros.</div></td></tr>}</tbody></table></div></article>
+    <article className="panel chat-report-table-panel"><header><div><span className="eyebrow">DETALHAMENTO</span><h3>Relatório de atendimentos</h3></div><span>{conversations.length} registro{conversations.length === 1 ? "" : "s"}</span></header><div className="chat-report-table-wrap"><table className="chat-report-table"><thead><tr><th>Protocolo</th><th>Cliente</th><th>Assunto</th><th>Colaborador</th><th>Início</th><th>Término</th><th>Duração</th><th>Transferência</th><th>Satisfação</th>{has("editReports") && <th>Ações</th>}</tr></thead><tbody>{reportRows.map((conversation) => { const duration = conversation.closedAt ? (new Date(conversation.closedAt).getTime() - new Date(conversation.createdAt).getTime()) / 60000 : null; return <tr key={conversation.id}><td><b>{conversation.protocol}</b></td><td>{conversation.contact.companyName || conversation.contact.name}</td><td>{conversation.subject}</td><td>{conversation.assigneeName || "Não atribuído"}</td><td>{formatDate(conversation.createdAt)}</td><td>{conversation.closedAt ? formatDate(conversation.closedAt) : "Em andamento"}</td><td>{duration === null ? "—" : formatDuration(duration)}</td><td>{conversation.transfers.length ? `Sim (${conversation.transfers.length})` : "Não"}</td><td>{conversation.satisfactionScore ? `${conversation.satisfactionScore}/5` : "Pendente"}</td>{has("editReports") && <td><button className="chat-report-edit" onClick={() => setEditing(conversation)}><Pencil size={13} /> Editar</button></td>}</tr>; })}{conversations.length === 0 && <tr><td colSpan={has("editReports") ? 10 : 9}><div className="chat-report-empty">Nenhum atendimento encontrado com estes filtros.</div></td></tr>}</tbody></table></div><ChatPagination page={currentReportPage} total={conversations.length} loading={reportLoading} onPage={setReportPage} /></article>
     {editing && <ReportEditModal conversation={editing} busy={busy} onClose={() => setEditing(null)} onSubmit={async (payload) => {
       const result = await operate({ action: "updateChatConversation", requireConfirmation: true, conversationId: editing.id, version: editing.version, ...payload }, "Dados do relatório atualizados.");
-      if (result) setEditing(null);
+      if (result) { setEditing(null); setReportRevision(value => value + 1); }
     }} />}
   </div>;
 }

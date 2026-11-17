@@ -37,6 +37,10 @@ public sealed record ChatConversationDto(
     IReadOnlyCollection<ChatMessageDto> Messages, IReadOnlyCollection<ChatTagDto> Tags,
     IReadOnlyCollection<ChatTransferDto> Transfers);
 public sealed record ChatMetricsDto(int Open, int Waiting, int Unassigned, int ClosedToday, double AverageFirstResponseMinutes, double AverageResolutionMinutes);
+public sealed record ChatInboxQuery(int Page = 1, string? Search = null, string? Status = null,
+    Guid? DepartmentId = null, bool IsGroup = false, Guid? ConversationId = null);
+public sealed record ChatInboxPageDto(int Number, int Size, int Total, int Contacts, int Groups);
+public sealed record ChatMessagePageDto(IReadOnlyCollection<ChatMessageDto> Messages, bool HasMore);
 public sealed record ChatModuleDto(
     IReadOnlyCollection<ChatConversationDto> Conversations,
     IReadOnlyCollection<ChatDepartmentDto> Departments,
@@ -47,7 +51,10 @@ public sealed record ChatModuleDto(
     IReadOnlyCollection<ChatTagDto> Tags,
     IReadOnlyCollection<ChatQuickReplyDto> QuickReplies,
     ChatMetricsDto Metrics,
-    Guid CurrentUserId);
+    Guid CurrentUserId,
+    ChatInboxPageDto Page,
+    Guid? SelectedConversationId,
+    bool HasMoreMessages);
 
 public sealed record CreateChatConversationCommand(string ContactName, string Phone, string Email, Guid? CustomerId,
     string CompanyName, Guid ChannelId, Guid? QueueId, Guid? AssigneeUserId, string Subject,
@@ -79,7 +86,9 @@ public sealed record ChatAttachmentDownloadDto(string Url);
 public interface IChatService
 {
     Task InitializeAsync(CancellationToken cancellationToken = default);
-    Task<ChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default);
+    Task<ChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, ChatInboxQuery? query = null);
+    Task<ChatMessagePageDto> GetMessagesAsync(Guid conversationId, Guid? beforeMessageId, ActorContext actor, CancellationToken cancellationToken = default);
+    Task<IReadOnlyCollection<ChatConversationDto>> GetReportAsync(DateTimeOffset from, DateTimeOffset to, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> CreateConversationAsync(CreateChatConversationCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SendMessageAsync(SendChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task UpdateConversationAsync(UpdateChatConversationCommand command, ActorContext actor, CancellationToken cancellationToken = default);
