@@ -17,6 +17,7 @@ public sealed class InternalChatRoomMember
     public DateTimeOffset JoinedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastReadAt { get; set; }
     public DateTimeOffset? ArchivedAt { get; set; }
+    public bool IsMuted { get; set; }
 }
 
 public sealed class InternalChatMessage : Entity

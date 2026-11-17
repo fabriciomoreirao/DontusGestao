@@ -1,5 +1,5 @@
 type Employee = { id: string; displayName: string; active: boolean; departmentName: string; departmentNames?: string[] };
-type Card = { owner: string; description: string };
+type Card = { owner: string; description?: string };
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
 
 export function isCsEmployee(employee: Employee) {
@@ -9,7 +9,7 @@ export function isCsEmployee(employee: Employee) {
 
 export function crmResponsible(card: Card) {
   try {
-    const detail = JSON.parse(card.description);
+    const detail = JSON.parse(card.description || "{}");
     if (typeof detail?.seller === "string" && detail.seller.trim()) return detail.seller.trim();
   } catch { /* Registros antigos podem não conter JSON. */ }
   return card.owner.trim();

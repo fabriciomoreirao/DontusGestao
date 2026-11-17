@@ -837,7 +837,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             ["contact"] = customer.TradeName, ["phone"] = customer.Phone, ["email"] = customer.Email,
             ["usageStatus"] = "Não iniciada", ["usagePercent"] = 0, ["lastAnalysis"] = "",
             ["implementationAt"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"), ["status"] = "Não iniciada",
-            ["active"] = true, ["pendingFollowUp"] = true, ["features"] = new JsonArray(),
+            ["active"] = true, ["pendingFollowUp"] = true, ["trainingRequired"] = true, ["features"] = new JsonArray(),
             ["notes"] = string.Join("\n", new[] { $"Razão social: {customer.LegalName}", $"Nome: {customer.TradeName}", $"ID: {customer.DocumentMasked}", $"Comercial: {customer.Owner} · CS: {customer.CsOwner}", $"Produto: {customer.Project} · Versão: {customer.ProductVersion}", $"Receita mensal (centavos): {customer.MonthlyRevenueCents}", $"Contato: {customer.Phone} · {customer.Email}", $"Endereço: {customer.Address} · {customer.City}/{customer.State}", customer.Notes })
         });
         var history = detail["history"] as JsonArray ?? new JsonArray();

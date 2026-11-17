@@ -16,7 +16,7 @@ export type NotificationData = {
   access?: { employees: Array<{id:string;email:string;displayName:string;departmentName:string;departmentNames:string[]}>; users?:Array<{id:string;email:string;createdAt:string}> } | null;
   waitingQueueDirectory?: {employees:Array<{id:string;email:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames:string[]}>}|null;
   assignmentDirectory?: {employees:Array<{id:string;email:string;displayName:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames:string[]}>}|null;
-  internalChatModule?: {currentUserId:string;rooms:Array<{id:string;name:string;unreadCount:number;lastMessageAt:string;messages:Array<{id:string;senderUserId:string;senderName:string;body:string;type:string;createdAt:string}>}>} | null;
+  internalChatModule?: {currentUserId:string;rooms:Array<{isMuted?:boolean;id:string;name:string;unreadCount:number;lastMessageAt:string;messages:Array<{id:string;senderUserId:string;senderName:string;body:string;type:string;createdAt:string}>}>} | null;
   taskModule?: { notifications:Array<{id:string;taskId:string;eventType:string;message:string;read:boolean;createdAt:string}>; tasks:Array<{id:string;assigneeUserId:string|null;assigneeName:string}>;collaborators:Array<{id:string;email:string}> } | null;
   noticesModule?: {notices:Array<{id:string;title:string;kind:string;authorUserId:string;active:boolean;visibleToCurrentUser:boolean;isRead:boolean;publishedAt:string}>} | null;
   agendaModule?: {collaborators:Array<{id:string;email:string}>;commitments:Array<{id:string;title:string;startsAt:string;responsibleUserId:string;responsibleName:string;participantUserIds:string[];statusName:string}>} | null;
@@ -108,7 +108,7 @@ export function buildNotifications(data:NotificationData,now:number):AppNotifica
   }
   for(const room of data.internalChatModule?.rooms??[]){
     const incoming=room.messages.filter(message=>!isSelf(message.senderUserId));const latest=incoming.at(-1);
-    if(room.unreadCount<=0)continue;
+    if(room.isMuted||room.unreadCount<=0)continue;
     add({id:`chat-${room.id}-${latest?.id||`unread-${room.unreadCount}`}`,sourceId:room.id,category:"chat",title:`${room.unreadCount} nova(s) mensagem(ns) em ${room.name}`,meta:"Chat interno",module:"internalChat",at:latest?.createdAt||room.lastMessageAt,roomId:room.id,count:room.unreadCount});
   }
   for(const notice of data.noticesModule?.notices??[])if(notice.active&&notice.visibleToCurrentUser&&!notice.isRead&&!isSelf(notice.authorUserId))add({id:`notice-${notice.id}`,sourceId:notice.id,category:"notice",title:notice.title,meta:notice.kind,module:"notices",at:notice.publishedAt});

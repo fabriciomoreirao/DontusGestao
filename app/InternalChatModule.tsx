@@ -6,13 +6,14 @@ import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import MessageText from "@/app/MessageText";
 import InternalChatDraftComposer from "@/app/InternalChatDraftComposer";
 
+import { chatDayKey, chatDayLabel } from "@/lib/chat-days";
 import { chatUnreadTotals } from "@/lib/internal-chat-state";
 
 import {
-  Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
+  Bell, BellOff, Maximize2, Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
   Gift, LogOut, Mic, Square, MessageCircleMore, Palette, Paperclip, Pencil, Trash2, Pin, PinOff, Plus, Reply, Search, Send, SmilePlus, UsersRound, X,
 } from "lucide-react";
-import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties } from "react";
+import { Fragment, FormEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties } from "react";
 import ChatAppearanceModal from "@/app/ChatAppearanceModal";
 import { chatAppearanceKey, chatAppearanceStyle, parseChatAppearance } from "@/lib/chat-appearance";
 import {userIsOnline} from "@/lib/chat-presence";
@@ -40,7 +41,7 @@ export type InternalChatMessage = {
 
 export type InternalChatRoom = {
   id: string; name: string; photoDataUrl: string; isGroup: boolean; createdByUserId: string;
-  canManage: boolean; isArchived: boolean; unreadCount: number; lastMessageAt: string;
+  canManage: boolean; isArchived: boolean; isMuted?: boolean; unreadCount: number; lastMessageAt: string;
   memberUserIds: string[]; messages: InternalChatMessage[];
 };
 
@@ -90,6 +91,9 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const setSelectedKey = (key: string) => { setSelection({ requestedRoomId: initialRoomId, key }); setSendError(""); };
   const [search, setSearch] = useState("");
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [expanded, setExpanded] = useState(()=>typeof window!=="undefined"&&new URLSearchParams(window.location.search).get("chatView")==="fullscreen");
+  const expandChat=(value:boolean)=>{setExpanded(value);const url=new URL(window.location.href);if(value)url.searchParams.set("chatView","fullscreen");else url.searchParams.delete("chatView");window.history.replaceState({},"",url);};
+  useEffect(()=>{if(!expanded)return;const previous=document.body.style.overflow;document.body.style.overflow="hidden";return()=>{document.body.style.overflow=previous}},[expanded]);
   const [appearance, setAppearance] = useState(() => { try { return parseChatAppearance(typeof localStorage === "undefined" ? null : localStorage.getItem(chatAppearanceKey(module.currentUserId))); } catch { return parseChatAppearance(null); } });
   const [olderMessages, setOlderMessages] = useState<Record<string, InternalChatMessage[]>>({});
   const [messageLimits, setMessageLimits] = useState<Record<string, number>>({});
@@ -154,10 +158,10 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const replyMessage = replyDraft ? visibleMessages.find(entry => entry.id === replyDraft.id) ?? replyDraft : undefined;
   const replyToMessageId = replyMessage && !replyMessage.deletedAt ? replyMessage.id : undefined;
   const clearReply = (key: string, id: string | undefined) => setReplyDrafts(current => current[key]?.id === id ? { ...current, [key]: undefined } : current);
-  const selectReply = (entry: InternalChatMessage) => {
+  const selectReply = useLatestChatCallback((entry: InternalChatMessage) => {
     setReplyDrafts(current => ({ ...current, [effectiveSelectedKey]: entry }));
     composerInput.current?.focus({ preventScroll: true });
-  };
+  });
   const loadOlderMessages = async () => {
     if (!selectedRoom || historyLoading) return;
     const roomId = selectedRoom.id;
@@ -338,21 +342,24 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     } finally { sendingRef.current = false; }
   };
 
+  const reactMessage=useLatestChatCallback(async(message:InternalChatMessage,emoji:string,reacted:boolean)=>Boolean(await operate({action:"setInternalChatMessageReaction",roomId:message.roomId,id:message.id,emoji,reacted},reacted?"Reação adicionada.":"Reação removida.")));
+  const editMessage=useLatestChatCallback(async(message:InternalChatMessage,body:string)=>Boolean(await operate({action:"editInternalChatMessage",roomId:message.roomId,id:message.id,body,version:message.version??1},"Mensagem editada.")));
+  const deleteMessage=useLatestChatCallback(async(message:InternalChatMessage)=>{await operate({action:"deleteInternalChatMessage",roomId:message.roomId,id:message.id,version:message.version??1},"Mensagem excluída.")});
   const createPoll = async (question: string, options: string[]) => {
     if (!canCreate || !selectedRoom?.isGroup) return;
     const result = await operate({ action: "createInternalChatPoll", roomId: selectedRoom.id, pollQuestion: question, pollOptions: options, replyToMessageId }, "Enquete enviada ao grupo.");
     if (result) { setPollOpen(false); clearReply(effectiveSelectedKey, replyToMessageId); }
   };
 
-  const votePoll = async (messageId: string, optionIndex: number) => {
+  const votePoll = useLatestChatCallback(async (messageId: string, optionIndex: number) => {
     if (!canCreate || !selectedRoom?.isGroup) return;
     await operate({ action: "voteInternalChatPoll", roomId: selectedRoom.id, id: messageId, pollOptionIndex: optionIndex }, "Voto registrado.");
-  };
+  });
 
-  const togglePin = async (entry: InternalChatMessage) => {
+  const togglePin = useLatestChatCallback(async (entry: InternalChatMessage) => {
     if (!canEdit || !selectedRoom?.isGroup) return;
     await operate({ action: "setInternalChatMessagePinned", roomId: selectedRoom.id, id: entry.id, pinned: !entry.isPinned }, entry.isPinned ? "Mensagem desafixada." : "Mensagem fixada no grupo.");
-  };
+  });
 
   const upload = async (files: FileList | File[] | null):Promise<boolean> => {
     if (!canCreate || !selectedConversation || !files?.length || sendingRef.current) return false;
@@ -388,10 +395,10 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     if (groupPhotoInput.current) groupPhotoInput.current.value = "";
   };
 
-  return <div className="internal-chat-page">
+  return <div className={`internal-chat-page ${expanded?"internal-chat-expanded":""}`}>
     <header className="page-header internal-chat-page-header module-page-header">
       <div className="module-page-title"><span className="module-page-title-icon"><MessageCircleMore size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · COMUNICAÇÃO</span><h1>Chat interno</h1><p>Todos os colaboradores disponíveis, conversas privadas e grupos da sua equipe.</p></span></div>
-      <div className="module-page-actions"><button type="button" className="secondary-button chat-appearance-open" onClick={() => setAppearanceOpen(true)}><Palette size={17}/>Personalizar chat</button>{canCreateGroup && <button className="primary-button" onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button>}</div>
+      <div className="module-page-actions"><button type="button" className="secondary-button chat-expand-button" onClick={()=>expandChat(!expanded)}>{expanded?<ArrowLeft size={17}/>:<Maximize2 size={17}/>}<span>{expanded?"Voltar":"Expandir chat"}</span></button><button type="button" className="secondary-button chat-appearance-open" onClick={() => setAppearanceOpen(true)}><Palette size={17}/>Personalizar chat</button>{canCreateGroup && <button className="primary-button" onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button>}</div>
     </header>
 
     <section className={`internal-chat-shell ${selectedKey ? "show-conversation" : ""}`}>
@@ -428,7 +435,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
             <span className="internal-chat-secure"><LockKeyhole size={13} /> Privado</span>
             <button type="button" className={`internal-chat-head-tool ${pinnedConversationKeys.includes(selectedConversation.key)?"active":""}`} onClick={toggleConversationPin} title={pinnedConversationKeys.includes(selectedConversation.key)?"Desafixar conversa":"Fixar conversa"}>{pinnedConversationKeys.includes(selectedConversation.key)?<PinOff size={16}/>:<Pin size={16}/>}</button>
             {selectedRoom?.isGroup && <button type="button" className={`internal-chat-head-tool ${pinnedOpen ? "active" : ""}`} onClick={() => setPinnedOpen((value) => !value)} title="Mensagens fixadas"><Pin size={16} />{pinnedMessages.length > 0 && <b>{pinnedMessages.length}</b>}</button>}
-            {selectedRoom && canEdit && <button type="button" className="internal-chat-archive" onClick={() => void archive()} title={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"} aria-label={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"}>{selectedRoom.isArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>}
+            {selectedRoom && <button type="button" className="internal-chat-head-tool" aria-pressed={Boolean(selectedRoom.isMuted)} disabled={busy} aria-label={selectedRoom.isMuted?"Ativar notificações da conversa":"Silenciar conversa"} title={selectedRoom.isMuted?"Ativar notificações":"Silenciar conversa ou grupo"} onClick={()=>void operate({action:"setInternalChatRoomMuted",roomId:selectedRoom.id,muted:!selectedRoom.isMuted},selectedRoom.isMuted?"Notificações ativadas.":"Conversa silenciada.")}>{selectedRoom.isMuted?<BellOff size={18}/>:<Bell size={18}/>}</button>}{selectedRoom && canEdit && <button type="button" className="internal-chat-archive" onClick={() => void archive()} title={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"} aria-label={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"}>{selectedRoom.isArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>}
           </header>
           {selectedRoom?.isGroup && pinnedOpen && <div className="internal-chat-pinned-panel"><header><span><Pin size={14} /> Mensagens fixadas</span><button type="button" onClick={() => setPinnedOpen(false)}><X size={14} /></button></header>{pinnedMessages.length ? pinnedMessages.map((entry) => <article key={entry.id}><b>{entry.senderName}</b><span>{messagePreview(entry)}</span><time>{roomTime.format(new Date(entry.createdAt))}</time></article>) : <p>Nenhuma mensagem foi fixada neste grupo.</p>}</div>}
           {selectedRoom?.isGroup && participantsOpen && <div className="internal-chat-participants-panel"><header><span><UsersRound size={15}/> Participantes ({selectedRoom.memberUserIds.length})</span><button type="button" onClick={()=>setParticipantsOpen(false)} aria-label="Fechar participantes"><X size={14}/></button></header><div>{selectedRoom.memberUserIds.map(userId=>{const person=module.users.find(user=>user.id===userId);return <div className="internal-chat-participant-row" key={userId}><button type="button" onClick={()=>person&&onOpenProfile(person.id)}><Avatar name={person?.name||"Colaborador"} photo={person?.photoDataUrl} coordinator={person?.isCoordinator}/><span><strong>{person?.name||"Colaborador removido"}</strong><small>{person?.jobTitle||person?.departmentName||"Participante"}</small></span></button>{selectedRoom.canManage&&canEdit&&userId!==module.currentUserId&&<button type="button" className="participant-remove" aria-label={`Remover ${person?.name||"participante"}`} disabled={busy} onClick={()=>void operate({action:"removeInternalChatMember",roomId:selectedRoom.id,id:userId},"Participante removido.")}><X size={15}/></button>}</div>})}</div><small>Novos participantes visualizam somente mensagens enviadas após a entrada no grupo.</small><footer>{selectedRoom.canManage&&canEdit&&<button type="button" disabled={busy} onClick={()=>setManagingMembers(true)}><Plus size={15}/>Adicionar participantes</button>}<button type="button" disabled={busy} onClick={()=>void operate({action:"leaveInternalChatGroup",roomId:selectedRoom.id},"Você saiu do grupo.").then(result=>{if(result){setParticipantsOpen(false);setSelectedKey("")}})}><LogOut size={15}/>Sair do grupo</button></footer></div>}
@@ -436,7 +443,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
             {sendError && <p role="alert">{sendError}</p>}
             {selectedRoom && (hasEarlierMessages || !historyExhausted[selectedRoom.id]) && <button type="button" className="secondary-button" disabled={historyLoading} onClick={() => void loadOlderMessages()}>{historyLoading ? "Carregando..." : hasEarlierMessages ? "Mostrar mensagens anteriores" : "Carregar mais conversas (30 dias anteriores)"}</button>}{historyError && <p role="alert">{historyError}</p>}
             {!visibleMessages.length && <div className="internal-chat-first-message"><SmilePlus size={23} /><strong>Diga olá!</strong><span>Envie a primeira mensagem para iniciar esta conversa privada.</span></div>}
-            {displayedMessages.map((item) => <MessageBubble key={item.id} onReply={selectReply} message={item} showSeenReceipt={item.id===lastSeenMessageId} now={presenceNow} onReact={async(message,emoji,reacted)=>{const result=await operate({action:"setInternalChatMessageReaction",roomId:message.roomId,id:message.id,emoji,reacted},reacted?"Reação adicionada.":"Reação removida.");return Boolean(result)}} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={Boolean(selectedRoom?.isGroup)} canCreate={canCreate} canEdit={canEdit} busy={busy} onEdit={async (message, body) => Boolean(await operate({ action:"editInternalChatMessage", roomId:message.roomId, id:message.id, body, version:message.version ?? 1 }, "Mensagem editada."))} onDelete={async message => { await operate({ action:"deleteInternalChatMessage", roomId:message.roomId, id:message.id, version:message.version ?? 1 }, "Mensagem excluída."); }} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} />)}
+            {displayedMessages.map((item,index) => <Fragment key={item.id}>{(index===0||chatDayKey(displayedMessages[index-1].createdAt)!==chatDayKey(item.createdAt))&&<div className="chat-day-separator"><time dateTime={chatDayKey(item.createdAt)}>{chatDayLabel(item.createdAt,presenceNow)}</time></div>}<MessageBubble onReply={selectReply} message={item} showSeenReceipt={item.id===lastSeenMessageId} now={presenceNow} onReact={reactMessage} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={Boolean(selectedRoom?.isGroup)} canCreate={canCreate} canEdit={canEdit} busy={busy} onEdit={editMessage} onDelete={deleteMessage} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} /></Fragment>)}
             <div aria-hidden="true" />
           </div></div>
           {!canCreate && <p className="module-access-note" role="status"><LockKeyhole size={14}/>Seu perfil permite consultar as conversas. O envio de mensagens está bloqueado.</p>}
@@ -500,7 +507,7 @@ function BirthdayGift({ name }: { name: string }) {
   return <span className="internal-chat-birthday-gift" title={`Hoje é aniversário de ${name}`} aria-label={`Aniversário de ${name}`}><Gift size={12} aria-hidden="true" /></span>;
 }
 
-function MessageBubble({ message, onReply, showSeenReceipt, now, onReact, own, birthday, currentUserId, group, canCreate, canEdit, busy, onEdit, onDelete, onVote, onPin, onPreview }: { message: InternalChatMessage; onReply: (message: InternalChatMessage) => void; showSeenReceipt: boolean; now:number; onReact:(message:InternalChatMessage,emoji:string,reacted:boolean)=>Promise<boolean>; own: boolean; birthday: boolean; currentUserId: string; group: boolean; canCreate: boolean; canEdit: boolean; busy: boolean; onEdit: (message: InternalChatMessage, body: string) => Promise<boolean>; onDelete: (message: InternalChatMessage) => Promise<void>; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
+const MessageBubble = memo(function MessageBubble({ message, onReply, showSeenReceipt, now, onReact, own, birthday, currentUserId, group, canCreate, canEdit, busy, onEdit, onDelete, onVote, onPin, onPreview }: { message: InternalChatMessage; onReply: (message: InternalChatMessage) => void; showSeenReceipt: boolean; now:number; onReact:(message:InternalChatMessage,emoji:string,reacted:boolean)=>Promise<boolean>; own: boolean; birthday: boolean; currentUserId: string; group: boolean; canCreate: boolean; canEdit: boolean; busy: boolean; onEdit: (message: InternalChatMessage, body: string) => Promise<boolean>; onDelete: (message: InternalChatMessage) => Promise<void>; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(message.body);
   const [reactionsOpen,setReactionsOpen]=useState(false);
@@ -524,7 +531,7 @@ function MessageBubble({ message, onReply, showSeenReceipt, now, onReact, own, b
       <span className="internal-chat-message-meta">{!own&&canCreate&&!message.deletedAt&&!editing&&<span ref={reactionControl} className="internal-chat-reaction-control"><button type="button" className="internal-chat-react-button" aria-label="Reagir à mensagem" aria-expanded={reactionsOpen} disabled={busy} onClick={()=>setReactionsOpen(value=>!value)} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setReactionsOpen(false)}}}><SmilePlus size={15}/></button>{reactionsOpen&&<span className="internal-chat-reaction-picker" role="group" aria-label="Reações disponíveis">{CHAT_REACTIONS.map(emoji=><button type="button" key={emoji} disabled={busy} aria-label={`Reagir com ${emoji}`} onClick={()=>void react(emoji)}>{emoji}</button>)}</span>}</span>}{own && canCreate && !message.deletedAt && !editing && <span className="internal-chat-message-actions">{message.type === "text" && <button type="button" disabled={busy} aria-label="Editar mensagem" title="Editar mensagem" onClick={()=>{setEditBody(message.body);setEditing(true)}}><Pencil size={13}/></button>}<button type="button" disabled={busy} aria-label="Excluir mensagem" title="Excluir mensagem para todos" onClick={()=>void onDelete(message)}><Trash2 size={13}/></button></span>}{message.editedAt && !message.deletedAt && <small title={new Date(message.editedAt).toLocaleString("pt-BR")}>editada</small>}<time>{messageTime.format(new Date(message.createdAt))}</time>{own && <i className={`internal-chat-receipt ${message.receiptState||"sent"}`} title={seenLabel|| (message.receiptState==="seen"?"Visto":message.receiptState==="delivered"?"Recebido":"Enviado")}>{message.receiptState==="seen"||message.receiptState==="delivered"?<CheckCheck size={15}/>:<Check size={14}/>}</i>}</span>
     </div>{!message.deletedAt&&Boolean(message.reactions?.length)&&<div className="internal-chat-message-reactions" aria-label="Reações da mensagem">{message.reactions!.map(reaction=>own?<span key={reaction.emoji} className="internal-chat-reaction-summary" title={reaction.userNames.join(", ")}><span>{reaction.emoji}</span><small>{reaction.count}</small></span>:<button type="button" key={reaction.emoji} disabled={busy||!canCreate} aria-label={`${reaction.emoji} · ${reaction.count} reação(ões): ${reaction.userNames.join(", ")}`} aria-pressed={reaction.userIds.includes(currentUserId)} title={reaction.userNames.join(", ")} onClick={()=>void react(reaction.emoji)}><span>{reaction.emoji}</span><small>{reaction.count}</small></button>)}</div>}{own&&showSeenReceipt&&seenLabel&&!message.deletedAt&&<span className="internal-chat-seen-at" title={new Date(message.seenAt!).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}><CheckCheck size={14}/>{seenLabel}</span>}</div>
   </article>;
-}
+});
 
 function PollMessage({ message, currentUserId, busy, onVote }: { message: InternalChatMessage; currentUserId: string; busy: boolean; onVote: (messageId: string, optionIndex: number) => void }) {
   const poll = parsePoll(message.body);
@@ -605,4 +612,10 @@ function parsePoll(raw: string): { question: string; options: { text: string; vo
     });
     return options.length >= 2 ? { question: value.question, options } : null;
   } catch { return null; }
+}
+
+// Keep history rows stable when presence or room controls update during typing.
+function useLatestChatCallback<Args extends unknown[],Result>(callback:(...args:Args)=>Result){
+ const latest=useRef(callback);useLayoutEffect(()=>{latest.current=callback});
+ return useCallback((...args:Args)=>latest.current(...args),[]);
 }

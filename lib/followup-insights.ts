@@ -1,12 +1,13 @@
 import { customerSuccessScore } from './commission-rules.ts';
 
-export type FollowupDetail = { track?: string; phase?: string; productVersion?: string; systemVersion?: string; version?: string; firstMeetingCompletedAt?: string; trainingCompletedAt?: string; singleAlignmentCompletedAt?: string; featuresBase?: unknown; featuresActive?: unknown; featuresPlus?: unknown };
+export type FollowupDetail = { trainingRequired?: boolean; sourceLeadId?: string; track?: string; phase?: string; productVersion?: string; systemVersion?: string; version?: string; firstMeetingCompletedAt?: string; trainingCompletedAt?: string; singleAlignmentCompletedAt?: string; featuresBase?: unknown; featuresActive?: unknown; featuresPlus?: unknown };
 export type FollowupHistoryEntry = { text: string; createdAt: string; actor?: string; kind?: string; type?: string };
 const normalized = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 
 export const isCriticalFollowup = (detail: FollowupDetail, defaultBase: string[] = []) => customerSuccessScore(detail, defaultBase) < 50;
 export function pendingTrainingSteps(detail: FollowupDetail) {
-  if (detail.track !== 'activation' || ['cancelled','cancelledWithoutTraining','unsuccessful'].includes(detail.phase || '') || detail.singleAlignmentCompletedAt) return [];
+  if (detail.track !== 'activation' || detail.singleAlignmentCompletedAt) return [];
+  if (!['onboarding','activation'].includes(detail.phase || '') && !(detail.phase === 'validation' && (detail.trainingRequired === true || Boolean(detail.sourceLeadId)))) return [];
   return [!detail.firstMeetingCompletedAt ? 'Kick off' : '', !detail.trainingCompletedAt ? 'Treinamento' : ''].filter(Boolean);
 }
 export const hasTrainingPending = (detail: FollowupDetail) => pendingTrainingSteps(detail).length > 0;

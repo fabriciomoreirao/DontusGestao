@@ -176,21 +176,22 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             .Select(x => x.DepartmentId)
             .ToListAsync(cancellationToken);
 
+        var approverDepartments = await db.TaskDepartments.Where(department => department.ApproverUserId == user.Id).Select(department => department.Id).ToArrayAsync(cancellationToken);
         var developmentParentIds = await DevelopmentParentIdsAsync(user, actor, cancellationToken);
         var query = db.CorporateTasks.AsNoTracking();
         if (!canViewTasks)
             query = query.Where(task => developmentParentIds.Contains(task.Id));
         else if (!manages)
         {
-            query = query.Where(x => !tasksWithParticipants.Contains(x.Id)
+            query = query.Where(x => approverDepartments.Contains(x.CurrentDepartmentId) || !tasksWithParticipants.Contains(x.Id)
                 || memberDepartments.Contains(x.CurrentDepartmentId)
                 || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
                 || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id));
             if (!viewAllDepartments)
                 query = viewOthers
-                    ? query.Where(x => memberDepartments.Contains(x.CurrentDepartmentId)
+                    ? query.Where(x => approverDepartments.Contains(x.CurrentDepartmentId) || memberDepartments.Contains(x.CurrentDepartmentId)
                         || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id))
-                    : query.Where(x => x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
+                    : query.Where(x => approverDepartments.Contains(x.CurrentDepartmentId) || x.CreatorUserId == user.Id || x.AssigneeUserId == user.Id
                         || memberDepartments.Contains(x.CurrentDepartmentId)
                         || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id));
         }
@@ -427,8 +428,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var cancelling = status.Name.Contains("cancel", StringComparison.OrdinalIgnoreCase);
         var coordinator = await db.UserDepartments.AnyAsync(link => link.UserId == user.Id && link.IsCoordinator
             && (link.DepartmentId == task.CurrentDepartmentId || link.DepartmentId == task.SourceDepartmentId), cancellationToken);
-        var supervisor = actor.HasPermission("tasks", "manage") || coordinator;
-        var directCompletion = coordinator && task.AssigneeUserId == user.Id;
+        var designatedApprover = await db.TaskDepartments.AnyAsync(department => department.Id == task.CurrentDepartmentId && department.ApproverUserId == user.Id, cancellationToken);
+        var supervisor = actor.HasPermission("tasks", "manage") || designatedApprover;
+        var directCompletion = (coordinator || designatedApprover) && task.AssigneeUserId == user.Id;
         if (task.AssigneeUserId != user.Id && !supervisor || cancelling)
         {
             actor.RequirePermission("tasks", "edit");
@@ -442,19 +444,20 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             throw new DomainException("Para enviar à aprovação, use o botão Enviar para aprovação dentro da tarefa.");
         if (command.RequestApproval && directCompletion)
             throw new DomainException("A tarefa atribuída ao coordenador pode ser concluída diretamente.");
-        if (!status.ManualMovement && !command.RequestApproval)
+        var workflowCompletion = status.IsFinal && !cancelling && (supervisor || directCompletion);
+        if (!status.ManualMovement && !command.RequestApproval && !workflowCompletion)
             throw new DomainException("Este status não permite movimentação manual.");
         var currentStatus = await db.TaskStatuses.SingleAsync(entry => entry.Id == task.StatusId, cancellationToken);
-        if (!supervisor && (task.CompletedAt.HasValue || IsApprovalStatus(currentStatus)))
+        if (!supervisor && !directCompletion && (task.CompletedAt.HasValue || IsApprovalStatus(currentStatus)))
             throw new DomainException("Somente a coordenação pode movimentar uma tarefa em aprovação ou concluída.", 403);
-        if (status.IsFinal && !supervisor)
+        if (status.IsFinal && !supervisor && !directCompletion)
             throw new DomainException("Envie a tarefa para aprovação. Somente a coordenação pode concluir a tarefa.", 403);
         if (status.IsFinal && !cancelling && !directCompletion && !actor.HasPermission("tasks", "manage") && !IsApprovalStatus(currentStatus))
             throw new DomainException("A tarefa precisa passar pela aprovação antes de ser resolvida.");
         if (cancelling) RequireCapabilityOrManage(actor, "cancel");
         var workingStatus = !status.IsFinal && !isApprovalStatus && new[] { status.Name, status.KanbanColumn }
             .Any(name => System.Text.RegularExpressions.Regex.IsMatch(name.Trim(), @"^(pendente|aberta?|em (andamento|progresso))$", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
-        if (!isApprovalStatus && !workingStatus && !await db.TaskTypeStatuses.AnyAsync(x => x.TaskTypeId == task.TypeId && x.StatusId == status.Id, cancellationToken))
+        if (!workflowCompletion && !isApprovalStatus && !workingStatus && !await db.TaskTypeStatuses.AnyAsync(x => x.TaskTypeId == task.TypeId && x.StatusId == status.Id, cancellationToken))
             throw new DomainException("Movimentação não permitida pelo fluxo do tipo de tarefa.");
         if (status.RequiresJustification && string.IsNullOrWhiteSpace(command.Justification))
             throw new DomainException("Este status exige justificativa.");
@@ -826,6 +829,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var ids = await db.UserDepartments.AsNoTracking()
             .Where(link => link.IsCoordinator && (link.DepartmentId == task.SourceDepartmentId || link.DepartmentId == task.CurrentDepartmentId))
             .Select(link => link.UserId).ToListAsync(ct);
+        ids.AddRange(await db.TaskDepartments.Where(department => department.Id == task.CurrentDepartmentId && department.ApproverUserId.HasValue).Select(department => department.ApproverUserId!.Value).ToArrayAsync(ct));
         ids.Add(task.CreatorUserId);
         if (task.AssigneeUserId.HasValue) ids.Add(task.AssigneeUserId.Value);
         if (includeParticipants)
@@ -844,8 +848,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var name = command.Name.Trim();
         if (await db.Users.CountAsync(x => command.CoordinatorUserIds.Contains(x.Id) && x.Active && x.BlockedAt == null, cancellationToken) != command.CoordinatorUserIds.Distinct().Count())
             throw new DomainException("Selecione coordenadores ativos e válidos.");
-        if (command.ApproverUserId.HasValue && !command.CoordinatorUserIds.Contains(command.ApproverUserId.Value))
-            throw new DomainException("Selecione um dos coordenadores do setor como aprovador.");
+        if (command.ApproverUserId.HasValue && !await db.Users.AnyAsync(user => user.Id == command.ApproverUserId && user.Active && user.BlockedAt == null, cancellationToken))
+            throw new DomainException("Selecione um aprovador ativo e válido.");
         var normalizedName = name.ToUpperInvariant();
         TaskDepartment? entity = command.Id.HasValue
             ? await db.TaskDepartments.SingleOrDefaultAsync(x => x.Id == command.Id, cancellationToken)
@@ -1360,6 +1364,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     private async Task RequireTaskInteractionAsync(CorporateTask task, AppUser user, ActorContext actor, CancellationToken ct)
     {
         if (actor.HasPermission("tasks", "manage") || task.CreatorUserId == user.Id || task.AssigneeUserId == user.Id) return;
+        if (await db.TaskDepartments.AnyAsync(department => department.Id == task.CurrentDepartmentId && department.ApproverUserId == user.Id, ct)) return;
         if (await db.TaskParticipants.AnyAsync(link => link.TaskId == task.Id && link.UserId == user.Id, ct)) return;
         if (await db.UserDepartments.AnyAsync(link => link.UserId == user.Id &&
             (link.IsCoordinator && (link.DepartmentId == task.CurrentDepartmentId || link.DepartmentId == task.SourceDepartmentId)
@@ -1401,6 +1406,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var task = await db.CorporateTasks.SingleOrDefaultAsync(x => x.Id == taskId, cancellationToken)
             ?? throw new DomainException("Tarefa não encontrada.", 404);
         if (actor.HasPermission("tasks", "manage")) return task;
+        if (await db.TaskDepartments.AnyAsync(department => department.Id == task.CurrentDepartmentId && department.ApproverUserId == user.Id, cancellationToken)) return task;
         if (task.CreatorUserId == user.Id || task.AssigneeUserId == user.Id) return task;
         if (task.CompletedAt.HasValue && !task.Cancelled && await db.TaskComments.AnyAsync(comment => comment.TaskId == task.Id && comment.AuthorUserId == user.Id, cancellationToken)) return task;
         if (await db.UserDepartments.AnyAsync(x => x.UserId == user.Id
