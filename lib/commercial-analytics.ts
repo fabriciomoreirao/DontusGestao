@@ -1,12 +1,12 @@
 import { crmResponsible } from './crm-responsibles.ts';
 import { commercialIndicatorFlow, commercialSaleDate, scopeCommercialIndicatorItems } from './commercial-indicators.ts';
-import { isWonSale } from './sales-celebration.ts';
+import { isWonSale, saleFunnel } from './sales-celebration.ts';
 
 export type CommercialAnalyticsItem = { id:string; module:string;record_type:string;title:string;customer_name?:string;owner:string;team:string;status:string;amount_cents:number;description?:string;created_at:string;updated_at:string };
-export type AnalyticsCatalog = {catalog:string;name:string;description:string};
+export type AnalyticsCatalog = {id?:string;catalog:string;name:string;description:string};
 type Detail = Record<string, unknown>;
 export type CommercialAnalyticsEntry = {item:CommercialAnalyticsItem;detail:Detail;direct:boolean;won:boolean;lost:boolean;createdDate:string;saleDate:string;seller:string;stage:string;origin:string;funnel:string;amount:number;products:string[];follows:Detail[]};
-const normalize=(value:unknown)=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+const normalize=(value:unknown)=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toLowerCase();
 const parse=(value?:string):Detail=>{try{const data=JSON.parse(value||'{}');return data&&typeof data==='object'&&!Array.isArray(data)?data:{}}catch{return {}}};
 const text=(...values:unknown[])=>String(values.find(value=>typeof value==='string'&&value.trim())||'');
 const number=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:typeof value==='string'&&value.trim()&&Number.isFinite(Number(value))?Number(value):undefined;
@@ -20,8 +20,11 @@ export function commercialAmountCents(item:Pick<CommercialAnalyticsItem,'amount_
 
 export function commercialAnalyticsEntries(items:CommercialAnalyticsItem[], context:string, catalogs:AnalyticsCatalog[]=[]) {
   const unique=new Map(scopeCommercialIndicatorItems(items,context).map(item=>[item.id,item]));
+  const sellers=new Map<string,string>();
   return [...unique.values()].flatMap(item=>{
     const detail=parse(item.description);
+    const seller=crmResponsible(item)||'Não atribuído';
+    if(!sellers.has(normalize(seller)))sellers.set(normalize(seller),seller);
     if(context==='commercial:combined' && commercialIndicatorFlow(item)==='qualification')return [];
     if(/configura|perfil|catalog/.test(normalize(item.record_type)) || detail.kind && !['commercialLead','directSale'].includes(String(detail.kind)))return [];
     const direct=detail.kind==='directSale';
@@ -32,7 +35,7 @@ export function commercialAnalyticsEntries(items:CommercialAnalyticsItem[], cont
     const createdDate=validDay(detail.entryDate)||validDay(item.created_at);
     const stamp=direct?detail.saleDate:detail.wonAt||detail.closedAt||detail.saleDate||detail.stageEnteredAt;
     const saleDate=won?(validDay(stamp)||validDay(item.updated_at)||createdDate):'';
-    return [{item,detail,direct,won,createdDate,saleDate,stage,amount,lost:!won&&/perdid|cancel|desqualif|descart|sem sucesso/.test(normalize(stage)),seller:crmResponsible(item)||'Não atribuído',origin:text(detail.origin,detail.source)||'Não informada',funnel:direct?'Vendas diretas':text(detail.funnel)||'Sem CRM',products:products.map(product=>text(product.product,product.name,product.productName)||'Produto não informado'),follows:(Array.isArray(detail.follows)?detail.follows:[]).filter((follow):follow is Detail=>!!follow&&typeof follow==='object')}];
+    return [{item,detail,direct,won,createdDate,saleDate,stage,amount,lost:!won&&/perdid|cancel|desqualif|descart|sem sucesso/.test(normalize(stage)),seller:sellers.get(normalize(seller))!,origin:text(detail.origin,detail.source)||'Não informada',funnel:direct?'Vendas diretas':saleFunnel(detail,catalogs)?.name||text(detail.funnel)||'Sem CRM',products:products.map(product=>text(product.product,product.name,product.productName)||'Produto não informado'),follows:(Array.isArray(detail.follows)?detail.follows:[]).filter((follow):follow is Detail=>!!follow&&typeof follow==='object')}];
   });
 }
 

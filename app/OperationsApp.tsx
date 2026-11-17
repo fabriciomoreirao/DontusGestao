@@ -66,7 +66,7 @@ import useActivityClock from "@/app/useActivityClock";
 import DesktopAppControls from "@/app/DesktopAppSupport";
 import { showDesktopNotification } from "@/lib/desktop-notifications";
 import ChatNotifications, { type ChatAlert } from "@/app/ChatNotifications";
-import { FormEvent, lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { FormEvent, lazy, startTransition, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { allowedNextStatuses, MODULES, PRIORITIES, RECORD_TYPES, STATE_MACHINES, type ModuleKey } from "@/lib/domain";
 import AgendaStaleAlerts from "@/app/AgendaStaleAlerts";
@@ -772,7 +772,7 @@ export default function OperationsApp() {
       const internalChatModule = await response.json() as InternalChatModuleData;
       if (revision !== chatRevision.current) return false;
       chatRevision.current += 1;
-      setData((current) => current ? { ...current, internalChatModule:applyChatPresence(mergeInternalChat(current.internalChatModule, internalChatModule),presenceCache.current) } : current);
+      startTransition(() => setData((current) => current ? { ...current, internalChatModule:applyChatPresence(mergeInternalChat(current.internalChatModule, internalChatModule),presenceCache.current) } : current));
       return true;
     } catch {
       return false;
@@ -785,7 +785,11 @@ export default function OperationsApp() {
     canChat: !!data?.user.permissions.some(permission => permission.screen === "internalChat" && permission.canView),
     busy, cursor: () => realtimeCursor.current, operations: async () => { const ok = await load(true); if (ok) setAttendanceRevision(value => value + 1); return ok; }, chat: refreshInternalChat, unauthorized: expireSession,
     typing: changes=>chatTypingStore.receive(changes),
-    presence: users=>{presenceCache.current=users;setData(current=>current?.internalChatModule?{...current,internalChatModule:applyChatPresence(current.internalChatModule,users)}:current);},
+    presence: users=>{presenceCache.current=users;startTransition(()=>setData(current=>{
+      if(!current?.internalChatModule)return current;
+      const chat=applyChatPresence(current.internalChatModule,users);
+      return chat===current.internalChatModule?current:{...current,internalChatModule:chat};
+    }));},
   });
 
   useEffect(() => {
@@ -2697,6 +2701,7 @@ const followUpTrackLabel = (track: FollowUpTrack) => track === "enterprise" ? "c
 
 type DirectSale = {
   liaPlan?: string;
+  phone?: string;
   kind: "directSale";
   flow: "crm" | "retention";
   followUpTrack: FollowUpTrack;
@@ -2721,7 +2726,7 @@ const parseDirectSale = (value: string): DirectSale | null => {
     if (parsed.kind !== "directSale" || (parsed.flow !== "crm" && parsed.flow !== "retention")) return null;
     return {
       kind: "directSale", flow: parsed.flow, liaPlan: parsed.liaPlan, networkId: parsed.networkId, followUpTrack: parsed.followUpTrack === "enterprise" ? "enterprise" : parsed.followUpTrack === "lia" ? "lia" : parsed.followUpTrack === "retention" ? "retention" : parsed.flow === "retention" ? "retention" : "activation", saleId: parsed.saleId ?? "", clientId: parsed.clientId ?? "", saleDate: parsed.saleDate ?? "",
-      name: parsed.name ?? "", origin: parsed.origin ?? "", version: parsed.version ?? "", seller: parsed.seller ?? "",
+      name: parsed.name ?? "", phone: parsed.phone ?? "", origin: parsed.origin ?? "", version: parsed.version ?? "", seller: parsed.seller ?? "",
       products: Array.isArray(parsed.products) ? parsed.products : [], subtotalCents: Number(parsed.subtotalCents ?? 0),
       discountCents: Number(parsed.discountCents ?? 0), totalCents: Number(parsed.totalCents ?? 0),
     };
@@ -2931,6 +2936,35 @@ function DirectSalesView({ commercialSellers, flow, catalogs, customers, items, 
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<{ item: WorkItem; detail: DirectSale } | null>(null);
+  async function saveEditedSale(detail: DirectSale) {
+    if (!editing) return;
+    const result = await operate({ action: "updateWorkItem", requireConfirmation: true, id: editing.item.id, title: `${detail.name} · ${detail.saleId}`, customerName: detail.name, owner: detail.seller, amountCents: detail.totalCents, version: editing.item.version, description: JSON.stringify(detail) }, "Venda direta atualizada com sucesso.");
+    if (!result) return;
+    setEditing(current => current ? { ...current, item: { ...current.item, version: current.item.version + 1 } } : current);
+    if ((detail.phone || "") !== (editing.detail.phone || "")) {
+      for (const item of items.filter(item => item.module === "lia" || item.module === "cs")) {
+        let linked: Record<string, unknown>;
+        try { linked = JSON.parse(item.description); } catch { continue; }
+        if (!linked || linked.sourceLeadId !== editing.item.id) continue;
+        const saved = await operate({ action: "updateWorkItem", id: item.id, title: item.title, owner: item.owner, customerName: item.customer_name, amountCents: item.amount_cents, version: item.version, description: JSON.stringify({ ...linked, phone: detail.phone || "", whatsapp: detail.phone || "" }) }, "Telefone atualizado no acompanhamento.");
+        if (!saved) return;
+      }
+      if (detail.networkId) {
+        const item = items.find(item => item.id === detail.networkId);
+        const network = item && parseEnterpriseNetwork(item.description);
+        if (item && network) {
+          const units = network.units.map(unit => unit.externalId === directSaleClientId(detail) && unit.notes.includes(`Venda ${detail.saleId} ·`) ? { ...unit, phone: detail.phone || "" } : unit);
+          const saved = await operate({ action: "updateWorkItem", id: item.id, title: item.title, owner: item.owner, customerName: item.customer_name, amountCents: item.amount_cents, version: item.version, description: JSON.stringify({ ...network, units }) }, "Telefone atualizado na unidade estratégica.");
+          if (!saved) return;
+        }
+      }
+      if (editing.item.customer_id) {
+        const saved = await operate({ action: "updateCustomer", id: editing.item.customer_id, phone: detail.phone || "" }, "Telefone do cliente atualizado.");
+        if (!saved) return;
+      }
+    }
+    setEditing(null);
+  }
   const sales = useMemo(() => items.map((item) => ({ item, detail: parseDirectSale(item.description) }))
     .filter((entry): entry is { item: WorkItem; detail: DirectSale } => Boolean(entry.detail && entry.item.record_type === directSaleRecordType(flow) && entry.detail.flow === flow)), [items, flow]);
   const sellers = [...new Set(commercialSellers.map(seller => seller.displayName))];
@@ -2960,7 +2994,8 @@ function DirectSalesView({ commercialSellers, flow, catalogs, customers, items, 
       const targetNetwork = detail.followUpTrack === "enterprise" ? items.find(item => item.id === detail.networkId && parseEnterpriseNetwork(item.description)) : undefined;
       if (detail.followUpTrack === "enterprise" && !targetNetwork) return;
       const existingCustomer = customers.find(entry => entry.document_masked?.replace(/\D/g, "") === directSaleClientId(detail)) ?? customers.find((entry) => entry.trade_name.localeCompare(detail.name, "pt-BR", { sensitivity: "base" }) === 0 || entry.legal_name.localeCompare(detail.name, "pt-BR", { sensitivity: "base" }) === 0);
-      const createdCustomer = existingCustomer ? { id: existingCustomer.id } : await operate({ action: "createCustomer", legalName: detail.name, tradeName: detail.name, documentMasked: directSaleClientId(detail), owner: detail.seller, status: "Cliente", productVersion: detail.version, monthlyRevenueCents: detail.totalCents, clinicsCount: 1, notes: "Cliente originado por venda direta." }, "Cliente adicionado à base.");
+      detail = { ...detail, phone: detail.phone?.trim() || existingCustomer?.phone || "" };
+      const createdCustomer = existingCustomer ? { id: existingCustomer.id } : await operate({ action: "createCustomer", legalName: detail.name, tradeName: detail.name, phone: detail.phone, documentMasked: directSaleClientId(detail), owner: detail.seller, status: "Cliente", productVersion: detail.version, monthlyRevenueCents: detail.totalCents, clinicsCount: 1, notes: "Cliente originado por venda direta." }, "Cliente adicionado à base.");
       const customerId = createdCustomer && typeof createdCustomer === "object" ? createdCustomer.id : undefined;
       if (!customerId) return;
       const result = await operate({ action: "createWorkItem", module: "commercial", recordType: directSaleRecordType(flow), title: `${detail.name} · ${detail.saleId}`, customerId, customerName: detail.name, owner: detail.seller, team: commercialFlowLabel(flow), priority: "P3", amountCents: detail.totalCents, description: JSON.stringify(detail) }, "Venda direta adicionada com sucesso.");
@@ -2970,17 +3005,17 @@ function DirectSalesView({ commercialSellers, flow, catalogs, customers, items, 
         const network = parseEnterpriseNetwork(targetNetwork.description)!;
         const at = new Date().toISOString();
         const unitId = crypto.randomUUID();
-        const unit: EnterpriseUnit = { id: unitId, customerId, pendingFollowUp: true, trainingRequired: true, name: detail.name, externalId: directSaleClientId(detail), city: existingCustomer?.city || "", state: existingCustomer?.state || "", contact: detail.name, phone: existingCustomer?.phone || "", email: existingCustomer?.email || "", usageStatus: "Não iniciada", usagePercent: 0, lastAnalysis: "", implementationAt: detail.saleDate, notes: `Venda ${detail.saleId} · ${detail.saleDate}\nVendedor: ${detail.seller}\nOrigem: ${detail.origin}\nVersão: ${detail.version}\nProdutos: ${detail.products.map(product => `${product.product} · ${product.plan} · ${product.quantity} × ${formatMoney(Math.round(product.unitValue * 100))}`).join("; ")}\nSubtotal: ${formatMoney(detail.subtotalCents)} · Desconto: ${formatMoney(detail.discountCents)} · Total: ${formatMoney(detail.totalCents)}`, status: "Não iniciada", active: true, features: detail.products.map(product => ({ id: crypto.randomUUID(), name: product.product, category: product.plan || "Base", status: "Contratada", percentage: 0, activatedAt: "", updatedAt: at.slice(0,10), owner: detail.seller, notes: `${product.quantity} unidade(s) · R$ ${product.unitValue}` })) };
+        const unit: EnterpriseUnit = { id: unitId, customerId, pendingFollowUp: true, trainingRequired: true, name: detail.name, externalId: directSaleClientId(detail), city: existingCustomer?.city || "", state: existingCustomer?.state || "", contact: detail.name, phone: detail.phone || "", email: existingCustomer?.email || "", usageStatus: "Não iniciada", usagePercent: 0, lastAnalysis: "", implementationAt: detail.saleDate, notes: `Venda ${detail.saleId} · ${detail.saleDate}\nVendedor: ${detail.seller}\nOrigem: ${detail.origin}\nVersão: ${detail.version}\nProdutos: ${detail.products.map(product => `${product.product} · ${product.plan} · ${product.quantity} × ${formatMoney(Math.round(product.unitValue * 100))}`).join("; ")}\nSubtotal: ${formatMoney(detail.subtotalCents)} · Desconto: ${formatMoney(detail.discountCents)} · Total: ${formatMoney(detail.totalCents)}`, status: "Não iniciada", active: true, features: detail.products.map(product => ({ id: crypto.randomUUID(), name: product.product, category: product.plan || "Base", status: "Contratada", percentage: 0, activatedAt: "", updatedAt: at.slice(0,10), owner: detail.seller, notes: `${product.quantity} unidade(s) · R$ ${product.unitValue}` })) };
         const routed = await operate({ action: "updateWorkItem", id: targetNetwork.id, version: targetNetwork.version, title: targetNetwork.title, owner: targetNetwork.owner, customerName: targetNetwork.customer_name, amountCents: targetNetwork.amount_cents, description: JSON.stringify({ ...network, units: [...network.units, unit], history: [...network.history, { id: crypto.randomUUID(), createdAt: at, user: detail.seller, type: "Venda direta", unitId, text: `Unidade ${detail.name} adicionada pela venda ${detail.saleId}, por ${detail.seller}. Total: ${formatMoney(detail.totalCents)}.` }] }) }, "Unidade encaminhada à rede estratégica.");
-        if (routed) { await operate({ action: "updateCustomer", id: customerId, strategic: true, strategicNetworkId: targetNetwork.id, status: "Cliente", productVersion: detail.version }, "Cliente vinculado à rede."); setCreating(false); }
+        if (routed) { await operate({ action: "updateCustomer", id: customerId, strategic: true, strategicNetworkId: targetNetwork.id, status: "Cliente", phone: detail.phone || undefined, productVersion: detail.version }, "Cliente vinculado à rede."); setCreating(false); }
         return;
       }
       const isLia=detail.followUpTrack==="lia";
       const journey = directSaleFollowup(detail, sourceId, new Date().toISOString(), crypto.randomUUID());
       const routed = await operate({action:"createWorkItem",module:isLia?"lia":"cs",recordType:isLia?"Projeto LIA":detail.followUpTrack==="activation"?"Acompanhamento de ativação":"Acompanhamento de retenção",title:detail.name,customerId,customerName:detail.name,owner:isLia?"Coordenação de LIA":"Coordenação de CS",team:isLia?"LIA":detail.followUpTrack==="activation"?"Sucesso do Cliente · Ativação":"Sucesso do Cliente · Retenção",status:isLia?"Validacao":undefined,priority:"P3",amountCents:detail.totalCents,description:JSON.stringify(journey)},`Cliente direcionado para acompanhamento ${followUpTrackLabel(detail.followUpTrack)}.`);
-      if (routed) { await operate({ action: "updateCustomer", id: customerId, status: "Cliente", documentMasked: directSaleClientId(detail), productVersion: detail.version, owner: detail.seller, csOwner: isLia ? "Coordenação de LIA" : "Coordenação de CS", monthlyRevenueCents: detail.totalCents }, "Status do cliente atualizado."); setCreating(false); }
+      if (routed) { await operate({ action: "updateCustomer", id: customerId, status: "Cliente", phone: detail.phone || undefined, documentMasked: directSaleClientId(detail), productVersion: detail.version, owner: detail.seller, csOwner: isLia ? "Coordenação de LIA" : "Coordenação de CS", monthlyRevenueCents: detail.totalCents }, "Status do cliente atualizado."); setCreating(false); }
     }} />}
-    {editing && <DirectSaleModal flow={flow} catalogs={catalogs} items={items} currentUser={currentUser} busy={busy} sale={editing.detail} onClose={() => setEditing(null)} onSave={async (detail) => { const result = await operate({ action: "updateWorkItem", requireConfirmation: true, id: editing.item.id, title: `${detail.name} · ${detail.saleId}`, customerName: detail.name, owner: detail.seller, amountCents: detail.totalCents, version: editing.item.version, description: JSON.stringify(detail) }, "Venda direta atualizada com sucesso."); if (result) setEditing(null); }} />}
+    {editing && <DirectSaleModal flow={flow} catalogs={catalogs} items={items} currentUser={currentUser} busy={busy} sale={editing.detail} onClose={() => setEditing(null)} onSave={saveEditedSale} />}
   </section>;
 }
 
@@ -2998,6 +3033,7 @@ function DirectSaleModal({ flow, catalogs, items, currentUser, busy, sale, onClo
   ].filter(Boolean))];
   const [saleDate, setSaleDate] = useState(sale?.saleDate ?? today);
   const [name, setName] = useState(sale?.name ?? "");
+  const [phone, setPhone] = useState(sale?.phone ?? "");
   const [clientId, setClientId] = useState(sale ? directSaleClientId(sale) : "");
   const [origin, setOrigin] = useState(sale?.origin ?? "");
   const [version, setVersion] = useState(sale?.version ?? "");
@@ -3026,12 +3062,13 @@ function DirectSaleModal({ flow, catalogs, items, currentUser, busy, sale, onClo
     const effectiveProducts=selectedProducts.length?selectedProducts:selectedProduct?[{product:selectedProduct.name,plan,unitValue,quantity}]:[];
     if (!name.trim() || !origin || !version || !/^\d{6}$/.test(clientId) || effectiveProducts.length === 0 || (followUpTrack==="lia"&&!liaPlan.trim())) return;
     const effectiveSubtotal=effectiveProducts.reduce((sum,entry)=>sum+Math.round(entry.unitValue*entry.quantity*100),0);const effectiveDiscount=Math.min(effectiveSubtotal,discountCents);const effectiveTotal=Math.max(0,effectiveSubtotal-effectiveDiscount);
-    await onSave({ kind: "directSale", flow, followUpTrack, liaPlan: followUpTrack==="lia"?liaPlan:undefined, networkId, saleId, clientId: clientId.trim(), saleDate, name: name.trim(), origin, version, seller: sale?.seller || currentUser.displayName, products: effectiveProducts, subtotalCents:effectiveSubtotal, discountCents:effectiveDiscount, totalCents:effectiveTotal });
+    await onSave({ kind: "directSale", flow, followUpTrack, liaPlan: followUpTrack==="lia"?liaPlan:undefined, networkId, saleId, clientId: clientId.trim(), saleDate, name: name.trim(), phone: phone.trim(), origin, version, seller: sale?.seller || currentUser.displayName, products: effectiveProducts, subtotalCents:effectiveSubtotal, discountCents:effectiveDiscount, totalCents:effectiveTotal });
   };
   return <ModalShell title={sale ? "Editar venda direta" : "Adicionar venda direta"} subtitle={`${commercialFlowLabel(flow)} · ID ${saleId}${sale ? "" : " gerado automaticamente"}`} onClose={onClose}><form className="form-grid direct-sale-form" onSubmit={submit}>
     <label>Data *<input type="date" required value={saleDate} onChange={(event) => setSaleDate(event.target.value)} /></label><label>ID da venda<input readOnly value={saleId} /></label>
     <label>ID do cliente *<input name="clientId" required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={clientId} onChange={event=>setClientId(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="ID do cliente (6 dígitos)"/></label>
     <label>Nome *<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome do cliente ou empresa" /></label>
+    <label>Telefone / WhatsApp<input name="phone" type="tel" autoComplete="tel" value={phone} onChange={(event)=>setPhone(event.target.value)} placeholder="(11) 99999-9999" /></label>
     <label>Origem *<select required value={origin} onChange={(event) => setOrigin(event.target.value)}><option value="">Selecionar origem</option>{origins.map((entry) => <option value={entry.name} key={entry.id}>{entry.name}</option>)}</select></label>
     <label>Versão *<select required value={version} onChange={(event) => setVersion(event.target.value)}><option value="">Selecionar versão</option>{versionOptions.map((entry) => <option key={entry}>{entry}</option>)}</select></label>
     <label className="wide direct-sale-routing">Tipo de acompanhamento *<select required value={followUpTrack} disabled={Boolean(sale)} onChange={(event) => setFollowUpTrack(event.target.value as FollowUpTrack)}><option value="activation">Acompanhamento Ativação</option><option value="retention">Acompanhamento Retenção</option><option value="lia">Acompanhamento LIA</option><option value="enterprise">Contas estratégicas</option></select>{followUpTrack === "enterprise" && <select required disabled={Boolean(sale)} value={networkId} onChange={event => setNetworkId(event.target.value)}><option value="">Selecionar rede ativa...</option>{activeNetworks.map(network => <option key={network.id} value={network.id}>{network.title}</option>)}</select>}<small>{sale ? "O encaminhamento original é preservado durante a edição." : "Ao salvar, o cliente será encaminhado automaticamente para a fila selecionada."}</small></label>

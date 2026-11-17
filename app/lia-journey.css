@@ -26,3 +26,7 @@
 .lia-client-edit-modal footer{display:flex;justify-content:flex-end;gap:10px;margin-top:22px;border-top:1px solid var(--line);padding-top:18px}
 .lia-client-edit-modal .icon-button,.lia-owner-field>.icon-button{min-width:44px;min-height:44px}.lia-owner-field>.icon-button{position:relative;z-index:1;flex:0 0 auto}
 @media(max-width:600px){.lia-client-edit-fields{grid-template-columns:minmax(0,1fr)}.lia-client-edit-fields .wide{grid-column:auto}.lia-client-edit-modal>.modal-head,.lia-client-edit-modal>form{padding:18px}.lia-client-edit-modal footer{flex-wrap:wrap}}
+.app-shell .content .compact-operational-filters.lia-compact-filters{grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));overflow:visible}
+.app-shell .content .compact-operational-filters.lia-compact-filters>label>span{white-space:normal}
+.app-shell .content .lia-compact-filters>strong{align-self:center}
+.lia-date-help{margin:0 0 16px;color:var(--muted);font-size:12px;line-height:1.5}

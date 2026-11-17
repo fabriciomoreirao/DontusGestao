@@ -3,18 +3,24 @@ export const SALE_WON_EVENT = "dontus:sale-won";
 export const PUBLIC_SALE_DURATION_MS = 60_000;
 type Item = { id: string; module: string; record_type: string; title: string; customer_name?: string; owner: string; status: string; description?: string; updated_at: string };
 const detail = (item: Item) => { try { return JSON.parse(item.description || "{}"); } catch { return {}; } };
-type Funnel = { name: string; catalog: string; description: string };
+type Funnel = { id?: string; name: string; catalog: string; description: string };
+const normalizedName = (value: unknown) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
+export function saleFunnel(data: Record<string, unknown>, catalogs: Funnel[]) {
+  const funnels = catalogs.filter(entry => entry.catalog === "funnelStage");
+  return funnels.find(entry => entry.id && entry.id === data.funnelId)
+    ?? funnels.find(entry => normalizedName(entry.name) === normalizedName(data.funnel));
+}
 export function isWonSale(item?: Item, catalogs: Funnel[] = []) {
   if (!item || item.module !== "commercial" || /reten|qualifica|configura/i.test(item.record_type)) return false;
   const data = detail(item); const stage = data.stage || item.status;
   if (/retention|retencao|retencão|retenção|qualification|qualificacao|qualificação/i.test(`${data.flow || ""} ${data.crmFlow || ""}`)) return false;
-  const funnel = catalogs.find(entry => entry.catalog === "funnelStage" && entry.name === data.funnel);
+  const funnel = saleFunnel(data, catalogs);
   if (funnel) {
     let config; try { config = JSON.parse(funnel.description); } catch { config = {}; }
     if (["q", "r"].includes(config.f) || /reten|qualifica/i.test(config.functionality || "")) return false;
-    const configured = Array.isArray(config.s) ? config.s.find((row: unknown[]) => row[0] === stage) : undefined;
+    const configured = Array.isArray(config.s) ? config.s.find((row: unknown[]) => normalizedName(row[0]) === normalizedName(stage)) : undefined;
     if (configured) return [true, 1, "true", "1"].includes(configured[2]);
-    const expanded = config.stages?.find((row: { name: string }) => row.name === stage);
+    const expanded = config.stages?.find((row: { name: string }) => normalizedName(row.name) === normalizedName(stage));
     if (expanded) return expanded.won === true;
   }
   return /ganho|vendid|fechad|contrat|conclu/i.test(stage);
