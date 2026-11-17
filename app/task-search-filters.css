@@ -5,3 +5,11 @@
 @container task-search (max-width:680px){.tasks-module .task-search-filters .task-filter-heading{flex-wrap:wrap}.task-filter-title,.task-filter-actions{width:100%}.task-filter-actions .mine-filter{margin-right:auto}.tasks-module .task-search-filters .task-filter-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.tasks-module .task-filter-title h2{font-size:17px}.task-filter-actions button{padding:10px 12px}}
 @container task-search (max-width:420px){.tasks-module .task-search-filters .task-filter-controls{grid-template-columns:1fr}.task-filter-actions{flex-wrap:wrap}.tasks-module .task-filter-actions .mine-filter{width:100%;border:0}.task-filter-actions button{flex:1}}
 .tasks-module .task-filter-controls :is(select,input,.people-select-trigger){width:100%!important;max-width:none!important;min-width:0!important}
+/* A single, legible row for every task filter, including the sector approver. */
+.tasks-module .tasks-toolbar.task-search-filters .task-filter-controls{grid-template-columns:minmax(170px,1.35fr) minmax(115px,1fr) minmax(135px,1.05fr) minmax(110px,.85fr) minmax(165px,1.2fr) minmax(115px,.95fr) minmax(160px,1.25fr);gap:10px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding-bottom:4px;align-items:end}
+.tasks-module .task-filter-controls>label>span,.tasks-module .task-filter-controls .reminder-filter-field>span{font-size:11px;white-space:nowrap;gap:5px}
+.tasks-module .task-filter-controls :is(select,input){font-size:11.5px!important;min-height:42px;line-height:1.35}
+.tasks-module .task-filter-controls .people-picker{min-width:0;width:100%}
+.tasks-module .task-filter-controls .task-approver-control .people-picker>input{border-color:color-mix(in srgb,var(--primary) 35%,var(--line));background:color-mix(in srgb,var(--primary) 4%,var(--surface))}
+@container task-search (max-width:680px){.tasks-module .task-search-filters .task-filter-controls{padding-bottom:10px}.tasks-module .task-filter-heading{margin-bottom:14px}}
+.tasks-module .task-filter-controls>label>select:not(.people-picker-native),.tasks-module .task-filter-controls .people-picker>input,.tasks-module .task-filter-controls .reminder-filter-field>select{height:42px!important;min-height:42px!important;font-size:12px!important}
