@@ -175,6 +175,11 @@ public sealed class AccessControlService(
         AuthenticatedIdentity identity,
         CancellationToken cancellationToken = default)
     {
+        // This context comes only from the server-validated local session, never request headers.
+        if (identity.SessionActor is { } sessionActor && identity.SessionId.HasValue
+            && string.Equals(sessionActor.Email, identity.Email, StringComparison.OrdinalIgnoreCase))
+            return sessionActor;
+
         var email = NormalizeEmail(identity.Email);
         var user = await db.Users.AsNoTracking()
             .Select(entry => new { entry.Id, entry.Email, entry.DisplayName, entry.Department, entry.Active, entry.BlockedAt, entry.IsCoordinator, entry.AccessScheduleJson })

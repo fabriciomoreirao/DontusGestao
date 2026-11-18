@@ -9,7 +9,38 @@ namespace Dontus.Operations.Tests;
 public sealed class AccessControlServiceTests
 {
     [Fact]
-    public async Task Permission_changes_apply_to_an_open_session_and_inactive_groups_grant_nothing()
+    public async Task Authorization_snapshot_survives_new_service_instances_and_legacy_sessions_are_initialized_once()
+    {
+        var options = new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var db = new OperationsDbContext(options);
+        var access = CreateService(db); await access.InitializeAsync();
+        var user = await db.Users.SingleAsync();
+        const string token = "legacy-session-token";
+        db.LocalAuthSessions.Add(new LocalAuthSession
+        {
+            UserId = user.Id, ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+            TokenHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant(),
+        });
+        await db.SaveChangesAsync();
+        var auth = new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender(), access);
+        Assert.True((await auth.ResolveSessionAsync(token))!.SessionActor!.FullAccess);
+        Assert.NotEmpty((await db.LocalAuthSessions.SingleAsync()).AuthorizationJson);
+        // Simulate a different request/replica after the administrator changes group membership.
+        db.UserAccessGroups.RemoveRange(await db.UserAccessGroups.ToListAsync());
+        await db.SaveChangesAsync();
+        await using var nextDb = new OperationsDbContext(options);
+        var nextAccess = CreateService(nextDb);
+        var nextAuth = new LocalAuthenticationService(nextDb, new NullPasswordRecoveryEmailSender(), nextAccess);
+        Assert.True((await nextAccess.ResolveActorAsync((await nextAuth.ResolveSessionAsync(token))!)).FullAccess);
+        Assert.False((await nextAccess.ResolveActorAsync(new(user.Email, user.DisplayName))).FullAccess);
+        var nextLogin = await nextAuth.LoginAsync(user.Email, "dontus_teste_2026");
+        Assert.False((await nextAuth.ResolveSessionAsync(nextLogin.Token))!.SessionActor!.FullAccess);
+        await nextAuth.SignOutAsync(token);
+        Assert.Null(await nextAuth.ResolveSessionAsync(token));
+    }
+
+    [Fact]
+    public async Task Permission_changes_apply_on_next_login_and_inactive_groups_grant_nothing_to_new_sessions()
     {
         await using var db = CreateContext(); var access = CreateService(db); await access.InitializeAsync();
         var bootstrap = await db.Users.SingleAsync();
@@ -19,16 +50,21 @@ public sealed class AccessControlServiceTests
         var userId = await access.CreateUserAsync(new("session@test.local", "Sessão de teste", "Suporte", true, [groupId]), admin);
         (await db.Users.SingleAsync(user => user.Id == userId)).PasswordHash = bootstrap.PasswordHash;
         await db.SaveChangesAsync();
-        var auth = new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender());
+        var auth = new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender(), access);
         var login = await auth.LoginAsync("session@test.local", "dontus_teste_2026");
         var identity = (await auth.ResolveSessionAsync(login.Token))!;
         Assert.True((await access.ResolveActorAsync(identity)).HasPermission("notes", "edit"));
         await access.UpdateGroupAsync(new(groupId, "Grupo de teste", "", true, [new("notes", true, false, false, false, false)]), admin);
         var restricted = await access.ResolveActorAsync((await auth.ResolveSessionAsync(login.Token))!);
         Assert.True(restricted.HasPermission("notes", "view"));
-        Assert.False(restricted.HasPermission("notes", "edit"));
+        Assert.True(restricted.HasPermission("notes", "edit"));
+        await auth.SignOutAsync(login.Token);
+        Assert.Null(await auth.ResolveSessionAsync(login.Token));
+        var nextLogin = await auth.LoginAsync("session@test.local", "dontus_teste_2026");
+        Assert.False((await access.ResolveActorAsync((await auth.ResolveSessionAsync(nextLogin.Token))!)).HasPermission("notes", "edit"));
         await access.UpdateGroupAsync(new(groupId, "Grupo de teste", "", false, [new("notes", true, true, true, true, true)]), admin);
-        Assert.Empty((await access.ResolveActorAsync(identity)).Permissions!);
+        var finalLogin = await auth.LoginAsync("session@test.local", "dontus_teste_2026");
+        Assert.Empty((await access.ResolveActorAsync((await auth.ResolveSessionAsync(finalLogin.Token))!)).Permissions!);
     }
 
     [Fact]
@@ -65,7 +101,7 @@ public sealed class AccessControlServiceTests
     {
         await using var db = CreateContext(); var service = CreateService(db); await service.InitializeAsync();
         var user = await db.Users.SingleAsync();
-        var auth = new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender());
+        var auth = new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender(), service);
         var login = await auth.LoginAsync(user.Email, "dontus_teste_2026");
         Assert.NotNull(await auth.ResolveSessionAsync(login.Token));
         user.BlockedAt = DateTimeOffset.UtcNow;
@@ -302,7 +338,7 @@ public sealed class AccessControlServiceTests
         Assert.InRange(saved.BlockedAt!.Value, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
         Assert.NotNull((await db.LocalAuthSessions.SingleAsync(entry => entry.UserId == coordinator.Id)).RevokedAt);
         await Assert.ThrowsAsync<DomainException>(() =>
-            new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender())
+            new LocalAuthenticationService(db, new NullPasswordRecoveryEmailSender(), service)
                 .LoginAsync("coordenador@dontus.local", sender.Messages.Single(message => message.Email == "coordenador@dontus.local").Password));
     }
 

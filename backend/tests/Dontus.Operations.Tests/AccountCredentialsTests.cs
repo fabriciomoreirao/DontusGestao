@@ -26,7 +26,7 @@ public sealed class AccountCredentialsTests
         Assert.True(message.Password.Length >= 10);
         var saved = await db.Users.SingleAsync(user => user.Id == id);
         Assert.NotEqual(message.Password, saved.PasswordHash);
-        var authentication = new LocalAuthenticationService(db, sender);
+        var authentication = new LocalAuthenticationService(db, sender, access);
         Assert.Equal(saved.Email, (await authentication.LoginAsync(saved.Email, message.Password)).Email);
         Assert.DoesNotContain(message.Password, JsonSerializer.Serialize(await access.GetManagementAsync(actor)));
         Assert.DoesNotContain(message.Password, JsonSerializer.Serialize(await db.AuditEvents.ToListAsync()));
@@ -85,7 +85,7 @@ public sealed class AccountCredentialsTests
         var (access, actor, departmentId, levelId) = await InitializeAsync(db, sender);
         await CreateAsync(access, actor, departmentId, levelId, false);
         var originalPassword = Assert.Single(sender.Messages).Password;
-        var authentication = new LocalAuthenticationService(db, sender);
+        var authentication = new LocalAuthenticationService(db, sender, access);
         var session = await authentication.LoginAsync("new.user@example.com", originalPassword);
         sender.Fail = true;
 

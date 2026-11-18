@@ -1,11 +1,13 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class LocalAuthenticationService(OperationsDbContext db, IPasswordRecoveryEmailSender passwordRecoveryEmailSender, TimeProvider? clock = null) : ILocalAuthenticationService
+public sealed class LocalAuthenticationService(OperationsDbContext db, IPasswordRecoveryEmailSender passwordRecoveryEmailSender,
+    IAccessControlService accessControl, TimeProvider? clock = null) : ILocalAuthenticationService
 {
     public async Task<LocalLoginResult> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
     {
@@ -17,11 +19,13 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
         EmployeeAccessPolicy.RequireAllowed(user.AccessScheduleJson, (clock ?? TimeProvider.System).GetUtcNow());
 
         var token = PasswordSecurity.GenerateToken();
+        var actor = await accessControl.ResolveActorAsync(new(user.Email, user.DisplayName), cancellationToken);
         db.LocalAuthSessions.Add(new LocalAuthSession
         {
             UserId = user.Id,
             TokenHash = PasswordSecurity.HashToken(token),
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(12),
+            AuthorizationJson = JsonSerializer.Serialize(actor),
         });
         user.LastAccessAt = DateTimeOffset.UtcNow;
         user.UpdatedAt = DateTimeOffset.UtcNow;
@@ -35,11 +39,30 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
         var tokenHash = PasswordSecurity.HashToken(token);
         var session = await db.LocalAuthSessions.AsNoTracking()
             .Where(entry => entry.TokenHash == tokenHash && entry.RevokedAt == null && entry.ExpiresAt > DateTimeOffset.UtcNow)
-            .Join(db.Users.AsNoTracking(), entry => entry.UserId, user => user.Id, (entry, user) => new { user.Email, user.DisplayName, user.Active, user.BlockedAt, user.AccessScheduleJson })
+            .Join(db.Users.AsNoTracking(), entry => entry.UserId, user => user.Id, (entry, user) => new
+            { entry.Id, entry.AuthorizationJson, user.Email, user.DisplayName, user.Active, user.BlockedAt, user.AccessScheduleJson })
             .SingleOrDefaultAsync(cancellationToken);
         if (session is null || !session.Active || session.BlockedAt.HasValue) return null;
-        EmployeeAccessPolicy.RequireAllowed(session.AccessScheduleJson, (clock ?? TimeProvider.System).GetUtcNow());
-        return new AuthenticatedIdentity(session.Email, session.DisplayName);
+        var allowedUntil = EmployeeAccessPolicy.RequireAllowed(session.AccessScheduleJson, (clock ?? TimeProvider.System).GetUtcNow());
+        ActorContext actor;
+        if (string.IsNullOrEmpty(session.AuthorizationJson))
+        {
+            // Sessions created before the migration acquire their snapshot once, without forcing a logout.
+            actor = await accessControl.ResolveActorAsync(new(session.Email, session.DisplayName), cancellationToken);
+            var existing = await db.LocalAuthSessions.SingleAsync(entry => entry.Id == session.Id, cancellationToken);
+            if (string.IsNullOrEmpty(existing.AuthorizationJson))
+            {
+                existing.AuthorizationJson = JsonSerializer.Serialize(actor);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            else actor = JsonSerializer.Deserialize<ActorContext>(existing.AuthorizationJson)!;
+        }
+        else actor = JsonSerializer.Deserialize<ActorContext>(session.AuthorizationJson)!;
+        return new AuthenticatedIdentity(session.Email, session.DisplayName)
+        {
+            SessionId = session.Id,
+            SessionActor = actor with { Email = session.Email, DisplayName = session.DisplayName, AccessAllowedUntil = allowedUntil },
+        };
     }
 
     public async Task ChangePasswordAsync(string email, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
