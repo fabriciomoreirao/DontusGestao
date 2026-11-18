@@ -1,6 +1,6 @@
 import type { ModuleKey } from "./domain";
 
-export const ADMIN_PAGES = ["collaborators", "employeeIndicators", "departments", "levels", "roles", "agenda", "customers", "suggestions", "commercialCatalogs", "csCatalogs", "liaCatalogs", "serviceCatalogs", "waitingQueueCatalogs", "enterpriseCatalogs", "cancellationCatalogs", "hrCatalogs", "referralCatalogs", "recruitmentCatalogs", "recruitment", "audit", "notices", "background", "permissions", "links"] as const;
+export const ADMIN_PAGES = ["collaborators", "employeeIndicators", "departments", "levels", "roles", "agenda", "customers", "suggestions", "commercialCatalogs", "csCatalogs", "liaCatalogs", "serviceCatalogs", "waitingQueueCatalogs", "enterpriseCatalogs", "cancellationCatalogs", "hrCatalogs", "referralCatalogs", "recruitmentCatalogs", "recruitment", "audit", "notices", "background", "permissions", "links", "whatsappTemplates", "whatsappConnection", "whatsappCampaigns"] as const;
 export type AdminPage = typeof ADMIN_PAGES[number];
 export type WorkspaceRoute = {
   module: ModuleKey; adminPage?: AdminPage; commercialFlow?: "qualification" | "crm" | "retention";
@@ -24,7 +24,7 @@ export function readWorkspaceRoute(search: string, modules: readonly string[]): 
 
 export function workspaceRouteUrl(current: string, route: WorkspaceRoute): URL {
   const url = new URL(current);
-  for (const key of ["mod", "adminPage", "commercialFlow", "csFlow", "reportingSection", "cad", "analyticsDepartment", "view", "clientId", "card", "subtask", "lead", "task", "suggestion", "commission", "referral", "cancellation", "client"]) url.searchParams.delete(key);
+  for (const key of ["mod", "conversationId", "adminPage", "commercialFlow", "csFlow", "reportingSection", "cad", "analyticsDepartment", "view", "clientId", "card", "subtask", "lead", "task", "suggestion", "commission", "referral", "cancellation", "client"]) url.searchParams.delete(key);
   if (route.module !== "dashboard") url.searchParams.set("mod", route.module);
   if (route.module === "admin" && route.adminPage) url.searchParams.set("adminPage", route.adminPage);
   if (route.module === "commercial" && route.commercialFlow) url.searchParams.set("commercialFlow", route.commercialFlow);

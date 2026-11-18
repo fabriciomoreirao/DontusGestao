@@ -66,6 +66,8 @@ import useActivityClock from "@/app/useActivityClock";
 import DesktopAppControls from "@/app/DesktopAppSupport";
 import { showDesktopNotification } from "@/lib/desktop-notifications";
 import ChatNotifications, { type ChatAlert } from "@/app/ChatNotifications";
+import WhatsAppIncomingNotifications from "@/app/WhatsAppIncomingNotifications";
+const WhatsAppAdmin = lazy(() => import("@/app/WhatsAppAdmin"));
 import { FormEvent, lazy, startTransition, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { allowedNextStatuses, MODULES, PRIORITIES, RECORD_TYPES, STATE_MACHINES, type ModuleKey } from "@/lib/domain";
@@ -312,6 +314,11 @@ const NAV_GROUPS: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: "Administração",
     items: [
+      { label: "WhatsApp", icon: MessageCircleMore, children: [
+        { label: "Templates", icon: FileCheck2, module: "admin", adminSection: "whatsappTemplates" },
+        { label: "Conexão", icon: MessageCircleMore, module: "admin", adminSection: "whatsappConnection" },
+        { label: "Campanhas", icon: Send, module: "admin", adminSection: "whatsappCampaigns" },
+      ] },
       { label: "Colaboradores", icon: UsersRound, module: "admin", adminSection: "collaborators" },
       { label: "Permissões", icon: ShieldCheck, module: "admin", adminSection: "permissions" },
       { label: "Links", icon: Command, module: "admin", adminSection: "links" },
@@ -408,7 +415,7 @@ function userHasCapability(user: AppData["user"], screen: string, capability: st
 }
 
 
-function userCanNavigate(user:AppData["user"],screen:string,section?:string|null){return screen==="admin"&&section==="liaCatalogs"?userCan(user,"lia","manage"):userCan(user,screen);}
+function userCanNavigate(user:AppData["user"],screen:string,section?:string|null){if(screen==="admin"&&section?.startsWith("whatsapp"))return userCan(user,"chat","manage")&&!!user.permissions.find(p=>p.screen==="chat")?.capabilities?.includes("manageWhatsApp");return screen==="admin"&&section==="liaCatalogs"?userCan(user,"lia","manage"):userCan(user,screen);}
 export default function OperationsApp() {
   const [active, setActive] = useState<ModuleKey>("dashboard");
   const [data, setData] = useState<AppData | null>(null);
@@ -783,7 +790,7 @@ export default function OperationsApp() {
   const realtimeConnected = useRealtimeSync({
     user: loginRequired ? undefined : data?.user.email,
     canChat: !!data?.user.permissions.some(permission => permission.screen === "internalChat" && permission.canView),
-    busy, cursor: () => realtimeCursor.current, operations: async () => { const ok = await load(true); if (ok) setAttendanceRevision(value => value + 1); return ok; }, chat: refreshInternalChat, unauthorized: expireSession,
+    busy, cursor: () => realtimeCursor.current, operations: async () => { const ok = await load(true); if (ok) { setAttendanceRevision(value => value + 1); window.dispatchEvent(new Event("dontus:whatsapp-refresh")); } return ok; }, chat: refreshInternalChat, unauthorized: expireSession,
     typing: changes=>chatTypingStore.receive(changes),
     presence: users=>{presenceCache.current=users;startTransition(()=>setData(current=>{
       if(!current?.internalChatModule)return current;
@@ -1415,6 +1422,7 @@ export default function OperationsApp() {
   const canSeeNavigationItem = (item: NavigationItem): boolean => {
     if (item.children?.length) return item.children.some(canSeeNavigationItem);
     if (!item.module) return false;
+    if (item.adminSection?.startsWith("whatsapp")) return userCanNavigate(data.user,"admin",item.adminSection);
     return userCan(data.user, item.module, "view") || userCan(data.user, item.module, "edit");
   };
   const navigationGroups = NAV_GROUPS.map((group) => ({
@@ -1816,6 +1824,7 @@ export default function OperationsApp() {
         void executeOperation(payload, request.success).then(request.resolve);
       }} />}
       {confirmation && <ConfirmationModal action={confirmation.payload.action as string | undefined} successMessage={confirmation.success} busy={busy} onCancel={cancelOperation} onConfirm={() => void confirmOperation()} />}
+      {userCan(data.user,"chat","view") && <WhatsAppIncomingNotifications key={data.user.email} email={data.user.email} onOpen={id => { navigate("chat"); window.dispatchEvent(new CustomEvent("dontus:open-whatsapp-conversation", { detail: id })); const url = new URL(window.location.href); url.searchParams.set("conversationId", id); window.history.replaceState(window.history.state, "", url); }} />}
       <ChatNotifications alerts={chatAlerts} onOpen={(roomId) => { setChatRoomTarget(roomId); setChatAlerts(current => current.filter(alert => alert.roomId !== roomId)); navigate("internalChat"); }} onDismiss={(id) => { const timer = chatAlertTimers.current.get(id); if (timer) clearTimeout(timer); chatAlertTimers.current.delete(id); setChatAlerts(current => current.filter(alert => alert.id !== id)); }} />
       <GlobalImagePreview />
       {toast && createPortal(<div className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} aria-live={toast.kind === "error" ? "assertive" : "polite"}>{toast.kind === "success" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}<span>{toast.message}</span><button type="button" aria-label="Fechar aviso" onClick={() => setToast(null)}><X size={17} /></button></div>, document.body)}
@@ -4017,6 +4026,7 @@ function AdminView({ data, section, onSection, busy, onOperate, backgroundImage,
     if(!userCan(data.user,"lia","manage"))return <EmptyState text="Seu grupo não permite acessar as configurações da LIA."/>;
     return data.customerModule?<CommercialCatalogsView catalogs={data.customerModule.catalogs} busy={busy} onOperate={onOperate} scope="lia"/>:<EmptyState text="Não foi possível carregar os cadastros da LIA."/>;
   }
+  if (section.startsWith("whatsapp")) return userCanNavigate(data.user,"admin",section) ? <WhatsAppAdmin section={section} operate={onOperate} busy={busy}/> : <EmptyState text="Seu perfil não permite configurar o WhatsApp."/>;
   if (!data.access) return <EmptyState text="Seu perfil não possui acesso à administração." />;
   const configurationScreen: Partial<Record<AdminSection, string>> = { agenda: "work", customers: "customers", suggestions: "suggestions", commercialCatalogs: "commercial", csCatalogs: "cs", liaCatalogs: "lia", serviceCatalogs: "support", waitingQueueCatalogs: "waitingQueue", enterpriseCatalogs: "cs", cancellationCatalogs: "cancellations", hrCatalogs: "hr", referralCatalogs: "referrals", recruitmentCatalogs: "admin" };
   const requiredConfiguration = configurationScreen[section];

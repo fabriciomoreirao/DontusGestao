@@ -56,6 +56,10 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<TaskNotification> TaskNotifications => Set<TaskNotification>();
     public DbSet<TaskClientCommunication> TaskClientCommunications => Set<TaskClientCommunication>();
     public DbSet<ChatQueue> ChatQueues => Set<ChatQueue>();
+    public DbSet<WhatsAppTemplate> WhatsAppTemplates => Set<WhatsAppTemplate>();
+    public DbSet<WhatsAppCampaign> WhatsAppCampaigns => Set<WhatsAppCampaign>();
+    public DbSet<WhatsAppCampaignDelivery> WhatsAppCampaignDeliveries => Set<WhatsAppCampaignDelivery>();
+    public DbSet<WhatsAppOptOut> WhatsAppOptOuts => Set<WhatsAppOptOut>();
     public DbSet<ChatChannel> ChatChannels => Set<ChatChannel>();
     public DbSet<ChatWhatsAppNumber> ChatWhatsAppNumbers => Set<ChatWhatsAppNumber>();
     public DbSet<ChatContact> ChatContacts => Set<ChatContact>();
@@ -83,6 +87,18 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        ConfigureEntity(modelBuilder.Entity<WhatsAppTemplate>(), "whatsapp_templates");
+        modelBuilder.Entity<WhatsAppTemplate>().HasIndex(x => new { x.NumberId, x.Name, x.Language }).IsUnique();
+        modelBuilder.Entity<WhatsAppTemplate>().HasOne<ChatWhatsAppNumber>().WithMany().HasForeignKey(x => x.NumberId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureEntity(modelBuilder.Entity<WhatsAppCampaign>(), "whatsapp_campaigns");
+        modelBuilder.Entity<WhatsAppCampaign>().HasOne<ChatWhatsAppNumber>().WithMany().HasForeignKey(x => x.NumberId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureEntity(modelBuilder.Entity<WhatsAppCampaignDelivery>(), "whatsapp_campaign_deliveries");
+        modelBuilder.Entity<WhatsAppCampaignDelivery>().HasIndex(x => new { x.CampaignId, x.TemplateId, x.Phone }).IsUnique();
+        modelBuilder.Entity<WhatsAppCampaignDelivery>().HasIndex(x => x.ExternalId);
+        modelBuilder.Entity<WhatsAppCampaignDelivery>().HasOne<WhatsAppCampaign>().WithMany().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<WhatsAppCampaignDelivery>().HasOne<WhatsAppTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureEntity(modelBuilder.Entity<WhatsAppOptOut>(), "whatsapp_opt_outs");
+        modelBuilder.Entity<WhatsAppOptOut>().HasIndex(x => x.Phone).IsUnique();
         modelBuilder.Entity<CancellationProtocolCounter>(entity => {
             entity.ToTable("cancellation_protocol_counters");
             entity.HasKey(x => x.Year);

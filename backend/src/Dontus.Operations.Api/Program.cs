@@ -103,6 +103,7 @@ app.MapChatInbox();
 app.MapRealtime();
 app.MapInternalChatTyping();
 app.MapDontusIntegration();
+app.MapWhatsApp();
 app.MapCommissionConfirmations();
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/api/public-sale-events", async (HttpResponse response, OperationsDbContext db, CancellationToken ct) =>
@@ -1044,6 +1045,7 @@ app.MapPost("/api/integrations/whatsapp/webhook", async (
                 cancellationToken))
             return Results.StatusCode(StatusCodes.Status401Unauthorized);
 
+        await ((IWhatsAppAdminService)chatService).ProcessWhatsAppStatusAsync(value, cancellationToken);
         if (value.TryGetProperty("messages", out var messages))
         {
             var contactName = value.TryGetProperty("contacts", out var contacts) && contacts.GetArrayLength() > 0

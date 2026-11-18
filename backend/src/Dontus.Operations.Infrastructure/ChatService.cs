@@ -14,7 +14,8 @@ public sealed partial class ChatService(
     OperationsDbContext db,
     IDataProtectionProvider protectionProvider,
     HttpClient httpClient,
-    ITaskFileStorage? fileStorage = null) : IChatService
+    ITaskFileStorage? fileStorage = null,
+    Microsoft.Extensions.Options.IOptions<WhatsAppSuiteOptions>? suiteOptions = null) : IChatService, IWhatsAppAdminService
 {
     private readonly IDataProtector protector = protectionProvider.CreateProtector("Dontus.Chat.MetaCredentials.v1");
 
@@ -309,7 +310,8 @@ public sealed partial class ChatService(
                     ?? throw new DomainException("Este canal não possui um número WhatsApp ativo.");
                 var contactPhone = await db.ChatContacts.Where(x => x.Id == conversation.ContactId)
                     .Select(x => x.Phone).SingleAsync(cancellationToken);
-                await SendWhatsAppTextAsync(number, contactPhone, body, cancellationToken);
+                await RequireCustomerWindowAsync(conversation.Id, cancellationToken);
+                message.ExternalId = await SendWhatsAppTextAsync(number, contactPhone, body, cancellationToken);
                 message.Status = "Aceita pela Meta";
             }
             else if (conversation.IsGroup)
@@ -827,6 +829,9 @@ public sealed partial class ChatService(
             var occurredAt = command.OccurredAt ?? DateTimeOffset.UtcNow;
             var inbound = command.Direction != "Saida";
             var phone = NormalizePhone(command.ContactPhone);
+            if (inbound && !command.Historical && new[] { "sair", "pare", "parar", "cancelar", "stop" }.Contains(command.Body.Trim().ToLowerInvariant()) &&
+                !await db.WhatsAppOptOuts.AnyAsync(x => x.Phone == phone, cancellationToken))
+                db.WhatsAppOptOuts.Add(new WhatsAppOptOut { Phone = phone });
             var contact = await db.ChatContacts.FirstOrDefaultAsync(x => x.Phone == phone, cancellationToken);
             if (contact is null)
             {
@@ -950,6 +955,7 @@ public sealed partial class ChatService(
                     .Select(x => x.Phone).SingleAsync(cancellationToken);
                 try
                 {
+                    await RequireCustomerWindowAsync(conversation.Id, cancellationToken);
                     await SendWhatsAppTextAsync(number, contactPhone, channel.ClosingMessage, cancellationToken);
                     deliveryStatus = "Aceita pela Meta";
                 }
@@ -974,8 +980,12 @@ public sealed partial class ChatService(
         Audit(actor, "chat.closing_message.queued", "chat_conversation", conversation.Id, new { channel.Id, deliveryStatus });
     }
 
-    private async Task SendWhatsAppTextAsync(ChatWhatsAppNumber number, string phone, string body, CancellationToken cancellationToken)
+    private async Task<string> SendWhatsAppTextAsync(ChatWhatsAppNumber number, string phone, string body, CancellationToken cancellationToken)
     {
+        if (number.SuiteStatus == "Vinculado") {
+            var suiteResult = await SuiteRequestAsync(HttpMethod.Post, "api/v1/waba/send/text", new { phone_number_id = number.PhoneNumberId, to = CampaignPhone(phone), text = body, reply_to = "" }, true, cancellationToken);
+            return suiteResult.TryGetProperty("messages", out var messages) && messages.GetArrayLength() > 0 ? Text(messages[0], "id") : "";
+        }
         if (string.IsNullOrWhiteSpace(number.AccessTokenProtected) || string.IsNullOrWhiteSpace(number.PhoneNumberId))
             throw new DomainException("A credencial da Meta não está configurada para este número WhatsApp.");
         var token = SafeUnprotect(number.AccessTokenProtected);
@@ -993,6 +1003,8 @@ public sealed partial class ChatService(
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new DomainException($"A Meta recusou a mensagem WhatsApp ({(int)response.StatusCode}). Verifique número, token e janela de atendimento.", 502);
+        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        return result.RootElement.TryGetProperty("messages", out var sent) && sent.GetArrayLength() > 0 ? Text(sent[0], "id") : "";
     }
 
     private async Task<JsonDocument> SendMetaAsync(
