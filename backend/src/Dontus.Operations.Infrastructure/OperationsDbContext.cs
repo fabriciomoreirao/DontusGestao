@@ -4,8 +4,21 @@ using TaskStatusEntity = Dontus.Operations.Domain.TaskStatus;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> options) : DbContext(options)
+public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> options, RealtimeBroker? realtime = null) : DbContext(options)
 {
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        var changesOperations = ChangeTracker.Entries().Any(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted
+            && entry.Metadata.GetTableName() is { } table && table != "local_auth_sessions" && table != "audit_events" && table != "activities"
+            && !table.StartsWith("internal_chat_", StringComparison.Ordinal)
+            && (table != "users" || entry.State != EntityState.Modified
+                || entry.Properties.Any(property => property.IsModified && property.Metadata.Name is not ("LastAccessAt" or "UpdatedAt" or "Version"))));
+        var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        // Invalidate this instance before responding; PostgreSQL NOTIFY covers other replicas after commit.
+        if (changesOperations && result > 0) realtime?.InvalidateOperations();
+        return result;
+    }
+
     public DbSet<TaskAttachmentContent> TaskAttachmentContents => Set<TaskAttachmentContent>();
     public DbSet<ServiceRequestProtocolCounter> ServiceRequestProtocolCounters => Set<ServiceRequestProtocolCounter>();
     public DbSet<CancellationProtocolCounter> CancellationProtocolCounters => Set<CancellationProtocolCounter>();

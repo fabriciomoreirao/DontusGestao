@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<CancellationTaskService>();
         services.AddScoped<EmployeeProfileService>();
         services.AddSingleton<RealtimeBroker>();
+        services.AddSingleton<OperationsWorkspaceCache>();
         services.AddScoped<RealtimePresencePublisher>();
         services.AddScoped<InternalChatTypingService>();
         services.AddHostedService<RealtimeListener>();

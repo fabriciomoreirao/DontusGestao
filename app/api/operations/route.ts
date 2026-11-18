@@ -26,7 +26,11 @@ async function proxy(request: Request) {
       signal: apiRequestSignal(request),
     });
 
-    return apiResponse(request, response, { "x-dontus-api": "aspnet-core", "x-dontus-realtime-cursor": response.headers.get("x-dontus-realtime-cursor") ?? "" });
+    return apiResponse(request, response, {
+      "x-dontus-api": "aspnet-core",
+      "x-dontus-realtime-cursor": response.headers.get("x-dontus-realtime-cursor") ?? "",
+      "x-dontus-operations-cursor": response.headers.get("x-dontus-operations-cursor") ?? "",
+    });
   } catch (error) {
     const detail = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")
       ? "A API C# não respondeu dentro do tempo esperado."

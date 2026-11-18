@@ -683,8 +683,11 @@ export default function OperationsApp() {
   const chatRevision = useRef(0);
   const chatReadsInFlight = useRef(new Set<string>());
   const realtimeCursor = useRef("");
+  const operationsCursor = useRef("");
   const mutationRevision = useRef(0);
   const expireSession = useCallback((reason?: string) => {
+    realtimeCursor.current = "";
+    operationsCursor.current = "";
     mutationRevision.current += 1;
     presenceCache.current=[];
     dataRef.current = null;
@@ -723,9 +726,16 @@ export default function OperationsApp() {
     try {
       const current = dataRef.current;
       const response = await fetch("/api/operations", background && current ? {
-        method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
+        method: "POST", headers: { "Content-Type": "application/json", "x-dontus-operations-cursor": operationsCursor.current }, cache: "no-store",
         body: JSON.stringify({ action: "refreshOperations", knownWorkItemVersions: knownWorkItemVersions(current.items) }),
       } : { cache: "no-store" });
+      if (response.status === 204 && current) {
+        if (revision !== mutationRevision.current) return false;
+        realtimeCursor.current = response.headers.get("x-dontus-realtime-cursor") || realtimeCursor.current;
+        operationsCursor.current = response.headers.get("x-dontus-operations-cursor") || operationsCursor.current;
+        setLastUpdatedAt(Date.now()); setSyncError(false);
+        return true;
+      }
       const rawPayload = await response.text();
       let payload: AppData | { detail?: string } = {};
       if (rawPayload) {
@@ -745,6 +755,7 @@ export default function OperationsApp() {
       const appPayload = current ? mergeOperationsUpdate(current, payload as Partial<AppData> & OperationsChanges<WorkItem>) : payload as AppData;
       if (revision !== mutationRevision.current) return false;
       realtimeCursor.current = response.headers.get("x-dontus-realtime-cursor") ?? realtimeCursor.current;
+      operationsCursor.current = response.headers.get("x-dontus-operations-cursor") || operationsCursor.current;
       setData(current => {
         const chat = initialChatRevision === chatRevision.current ? appPayload.internalChatModule : current?.internalChatModule;
         return { ...appPayload, internalChatModule: chat ? applyChatPresence(mergeInternalChat(current?.internalChatModule, chat), presenceCache.current) : null };
