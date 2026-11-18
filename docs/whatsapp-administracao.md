@@ -43,10 +43,18 @@ endereços fixos. Autenticação/OTP não faz parte deste formulário.
 
 Configure o webhook público da aplicação em
 `/api/integrations/whatsapp/webhook`, incluindo mensagens, status e atualizações
-de templates. O webhook exige assinatura HMAC da Meta. As coleções não
+de templates. Configure `WABA_WEBHOOK_VERIFY_TOKEN` para a validação inicial
+do callback pela Meta. O webhook exige assinatura HMAC da Meta ou do gateway
+Suíte/Meow, no header `X-Hub-Signature-256: sha256=<hex>`, calculada sobre o
+corpo JSON exato em UTF-8. A Meta utiliza o App Secret da conexão; o gateway
+utiliza `WABA_WEBHOOK_SECRET`, configurado somente no servidor. Esse segredo
+de recebimento é diferente do `WABA_SECURITY_ID` usado na API de envio.
+As credenciais reais ficam no `.env`, fora do versionamento. As coleções não
 documentam o envelope nem a autenticação dos callbacks personalizados
 `waba_status_failed` do Meow; não é aceito um callback sem contrato/assinatura.
 Para acompanhar a entrega, encaminhe os eventos canônicos da Meta ao webhook.
+O gateway deve encaminhar o envelope `object/entry/changes/value` da Meta,
+contendo `messages` ou `statuses`; outros envelopes precisam de adaptador.
 
 Respostas livres no chat exigem uma mensagem real de entrada nas últimas 24
 horas; fora da janela, use **Enviar template oficial**. Os envios de templates

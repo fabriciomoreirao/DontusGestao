@@ -1,7 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { Ban, Eye, FileSpreadsheet, Filter, Pencil, Plus, RefreshCw, Search, Send, Trash2, UserPlus, X } from "lucide-react";
-import { normalizeRecipients, templatePreview, waApi, waDate, type WaCampaign, type WaRecipient, type WaState } from "@/lib/whatsapp-admin";
+import { normalizeRecipients, restoreCampaignRecipients, templatePreview, waApi, waDate, type WaCampaign, type WaRecipient, type WaState } from "@/lib/whatsapp-admin";
 import WhatsAppDialog from "./WhatsAppDialog";
 import WhatsAppTemplates from "./WhatsAppTemplates";
 type Delivery = { id: string; templateId: string; name: string; phone: string; parametersJson: string; status: string; error: string; externalId: string };
@@ -23,7 +23,7 @@ export default function WhatsAppCampaigns({ state, reload }: { state: WaState; r
 function CampaignForm({ state, edit, reload, onSaved }: { state: WaState; edit: Detail | null; reload: () => Promise<void>; onSaved: () => void }) {
   const [name, setName] = useState(edit?.campaign.name || ""); const [numberId, setNumberId] = useState(edit?.campaign.numberId || ""); const [category, setCategory] = useState(edit?.campaign.category || "MARKETING");
   const [selected, setSelected] = useState<string[]>(edit ? [...new Set(edit.deliveries.map(d => d.templateId))] : []);
-  const [recipients, setRecipients] = useState<WaRecipient[]>(() => edit ? [...new Map(edit.deliveries.map(d => { const values: Record<string, string> = {}; const template = state.templates.find(t => t.id === d.templateId); const params: string[] = JSON.parse(d.parametersJson); template?.variables.forEach((v, i) => { values[v.key] = params[i]; }); return [d.phone, { name: d.name, phone: d.phone, values }]; })).values()] : []);
+  const [recipients, setRecipients] = useState<WaRecipient[]>(() => edit ? restoreCampaignRecipients(edit.deliveries, state.templates) : []);
   const [source, setSource] = useState("Excel"); const [recipientSearch, setRecipientSearch] = useState(""); const [values, setValues] = useState<Record<string, string>>({}); const [consent, setConsent] = useState(false); const [consentSource, setConsentSource] = useState(edit?.campaign.consentSource || "");
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [review, setReview] = useState(false); const [newTemplate, setNewTemplate] = useState(false); const [individualName, setIndividualName] = useState(""); const [individualPhone, setIndividualPhone] = useState("");
   const available = state.templates.filter(t => t.numberId === numberId && t.status === "APPROVED" && t.category === category);

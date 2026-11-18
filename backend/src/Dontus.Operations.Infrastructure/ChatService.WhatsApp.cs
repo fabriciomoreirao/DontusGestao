@@ -10,6 +10,8 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed class WhatsAppSuiteOptions
 {
+    public string WebhookSecret { get; set; } = "";
+    public string WebhookVerifyToken { get; set; } = "";
     public string ChatwootBaseUrl { get; set; } = "";
     public string ChatwootApiKey { get; set; } = "";
     public string MeowBaseUrl { get; set; } = "";
@@ -298,7 +300,10 @@ public sealed partial class ChatService
                 var sentMessage = await db.ChatMessages.FirstOrDefaultAsync(x => x.ExternalId == delivery.ExternalId, ct);
                 if (sentMessage is not null) { sentMessage.Status = "Aceita pela Meta"; sentMessage.SenderName = "Campanha · " + campaign.Name; }
             } catch (OperationCanceledException) { throw; }
-              catch (Exception ex) { delivery.Status = ex is HttpRequestException ? "Incerta" : "Erro"; delivery.Error = ex is DomainException ? ex.Message : "Falha no envio. Verifique o provedor antes de reenviar."; }
+              catch (Exception ex) {
+                if (delivery.ExternalId != "") delivery.Error = "Envio aceito pela Meta. Não foi possível concluir a atualização do histórico do chat.";
+                else { delivery.Status = ex is HttpRequestException ? "Incerta" : "Erro"; delivery.Error = ex is DomainException ? ex.Message : "Falha no envio. Verifique o provedor antes de reenviar."; }
+              }
             Touch(delivery); await db.SaveChangesAsync(ct);
             await Task.Delay(150, ct);
         }

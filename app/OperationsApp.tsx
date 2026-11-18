@@ -507,7 +507,7 @@ export default function OperationsApp() {
       .filter((group) => group.label === "Analytics" || group.label === "Cadastros" || group.label.startsWith("Administra"))
       .map((group) => [group.label, true]),
   ));
-  const [collapsedNavItems, setCollapsedNavItems] = useState<Record<string, boolean>>({});
+  const [collapsedNavItems, setCollapsedNavItems] = useState<Record<string, boolean>>({ "Administração:WhatsApp": true });
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [backgroundImage, setBackgroundImage] = useState("");
   const [backgroundModalOpen, setBackgroundModalOpen] = useState(false);
@@ -1544,7 +1544,10 @@ export default function OperationsApp() {
           {navigationGroups.map((group) => {
             const groupCollapsed = collapsedNavGroups[group.label] === true;
             return <div className={`nav-group ${groupCollapsed ? "collapsed" : ""}`} key={group.label}>
-              <button className="nav-group-toggle" type="button" onClick={() => setCollapsedNavGroups((current) => ({ ...current, [group.label]: !groupCollapsed }))} aria-expanded={!groupCollapsed}>
+              <button className="nav-group-toggle" type="button" onClick={() => {
+                setCollapsedNavGroups((current) => ({ ...current, [group.label]: !groupCollapsed }));
+                if (group.label === "Administração") setCollapsedNavItems(current => ({ ...current, "Administração:WhatsApp": true }));
+              }} aria-expanded={!groupCollapsed}>
                 <span>{group.label}</span><ChevronDown className={groupCollapsed ? "" : "expanded"} size={14} />
               </button>
               {!groupCollapsed && <div className="nav-group-items">

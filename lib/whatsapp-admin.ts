@@ -33,3 +33,13 @@ export function normalizeRecipients(rows: WaRecipient[]) {
   return { recipients, invalid, duplicates };
 }
 export function templatePreview(body: string, values: string[]) { return body.replace(/\{\{(\d+)\}\}/g, (match, index) => values[Number(index) - 1] || match); }
+export function restoreCampaignRecipients(deliveries: { name: string; phone: string; templateId: string; parametersJson: string }[], templates: WaTemplate[]): WaRecipient[] {
+  const recipients = new Map<string, WaRecipient>();
+  for (const delivery of deliveries) {
+    const recipient = recipients.get(delivery.phone) || { name: delivery.name, phone: delivery.phone, values: {} };
+    const parameters: string[] = JSON.parse(delivery.parametersJson);
+    for (const [index, variable] of (templates.find(t => t.id === delivery.templateId)?.variables || []).entries()) recipient.values![variable.key] = parameters[index] || "";
+    recipients.set(delivery.phone, recipient);
+  }
+  return [...recipients.values()];
+}

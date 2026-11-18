@@ -777,14 +777,16 @@ public sealed partial class ChatService(
 
     public async Task<bool> VerifyWebhookAsync(string verifyToken, CancellationToken cancellationToken = default)
     {
+        if (WhatsAppWebhookSecurity.TokenMatches(verifyToken, Suite.WebhookVerifyToken)) return true;
         var tokens = await db.ChatWhatsAppNumbers.AsNoTracking()
             .Where(x => x.Active && x.VerifyTokenProtected != "")
             .Select(x => x.VerifyTokenProtected).ToListAsync(cancellationToken);
-        return tokens.Any(token => SafeUnprotect(token) == verifyToken);
+        return tokens.Any(token => WhatsAppWebhookSecurity.TokenMatches(verifyToken, SafeUnprotect(token)));
     }
 
     public async Task<bool> VerifyWebhookSignatureAsync(string phoneNumberId, string payload, string signature, CancellationToken cancellationToken = default)
     {
+        if (WhatsAppWebhookSecurity.VerifySignature(payload, signature, Suite.WebhookSecret)) return true;
         if (string.IsNullOrWhiteSpace(signature) || !signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase))
             return false;
         var protectedSecret = await db.ChatWhatsAppNumbers.AsNoTracking()

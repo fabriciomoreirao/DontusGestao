@@ -32,14 +32,14 @@ function ConnectionModal({ state, initialId, reload, operate, externalBusy, onCl
       if (!channel) {
         const departmentId = String(f.get("departmentId")); const queue = state.module.queues.find(q => q.active && q.departmentId === departmentId);
         if (!queue) throw new Error("Cadastre uma fila ativa para o setor antes de conectar.");
-        const result = await operate({ action: "saveChatChannel", name: f.get("internalName"), type: "WhatsApp", departmentId, defaultQueueId: queue.id, defaultAssigneeUserId: f.get("assigneeId") || null, active: true, aiEnabled: false, allowTransfer: true, autoCreateTask: false, greetingMessage: "", awayMessage: "", sendClosingMessage: false, closingMessage: "" }, "Canal WhatsApp criado.");
+        const result = await operate({ action: "saveChatChannel", name: f.get("internalName"), channelType: "WhatsApp", departmentId, queueId: queue.id, assigneeUserId: f.get("assigneeId") || null, active: true, aiEnabled: false, allowTransfer: true, autoCreateTask: false, greetingMessage: "", awayMessage: "", sendClosingMessage: false, closingMessage: "" }, "Canal WhatsApp criado.");
         if (!result || !result.id) throw new Error("Não foi possível criar o canal.");
         channel = { id: result.id, departmentId } as typeof channels[number];
       }
-      const payload = { action: "saveChatWhatsAppNumber", id: item?.id, channelId: channel.id, departmentId: channel.departmentId, internalName: String(f.get("internalName")), displayName: String(f.get("internalName")), phoneNumber: String(f.get("phoneNumber")), phoneNumberId: item?.phoneNumberId || "", wabaId: item?.wabaId || "", businessManagerId: item?.businessManagerId || "", connectionMode: "Coexistence", metaAppId: String(f.get("metaAppId")), embeddedSignupConfigId: String(f.get("configId")), accessToken: "", verifyToken: String(f.get("verifyToken") || ""), appSecret: String(f.get("appSecret") || ""), apiVersion: item?.apiVersion || "v23.0", active: true };
+      const payload = { action: "saveChatWhatsAppNumber", id: item?.id, channelId: channel.id, departmentId: channel.departmentId, internalName: String(f.get("internalName")), displayName: String(f.get("internalName")), phone: String(f.get("phoneNumber")), phoneNumberId: item?.phoneNumberId || "", wabaId: item?.wabaId || "", businessManagerId: item?.businessManagerId || "", connectionMode: "Coexistence", metaAppId: String(f.get("metaAppId")), embeddedSignupConfigId: String(f.get("configId")), accessToken: "", verifyToken: String(f.get("verifyToken") || ""), appSecret: String(f.get("appSecret") || ""), apiVersion: item?.apiVersion || "v23.0", active: true };
       const result = await operate(payload, "Configuração da conexão salva.");
       if (!result || !result.id) throw new Error("Revise os campos da conexão.");
-      setId(result.id); setPrepared({ ...item, ...payload, id: result.id, hasAppSecret: !!payload.appSecret || item?.hasAppSecret, hasVerifyToken: !!payload.verifyToken || item?.hasVerifyToken } as typeof prepared);
+      setId(result.id); setPrepared({ ...item, ...payload, phoneNumber: payload.phone, id: result.id, hasAppSecret: !!payload.appSecret || item?.hasAppSecret, hasVerifyToken: !!payload.verifyToken || item?.hasVerifyToken } as typeof prepared);
       await reload(); setNotice("Configuração salva. Clique em Iniciar processo para entrar no Facebook e vincular o Suíte.");
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }

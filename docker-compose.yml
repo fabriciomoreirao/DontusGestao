@@ -69,6 +69,8 @@ services:
       WhatsAppSuite__ChatwootApiKey: ${WABA_CHATWOOT_API_KEY:-}
       WhatsAppSuite__MeowBaseUrl: ${WABA_MEOW_BASE_URL:-}
       WhatsAppSuite__SecurityId: ${WABA_SECURITY_ID:-}
+      WhatsAppSuite__WebhookVerifyToken: ${WABA_WEBHOOK_VERIFY_TOKEN:-}
+      WhatsAppSuite__WebhookSecret: ${WABA_WEBHOOK_SECRET:-}
       InternalChat__FilesPath: /app/internal-chat-files
       ServiceRequests__FilesPath: /app/service-request-files
       PublicServiceRequests__ApiKey: ${PUBLIC_SERVICE_REQUESTS_API_KEY:-dontus-chamados-local-2026-change-me}
