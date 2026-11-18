@@ -2,6 +2,7 @@ using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Dontus.Operations.Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Dontus.Operations.Tests;
 
@@ -21,7 +22,7 @@ public sealed class EmployeePasswordResetTests
         db.LocalAuthSessions.Add(new LocalAuthSession { UserId = user.Id, TokenHash = "session", ExpiresAt = DateTimeOffset.UtcNow.AddHours(1) });
         await db.SaveChangesAsync();
         var sender = new Sender(failEmail);
-        var service = new LocalAuthenticationService(db, sender);
+        var service = new LocalAuthenticationService(db, sender, new AccessControlService(db, new ConfigurationBuilder().Build(), sender));
         var actor = new ActorContext("admin@example.com", "Admin", "Admin", "Gestão",
             [new EffectivePermission("admin", true, false, false, false, authorized)]);
         if (!authorized || !active || failEmail)

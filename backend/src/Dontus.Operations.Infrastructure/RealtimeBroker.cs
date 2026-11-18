@@ -27,8 +27,15 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
     private readonly ConcurrentDictionary<Guid, Subscription> subscribers = new();
     private readonly string instance = Guid.NewGuid().ToString("N");
     private long revision;
+    private long operationsRevision;
     public bool Available { get; private set; }
     public string Cursor => $"{instance}:{Interlocked.Read(ref revision)}";
+    public string OperationsCursor => $"{instance}:{Interlocked.Read(ref operationsRevision)}";
+    public void InvalidateOperations()
+    {
+        Interlocked.Increment(ref operationsRevision);
+        Interlocked.Increment(ref revision);
+    }
     public Subscription Subscribe(Guid userId, bool chat)
     {
         var subscription = new Subscription(userId, chat);
@@ -40,7 +47,7 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
     public void SetAvailable(bool available)
     {
         Available = available;
-        Interlocked.Increment(ref revision);
+        InvalidateOperations();
         if (!available) foreach (var subscriber in subscribers.Values) subscriber.Disconnect();
     }
     private readonly ConcurrentDictionary<(Guid Room,Guid User,Guid Session),(bool Active,DateTimeOffset At)> typingPulses = new();
@@ -89,6 +96,7 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
             return;
         }
         if (topic != "operations" && (topic != "chat" || userId is null)) return;
+        if (topic == "operations") Interlocked.Increment(ref operationsRevision);
         Interlocked.Increment(ref revision);
         foreach (var subscriber in subscribers.Values)
             if (topic == "operations") subscriber.Notify(RealtimeChange.Operations);

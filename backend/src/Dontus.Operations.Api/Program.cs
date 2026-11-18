@@ -734,39 +734,18 @@ operations.MapGet("/service-version", async (string clientId, ClaimsPrincipal pr
 
 operations.MapGet("", async (
     HttpContext context,
-    RealtimeBroker realtime,
     ClaimsPrincipal principal,
-    IOperationsService service,
-    IAgendaService agendaService,
-    ISuggestionService suggestionService,
-    ITaskService taskService,
-    IChatService chatService,
-    IInternalChatService internalChatService,
+    OperationsWorkspaceCache workspace,
     IAccessControlService accessControl,
     CancellationToken cancellationToken) =>
 {
-    context.Response.Headers["x-dontus-realtime-cursor"] = realtime.Cursor;
-    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
-    var snapshot = await service.GetSnapshotAsync(actor, cancellationToken);
-    if (actor.HasPermission("diary", "view"))
-        snapshot = snapshot with { DiaryModule = await service.GetDiaryModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("notes", "view"))
-        snapshot = snapshot with { NotesModule = await service.GetNotesModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("work", "view"))
-        snapshot = snapshot with { AgendaModule = await agendaService.GetModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("suggestions", "view"))
-        snapshot = snapshot with { SuggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("tasks", "view") || actor.HasPermission("catalogs", "view") || actor.HasPermission("ti", "view"))
-        snapshot = snapshot with { TaskModule = await taskService.GetModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("internalChat", "view"))
-        snapshot = snapshot with { InternalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("notices", "view"))
-        snapshot = snapshot with { NoticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) };
-    if (OperationsProjectionPolicy.CanViewCustomerCatalogs(actor))
-        snapshot = snapshot with { CustomerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) };
-    if (actor.HasPermission("admin", "manage"))
-        snapshot = snapshot with { Access = await accessControl.GetManagementAsync(actor, cancellationToken) };
-    return Results.Ok(snapshot);
+    var identity = principal.ToIdentity();
+    var actor = await accessControl.ResolveActorAsync(identity, cancellationToken);
+    var cached = await workspace.GetAsync(identity, actor, ct: cancellationToken);
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers["x-dontus-realtime-cursor"] = cached.Cursor;
+    context.Response.Headers["x-dontus-operations-cursor"] = cached.OperationsCursor;
+    return Results.Bytes(cached.Json, "application/json; charset=utf-8");
 });
 
 var taskFiles = app.MapGroup("/api/tasks")
@@ -1135,6 +1114,9 @@ app.MapPost("/api/integrations/whatsapp/webhook", async (
 
 operations.MapPost("", async (
     OperationsRequest request,
+    HttpContext context,
+    RealtimeBroker realtime,
+    OperationsWorkspaceCache workspace,
     ClaimsPrincipal principal,
     IOperationsService service,
     IAgendaService agendaService,
@@ -1149,15 +1131,30 @@ operations.MapPost("", async (
     ReferralCommissionRulesService referralCommissionRules,
     CancellationToken cancellationToken) =>
 {
-    var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
+    var identity = principal.ToIdentity();
+    var actor = await accessControl.ResolveActorAsync(identity, cancellationToken);
+    if (request.Action?.Trim() == "refreshOperations")
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var realtimeCursor = realtime.Cursor;
+        var operationsCursor = realtime.OperationsCursor;
+        // Only an active database listener can prove that no data changed.
+        if (realtime.Available && context.Request.Headers["x-dontus-operations-cursor"] == operationsCursor)
+        {
+            context.Response.Headers["x-dontus-realtime-cursor"] = realtimeCursor;
+            context.Response.Headers["x-dontus-operations-cursor"] = operationsCursor;
+            return Results.NoContent();
+        }
+        var cached = await workspace.GetAsync(identity, actor, request.KnownWorkItemVersions, cancellationToken);
+        context.Response.Headers["x-dontus-realtime-cursor"] = cached.Cursor;
+        context.Response.Headers["x-dontus-operations-cursor"] = cached.OperationsCursor;
+        return Results.Bytes(cached.Json, "application/json; charset=utf-8");
+    }
     Guid? id = null;
     string? createdProtocol = null;
 
     switch (request.Action?.Trim())
     {
-        case "refreshOperations":
-            // Read-only synchronization; reuse the same permission-filtered workspace below.
-            break;
         case "routeServiceRequest":
             id = await serviceRequestRouting.RouteAsync(request.Id ?? throw new DomainException("Chamado obrigatório."),
                 request.Version ?? 0, request.RouteTarget ?? "", request.TaskDraft, actor, cancellationToken);
@@ -2564,7 +2561,11 @@ internal static class ClaimsPrincipalExtensions
     public static AuthenticatedIdentity ToIdentity(this ClaimsPrincipal principal) =>
         new(
             principal.FindFirstValue(ClaimTypes.Email) ?? throw new DomainException("Usuário não autenticado.", 401),
-            principal.FindFirstValue(ClaimTypes.Name) ?? "Usuário Dontus");
+            principal.FindFirstValue(ClaimTypes.Name) ?? "Usuário Dontus")
+        {
+            SessionId = Guid.TryParse(principal.FindFirstValue("dontus:session-id"), out var sessionId) ? sessionId : null,
+            SessionActor = principal.FindFirstValue("dontus:session-actor") is { } json ? JsonSerializer.Deserialize<ActorContext>(json) : null,
+        };
 }
 
 internal sealed class LocalAuthenticationHandler(
@@ -2586,7 +2587,7 @@ internal sealed class LocalAuthenticationHandler(
                 var authentication = scope.ServiceProvider.GetRequiredService<ILocalAuthenticationService>();
                 var identity = await authentication.ResolveSessionAsync(token, Context.RequestAborted);
                 if (identity is not null)
-                    return Authenticate(identity.Email, identity.DisplayName, "Colaborador");
+                    return Authenticate(identity.Email, identity.DisplayName, "Colaborador", identity);
             }
         }
 
@@ -2599,7 +2600,7 @@ internal sealed class LocalAuthenticationHandler(
         return Authenticate(email, name, role);
     }
 
-    private AuthenticateResult Authenticate(string email, string name, string role)
+    private AuthenticateResult Authenticate(string email, string name, string role, AuthenticatedIdentity? session = null)
     {
         var claims = new[]
         {
@@ -2609,6 +2610,11 @@ internal sealed class LocalAuthenticationHandler(
             new Claim("department", "Gestão"),
         };
         var identity = new ClaimsIdentity(claims, Scheme.Name);
+        if (session?.SessionId is { } sessionId && session.SessionActor is { } actor)
+        {
+            identity.AddClaim(new Claim("dontus:session-id", sessionId.ToString()));
+            identity.AddClaim(new Claim("dontus:session-actor", JsonSerializer.Serialize(actor)));
+        }
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name);
         return AuthenticateResult.Success(ticket);
     }

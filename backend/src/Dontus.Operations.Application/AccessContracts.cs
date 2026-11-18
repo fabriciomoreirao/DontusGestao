@@ -2,7 +2,11 @@ using Dontus.Operations.Domain;
 
 namespace Dontus.Operations.Application;
 
-public sealed record AuthenticatedIdentity(string Email, string DisplayName);
+public sealed record AuthenticatedIdentity(string Email, string DisplayName)
+{
+    public Guid? SessionId { get; init; }
+    public ActorContext? SessionActor { get; init; }
+}
 
 public sealed record ScreenDto(string Code, string Label, string Area, int Order, bool SupportsIndicators);
 

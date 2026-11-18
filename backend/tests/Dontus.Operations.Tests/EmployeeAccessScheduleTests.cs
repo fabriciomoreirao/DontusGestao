@@ -58,7 +58,7 @@ public sealed class EmployeeAccessScheduleTests
         var user = await db.Users.SingleAsync();
         user.AccessScheduleJson = Schedule(new EmployeeAccessWindow(4, "09:00", "18:00"));
         await db.SaveChangesAsync();
-        var auth = new LocalAuthenticationService(db, new RecordingPasswordEmailSender(), clock);
+        var auth = new LocalAuthenticationService(db, new RecordingPasswordEmailSender(), access, clock);
         var login = await auth.LoginAsync(user.Email, "dontus_teste_2026");
         Assert.NotNull(await auth.ResolveSessionAsync(login.Token));
         var actor = await access.ResolveActorAsync(new(user.Email, user.DisplayName));
