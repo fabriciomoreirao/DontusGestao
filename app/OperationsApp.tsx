@@ -1692,57 +1692,64 @@ export default function OperationsApp() {
     }
   };
 
-  const refreshInternalChat = useCallback(async (rooms?: string[]) => {
-    if (chatInFlight.current) return false;
-    chatInFlight.current = true;
-    const revision = chatRevision.current;
-    try {
-      // A few named rooms reload only those conversations; otherwise the whole chat.
-      const urls =
-        rooms && rooms.length > 0 && rooms.length <= MAX_PARTIAL_CHAT_ROOMS
-          ? rooms.map(
-              (room) => `/api/internal-chat?roomId=${encodeURIComponent(room)}`,
-            )
-          : ["/api/internal-chat"];
-      const responses = await Promise.all(
-        urls.map((url) => fetch(url, { cache: "no-store" })),
-      );
-      const denied = responses.find((response) => response.status === 401);
-      if (denied) {
-        expireSession(await accessDeniedMessage(denied));
+  const refreshInternalChat = useCallback(
+    async (rooms?: string[]) => {
+      if (chatInFlight.current) return false;
+      chatInFlight.current = true;
+      const revision = chatRevision.current;
+      try {
+        // A few named rooms reload only those conversations; otherwise the whole chat.
+        const urls =
+          rooms && rooms.length > 0 && rooms.length <= MAX_PARTIAL_CHAT_ROOMS
+            ? rooms.map(
+                (room) =>
+                  `/api/internal-chat?roomId=${encodeURIComponent(room)}`,
+              )
+            : ["/api/internal-chat"];
+        const responses = await Promise.all(
+          urls.map((url) => fetch(url, { cache: "no-store" })),
+        );
+        const denied = responses.find((response) => response.status === 401);
+        if (denied) {
+          expireSession(await accessDeniedMessage(denied));
+          return true;
+        }
+        if (responses.some((response) => !response.ok)) return false;
+        const patches = (await Promise.all(
+          responses.map((response) => response.json()),
+        )) as InternalChatModuleData[];
+        if (revision !== chatRevision.current) return false;
+        chatRevision.current += 1;
+        startTransition(() =>
+          setData((current) =>
+            current
+              ? {
+                  ...current,
+                  internalChatModule: applyChatPresence(
+                    patches
+                      .slice(1)
+                      .reduce(
+                        (chat, patch) => mergeInternalChat(chat, patch),
+                        mergeInternalChat(
+                          current.internalChatModule,
+                          patches[0],
+                        ),
+                      ),
+                    presenceCache.current,
+                  ),
+                }
+              : current,
+          ),
+        );
         return true;
+      } catch {
+        return false;
+      } finally {
+        chatInFlight.current = false;
       }
-      if (responses.some((response) => !response.ok)) return false;
-      const patches = (await Promise.all(
-        responses.map((response) => response.json()),
-      )) as InternalChatModuleData[];
-      if (revision !== chatRevision.current) return false;
-      chatRevision.current += 1;
-      startTransition(() =>
-        setData((current) =>
-          current
-            ? {
-                ...current,
-                internalChatModule: applyChatPresence(
-                  patches
-                    .slice(1)
-                    .reduce(
-                      (chat, patch) => mergeInternalChat(chat, patch),
-                      mergeInternalChat(current.internalChatModule, patches[0]),
-                    ),
-                  presenceCache.current,
-                ),
-              }
-            : current,
-        ),
-      );
-      return true;
-    } catch {
-      return false;
-    } finally {
-      chatInFlight.current = false;
-    }
-  }, [expireSession]);
+    },
+    [expireSession],
+  );
 
   const [attendanceRevision, setAttendanceRevision] = useState(0);
   const realtimeConnected = useRealtimeSync({

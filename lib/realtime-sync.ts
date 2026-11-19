@@ -4,7 +4,11 @@ type Socket = Pick<
   WebSocket,
   "close" | "onopen" | "onmessage" | "onclose" | "onerror"
 >;
-type Changes = { operations?: boolean; internalChat?: boolean; rooms?: unknown };
+type Changes = {
+  operations?: boolean;
+  internalChat?: boolean;
+  rooms?: unknown;
+};
 type Presence = {
   userId: string;
   isOnline: boolean;
@@ -64,7 +68,9 @@ export function createRealtimeSync(options: SyncOptions) {
     if (options.canChat && changes.internalChat === true) {
       pending.internalChat = true;
       const rooms = Array.isArray(changes.rooms)
-        ? changes.rooms.filter((room): room is string => typeof room === "string")
+        ? changes.rooms.filter(
+            (room): room is string => typeof room === "string",
+          )
         : [];
       if (rooms.length > 0) rooms.forEach((room) => chatRooms.add(room));
       else chatFull = true;

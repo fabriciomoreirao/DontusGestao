@@ -263,7 +263,11 @@ test("avisos com sala recarregam só as salas avisadas, agrupadas na mesma rajad
     },
   });
   socket.message({ type: "changed", internalChat: true, rooms: ["sala-a"] });
-  socket.message({ type: "changed", internalChat: true, rooms: ["sala-b", "sala-a"] });
+  socket.message({
+    type: "changed",
+    internalChat: true,
+    rooms: ["sala-b", "sala-a"],
+  });
   await tick(300);
   assert.equal(calls.length, 1);
   assert.deepEqual([...calls[0]].sort(), ["sala-a", "sala-b"]);
