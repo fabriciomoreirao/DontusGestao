@@ -420,13 +420,40 @@ public sealed class InternalChatServiceTests
         Assert.NotEqual(Guid.Empty, await service.CreateRoomAsync(new CreateInternalChatRoomCommand(null, null, false, [peer.Id]), actor));
     }
 
-    private static InternalChatService CreateService(OperationsDbContext db)
+    [Fact]
+    public async Task Chat_actions_notify_room_members_and_the_removed_participant_only()
+    {
+        await using var db = CreateContext();
+        var owner = AddUser(db, "notify-owner@test", "Dono"); owner.IsCoordinator = true;
+        var peer = AddUser(db, "notify-peer@test", "Colega");
+        var outsider = AddUser(db, "notify-outsider@test", "Fora");
+        await db.SaveChangesAsync();
+        var broker = new RealtimeBroker(); broker.SetAvailable(true);
+        using var ownerSocket = broker.Subscribe(owner.Id, true);
+        using var peerSocket = broker.Subscribe(peer.Id, true);
+        using var outsiderSocket = broker.Subscribe(outsider.Id, true);
+        var service = CreateService(db, broker);
+        static bool Notified(RealtimeBroker.Subscription socket) => socket.Take().HasFlag(RealtimeChange.InternalChat);
+        void MembersOnly() { Assert.True(Notified(ownerSocket)); Assert.True(Notified(peerSocket)); Assert.False(Notified(outsiderSocket)); }
+
+        var room = await service.CreateRoomAsync(new("Equipe", null, true, [peer.Id]), Actor(owner)); MembersOnly();
+        var message = await service.SendMessageAsync(new(room, "Oi", "text"), Actor(owner)); MembersOnly();
+        await service.MarkReadAsync(new(room, message), Actor(peer)); MembersOnly();
+        await service.SetMessageReactionAsync(new(room, message, "👍", true), Actor(peer)); MembersOnly();
+        await service.SetMessageReactionAsync(new(room, message, "👍", true), Actor(peer));
+        Assert.False(Notified(ownerSocket)); // A repeated reaction writes nothing, so nobody is woken up.
+
+        await service.ChangeMembersAsync(new(room, null, peer.Id, false), Actor(owner));
+        Assert.True(Notified(ownerSocket)); Assert.True(Notified(peerSocket)); Assert.False(Notified(outsiderSocket));
+    }
+
+    private static InternalChatService CreateService(OperationsDbContext db, RealtimeBroker? realtime = null)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["InternalChat:FilesPath"] = Path.Combine(Path.GetTempPath(), $"dontus-internal-chat-tests-{Guid.NewGuid():N}"),
         }).Build();
-        return new InternalChatService(db, configuration);
+        return new InternalChatService(db, configuration, realtime);
     }
 
     [Fact]

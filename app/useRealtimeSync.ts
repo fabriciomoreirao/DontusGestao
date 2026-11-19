@@ -11,7 +11,7 @@ export default function useRealtimeSync(options: {
   busy: boolean;
   cursor: () => string;
   operations: () => Promise<boolean>;
-  chat: () => Promise<boolean>;
+  chat: (rooms?: string[]) => Promise<boolean>;
   unauthorized: (message?: string) => void;
   presence?: (users: ChatPresence[]) => void;
   typing?: (changes: ChatTyping[]) => void;
@@ -33,7 +33,7 @@ export default function useRealtimeSync(options: {
       hidden: () => document.hidden,
       cursor: () => latest.current.cursor(),
       operations: () => latest.current.operations(),
-      chat: () => latest.current.chat(),
+      chat: (rooms) => latest.current.chat(rooms),
       status: setConnected,
       unauthorized: (message) => latest.current.unauthorized(message),
       presence: (users) => latest.current.presence?.(users),

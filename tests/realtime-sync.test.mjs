@@ -253,3 +253,57 @@ test("pulsos de digitação chegam sem baixar chat ou operações e sem interrom
   assert.equal(state.chat, 0);
   assert.equal(state.operations, 0);
 });
+
+test("avisos com sala recarregam só as salas avisadas, agrupadas na mesma rajada", async (t) => {
+  const calls = [];
+  const { socket, tick } = setup(t, {
+    chat: async (rooms) => {
+      calls.push(rooms);
+      return true;
+    },
+  });
+  socket.message({ type: "changed", internalChat: true, rooms: ["sala-a"] });
+  socket.message({ type: "changed", internalChat: true, rooms: ["sala-b", "sala-a"] });
+  await tick(300);
+  assert.equal(calls.length, 1);
+  assert.deepEqual([...calls[0]].sort(), ["sala-a", "sala-b"]);
+});
+
+test("aviso sem sala, conexão e reconexão recarregam o chat inteiro", async (t) => {
+  const calls = [];
+  const { socket, tick, state } = setup(t, {
+    chat: async (rooms) => {
+      calls.push(rooms);
+      return true;
+    },
+  });
+  socket.message({ type: "changed", internalChat: true, rooms: ["sala-a"] });
+  socket.message({ type: "changed", internalChat: true, rooms: null });
+  await tick(300);
+  assert.deepEqual(calls, [undefined]);
+  socket.close();
+  await tick(2_000);
+  state.sockets.at(-1).message({ type: "ready", cursor: "instance:2" });
+  await tick(300);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1], undefined);
+});
+
+test("falha na recarga de uma sala tenta de novo a mesma sala", async (t) => {
+  const calls = [];
+  let fail = true;
+  const { socket, tick } = setup(t, {
+    chat: async (rooms) => {
+      calls.push(rooms);
+      if (fail) {
+        fail = false;
+        return false;
+      }
+      return true;
+    },
+  });
+  socket.message({ type: "changed", internalChat: true, rooms: ["sala-a"] });
+  await tick(300);
+  await tick(5_000);
+  assert.deepEqual(calls, [["sala-a"], ["sala-a"]]);
+});

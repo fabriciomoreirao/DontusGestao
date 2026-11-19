@@ -86,4 +86,34 @@ public sealed class RealtimeBrokerTests
         broker.SetAvailable(true); using var online = broker.Subscribe(Guid.NewGuid(), true);
         Assert.False(online.Disconnected.IsCancellationRequested);
     }
+
+    private static string Chat(Guid user, Guid? room) => room is { } id
+        ? System.Text.Json.JsonSerializer.Serialize(new { topic = "chat", userId = user, roomId = id })
+        : System.Text.Json.JsonSerializer.Serialize(new { topic = "chat", userId = user });
+
+    [Fact]
+    public void Chat_notifications_collect_the_changed_rooms_per_connection_and_only_for_their_user()
+    {
+        var broker = new RealtimeBroker(); broker.SetAvailable(true);
+        var user = Guid.NewGuid(); var first = Guid.NewGuid(); var second = Guid.NewGuid();
+        using var mine = broker.Subscribe(user, true); using var other = broker.Subscribe(Guid.NewGuid(), true);
+        broker.Publish(Chat(user, first)); broker.Publish(Chat(user, second)); broker.Publish(Chat(user, first));
+        Assert.Equal(RealtimeChange.InternalChat, mine.Take());
+        Assert.Equal(new[] { first, second }.OrderBy(id => id), mine.TakeChatRooms()!.OrderBy(id => id));
+        Assert.Empty(mine.TakeChatRooms()!);
+        Assert.Equal(RealtimeChange.None, other.Take());
+    }
+
+    [Fact]
+    public void Chat_notifications_without_a_room_or_past_the_limit_reload_the_whole_chat()
+    {
+        var broker = new RealtimeBroker(); broker.SetAvailable(true); var user = Guid.NewGuid();
+        using var socket = broker.Subscribe(user, true);
+        broker.Publish(Chat(user, Guid.NewGuid())); broker.Publish(Chat(user, null));
+        Assert.Null(socket.TakeChatRooms());
+        for (var index = 0; index <= RealtimeBroker.Subscription.MaxPendingChatRooms; index++) broker.Publish(Chat(user, Guid.NewGuid()));
+        Assert.Null(socket.TakeChatRooms());
+        broker.Publish(Chat(user, Guid.NewGuid()));
+        Assert.Single(socket.TakeChatRooms()!);
+    }
 }

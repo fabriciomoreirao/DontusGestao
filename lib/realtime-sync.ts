@@ -4,7 +4,7 @@ type Socket = Pick<
   WebSocket,
   "close" | "onopen" | "onmessage" | "onclose" | "onerror"
 >;
-type Changes = { operations?: boolean; internalChat?: boolean };
+type Changes = { operations?: boolean; internalChat?: boolean; rooms?: unknown };
 type Presence = {
   userId: string;
   isOnline: boolean;
@@ -14,7 +14,8 @@ type SyncOptions = {
   url: string;
   connect?: (url: string) => Socket;
   operations: () => Promise<boolean>;
-  chat: () => Promise<boolean>;
+  /** Without rooms, the whole chat must be reloaded. */
+  chat: (rooms?: string[]) => Promise<boolean>;
   canChat: boolean;
   busy: () => boolean;
   hidden: () => boolean;
@@ -34,6 +35,9 @@ export function createRealtimeSync(options: SyncOptions) {
     operationsRunning = false,
     chatRunning = false;
   const pending: Changes = {};
+  // Rooms named by the server since the last chat request; chatFull asks for the whole chat instead.
+  const chatRooms = new Set<string>();
+  let chatFull = false;
   let attempts = 0,
     lastFrame = Date.now();
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -57,26 +61,42 @@ export function createRealtimeSync(options: SyncOptions) {
   };
   const queue = (changes: Changes) => {
     pending.operations ||= changes.operations === true;
-    pending.internalChat ||= options.canChat && changes.internalChat === true;
+    if (options.canChat && changes.internalChat === true) {
+      pending.internalChat = true;
+      const rooms = Array.isArray(changes.rooms)
+        ? changes.rooms.filter((room): room is string => typeof room === "string")
+        : [];
+      if (rooms.length > 0) rooms.forEach((room) => chatRooms.add(room));
+      else chatFull = true;
+    }
     schedule(changes.internalChat ? 75 : 300);
   };
   const run = async (chat: boolean) => {
+    let rooms: string[] | undefined;
     if (chat) {
       chatRunning = true;
       pending.internalChat = false;
+      rooms = chatFull ? undefined : [...chatRooms];
+      chatRooms.clear();
+      chatFull = false;
     } else {
       operationsRunning = true;
       pending.operations = false;
     }
     let ok = false;
     try {
-      ok = await (chat ? options.chat() : options.operations());
+      ok = await (chat ? options.chat(rooms) : options.operations());
     } catch {
       /* Keep the invalidation for recovery. */
     } finally {
       if (chat) {
         chatRunning = false;
-        pending.internalChat ||= !ok;
+        if (!ok) {
+          // Retry the same scope: the named rooms, or the whole chat.
+          if (rooms) rooms.forEach((room) => chatRooms.add(room));
+          else chatFull = true;
+          pending.internalChat = true;
+        }
       } else {
         operationsRunning = false;
         pending.operations ||= !ok;

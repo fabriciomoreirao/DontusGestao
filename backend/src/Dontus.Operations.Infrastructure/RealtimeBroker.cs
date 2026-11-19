@@ -98,9 +98,12 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
         if (topic != "operations" && (topic != "chat" || userId is null)) return;
         if (topic == "operations") Interlocked.Increment(ref operationsRevision);
         Interlocked.Increment(ref revision);
+        // Chat notifications sent by InternalChatService name the room; older payloads without it reload the whole chat.
+        Guid? chatRoomId = topic == "chat" && json.RootElement.TryGetProperty("roomId", out var roomValue)
+            && roomValue.ValueKind == JsonValueKind.String && Guid.TryParse(roomValue.GetString(), out var parsedRoom) ? parsedRoom : null;
         foreach (var subscriber in subscribers.Values)
             if (topic == "operations") subscriber.Notify(RealtimeChange.Operations);
-            else if (subscriber.Chat && subscriber.UserId == userId) subscriber.Notify(RealtimeChange.InternalChat);
+            else if (subscriber.Chat && subscriber.UserId == userId) subscriber.NotifyChat(chatRoomId);
     }
     public void Remove(Subscription subscription) { subscribers.TryRemove(subscription.Id, out _); subscription.Dispose(); }
 
@@ -124,6 +127,27 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
             var result = new List<ChatTypingDto>();
             foreach (var key in typing.Keys) if (typing.TryRemove(key, out var value)) result.Add(value);
             return result.ToArray();
+        }
+        // Beyond this many pending rooms, reloading the whole chat is cheaper than one request per room.
+        public const int MaxPendingChatRooms = 20;
+        private readonly ConcurrentDictionary<Guid, byte> chatRooms = new();
+        private int chatFull;
+        public void NotifyChat(Guid? roomId)
+        {
+            // The room is recorded before the flag, so a concurrent Take never loses it.
+            if (roomId is { } room && Volatile.Read(ref chatFull) == 0
+                && (chatRooms.Count < MaxPendingChatRooms || chatRooms.ContainsKey(room)))
+                chatRooms.TryAdd(room, 0);
+            else Interlocked.Exchange(ref chatFull, 1);
+            Notify(RealtimeChange.InternalChat);
+        }
+        // null means "reload the whole chat"; an empty array means the rooms were already delivered.
+        public Guid[]? TakeChatRooms()
+        {
+            var full = Interlocked.Exchange(ref chatFull, 0) == 1;
+            var rooms = new List<Guid>();
+            foreach (var key in chatRooms.Keys) if (chatRooms.TryRemove(key, out _)) rooms.Add(key);
+            return full ? null : rooms.ToArray();
         }
         public void Notify(RealtimeChange change) { if (Volatile.Read(ref disposed) != 0) return; Interlocked.Or(ref pending, (int)change); Signal.Writer.TryWrite(true); }
         public RealtimeChange Take() { while (Signal.Reader.TryRead(out _)) { } return (RealtimeChange)Interlocked.Exchange(ref pending, 0); }
