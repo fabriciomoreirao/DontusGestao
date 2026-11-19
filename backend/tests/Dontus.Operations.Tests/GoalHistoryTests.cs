@@ -11,12 +11,33 @@ public sealed class GoalHistoryTests
 {
     private static ActorContext Actor(bool manage = true) => new("ana@test.local", "Ana", "Colaborador", "Comercial", [new("goals", true, true, manage, false, manage)]);
     private static OperationsDbContext Db() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-    private static WorkItem Goal(string metric = "salesValue") => new() { Module = "goals", RecordType = "Meta", Title = "Meta", Owner = "Ana", Team = "Comercial", Status = "Ativa", CreatedBy = "test",
-        CreatedAt = DateTimeOffset.Parse("2026-11-20T12:00:00Z"), UpdatedAt = DateTimeOffset.Parse("2026-11-20T12:00:00Z"),
-        Description = JsonSerializer.Serialize(new { kind = "performanceGoal", metric, cadence = "monthly", target = 500, employeeName = "Ana", departmentName = "Comercial", periodStart = "2026-11-05", periodEnd = "2026-11-30", active = true }) };
-    private static WorkItem Sale(string date = "2026-11-06", long cents = 10000) => new() { Module = "commercial", RecordType = "Lead comercial", Title = "Venda", Owner = "Outro", Team = "Comercial", Status = "Ganho", CreatedBy = "test", AmountCents = cents,
-        CreatedAt = DateTimeOffset.Parse("2026-10-01T12:00:00Z"), UpdatedAt = DateTimeOffset.Parse("2026-11-06T12:00:00Z"),
-        Description = JsonSerializer.Serialize(new { kind = "commercialLead", seller = "Ana", wonAt = date, funnel = "LIA" }) };
+    private static WorkItem Goal(string metric = "salesValue") => new()
+    {
+        Module = "goals",
+        RecordType = "Meta",
+        Title = "Meta",
+        Owner = "Ana",
+        Team = "Comercial",
+        Status = "Ativa",
+        CreatedBy = "test",
+        CreatedAt = DateTimeOffset.Parse("2026-11-20T12:00:00Z"),
+        UpdatedAt = DateTimeOffset.Parse("2026-11-20T12:00:00Z"),
+        Description = JsonSerializer.Serialize(new { kind = "performanceGoal", metric, cadence = "monthly", target = 500, employeeName = "Ana", departmentName = "Comercial", periodStart = "2026-11-05", periodEnd = "2026-11-30", active = true })
+    };
+    private static WorkItem Sale(string date = "2026-11-06", long cents = 10000) => new()
+    {
+        Module = "commercial",
+        RecordType = "Lead comercial",
+        Title = "Venda",
+        Owner = "Outro",
+        Team = "Comercial",
+        Status = "Ganho",
+        CreatedBy = "test",
+        AmountCents = cents,
+        CreatedAt = DateTimeOffset.Parse("2026-10-01T12:00:00Z"),
+        UpdatedAt = DateTimeOffset.Parse("2026-11-06T12:00:00Z"),
+        Description = JsonSerializer.Serialize(new { kind = "commercialLead", seller = "Ana", wonAt = date, funnel = "LIA" })
+    };
 
     [Fact]
     public async Task Goal_aggregate_and_authorized_workspace_keep_the_complete_commercial_history()

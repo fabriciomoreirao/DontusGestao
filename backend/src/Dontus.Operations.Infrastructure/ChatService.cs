@@ -204,8 +204,11 @@ public sealed partial class ChatService(
                 !string.IsNullOrWhiteSpace(x.AppSecretProtected), x.Active)).ToArray(),
             tags.Select(ToTagDto).ToArray(),
             quickReplies.Select(x => new ChatQuickReplyDto(x.Id, x.Shortcut, x.Title, x.Body, x.DepartmentId, x.Active)).ToArray(),
-            metrics with { AverageFirstResponseMinutes = Math.Round(metrics.AverageFirstResponseMinutes, 1),
-                AverageResolutionMinutes = Math.Round(metrics.AverageResolutionMinutes, 1) },
+            metrics with
+            {
+                AverageFirstResponseMinutes = Math.Round(metrics.AverageFirstResponseMinutes, 1),
+                AverageResolutionMinutes = Math.Round(metrics.AverageResolutionMinutes, 1)
+            },
             currentUserId, new ChatInboxPageDto(page, pageSize, total, contactsCount, groupsCount),
             selectedId, selectedMessages.HasMore);
     }

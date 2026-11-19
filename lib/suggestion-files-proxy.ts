@@ -1,32 +1,54 @@
-const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
+const apiBase = () =>
+  (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
 
 function authenticationHeaders(request: Request) {
   const headers = new Headers({ accept: "application/json" });
   for (const [name, value] of Object.entries({
-    "x-user-email": request.headers.get("oai-authenticated-user-email") ?? process.env.LOCAL_USER_EMAIL ?? "gestor@dontus.local",
+    "x-user-email":
+      request.headers.get("oai-authenticated-user-email") ??
+      process.env.LOCAL_USER_EMAIL ??
+      "gestor@dontus.local",
     "x-user-name": process.env.LOCAL_USER_NAME ?? "Gestor Dontus",
     "x-user-role": process.env.LOCAL_USER_ROLE ?? "Administrador técnico",
-  })) headers.set(name, encodeURIComponent(value));
-  const session = request.headers.get("cookie")?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
+  }))
+    headers.set(name, encodeURIComponent(value));
+  const session = request.headers
+    .get("cookie")
+    ?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
   if (session) headers.set("x-local-session", decodeURIComponent(session));
   return headers;
 }
 
 export async function uploadSuggestionFiles(request: Request) {
   const id = new URL(request.url).searchParams.get("suggestionId");
-  if (!id) return Response.json({ detail: "Sugestão obrigatória." }, { status: 400 });
+  if (!id)
+    return Response.json({ detail: "Sugestão obrigatória." }, { status: 400 });
   try {
     // Rebuild the multipart boundary rather than forwarding an unconfigured Node stream.
     const body = await request.formData();
-    const response = await fetch(`${apiBase()}/api/suggestions/${encodeURIComponent(id)}/attachments`, {
-      method: "POST", headers: authenticationHeaders(request), body, cache: "no-store", signal: AbortSignal.timeout(120_000),
+    const response = await fetch(
+      `${apiBase()}/api/suggestions/${encodeURIComponent(id)}/attachments`,
+      {
+        method: "POST",
+        headers: authenticationHeaders(request),
+        body,
+        cache: "no-store",
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
+    return new Response(response.body, {
+      status: response.status,
+      headers: {
+        "content-type":
+          response.headers.get("content-type") ?? "application/json",
+        "cache-control": "private, no-store",
+      },
     });
-    return new Response(response.body, { status: response.status, headers: {
-      "content-type": response.headers.get("content-type") ?? "application/json",
-      "cache-control": "private, no-store",
-    } });
   } catch {
-    return Response.json({ detail: "Não foi possível enviar os anexos para a API." }, { status: 503 });
+    return Response.json(
+      { detail: "Não foi possível enviar os anexos para a API." },
+      { status: 503 },
+    );
   }
 }
 
@@ -36,26 +58,54 @@ export async function downloadSuggestionFile(request: Request, id: string) {
     const mediaHeaders = new Headers();
     for (const name of ["range", "if-range"]) {
       const value = request.headers.get(name);
-      if (value) { headers.set(name, value); mediaHeaders.set(name, value); }
+      if (value) {
+        headers.set(name, value);
+        mediaHeaders.set(name, value);
+      }
     }
-    let response = await fetch(`${apiBase()}/api/suggestions/attachments/${encodeURIComponent(id)}`, {
-      headers, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(120_000),
-    });
+    let response = await fetch(
+      `${apiBase()}/api/suggestions/attachments/${encodeURIComponent(id)}`,
+      {
+        headers,
+        redirect: "manual",
+        cache: "no-store",
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
     const location = response.headers.get("location");
     if ([301, 302, 303, 307, 308].includes(response.status) && location) {
       const target = new URL(location, apiBase());
-      if (!["http:", "https:"].includes(target.protocol)) throw new Error("Endereço inválido.");
+      if (!["http:", "https:"].includes(target.protocol))
+        throw new Error("Endereço inválido.");
       await response.body?.cancel();
-      response = await fetch(target, { headers: target.origin === new URL(apiBase()).origin ? headers : mediaHeaders,
-        cache: "no-store", signal: AbortSignal.timeout(120_000) });
+      response = await fetch(target, {
+        headers:
+          target.origin === new URL(apiBase()).origin ? headers : mediaHeaders,
+        cache: "no-store",
+        signal: AbortSignal.timeout(120_000),
+      });
     }
     const outgoing = new Headers({ "cache-control": "private, no-store" });
-    for (const name of ["content-type", "content-length", "content-disposition", "etag", "last-modified", "accept-ranges", "content-range"]) {
+    for (const name of [
+      "content-type",
+      "content-length",
+      "content-disposition",
+      "etag",
+      "last-modified",
+      "accept-ranges",
+      "content-range",
+    ]) {
       const value = response.headers.get(name);
       if (value) outgoing.set(name, value);
     }
-    return new Response(response.body, { status: response.status, headers: outgoing });
+    return new Response(response.body, {
+      status: response.status,
+      headers: outgoing,
+    });
   } catch {
-    return Response.json({ detail: "Não foi possível abrir o anexo." }, { status: 503 });
+    return Response.json(
+      { detail: "Não foi possível abrir o anexo." },
+      { status: 503 },
+    );
   }
 }

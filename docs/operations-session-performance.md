@@ -34,10 +34,10 @@ Compilação de produção com PostgreSQL 17 em containers isolados, 6.000 regis
 (3.000 comerciais e 3.000 atendimentos). O snapshot autorizado carregou 4.000 registros.
 Tempos incluem a requisição HTTP local e a leitura do corpo; a primeira carga inclui parsing JSON.
 
-| Cenário | Amostras | Mediana | P95 |
-| --- | ---: | ---: | ---: |
-| GET com cache | 15 | 59,96 ms | 89,34 ms |
-| Sincronização sem mudanças, 204 | 30 | 6,16 ms | 7,51 ms |
+| Cenário                         | Amostras |  Mediana |      P95 |
+| ------------------------------- | -------: | -------: | -------: |
+| GET com cache                   |       15 | 59,96 ms | 89,34 ms |
+| Sincronização sem mudanças, 204 |       30 |  6,16 ms |  7,51 ms |
 
 A primeira carga após reiniciar a API levou **1.148,12 ms**. Com a API já aquecida, a carga
 completa de uma nova sessão levou **294,82 ms** na medição final. Os valores são de um ambiente

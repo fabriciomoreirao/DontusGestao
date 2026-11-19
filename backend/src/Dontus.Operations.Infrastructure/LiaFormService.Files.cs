@@ -42,7 +42,9 @@ public sealed partial class LiaFormService
             {
                 var attachment = new LiaFormAttachment
                 {
-                    RequestId = entry.Id, QuestionId = file.QuestionId, FileName = CleanFileName(file.FileName),
+                    RequestId = entry.Id,
+                    QuestionId = file.QuestionId,
+                    FileName = CleanFileName(file.FileName),
                     ContentType = file.ContentType?.Length <= 200 && MediaTypeHeaderValue.TryParse(file.ContentType, out var mediaType)
                         ? mediaType.MediaType ?? "application/octet-stream" : "application/octet-stream",
                     SizeBytes = file.SizeBytes,

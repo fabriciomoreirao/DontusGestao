@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs --follow"
@@ -36,6 +38,7 @@
     "@vitejs/plugin-rsc": "0.5.26",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.2",
+    "prettier": "^3.10.1",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vite": "8.3.5",

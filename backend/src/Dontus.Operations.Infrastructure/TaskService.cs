@@ -141,8 +141,15 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             type.UpdatedAt = DateTimeOffset.UtcNow;
             type.Version++;
             if (missingLink) db.TaskTypeStatuses.Add(new TaskTypeStatus { TaskTypeId = type.Id, StatusId = replacement.Id });
-            db.AuditEvents.Add(new AuditEvent { ActorEmail = "system@dontus.local", Action = "RepairTaskTypeInitialStatus", Resource = "task_type",
-                ResourceId = type.Id.ToString(), Module = "tasks", DetailsJson = JsonSerializer.Serialize(new { previousStatusId = previous, statusId = replacement.Id }) });
+            db.AuditEvents.Add(new AuditEvent
+            {
+                ActorEmail = "system@dontus.local",
+                Action = "RepairTaskTypeInitialStatus",
+                Resource = "task_type",
+                ResourceId = type.Id.ToString(),
+                Module = "tasks",
+                DetailsJson = JsonSerializer.Serialize(new { previousStatusId = previous, statusId = replacement.Id })
+            });
         }
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
     }
@@ -367,7 +374,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         db.CorporateTasks.Add(task);
         var initialParticipantIds = (command.ParticipantUserIds ?? []).Distinct().ToArray();
         foreach (var participantId in initialParticipantIds)
-                db.TaskParticipants.Add(new() { TaskId = task.Id, UserId = participantId });
+            db.TaskParticipants.Add(new() { TaskId = task.Id, UserId = participantId });
         if (command.AttachmentLinks is not null)
         {
             foreach (var link in command.AttachmentLinks.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct())
@@ -378,9 +385,11 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 var fileName = Path.GetFileName(uri.AbsolutePath);
                 db.TaskAttachments.Add(new()
                 {
-                    TaskId = task.Id, UploadedByUserId = user.Id,
+                    TaskId = task.Id,
+                    UploadedByUserId = user.Id,
                     FileName = string.IsNullOrWhiteSpace(fileName) ? uri.Host : fileName,
-                    StorageKey = uri.ToString(), ContentType = "text/uri-list",
+                    StorageKey = uri.ToString(),
+                    ContentType = "text/uri-list",
                 });
                 AddHistory(task.Id, user.Id, "attachment_added", "Anexo vinculado", null, new { Url = uri.ToString() });
             }
@@ -589,9 +598,14 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         }
         db.TaskTransfers.Add(new()
         {
-            TaskId = task.Id, FromDepartmentId = previousDepartment, ToDepartmentId = destination.Id,
-            PreviousAssigneeUserId = previousAssignee, NewAssigneeUserId = task.AssigneeUserId,
-            ActorUserId = user.Id, Reason = command.Reason.Trim(), SlaRecalculated = recalculated,
+            TaskId = task.Id,
+            FromDepartmentId = previousDepartment,
+            ToDepartmentId = destination.Id,
+            PreviousAssigneeUserId = previousAssignee,
+            NewAssigneeUserId = task.AssigneeUserId,
+            ActorUserId = user.Id,
+            Reason = command.Reason.Trim(),
+            SlaRecalculated = recalculated,
         });
         AddHistory(task.Id, user.Id, "transferred", $"Tarefa encaminhada para {destination.Name}",
             new { DepartmentId = previousDepartment, AssigneeUserId = previousAssignee, StatusId = previousStatus },
@@ -669,8 +683,14 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
 
         var previous = new
         {
-            task.Title, task.Description, task.TypeId, task.CustomerId, task.CustomerCode,
-            task.CustomerName, task.ClientWhatsApp, task.CancellationRequest,
+            task.Title,
+            task.Description,
+            task.TypeId,
+            task.CustomerId,
+            task.CustomerCode,
+            task.CustomerName,
+            task.ClientWhatsApp,
+            task.CancellationRequest,
         };
         task.Title = command.Title.Trim();
         task.Description = command.Description.Trim();
@@ -726,7 +746,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var mentions = command.MentionedUserIds?.Distinct().ToList() ?? [];
         var comment = new TaskComment
         {
-            TaskId = task.Id, AuthorUserId = user.Id, Body = command.Body,
+            TaskId = task.Id,
+            AuthorUserId = user.Id,
+            Body = command.Body,
             MentionedUserIdsJson = JsonSerializer.Serialize(mentions, JsonOptions),
         };
         db.TaskComments.Add(comment);
@@ -742,7 +764,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
     public async Task UpdateCommentAsync(UpdateTaskCommentCommand command, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("tasks", "edit");
-        var body = CommentFiles.Validate(command.Body,4000);
+        var body = CommentFiles.Validate(command.Body, 4000);
         var user = await GetActorUserAsync(actor, cancellationToken);
         var task = await LoadVisibleTaskAsync(command.TaskId, user, actor, cancellationToken);
         await RequireTaskInteractionAsync(task, user, actor, cancellationToken);
@@ -791,9 +813,12 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var result = normalized == "Avisar Cliente" ? "Aviso enviado ao criador, responsável e coordenadores" : normalized;
         db.TaskClientCommunications.Add(new()
         {
-            TaskId = task.Id, ActorUserId = user.Id, Action = action,
+            TaskId = task.Id,
+            ActorUserId = user.Id,
+            Action = action,
             Channel = string.IsNullOrWhiteSpace(command.Channel) ? "Interno" : command.Channel.Trim(),
-            Message = command.Message?.Trim() ?? "", Result = result,
+            Message = command.Message?.Trim() ?? "",
+            Result = result,
         });
         AddHistory(task.Id, user.Id, "client_communication",
             $"Aviso ao cliente: {normalized}", null,
@@ -807,8 +832,13 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 {
                     Title = $"Avisar o cliente · {task.Protocol}",
                     Body = $"{command.Message?.Trim() ?? ""}\n\n[TASK_LINK:/?mod=tasks&task={task.Id}]",
-                    Type = "Importante", Kind = "Aviso", Audience = "Colaborador", TargetUserId = recipient,
-                    AuthorUserId = user.Id, PublishedAt = now, Active = true,
+                    Type = "Importante",
+                    Kind = "Aviso",
+                    Audience = "Colaborador",
+                    TargetUserId = recipient,
+                    AuthorUserId = user.Id,
+                    PublishedAt = now,
+                    Active = true,
                 });
         }
         else
@@ -1037,7 +1067,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         foreach (var departmentId in command.DepartmentIds.Distinct())
             db.UserDepartments.Add(new()
             {
-                UserId = user.Id, DepartmentId = departmentId,
+                UserId = user.Id,
+                DepartmentId = departmentId,
                 IsCoordinator = command.CoordinatorDepartmentIds.Contains(departmentId),
                 IsPrimary = departmentId == command.DepartmentIds.FirstOrDefault(),
             });
@@ -1507,8 +1538,11 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             || type is not ("assigned" or "transferred" or "comment_added" or "client_contact_requested" or "approval_requested" or "task_completed")) return;
         db.TaskNotifications.Add(new()
         {
-            TaskId = taskId, RecipientUserId = recipientId, ActorUserId = actorId,
-            EventType = type, Message = message,
+            TaskId = taskId,
+            RecipientUserId = recipientId,
+            ActorUserId = actorId,
+            EventType = type,
+            Message = message,
         });
 
     }
@@ -1517,7 +1551,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         object? previous, object? current, string? justification = null) =>
         db.TaskHistory.Add(new()
         {
-            TaskId = taskId, ActorUserId = actorId, EventType = type, Summary = summary,
+            TaskId = taskId,
+            ActorUserId = actorId,
+            EventType = type,
+            Summary = summary,
             PreviousValueJson = JsonSerializer.Serialize(previous ?? new { }, JsonOptions),
             NewValueJson = JsonSerializer.Serialize(current ?? new { }, JsonOptions),
             Justification = justification?.Trim() ?? "",
@@ -1592,8 +1629,13 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         bool pause = false, bool requiresJustification = false) =>
         new()
         {
-            Name = name, DisplayOrder = order, KanbanColumn = name, IsInitial = initial,
-            IsFinal = final, RequiresJustification = requiresJustification,
-            AcceptsNewTasks = !final, ManualMovement = true,
+            Name = name,
+            DisplayOrder = order,
+            KanbanColumn = name,
+            IsInitial = initial,
+            IsFinal = final,
+            RequiresJustification = requiresJustification,
+            AcceptsNewTasks = !final,
+            ManualMovement = true,
         };
 }

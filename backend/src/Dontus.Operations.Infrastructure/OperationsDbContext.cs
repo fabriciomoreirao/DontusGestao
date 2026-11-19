@@ -96,29 +96,34 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<CancellationProtocolCounter>(entity => {
+        modelBuilder.Entity<CancellationProtocolCounter>(entity =>
+        {
             entity.ToTable("cancellation_protocol_counters");
             entity.HasKey(x => x.Year);
             entity.Property(x => x.Year).ValueGeneratedNever();
         });
-        modelBuilder.Entity<ServiceRequestProtocolCounter>(entity => {
+        modelBuilder.Entity<ServiceRequestProtocolCounter>(entity =>
+        {
             entity.ToTable("service_request_protocol_counters");
             entity.HasKey(x => x.Year);
             entity.Property(x => x.Year).ValueGeneratedNever();
         });
         ConfigureEntity(modelBuilder.Entity<CommissionConfirmation>(), "commission_confirmations");
-        modelBuilder.Entity<CommissionConfirmation>(entity => {
+        modelBuilder.Entity<CommissionConfirmation>(entity =>
+        {
             entity.Property(x => x.TokenHash).HasMaxLength(64);
             entity.HasIndex(x => x.TokenHash).IsUnique();
             entity.HasIndex(x => new { x.Module, x.Scope, x.Competence, x.EmployeeKey });
             entity.HasIndex(x => x.EmployeeUserId);
         });
-        modelBuilder.Entity<LiaForm>(entity => {
+        modelBuilder.Entity<LiaForm>(entity =>
+        {
             entity.ToTable("lia_forms");
             entity.Property(x => x.Name).HasMaxLength(160);
             entity.Property(x => x.Description).HasMaxLength(2000);
         });
-        modelBuilder.Entity<LiaFormRequest>(entity => {
+        modelBuilder.Entity<LiaFormRequest>(entity =>
+        {
             entity.ToTable("lia_form_requests");
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.Property(x => x.TokenHash).HasMaxLength(64);
@@ -128,7 +133,8 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.HasOne<LiaForm>().WithMany().HasForeignKey(x => x.FormId).OnDelete(DeleteBehavior.Restrict);
         });
         ConfigureEntity(modelBuilder.Entity<LiaFormAttachment>(), "lia_form_attachments");
-        modelBuilder.Entity<LiaFormAttachment>(entity => {
+        modelBuilder.Entity<LiaFormAttachment>(entity =>
+        {
             entity.Property(x => x.QuestionId).HasMaxLength(80);
             entity.Property(x => x.FileName).HasMaxLength(240);
             entity.Property(x => x.ContentType).HasMaxLength(200);
@@ -137,12 +143,14 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         });
         ConfigureEntity(modelBuilder.Entity<Customer>(), "customers");
         ConfigureEntity(modelBuilder.Entity<SupportAccessReason>(), "support_access_reasons");
-        modelBuilder.Entity<SupportAccessReason>(entity => {
+        modelBuilder.Entity<SupportAccessReason>(entity =>
+        {
             entity.Property(x => x.Name).HasMaxLength(120);
             entity.HasIndex(x => new { x.DepartmentId, x.Name }).IsUnique();
             entity.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
         });
-        modelBuilder.Entity<SupportAccessLog>(entity => {
+        modelBuilder.Entity<SupportAccessLog>(entity =>
+        {
             entity.ToTable("support_access_logs");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ActorEmail).HasMaxLength(254);

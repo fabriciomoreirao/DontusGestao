@@ -34,11 +34,17 @@ const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const host =
+    requestHeaders.get("x-forwarded-host") ??
+    requestHeaders.get("host") ??
+    "localhost:3000";
+  const protocol =
+    requestHeaders.get("x-forwarded-proto") ??
+    (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
   const title = "Dontus | Central de Operações";
-  const description = "Sistema integrado de operações da Dontus Gestão Odontológica.";
+  const description =
+    "Sistema integrado de operações da Dontus Gestão Odontológica.";
   return {
     title,
     description,
@@ -46,11 +52,36 @@ export async function generateMetadata(): Promise<Metadata> {
     applicationName: "Dontus",
     appleWebApp: { capable: true, title: "Dontus", statusBarStyle: "default" },
     icons: { icon: "/dontus-mark.png", shortcut: "/dontus-mark.png" },
-    openGraph: { title, description, type: "website", images: [{ url: `${origin}/og.png`, width: 1536, height: 1024, alt: "Dontus Central de Operações" }] },
-    twitter: { card: "summary_large_image", title, description, images: [`${origin}/og.png`] },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: [
+        {
+          url: `${origin}/og.png`,
+          width: 1536,
+          height: 1024,
+          alt: "Dontus Central de Operações",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [`${origin}/og.png`],
+    },
   };
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR"><body className={`${inter.variable} ${manrope.variable}`}><DesktopAppProvider>{children}</DesktopAppProvider></body></html>;
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="pt-BR">
+      <body className={`${inter.variable} ${manrope.variable}`}>
+        <DesktopAppProvider>{children}</DesktopAppProvider>
+      </body>
+    </html>
+  );
 }

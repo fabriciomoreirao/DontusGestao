@@ -152,7 +152,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 catch (JsonException) { }
             }
         }
-        var visibleNoteIds = actor.HasPermission("notes", "view") ? (await GetNotesModuleAsync(actor,cancellationToken)).Notes.Select(note=>note.Id).ToArray() : [];
+        var visibleNoteIds = actor.HasPermission("notes", "view") ? (await GetNotesModuleAsync(actor, cancellationToken)).Notes.Select(note => note.Id).ToArray() : [];
         var includeAllDescriptions = knownWorkItemVersions is null;
         var knownVersionKeys = knownWorkItemVersions?.Select(entry => $"{entry.Key}:{entry.Value}").ToArray() ?? [];
         // Keep authorization and version metadata in SQL, without fetching unchanged embedded files.
@@ -304,7 +304,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 .Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             return new WaitingQueuePersonDto(user.Id, user.DisplayName, user.Email, ids.Length == 0 ? null : ids[0],
                 ids.Length == 0 ? user.Department : departmentNames.GetValueOrDefault(ids[0], user.Department), ids, names, true)
-                { IsCoordinator = user.IsCoordinator };
+            { IsCoordinator = user.IsCoordinator };
         }).ToArray();
         return new(employees, departments);
     }
@@ -377,7 +377,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             entry.Id, entry.Title, entry.Description, ReadNoteColor(entry.TagsJson),
             (int)Math.Min(entry.AmountCents, int.MaxValue), entry.UpdatedAt,
             entry.Team == "Pública" ? "public" : "private", entry.Owner, entry.CreatedBy == actor.Email)
-            { DepartmentId = ReadNoteMetadata(entry.TagsJson).DepartmentId, CustomerCode = ReadNoteMetadata(entry.TagsJson).CustomerCode ?? "", CustomerId = entry.CustomerId }).ToArray())
+        { DepartmentId = ReadNoteMetadata(entry.TagsJson).DepartmentId, CustomerCode = ReadNoteMetadata(entry.TagsJson).CustomerCode ?? "", CustomerId = entry.CustomerId }).ToArray())
         { Departments = await db.TaskDepartments.Where(department => department.Active).OrderBy(department => department.Name).Select(department => new NoteDepartmentDto(department.Id, department.Name)).ToArrayAsync(cancellationToken) };
     }
 
@@ -629,12 +629,18 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         {
             notice = new CompanyNotice
             {
-                Title = title.Trim(), Body = body.Trim(), Type = normalizedType, Kind = normalizedKind,
-                Audience = normalizedAudience, TargetUserId = targetUserId,
-                AuthorUserId = user.Id, ImageDataUrl = normalizedImage,
+                Title = title.Trim(),
+                Body = body.Trim(),
+                Type = normalizedType,
+                Kind = normalizedKind,
+                Audience = normalizedAudience,
+                TargetUserId = targetUserId,
+                AuthorUserId = user.Id,
+                ImageDataUrl = normalizedImage,
                 PublishedAt = DateTimeOffset.UtcNow,
                 EventAt = normalizedKind == "Evento" ? eventAt : null,
-                ExpiresAt = expiresAt, Active = active,
+                ExpiresAt = expiresAt,
+                Active = active,
             };
             db.CompanyNotices.Add(notice);
             AddAudit(actor, "Create", "company_notice", notice.Id.ToString(), "notices", new { notice.Title, notice.Type, notice.Kind, notice.Audience });
@@ -831,13 +837,26 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             network.Description = detail.ToJsonString(); network.Version++; network.UpdatedAt = DateTimeOffset.UtcNow; return;
         }
         var unitId = Guid.NewGuid().ToString();
-        units.Add(new JsonObject {
-            ["id"] = unitId, ["customerId"] = customer.Id.ToString(), ["name"] = customer.TradeName,
-            ["externalId"] = code.Length == 6 ? code : "", ["city"] = customer.City, ["state"] = customer.State,
-            ["contact"] = customer.TradeName, ["phone"] = customer.Phone, ["email"] = customer.Email,
-            ["usageStatus"] = "Não iniciada", ["usagePercent"] = 0, ["lastAnalysis"] = "",
-            ["implementationAt"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"), ["status"] = "Não iniciada",
-            ["active"] = true, ["pendingFollowUp"] = true, ["trainingRequired"] = true, ["features"] = new JsonArray(),
+        units.Add(new JsonObject
+        {
+            ["id"] = unitId,
+            ["customerId"] = customer.Id.ToString(),
+            ["name"] = customer.TradeName,
+            ["externalId"] = code.Length == 6 ? code : "",
+            ["city"] = customer.City,
+            ["state"] = customer.State,
+            ["contact"] = customer.TradeName,
+            ["phone"] = customer.Phone,
+            ["email"] = customer.Email,
+            ["usageStatus"] = "Não iniciada",
+            ["usagePercent"] = 0,
+            ["lastAnalysis"] = "",
+            ["implementationAt"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"),
+            ["status"] = "Não iniciada",
+            ["active"] = true,
+            ["pendingFollowUp"] = true,
+            ["trainingRequired"] = true,
+            ["features"] = new JsonArray(),
             ["notes"] = string.Join("\n", new[] { $"Razão social: {customer.LegalName}", $"Nome: {customer.TradeName}", $"ID: {customer.DocumentMasked}", $"Comercial: {customer.Owner} · CS: {customer.CsOwner}", $"Produto: {customer.Project} · Versão: {customer.ProductVersion}", $"Receita mensal (centavos): {customer.MonthlyRevenueCents}", $"Contato: {customer.Phone} · {customer.Email}", $"Endereço: {customer.Address} · {customer.City}/{customer.State}", customer.Notes })
         });
         var history = detail["history"] as JsonArray ?? new JsonArray();
@@ -897,8 +916,17 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         {
             var users = await db.Users.AsNoTracking().Where(user => manageCommissions || manageReferrals || user.Email == actor.Email)
                 .OrderBy(user => user.DisplayName)
-                .Select(user => new { user.Id, user.Email, user.DisplayName, user.Department, user.UpdatedAt,
-                    HasPhoto = user.PhotoDataUrl != "", user.Active, user.BlockedAt }).ToListAsync(cancellationToken);
+                .Select(user => new
+                {
+                    user.Id,
+                    user.Email,
+                    user.DisplayName,
+                    user.Department,
+                    user.UpdatedAt,
+                    HasPhoto = user.PhotoDataUrl != "",
+                    user.Active,
+                    user.BlockedAt
+                }).ToListAsync(cancellationToken);
             collaborators = users.Select(user => new CollaboratorSummaryDto(user.Id, user.Email, user.DisplayName,
                 user.Department, [user.Department], ProfilePhotoUrls.For(user.Id, user.UpdatedAt, user.HasPhoto), user.Active && !user.BlockedAt.HasValue)).ToList();
         }
@@ -911,8 +939,12 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
                 .Select(user => new CommercialSellerDto(user.Id, user.DisplayName))
                 .ToListAsync(cancellationToken)
             : [];
-        return new CustomerModuleDto(entries) { Collaborators = collaborators, CommercialSellers = commercialSellers,
-            CsDistribution = actor.HasPermission("cs", "view") ? await new CsDistributionService(db).GetAsync(actor, cancellationToken) : [] };
+        return new CustomerModuleDto(entries)
+        {
+            Collaborators = collaborators,
+            CommercialSellers = commercialSellers,
+            CsDistribution = actor.HasPermission("cs", "view") ? await new CsDistributionService(db).GetAsync(actor, cancellationToken) : []
+        };
     }
 
     private static bool CatalogBelongsTo(string description, string idKey, string nameKey, ActorContext actor, Guid? userId, bool allowDepartment = false)
@@ -1195,7 +1227,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         }
         var commissionDecisionData = await CommissionDecisionPolicy.PrepareAsync(db, item.Module, item.Description, null, item.AmountCents, actor, cancellationToken, item.CreatedBy);
         item.Description = commissionDecisionData.Description; item.AmountCents = commissionDecisionData.Amount;
-        if(item.Module == "commissions") item.Status = CommissionDecisionPolicy.RecordStatus(item.Description) ?? item.Status;
+        if (item.Module == "commissions") item.Status = CommissionDecisionPolicy.RecordStatus(item.Description) ?? item.Status;
         if (item.Module == "commercial") item.Description = CommercialStageTimeline.Normalize(item.Description);
         await CommercialCommissionSource.SynchronizeWinAsync(db, item, null, cancellationToken);
         if (item.Module == "cancellations")
@@ -1456,12 +1488,31 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (completed >= 30) throw new DomainException("Este período aquisitivo já está concluído.", 409);
         var remaining = 30 - Math.Max(0, completed);
         var entryId = Guid.NewGuid();
-        vacations.Add(new JsonObject { ["id"] = entryId.ToString(), ["entitlementYear"] = entitlementYear, ["startDate"] = "", ["endDate"] = "",
-            ["days"] = remaining, ["status"] = "Concluída", ["manualCompletion"] = true, ["observation"] = observation?.Trim() ?? "",
-            ["createdAt"] = at.ToString("O"), ["updatedAt"] = at.ToString("O"), ["author"] = actor.DisplayName, ["authorEmail"] = actor.Email });
+        vacations.Add(new JsonObject
+        {
+            ["id"] = entryId.ToString(),
+            ["entitlementYear"] = entitlementYear,
+            ["startDate"] = "",
+            ["endDate"] = "",
+            ["days"] = remaining,
+            ["status"] = "Concluída",
+            ["manualCompletion"] = true,
+            ["observation"] = observation?.Trim() ?? "",
+            ["createdAt"] = at.ToString("O"),
+            ["updatedAt"] = at.ToString("O"),
+            ["author"] = actor.DisplayName,
+            ["authorEmail"] = actor.Email
+        });
         item.Description = profile.ToJsonString(); item.UpdatedAt = at; item.Version++;
-        db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = "hr", Kind = "Período de férias finalizado",
-            Summary = $"{entitlementYear}º período aquisitivo finalizado manualmente, sem datas: {remaining} dia(s) de saldo.", Actor = actor.Email });
+        db.Activities.Add(new Activity
+        {
+            EntityType = "work_item",
+            EntityId = item.Id,
+            Module = "hr",
+            Kind = "Período de férias finalizado",
+            Summary = $"{entitlementYear}º período aquisitivo finalizado manualmente, sem datas: {remaining} dia(s) de saldo.",
+            Actor = actor.Email
+        });
         AddAudit(actor, "CompleteVacationPeriod", "work_item", item.Id.ToString(), "hr", new { entitlementYear, remainingDays = remaining, entryId, manualCompletion = true });
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -1497,7 +1548,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (!CanEditCustomerEngagement(item, actor) &&
             !CanRestartRetentionJourney(item, command.Description, actor) &&
             !CanCoordinateCustomerSuccessJourney(item, actor) && !FollowupValidationPolicy.CanEdit(item, actor) &&
-            !(item.Module == "commissions" && (actor.HasPermission("commissions","approve") || actor.HasPermission("commissions","manage"))))
+            !(item.Module == "commissions" && (actor.HasPermission("commissions", "approve") || actor.HasPermission("commissions", "manage"))))
             actor.RequirePermission(item.Module, "edit");
         RequirePersonalRecordScope(item, actor);
         RequireReferralUpdate(item, command, actor);
@@ -1564,8 +1615,15 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (distribution is not null) AddAudit(actor, CsDistributionService.AuditAction, "work_item", item.Id.ToString(), "cs", distribution);
 
         if (!string.IsNullOrWhiteSpace(command.Owner) && !string.Equals(item.Owner, command.Owner.Trim(), StringComparison.OrdinalIgnoreCase))
-            db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module,
-                Kind = "Responsável alterado", Summary = command.Owner.Trim(), Actor = actor.DisplayName });
+            db.Activities.Add(new Activity
+            {
+                EntityType = "work_item",
+                EntityId = item.Id,
+                Module = item.Module,
+                Kind = "Responsável alterado",
+                Summary = command.Owner.Trim(),
+                Actor = actor.DisplayName
+            });
         var commissionDecisionData = await CommissionDecisionPolicy.PrepareAsync(db, item.Module, command.Description, item.Description, command.AmountCents, actor, cancellationToken, item.CreatedBy);
         command = command with { Description = commissionDecisionData.Description, AmountCents = commissionDecisionData.Amount };
         await CommissionConfirmationService.InvalidatePendingAsync(db, item, cancellationToken);
@@ -1576,7 +1634,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         item.Description = item.Module == "cancellations"
             ? CancellationProtocolService.PreserveProtocol(item.Description, command.Description)
             : command.Description?.Trim() ?? "";
-        if(item.Module == "commissions") item.Status = CommissionDecisionPolicy.RecordStatus(item.Description) ?? item.Status;
+        if (item.Module == "commissions") item.Status = CommissionDecisionPolicy.RecordStatus(item.Description) ?? item.Status;
         if (item.Module == "commissions" && CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "decision") is "approved" or "rejected")
             item.Status = CommissionConfirmationService.Text(CommissionConfirmationService.Detail(item.Description), "decision") == "approved" ? "Aprovada" : "Reprovada";
         if (item.Module == "cs" && CustomerSuccessJourneyStatus(item.Description) is { } journeyStatus)
@@ -1622,7 +1680,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         foreach (var comment in additions)
         {
             var text = comment["text"]?.ToString(); if (string.IsNullOrWhiteSpace(text)) continue;
-            text = CommentFiles.Validate(text,4000);
+            text = CommentFiles.Validate(text, 4000);
             var id = Guid.TryParse(comment["matrixCommentId"]?.ToString(), out var savedId) ? savedId : Guid.NewGuid();
             if (await db.TaskComments.AnyAsync(entry => entry.Id == id, ct)) continue;
             db.TaskComments.Add(new TaskComment { Id = id, TaskId = parent.Id, AuthorUserId = author.Id, Body = text });

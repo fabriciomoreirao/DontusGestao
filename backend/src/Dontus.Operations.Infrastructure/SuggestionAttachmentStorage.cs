@@ -11,7 +11,9 @@ public sealed partial class SuggestionService
     {
         var attachment = new SuggestionAttachment
         {
-            SuggestionId = command.SuggestionId, UploadedByUserId = userId, FileName = fileName,
+            SuggestionId = command.SuggestionId,
+            UploadedByUserId = userId,
+            FileName = fileName,
             ContentType = string.IsNullOrWhiteSpace(command.ContentType) ? "application/octet-stream" : command.ContentType.Trim().ToLowerInvariant(),
             SizeBytes = command.SizeBytes,
             StorageKey = $"suggestions/{command.SuggestionId:N}/{Guid.NewGuid():N}{Path.GetExtension(fileName).ToLowerInvariant()}",

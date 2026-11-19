@@ -53,11 +53,25 @@ public sealed class CancellationProtocolService(OperationsDbContext db, TimeProv
             detail["protocol"] = protocol;
             item.Description = detail.ToJsonString();
             db.WorkItems.Add(item);
-            db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module,
-                Kind = "Criado", Summary = $"{protocol} · {item.RecordType} criado: {item.Title}", Actor = actor.DisplayName });
-            db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = "Create", Resource = "work_item",
-                ResourceId = item.Id.ToString(), Module = item.Module,
-                DetailsJson = JsonSerializer.Serialize(new { protocol, item.RecordType, item.Title }), Result = "Sucesso" });
+            db.Activities.Add(new Activity
+            {
+                EntityType = "work_item",
+                EntityId = item.Id,
+                Module = item.Module,
+                Kind = "Criado",
+                Summary = $"{protocol} · {item.RecordType} criado: {item.Title}",
+                Actor = actor.DisplayName
+            });
+            db.AuditEvents.Add(new AuditEvent
+            {
+                ActorEmail = actor.Email,
+                Action = "Create",
+                Resource = "work_item",
+                ResourceId = item.Id.ToString(),
+                Module = item.Module,
+                DetailsJson = JsonSerializer.Serialize(new { protocol, item.RecordType, item.Title }),
+                Result = "Sucesso"
+            });
             await db.SaveChangesAsync(ct);
             if (transaction is not null) await transaction.CommitAsync(ct);
             return protocol;

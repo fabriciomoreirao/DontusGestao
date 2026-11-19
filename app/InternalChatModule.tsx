@@ -10,45 +10,135 @@ import { chatDayKey, chatDayLabel } from "@/lib/chat-days";
 import { chatUnreadTotals } from "@/lib/internal-chat-state";
 
 import {
-  Bell, BellOff, Maximize2, Archive, ArchiveRestore, ArrowLeft, BadgeCheck, BarChart3, Camera, Check, CheckCheck, Download, FileText, LockKeyhole,
-  Gift, LogOut, Mic, Square, MessageCircleMore, Palette, Paperclip, Pencil, Trash2, Pin, PinOff, Plus, Reply, Search, Send, SmilePlus, UsersRound, X,
+  Bell,
+  BellOff,
+  Maximize2,
+  Archive,
+  ArchiveRestore,
+  ArrowLeft,
+  BadgeCheck,
+  BarChart3,
+  Camera,
+  Check,
+  CheckCheck,
+  Download,
+  FileText,
+  LockKeyhole,
+  Gift,
+  LogOut,
+  Mic,
+  Square,
+  MessageCircleMore,
+  Palette,
+  Paperclip,
+  Pencil,
+  Trash2,
+  Pin,
+  PinOff,
+  Plus,
+  Reply,
+  Search,
+  Send,
+  SmilePlus,
+  UsersRound,
+  X,
 } from "lucide-react";
-import { Fragment, FormEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties } from "react";
+import {
+  Fragment,
+  FormEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type CSSProperties,
+} from "react";
 import ChatAppearanceModal from "@/app/ChatAppearanceModal";
-import { chatAppearanceKey, chatAppearanceStyle, parseChatAppearance } from "@/lib/chat-appearance";
-import {userIsOnline} from "@/lib/chat-presence";
+import {
+  chatAppearanceKey,
+  chatAppearanceStyle,
+  parseChatAppearance,
+} from "@/lib/chat-appearance";
+import { userIsOnline } from "@/lib/chat-presence";
 import useActivityClock from "@/app/useActivityClock";
 import { chatReplyPreview, type ChatReplyMessage } from "@/lib/chat-replies";
-import { CHAT_REACTIONS, chatSeenLabel, chatListDateLabel } from "@/lib/chat-receipts";
+import {
+  CHAT_REACTIONS,
+  chatSeenLabel,
+  chatListDateLabel,
+} from "@/lib/chat-receipts";
 import { clipboardImages } from "@/lib/clipboard-images";
 import { createChatDraftStore } from "@/lib/chat-drafts";
 
 export type InternalChatUser = {
-  id: string; name: string; email: string; departmentName: string; photoDataUrl: string;
-  jobTitle: string; isCoordinator: boolean; isOnline?:boolean; lastSeenAt?:string|null;
+  id: string;
+  name: string;
+  email: string;
+  departmentName: string;
+  photoDataUrl: string;
+  jobTitle: string;
+  isCoordinator: boolean;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 };
 
 export type InternalChatMessage = {
-  id: string; roomId: string; senderUserId: string; senderName: string; senderPhotoDataUrl: string;
+  id: string;
+  roomId: string;
+  senderUserId: string;
+  senderName: string;
+  senderPhotoDataUrl: string;
   senderIsCoordinator: boolean;
-  type: "text" | "sticker" | "image" | "video" | "audio" | "file" | "poll"; body: string; fileName: string;
-  contentType: string; hasAttachment: boolean; isPinned: boolean; createdAt: string;
+  type: "text" | "sticker" | "image" | "video" | "audio" | "file" | "poll";
+  body: string;
+  fileName: string;
+  contentType: string;
+  hasAttachment: boolean;
+  isPinned: boolean;
+  createdAt: string;
   replyTo?: ChatReplyMessage | null;
-  seenAt?: string | null; seenByCount?: number; recipientCount?: number;
-  reactions?: Array<{emoji:string;count:number;userIds:string[];userNames:string[]}>;
-  receiptState?: "sent" | "delivered" | "seen"; editedAt?: string | null; deletedAt?: string | null; version?: number;
+  seenAt?: string | null;
+  seenByCount?: number;
+  recipientCount?: number;
+  reactions?: Array<{
+    emoji: string;
+    count: number;
+    userIds: string[];
+    userNames: string[];
+  }>;
+  receiptState?: "sent" | "delivered" | "seen";
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  version?: number;
 };
 
 export type InternalChatRoom = {
-  id: string; name: string; photoDataUrl: string; isGroup: boolean; createdByUserId: string;
-  canManage: boolean; isArchived: boolean; isMuted?: boolean; unreadCount: number; lastMessageAt: string;
-  memberUserIds: string[]; messages: InternalChatMessage[];
+  id: string;
+  name: string;
+  photoDataUrl: string;
+  isGroup: boolean;
+  createdByUserId: string;
+  canManage: boolean;
+  isArchived: boolean;
+  isMuted?: boolean;
+  unreadCount: number;
+  lastMessageAt: string;
+  memberUserIds: string[];
+  messages: InternalChatMessage[];
 };
 
 export type InternalChatModuleData = {
-  currentUserId: string; users: InternalChatUser[]; rooms: InternalChatRoom[];
-  isPartial?: boolean; removedRoomIds?: string[];
-  snapshotAt?: string; roomSnapshotTimes?: Record<string, string>; fullSnapshotAt?: string;
+  currentUserId: string;
+  users: InternalChatUser[];
+  rooms: InternalChatRoom[];
+  isPartial?: boolean;
+  removedRoomIds?: string[];
+  snapshotAt?: string;
+  roomSnapshotTimes?: Record<string, string>;
+  fullSnapshotAt?: string;
 };
 
 type OperationResult = { id?: string } | false;
@@ -58,90 +148,343 @@ type Props = {
   busy: boolean;
   canCreate: boolean;
   canEdit: boolean;
-  operate: (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
+  operate: (
+    payload: Record<string, unknown>,
+    success: string,
+  ) => Promise<OperationResult>;
   markRead: (roomId: string, readThroughMessageId: string) => Promise<void>;
-  uploadAttachments: (roomId: string, files: File[], onUploaded?: (files: File[]) => void, replyToMessageId?: string) => Promise<boolean>;
+  uploadAttachments: (
+    roomId: string,
+    files: File[],
+    onUploaded?: (files: File[]) => void,
+    replyToMessageId?: string,
+  ) => Promise<boolean>;
   onOpenProfile: (userId: string) => void;
   initialRoomId?: string;
 };
 type Conversation = {
-  key: string; name: string; photoDataUrl: string; isGroup: boolean;
-  room?: InternalChatRoom; user?: InternalChatUser;
+  key: string;
+  name: string;
+  photoDataUrl: string;
+  isGroup: boolean;
+  room?: InternalChatRoom;
+  user?: InternalChatUser;
 };
 
 type ImageDraft = { id: string; file: File };
 
-const stickers = ["😀","😃","😄","😁","😆","😅","😂","🤣","😊","🙂","🙃","😉","😍","🥰","😘","😎","🤓","🧐","🤩","🥳","😇","🤗","🤔","🤫","🤭","🫡","😴","🥱","😢","😭","🥹","😮","😲","😱","😬","🙄","😤","😡","😔","😌","🥺","🤯","😋","😜","🤪","🤠","🤑","🤝","👍","👎","👏","🙌","🙏","💪","👌","✌️","🤞","🫶","👋","🤙","❤️","💙","💚","💛","🧡","💜","🩷","🤍","🖤","💔","💕","💯","🔥","✨","⭐","🌟","🎉","🎊","🎂","🎁","🏆","🥇","🚀","💡","📌","📝","📚","📅","⏰","✅","❌","⚠️","☕","🍕","🍀","🌞","🌈","💐","🐶","🐱","🦷","💻"];
+const stickers = [
+  "😀",
+  "😃",
+  "😄",
+  "😁",
+  "😆",
+  "😅",
+  "😂",
+  "🤣",
+  "😊",
+  "🙂",
+  "🙃",
+  "😉",
+  "😍",
+  "🥰",
+  "😘",
+  "😎",
+  "🤓",
+  "🧐",
+  "🤩",
+  "🥳",
+  "😇",
+  "🤗",
+  "🤔",
+  "🤫",
+  "🤭",
+  "🫡",
+  "😴",
+  "🥱",
+  "😢",
+  "😭",
+  "🥹",
+  "😮",
+  "😲",
+  "😱",
+  "😬",
+  "🙄",
+  "😤",
+  "😡",
+  "😔",
+  "😌",
+  "🥺",
+  "🤯",
+  "😋",
+  "😜",
+  "🤪",
+  "🤠",
+  "🤑",
+  "🤝",
+  "👍",
+  "👎",
+  "👏",
+  "🙌",
+  "🙏",
+  "💪",
+  "👌",
+  "✌️",
+  "🤞",
+  "🫶",
+  "👋",
+  "🤙",
+  "❤️",
+  "💙",
+  "💚",
+  "💛",
+  "🧡",
+  "💜",
+  "🩷",
+  "🤍",
+  "🖤",
+  "💔",
+  "💕",
+  "💯",
+  "🔥",
+  "✨",
+  "⭐",
+  "🌟",
+  "🎉",
+  "🎊",
+  "🎂",
+  "🎁",
+  "🏆",
+  "🥇",
+  "🚀",
+  "💡",
+  "📌",
+  "📝",
+  "📚",
+  "📅",
+  "⏰",
+  "✅",
+  "❌",
+  "⚠️",
+  "☕",
+  "🍕",
+  "🍀",
+  "🌞",
+  "🌈",
+  "💐",
+  "🐶",
+  "🐱",
+  "🦷",
+  "💻",
+];
 
 const messagePageSize = 100;
-const messageTime = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
-const roomTime = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
+const messageTime = new Intl.DateTimeFormat("pt-BR", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const roomTime = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+});
 const brasiliaMonthDay = () => {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Sao_Paulo", month: "2-digit", day: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    month: "2-digit",
+    day: "2-digit",
   }).formatToParts(new Date());
   const month = parts.find((part) => part.type === "month")?.value ?? "";
   const day = parts.find((part) => part.type === "day")?.value ?? "";
   return `${month}-${day}`;
 };
 
-export default function InternalChatModule({ module, employees = [], busy, canCreate, canEdit, operate, markRead, uploadAttachments, onOpenProfile, initialRoomId }: Props) {
-  const [selection, setSelection] = useState({ requestedRoomId: initialRoomId, key: initialRoomId ?? "" });
-  const selectedKey = selection.requestedRoomId === initialRoomId ? selection.key : initialRoomId ?? "";
-  const setSelectedKey = (key: string) => { setSelection({ requestedRoomId: initialRoomId, key }); setSendError(""); };
+export default function InternalChatModule({
+  module,
+  employees = [],
+  busy,
+  canCreate,
+  canEdit,
+  operate,
+  markRead,
+  uploadAttachments,
+  onOpenProfile,
+  initialRoomId,
+}: Props) {
+  const [selection, setSelection] = useState({
+    requestedRoomId: initialRoomId,
+    key: initialRoomId ?? "",
+  });
+  const selectedKey =
+    selection.requestedRoomId === initialRoomId
+      ? selection.key
+      : (initialRoomId ?? "");
+  const setSelectedKey = (key: string) => {
+    setSelection({ requestedRoomId: initialRoomId, key });
+    setSendError("");
+  };
   const [search, setSearch] = useState("");
   const [appearanceOpen, setAppearanceOpen] = useState(false);
-  const [expanded, setExpanded] = useState(()=>typeof window!=="undefined"&&new URLSearchParams(window.location.search).get("chatView")==="fullscreen");
-  const expandChat=(value:boolean)=>{setExpanded(value);const url=new URL(window.location.href);if(value)url.searchParams.set("chatView","fullscreen");else url.searchParams.delete("chatView");window.history.replaceState({},"",url);};
-  useEffect(()=>{if(!expanded)return;const previous=document.body.style.overflow;document.body.style.overflow="hidden";return()=>{document.body.style.overflow=previous}},[expanded]);
-  const [appearance, setAppearance] = useState(() => { try { return parseChatAppearance(typeof localStorage === "undefined" ? null : localStorage.getItem(chatAppearanceKey(module.currentUserId))); } catch { return parseChatAppearance(null); } });
-  const [olderMessages, setOlderMessages] = useState<Record<string, InternalChatMessage[]>>({});
-  const [messageLimits, setMessageLimits] = useState<Record<string, number>>({});
+  const [expanded, setExpanded] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("chatView") ===
+        "fullscreen",
+  );
+  const expandChat = (value: boolean) => {
+    setExpanded(value);
+    const url = new URL(window.location.href);
+    if (value) url.searchParams.set("chatView", "fullscreen");
+    else url.searchParams.delete("chatView");
+    window.history.replaceState({}, "", url);
+  };
+  useEffect(() => {
+    if (!expanded) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [expanded]);
+  const [appearance, setAppearance] = useState(() => {
+    try {
+      return parseChatAppearance(
+        typeof localStorage === "undefined"
+          ? null
+          : localStorage.getItem(chatAppearanceKey(module.currentUserId)),
+      );
+    } catch {
+      return parseChatAppearance(null);
+    }
+  });
+  const [olderMessages, setOlderMessages] = useState<
+    Record<string, InternalChatMessage[]>
+  >({});
+  const [messageLimits, setMessageLimits] = useState<Record<string, number>>(
+    {},
+  );
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
-  const [historyExhausted, setHistoryExhausted] = useState<Record<string, boolean>>({});
+  const [historyExhausted, setHistoryExhausted] = useState<
+    Record<string, boolean>
+  >({});
   const [historyDays, setHistoryDays] = useState<Record<string, number>>({});
   const [drafts] = useState(createChatDraftStore);
-  const [replyDrafts, setReplyDrafts] = useState<Record<string, InternalChatMessage | undefined>>({});
-  const [imageDrafts, setImageDrafts] = useState<Record<string, ImageDraft[]>>({});
+  const [replyDrafts, setReplyDrafts] = useState<
+    Record<string, InternalChatMessage | undefined>
+  >({});
+  const [imageDrafts, setImageDrafts] = useState<Record<string, ImageDraft[]>>(
+    {},
+  );
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
-  const [groupsView,setGroupsView]=useState(Boolean(module.rooms.find(room=>room.id===initialRoomId)?.isGroup));
-  const selectedInitialRoom=useRef<string|undefined>(undefined);
-  useEffect(()=>{if(!initialRoomId||selectedInitialRoom.current===initialRoomId)return;const room=module.rooms.find(entry=>entry.id===initialRoomId);if(room){selectedInitialRoom.current=initialRoomId;setGroupsView(room.isGroup);setArchivedView(room.isArchived)}},[initialRoomId,module.rooms]);
-  const [managingMembers,setManagingMembers]=useState(false);
+  const [groupsView, setGroupsView] = useState(
+    Boolean(module.rooms.find((room) => room.id === initialRoomId)?.isGroup),
+  );
+  const selectedInitialRoom = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!initialRoomId || selectedInitialRoom.current === initialRoomId) return;
+    const room = module.rooms.find((entry) => entry.id === initialRoomId);
+    if (room) {
+      selectedInitialRoom.current = initialRoomId;
+      setGroupsView(room.isGroup);
+      setArchivedView(room.isArchived);
+    }
+  }, [initialRoomId, module.rooms]);
+  const [managingMembers, setManagingMembers] = useState(false);
   const [stickersOpen, setStickersOpen] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [todayInBrasilia, setTodayInBrasilia] = useState(brasiliaMonthDay);
-  const [mediaPreview, setMediaPreview] = useState<{ url: string; name: string; video: boolean } | null>(null);
-  const [pinnedConversationKeys, setPinnedConversationKeys] = useState<string[]>(() => { if (typeof window === "undefined") return []; try { return JSON.parse(localStorage.getItem(`dontus:pinned-conversations:${module.currentUserId}`) || "[]") as string[]; } catch { return []; } });
+  const [mediaPreview, setMediaPreview] = useState<{
+    url: string;
+    name: string;
+    video: boolean;
+  } | null>(null);
+  const [pinnedConversationKeys, setPinnedConversationKeys] = useState<
+    string[]
+  >(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(
+        localStorage.getItem(
+          `dontus:pinned-conversations:${module.currentUserId}`,
+        ) || "[]",
+      ) as string[];
+    } catch {
+      return [];
+    }
+  });
   const composerInput = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const gifInput=useRef<HTMLInputElement>(null);
+  const gifInput = useRef<HTMLInputElement>(null);
   const groupPhotoInput = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const historyScrollAnchor = useRef<{ roomId: string; height: number; top: number } | null>(null);
+  const historyScrollAnchor = useRef<{
+    roomId: string;
+    height: number;
+    top: number;
+  } | null>(null);
   const followingMessages = useRef(true);
   const scrolledRoom = useRef<string | undefined>(undefined);
   const sendingRef = useRef(false);
   const [sendError, setSendError] = useState("");
 
-  const canCreateGroup = canCreate && Boolean(module.users.find(user => user.id === module.currentUserId)?.isCoordinator);
-  const conversations = useMemo(() => buildConversations(module, archivedView).filter(entry => archivedView || entry.isGroup === groupsView).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, groupsView, pinnedConversationKeys]);
-  const presenceNow=useActivityClock();
+  const canCreateGroup =
+    canCreate &&
+    Boolean(
+      module.users.find((user) => user.id === module.currentUserId)
+        ?.isCoordinator,
+    );
+  const conversations = useMemo(
+    () =>
+      buildConversations(module, archivedView)
+        .filter((entry) => archivedView || entry.isGroup === groupsView)
+        .sort(
+          (a, b) =>
+            Number(pinnedConversationKeys.includes(b.key)) -
+            Number(pinnedConversationKeys.includes(a.key)),
+        ),
+    [module, archivedView, groupsView, pinnedConversationKeys],
+  );
+  const presenceNow = useActivityClock();
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
-    return conversations.filter((entry) => !query || `${entry.name} ${entry.user?.departmentName ?? ""}`.toLocaleLowerCase("pt-BR").includes(query));
+    return conversations.filter(
+      (entry) =>
+        !query ||
+        `${entry.name} ${entry.user?.departmentName ?? ""}`
+          .toLocaleLowerCase("pt-BR")
+          .includes(query),
+    );
   }, [conversations, search]);
-  const effectiveSelectedKey = filteredConversations.some((entry) => entry.key === selectedKey) ? selectedKey : "";
-  const selectedConversation = conversations.find((entry) => entry.key === effectiveSelectedKey);
+  const effectiveSelectedKey = filteredConversations.some(
+    (entry) => entry.key === selectedKey,
+  )
+    ? selectedKey
+    : "";
+  const selectedConversation = conversations.find(
+    (entry) => entry.key === effectiveSelectedKey,
+  );
   const selectedRoom = selectedConversation?.room;
-  const voice=useVoiceRecorder(effectiveSelectedKey);
-  const publishTyping=useChatTypingPublisher(selectedRoom?.id,canCreate&&voice.state!=="recording"&&voice.state!=="requesting");
+  const voice = useVoiceRecorder(effectiveSelectedKey);
+  const publishTyping = useChatTypingPublisher(
+    selectedRoom?.id,
+    canCreate && voice.state !== "recording" && voice.state !== "requesting",
+  );
   const pastedImages = imageDrafts[effectiveSelectedKey] ?? [];
-  const visibleMessages = useMemo(() => [...new Map([...(olderMessages[selectedRoom?.id || ""] || []), ...(selectedRoom?.messages || [])].map(message => [message.id, message])).values()].sort((a,b) => a.createdAt.localeCompare(b.createdAt)), [olderMessages, selectedRoom?.id, selectedRoom?.messages]);
+  const visibleMessages = useMemo(
+    () =>
+      [
+        ...new Map(
+          [
+            ...(olderMessages[selectedRoom?.id || ""] || []),
+            ...(selectedRoom?.messages || []),
+          ].map((message) => [message.id, message]),
+        ).values(),
+      ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [olderMessages, selectedRoom?.id, selectedRoom?.messages],
+  );
   const messageLimit = messageLimits[selectedRoom?.id || ""] ?? messagePageSize;
   const displayedMessages = visibleMessages.slice(-messageLimit);
   const firstDisplayedMessageId = displayedMessages[0]?.id;
@@ -153,64 +496,125 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
       container.scrollTop = anchor.top + container.scrollHeight - anchor.height;
       historyScrollAnchor.current = null;
     }
-  }, [selectedRoom?.id, messageLimit, displayedMessages.length, firstDisplayedMessageId]);
+  }, [
+    selectedRoom?.id,
+    messageLimit,
+    displayedMessages.length,
+    firstDisplayedMessageId,
+  ]);
   const replyDraft = replyDrafts[effectiveSelectedKey];
-  const replyMessage = replyDraft ? visibleMessages.find(entry => entry.id === replyDraft.id) ?? replyDraft : undefined;
-  const replyToMessageId = replyMessage && !replyMessage.deletedAt ? replyMessage.id : undefined;
-  const clearReply = (key: string, id: string | undefined) => setReplyDrafts(current => current[key]?.id === id ? { ...current, [key]: undefined } : current);
+  const replyMessage = replyDraft
+    ? (visibleMessages.find((entry) => entry.id === replyDraft.id) ??
+      replyDraft)
+    : undefined;
+  const replyToMessageId =
+    replyMessage && !replyMessage.deletedAt ? replyMessage.id : undefined;
+  const clearReply = (key: string, id: string | undefined) =>
+    setReplyDrafts((current) =>
+      current[key]?.id === id ? { ...current, [key]: undefined } : current,
+    );
   const selectReply = useLatestChatCallback((entry: InternalChatMessage) => {
-    setReplyDrafts(current => ({ ...current, [effectiveSelectedKey]: entry }));
+    setReplyDrafts((current) => ({
+      ...current,
+      [effectiveSelectedKey]: entry,
+    }));
     composerInput.current?.focus({ preventScroll: true });
   });
   const loadOlderMessages = async () => {
     if (!selectedRoom || historyLoading) return;
     const roomId = selectedRoom.id;
     const container = messagesRef.current;
-    const preserveScroll = () => { if (container && scrolledRoom.current === roomId) historyScrollAnchor.current = { roomId, height: container.scrollHeight, top: container.scrollTop }; };
+    const preserveScroll = () => {
+      if (container && scrolledRoom.current === roomId)
+        historyScrollAnchor.current = {
+          roomId,
+          height: container.scrollHeight,
+          top: container.scrollTop,
+        };
+    };
     if (hasEarlierMessages) {
       preserveScroll();
-      setMessageLimits(current => ({ ...current, [roomId]: messageLimit + messagePageSize }));
+      setMessageLimits((current) => ({
+        ...current,
+        [roomId]: messageLimit + messagePageSize,
+      }));
       return;
     }
     const days = (historyDays[roomId] || 30) + 30;
-    setHistoryLoading(true); setHistoryError("");
+    setHistoryLoading(true);
+    setHistoryError("");
     try {
-      const response = await fetch(`/api/internal-chat?historyDays=${days}&roomId=${encodeURIComponent(roomId)}`, {cache:"no-store"});
-      if (!response.ok) throw new Error("Não foi possível carregar mensagens antigas.");
-      const data = await response.json() as InternalChatModuleData;
-      const messages = data.rooms.find(room => room.id === roomId)?.messages || [];
+      const response = await fetch(
+        `/api/internal-chat?historyDays=${days}&roomId=${encodeURIComponent(roomId)}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok)
+        throw new Error("Não foi possível carregar mensagens antigas.");
+      const data = (await response.json()) as InternalChatModuleData;
+      const messages =
+        data.rooms.find((room) => room.id === roomId)?.messages || [];
       preserveScroll();
-      setOlderMessages(current => ({...current, [roomId]:messages}));
-      setMessageLimits(current => ({ ...current, [roomId]: messageLimit + messagePageSize }));
-      setHistoryDays(current => ({...current, [roomId]:days}));
-      if (days >= 36500) setHistoryExhausted(current => ({...current,[roomId]:true}));
-    } catch(error) { setHistoryError(error instanceof Error ? error.message : "Erro ao carregar mensagens."); }
-    finally { setHistoryLoading(false); }
+      setOlderMessages((current) => ({ ...current, [roomId]: messages }));
+      setMessageLimits((current) => ({
+        ...current,
+        [roomId]: messageLimit + messagePageSize,
+      }));
+      setHistoryDays((current) => ({ ...current, [roomId]: days }));
+      if (days >= 36500)
+        setHistoryExhausted((current) => ({ ...current, [roomId]: true }));
+    } catch (error) {
+      setHistoryError(
+        error instanceof Error ? error.message : "Erro ao carregar mensagens.",
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
   };
-  const lastSeenMessageId = visibleMessages.findLast(entry=>entry.senderUserId===module.currentUserId && entry.seenAt && !entry.deletedAt)?.id;
-  const unreadTotals = useMemo(() => chatUnreadTotals(module.rooms), [module.rooms]);
-  const pinnedMessages = selectedRoom?.messages.filter((entry) => entry.isPinned && !entry.deletedAt) ?? [];
+  const lastSeenMessageId = visibleMessages.findLast(
+    (entry) =>
+      entry.senderUserId === module.currentUserId &&
+      entry.seenAt &&
+      !entry.deletedAt,
+  )?.id;
+  const unreadTotals = useMemo(
+    () => chatUnreadTotals(module.rooms),
+    [module.rooms],
+  );
+  const pinnedMessages =
+    selectedRoom?.messages.filter(
+      (entry) => entry.isPinned && !entry.deletedAt,
+    ) ?? [];
   const employeeBirthdays = useMemo(() => {
     const values = new Map<string, string>();
     employees.forEach((employee) => {
       if (!employee.birthDate) return;
       values.set(employee.id, employee.birthDate);
-      values.set(employee.email.trim().toLocaleLowerCase("pt-BR"), employee.birthDate);
+      values.set(
+        employee.email.trim().toLocaleLowerCase("pt-BR"),
+        employee.birthDate,
+      );
     });
     return values;
   }, [employees]);
   const userHasBirthdayToday = (user?: InternalChatUser) => {
     if (!user) return false;
-    const birthDate = employeeBirthdays.get(user.id) ?? employeeBirthdays.get(user.email.trim().toLocaleLowerCase("pt-BR"));
+    const birthDate =
+      employeeBirthdays.get(user.id) ??
+      employeeBirthdays.get(user.email.trim().toLocaleLowerCase("pt-BR"));
     return birthDate?.slice(5, 10) === todayInBrasilia;
   };
 
   useEffect(() => {
     const messages = messagesRef.current;
     if (!messages) return;
-    if (scrolledRoom.current !== selectedRoom?.id) { followingMessages.current = true; scrolledRoom.current = selectedRoom?.id; }
+    if (scrolledRoom.current !== selectedRoom?.id) {
+      followingMessages.current = true;
+      scrolledRoom.current = selectedRoom?.id;
+    }
     if (!followingMessages.current) return;
-    const frame = window.requestAnimationFrame(() => messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" }));
+    const frame = window.requestAnimationFrame(() =>
+      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" }),
+    );
     return () => window.cancelAnimationFrame(frame);
   }, [selectedRoom?.id, selectedRoom?.messages.at(-1)?.id]);
 
@@ -218,29 +622,59 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     const container = messagesRef.current;
     const readVisibleRoom = () => {
       if (!container) return;
-      followingMessages.current = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
+      followingMessages.current =
+        container.scrollHeight - container.scrollTop - container.clientHeight <
+        48;
       const lastMessage = selectedRoom?.messages.at(-1);
-      if (!document.hidden && document.hasFocus() && followingMessages.current && selectedRoom?.unreadCount && lastMessage) void markRead(selectedRoom.id, lastMessage.id);
+      if (
+        !document.hidden &&
+        document.hasFocus() &&
+        followingMessages.current &&
+        selectedRoom?.unreadCount &&
+        lastMessage
+      )
+        void markRead(selectedRoom.id, lastMessage.id);
     };
     readVisibleRoom();
     document.addEventListener("visibilitychange", readVisibleRoom);
     window.addEventListener("focus", readVisibleRoom);
     container?.addEventListener("scroll", readVisibleRoom, { passive: true });
-    return () => { document.removeEventListener("visibilitychange", readVisibleRoom); window.removeEventListener("focus", readVisibleRoom); container?.removeEventListener("scroll", readVisibleRoom); };
-  }, [markRead, selectedRoom?.id, selectedRoom?.unreadCount, selectedRoom?.messages]);
+    return () => {
+      document.removeEventListener("visibilitychange", readVisibleRoom);
+      window.removeEventListener("focus", readVisibleRoom);
+      container?.removeEventListener("scroll", readVisibleRoom);
+    };
+  }, [
+    markRead,
+    selectedRoom?.id,
+    selectedRoom?.unreadCount,
+    selectedRoom?.messages,
+  ]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setTodayInBrasilia(brasiliaMonthDay()), 60_000);
+    const timer = window.setInterval(
+      () => setTodayInBrasilia(brasiliaMonthDay()),
+      60_000,
+    );
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(()=>{const open=()=>setAppearanceOpen(true);window.addEventListener("dontus:chat-appearance",open);return()=>window.removeEventListener("dontus:chat-appearance",open);},[]);
+  useEffect(() => {
+    const open = () => setAppearanceOpen(true);
+    window.addEventListener("dontus:chat-appearance", open);
+    return () => window.removeEventListener("dontus:chat-appearance", open);
+  }, []);
 
   const toggleConversationPin = () => {
     if (!selectedConversation) return;
     setPinnedConversationKeys((current) => {
-      const next = current.includes(selectedConversation.key) ? current.filter((entry) => entry !== selectedConversation.key) : [selectedConversation.key, ...current];
-      localStorage.setItem(`dontus:pinned-conversations:${module.currentUserId}`, JSON.stringify(next));
+      const next = current.includes(selectedConversation.key)
+        ? current.filter((entry) => entry !== selectedConversation.key)
+        : [selectedConversation.key, ...current];
+      localStorage.setItem(
+        `dontus:pinned-conversations:${module.currentUserId}`,
+        JSON.stringify(next),
+      );
       return next;
     });
   };
@@ -248,16 +682,25 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const ensureRoom = async () => {
     if (selectedConversation?.room) return selectedConversation.room.id;
     if (!selectedConversation?.user) return "";
-    const result = await operate({
-      action: "createInternalChatRoom", name: "", photoDataUrl: "", isGroup: false,
-      memberUserIds: [selectedConversation.user.id],
-    }, "Conversa iniciada com sucesso.");
+    const result = await operate(
+      {
+        action: "createInternalChatRoom",
+        name: "",
+        photoDataUrl: "",
+        isGroup: false,
+        memberUserIds: [selectedConversation.user.id],
+      },
+      "Conversa iniciada com sucesso.",
+    );
     if (!result || !result.id) return "";
     const roomId = result.id;
-    setImageDrafts(current => {
+    setImageDrafts((current) => {
       const drafts = current[effectiveSelectedKey];
       if (!drafts?.length) return current;
-      const next = { ...current, [roomId]: [...(current[roomId] ?? []), ...drafts] };
+      const next = {
+        ...current,
+        [roomId]: [...(current[roomId] ?? []), ...drafts],
+      };
       delete next[effectiveSelectedKey];
       return next;
     });
@@ -271,7 +714,14 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     publishTyping(false);
     const message = drafts.get(effectiveSelectedKey);
     const body = message.trim();
-    if (!canCreate || busy || !selectedConversation || (!body && !pastedImages.length) || sendingRef.current) return;
+    if (
+      !canCreate ||
+      busy ||
+      !selectedConversation ||
+      (!body && !pastedImages.length) ||
+      sendingRef.current
+    )
+      return;
     const conversationKey = effectiveSelectedKey;
     const submittedDraft = message;
     let roomId = selectedRoom?.id ?? "";
@@ -282,32 +732,70 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     sendingRef.current = true;
     setSendError("");
     try {
-    roomId = await ensureRoom();
-    if (!roomId) { setSendError("Não foi possível iniciar a conversa. Tente novamente."); return; }
-    if (pastedImages.length) {
-      if (!await uploadAttachments(roomId, pastedImages.map(image => image.file), files => {
-        const sent = new Set(pastedImages.filter(image => files.includes(image.file)).map(image => image.id));
-        setImageDrafts(current => ({ ...current,
-          [conversationKey]: (current[conversationKey] ?? []).filter(image => !sent.has(image.id)),
-          [roomId]: (current[roomId] ?? []).filter(image => !sent.has(image.id)),
-        }));
-      }, replyToMessageId)) {
-        setSendError("Não foi possível concluir o envio. As imagens não enviadas continuam selecionadas para tentar novamente.");
+      roomId = await ensureRoom();
+      if (!roomId) {
+        setSendError("Não foi possível iniciar a conversa. Tente novamente.");
         return;
       }
-      if (!body) clearReply(conversationKey, replyToMessageId);
-      const sent = new Set(pastedImages.map(image => image.id));
-      setImageDrafts(current => ({ ...current,
-        [conversationKey]: (current[conversationKey] ?? []).filter(image => !sent.has(image.id)),
-        [roomId]: (current[roomId] ?? []).filter(image => !sent.has(image.id)),
-      }));
-    }
-    if (body) {
-      const result = await operate({ action: "sendInternalChatMessage", roomId, body, messageType: "text", replyToMessageId }, "Mensagem enviada.");
-      textSent = Boolean(result);
-      if (result) clearReply(conversationKey, replyToMessageId);
-      if (!result) setSendError("Não foi possível enviar a mensagem. O texto foi mantido para tentar novamente.");
-    }
+      if (pastedImages.length) {
+        if (
+          !(await uploadAttachments(
+            roomId,
+            pastedImages.map((image) => image.file),
+            (files) => {
+              const sent = new Set(
+                pastedImages
+                  .filter((image) => files.includes(image.file))
+                  .map((image) => image.id),
+              );
+              setImageDrafts((current) => ({
+                ...current,
+                [conversationKey]: (current[conversationKey] ?? []).filter(
+                  (image) => !sent.has(image.id),
+                ),
+                [roomId]: (current[roomId] ?? []).filter(
+                  (image) => !sent.has(image.id),
+                ),
+              }));
+            },
+            replyToMessageId,
+          ))
+        ) {
+          setSendError(
+            "Não foi possível concluir o envio. As imagens não enviadas continuam selecionadas para tentar novamente.",
+          );
+          return;
+        }
+        if (!body) clearReply(conversationKey, replyToMessageId);
+        const sent = new Set(pastedImages.map((image) => image.id));
+        setImageDrafts((current) => ({
+          ...current,
+          [conversationKey]: (current[conversationKey] ?? []).filter(
+            (image) => !sent.has(image.id),
+          ),
+          [roomId]: (current[roomId] ?? []).filter(
+            (image) => !sent.has(image.id),
+          ),
+        }));
+      }
+      if (body) {
+        const result = await operate(
+          {
+            action: "sendInternalChatMessage",
+            roomId,
+            body,
+            messageType: "text",
+            replyToMessageId,
+          },
+          "Mensagem enviada.",
+        );
+        textSent = Boolean(result);
+        if (result) clearReply(conversationKey, replyToMessageId);
+        if (!result)
+          setSendError(
+            "Não foi possível enviar a mensagem. O texto foi mantido para tentar novamente.",
+          );
+      }
     } catch {
       setSendError("Não foi possível enviar a mensagem. Tente novamente.");
     } finally {
@@ -321,69 +809,202 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     if (!images.length) return;
     event.preventDefault();
     if (!canCreate || busy || sendingRef.current) return;
-    const accepted = images.filter(file => file.size > 0 && file.size <= 50 * 1024 * 1024);
+    const accepted = images.filter(
+      (file) => file.size > 0 && file.size <= 50 * 1024 * 1024,
+    );
     const capacity = Math.max(0, 10 - pastedImages.length);
-    setSendError(accepted.length !== images.length ? "Imagens vazias ou maiores que 50 MB não podem ser enviadas."
-      : accepted.length > capacity ? "É permitido preparar até 10 imagens por envio." : "");
+    setSendError(
+      accepted.length !== images.length
+        ? "Imagens vazias ou maiores que 50 MB não podem ser enviadas."
+        : accepted.length > capacity
+          ? "É permitido preparar até 10 imagens por envio."
+          : "",
+    );
     const drafts = accepted.slice(0, capacity).map((file, index) => ({
-      id: typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : `pasted-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`, file,
+      id:
+        typeof globalThis.crypto?.randomUUID === "function"
+          ? globalThis.crypto.randomUUID()
+          : `pasted-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`,
+      file,
     }));
-    setImageDrafts(current => ({ ...current, [effectiveSelectedKey]: [...(current[effectiveSelectedKey] ?? []), ...drafts].slice(0, 10) }));
+    setImageDrafts((current) => ({
+      ...current,
+      [effectiveSelectedKey]: [
+        ...(current[effectiveSelectedKey] ?? []),
+        ...drafts,
+      ].slice(0, 10),
+    }));
   };
 
   const sendSticker = async (sticker: string) => {
     if (!canCreate || !selectedConversation || sendingRef.current) return;
     sendingRef.current = true;
     try {
-    const roomId = await ensureRoom();
-    if (!roomId) return;
-    const result = await operate({ action: "sendInternalChatMessage", roomId, body: sticker, messageType: "sticker", replyToMessageId }, "Figurinha enviada.");
-    if (result) { setStickersOpen(false); clearReply(effectiveSelectedKey, replyToMessageId); }
-    } finally { sendingRef.current = false; }
+      const roomId = await ensureRoom();
+      if (!roomId) return;
+      const result = await operate(
+        {
+          action: "sendInternalChatMessage",
+          roomId,
+          body: sticker,
+          messageType: "sticker",
+          replyToMessageId,
+        },
+        "Figurinha enviada.",
+      );
+      if (result) {
+        setStickersOpen(false);
+        clearReply(effectiveSelectedKey, replyToMessageId);
+      }
+    } finally {
+      sendingRef.current = false;
+    }
   };
 
-  const reactMessage=useLatestChatCallback(async(message:InternalChatMessage,emoji:string,reacted:boolean)=>Boolean(await operate({action:"setInternalChatMessageReaction",roomId:message.roomId,id:message.id,emoji,reacted},reacted?"Reação adicionada.":"Reação removida.")));
-  const editMessage=useLatestChatCallback(async(message:InternalChatMessage,body:string)=>Boolean(await operate({action:"editInternalChatMessage",roomId:message.roomId,id:message.id,body,version:message.version??1},"Mensagem editada.")));
-  const deleteMessage=useLatestChatCallback(async(message:InternalChatMessage)=>{await operate({action:"deleteInternalChatMessage",roomId:message.roomId,id:message.id,version:message.version??1},"Mensagem excluída.")});
+  const reactMessage = useLatestChatCallback(
+    async (message: InternalChatMessage, emoji: string, reacted: boolean) =>
+      Boolean(
+        await operate(
+          {
+            action: "setInternalChatMessageReaction",
+            roomId: message.roomId,
+            id: message.id,
+            emoji,
+            reacted,
+          },
+          reacted ? "Reação adicionada." : "Reação removida.",
+        ),
+      ),
+  );
+  const editMessage = useLatestChatCallback(
+    async (message: InternalChatMessage, body: string) =>
+      Boolean(
+        await operate(
+          {
+            action: "editInternalChatMessage",
+            roomId: message.roomId,
+            id: message.id,
+            body,
+            version: message.version ?? 1,
+          },
+          "Mensagem editada.",
+        ),
+      ),
+  );
+  const deleteMessage = useLatestChatCallback(
+    async (message: InternalChatMessage) => {
+      await operate(
+        {
+          action: "deleteInternalChatMessage",
+          roomId: message.roomId,
+          id: message.id,
+          version: message.version ?? 1,
+        },
+        "Mensagem excluída.",
+      );
+    },
+  );
   const createPoll = async (question: string, options: string[]) => {
     if (!canCreate || !selectedRoom?.isGroup) return;
-    const result = await operate({ action: "createInternalChatPoll", roomId: selectedRoom.id, pollQuestion: question, pollOptions: options, replyToMessageId }, "Enquete enviada ao grupo.");
-    if (result) { setPollOpen(false); clearReply(effectiveSelectedKey, replyToMessageId); }
+    const result = await operate(
+      {
+        action: "createInternalChatPoll",
+        roomId: selectedRoom.id,
+        pollQuestion: question,
+        pollOptions: options,
+        replyToMessageId,
+      },
+      "Enquete enviada ao grupo.",
+    );
+    if (result) {
+      setPollOpen(false);
+      clearReply(effectiveSelectedKey, replyToMessageId);
+    }
   };
 
-  const votePoll = useLatestChatCallback(async (messageId: string, optionIndex: number) => {
-    if (!canCreate || !selectedRoom?.isGroup) return;
-    await operate({ action: "voteInternalChatPoll", roomId: selectedRoom.id, id: messageId, pollOptionIndex: optionIndex }, "Voto registrado.");
-  });
+  const votePoll = useLatestChatCallback(
+    async (messageId: string, optionIndex: number) => {
+      if (!canCreate || !selectedRoom?.isGroup) return;
+      await operate(
+        {
+          action: "voteInternalChatPoll",
+          roomId: selectedRoom.id,
+          id: messageId,
+          pollOptionIndex: optionIndex,
+        },
+        "Voto registrado.",
+      );
+    },
+  );
 
-  const togglePin = useLatestChatCallback(async (entry: InternalChatMessage) => {
-    if (!canEdit || !selectedRoom?.isGroup) return;
-    await operate({ action: "setInternalChatMessagePinned", roomId: selectedRoom.id, id: entry.id, pinned: !entry.isPinned }, entry.isPinned ? "Mensagem desafixada." : "Mensagem fixada no grupo.");
-  });
+  const togglePin = useLatestChatCallback(
+    async (entry: InternalChatMessage) => {
+      if (!canEdit || !selectedRoom?.isGroup) return;
+      await operate(
+        {
+          action: "setInternalChatMessagePinned",
+          roomId: selectedRoom.id,
+          id: entry.id,
+          pinned: !entry.isPinned,
+        },
+        entry.isPinned ? "Mensagem desafixada." : "Mensagem fixada no grupo.",
+      );
+    },
+  );
 
-  const upload = async (files: FileList | File[] | null):Promise<boolean> => {
-    if (!canCreate || !selectedConversation || !files?.length || sendingRef.current) return false;
+  const upload = async (files: FileList | File[] | null): Promise<boolean> => {
+    if (
+      !canCreate ||
+      !selectedConversation ||
+      !files?.length ||
+      sendingRef.current
+    )
+      return false;
     sendingRef.current = true;
     setSendError("");
     try {
-    const roomId = await ensureRoom();
-    if (!roomId) return false;
-    const accepted = Array.from(files).filter((file) => file.size > 0 && file.size <= 50 * 1024 * 1024);
-    if (accepted.length !== files.length) setSendError("Arquivos vazios ou maiores que 50 MB não podem ser enviados.");
-    const sent=accepted.length>0&&await uploadAttachments(roomId, accepted, undefined, replyToMessageId);
-    if(sent)clearReply(effectiveSelectedKey, replyToMessageId);
-    return sent;
-    } catch {setSendError("Não foi possível enviar o arquivo. Tente novamente.");return false;} finally {
-    if (fileInput.current) fileInput.current.value = "";
-    if (gifInput.current) gifInput.current.value = "";
-    sendingRef.current = false;
+      const roomId = await ensureRoom();
+      if (!roomId) return false;
+      const accepted = Array.from(files).filter(
+        (file) => file.size > 0 && file.size <= 50 * 1024 * 1024,
+      );
+      if (accepted.length !== files.length)
+        setSendError(
+          "Arquivos vazios ou maiores que 50 MB não podem ser enviados.",
+        );
+      const sent =
+        accepted.length > 0 &&
+        (await uploadAttachments(
+          roomId,
+          accepted,
+          undefined,
+          replyToMessageId,
+        ));
+      if (sent) clearReply(effectiveSelectedKey, replyToMessageId);
+      return sent;
+    } catch {
+      setSendError("Não foi possível enviar o arquivo. Tente novamente.");
+      return false;
+    } finally {
+      if (fileInput.current) fileInput.current.value = "";
+      if (gifInput.current) gifInput.current.value = "";
+      sendingRef.current = false;
     }
   };
 
   const archive = async () => {
     if (!selectedRoom) return;
     const nextArchived = !selectedRoom.isArchived;
-    const result = await operate({ action: "setInternalChatRoomArchived", roomId: selectedRoom.id, archived: nextArchived }, nextArchived ? "Conversa arquivada com sucesso." : "Conversa restaurada com sucesso.");
+    const result = await operate(
+      {
+        action: "setInternalChatRoomArchived",
+        roomId: selectedRoom.id,
+        archived: nextArchived,
+      },
+      nextArchived
+        ? "Conversa arquivada com sucesso."
+        : "Conversa restaurada com sucesso.",
+    );
     if (result) setSelectedKey("");
   };
 
@@ -391,205 +1012,1928 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     if (!selectedRoom?.isGroup || !selectedRoom.canManage || !file) return;
     const photoDataUrl = await readImage(file);
     if (!photoDataUrl) return;
-    await operate({ action: "updateInternalChatGroup", roomId: selectedRoom.id, name: selectedRoom.name, photoDataUrl }, "Foto do grupo atualizada com sucesso.");
+    await operate(
+      {
+        action: "updateInternalChatGroup",
+        roomId: selectedRoom.id,
+        name: selectedRoom.name,
+        photoDataUrl,
+      },
+      "Foto do grupo atualizada com sucesso.",
+    );
     if (groupPhotoInput.current) groupPhotoInput.current.value = "";
   };
 
-  return <div className={`internal-chat-page ${expanded?"internal-chat-expanded":""}`}>
-    <header className="page-header internal-chat-page-header module-page-header">
-      <div className="module-page-title"><span className="module-page-title-icon"><MessageCircleMore size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · COMUNICAÇÃO</span><h1>Chat interno</h1><p>Todos os colaboradores disponíveis, conversas privadas e grupos da sua equipe.</p></span></div>
-      <div className="module-page-actions"><button type="button" className="secondary-button chat-expand-button" onClick={()=>expandChat(!expanded)}>{expanded?<ArrowLeft size={17}/>:<Maximize2 size={17}/>}<span>{expanded?"Voltar":"Expandir chat"}</span></button><button type="button" className="secondary-button chat-appearance-open" onClick={() => setAppearanceOpen(true)}><Palette size={17}/>Personalizar chat</button>{canCreateGroup && <button className="primary-button" onClick={() => setCreatingGroup(true)}><Plus size={17} /> Novo grupo</button>}</div>
-    </header>
-
-    <section className={`internal-chat-shell ${selectedKey ? "show-conversation" : ""}`}>
-      <aside className="internal-chat-sidebar">
-        <div className="internal-chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar colaboradores ou grupos..." /></div>
-        <div className="internal-chat-view-tabs">
-          <button className={!archivedView&&!groupsView ? "active" : ""} onClick={() => { setArchivedView(false);setGroupsView(false); setSelectedKey(""); }}>Conversas<UnreadBadge count={unreadTotals.conversations} /></button>
-          <button className={!archivedView&&groupsView?"active":""} onClick={()=>{setArchivedView(false);setGroupsView(true);setSelectedKey("")}}>Grupos<UnreadBadge count={unreadTotals.groups} /></button>
-          <button className={archivedView ? "active" : ""} onClick={() => { setArchivedView(true); setGroupsView(false); setSelectedKey(""); }}>Arquivadas<UnreadBadge count={unreadTotals.archived} /></button>
+  return (
+    <div
+      className={`internal-chat-page ${expanded ? "internal-chat-expanded" : ""}`}
+    >
+      <header className="page-header internal-chat-page-header module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <MessageCircleMore size={21} />
+          </span>
+          <span className="module-page-copy">
+            <span className="eyebrow">MÓDULO · COMUNICAÇÃO</span>
+            <h1>Chat interno</h1>
+            <p>
+              Todos os colaboradores disponíveis, conversas privadas e grupos da
+              sua equipe.
+            </p>
+          </span>
         </div>
-        <span className="sr-only" role="status" aria-atomic="true">{unreadTotals.conversations} mensagens não lidas em conversas, {unreadTotals.groups} em grupos e {unreadTotals.archived} em arquivadas.</span>
-        <div className="internal-chat-room-list">
-          {filteredConversations.length === 0 && <div className="internal-chat-empty-list"><Archive size={24} /><span>{archivedView ? "Nenhuma conversa arquivada." : "Nenhum colaborador encontrado."}</span></div>}
-          {filteredConversations.map((entry) => {
-            const last = entry.room?.messages.at(-1);
-            return <button className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`} onClick={() => setSelectedKey(entry.key)} key={entry.key}>
-              <Avatar name={entry.name} photo={entry.photoDataUrl} group={entry.isGroup} />
-              <span className="internal-chat-room-copy"><strong>{userHasBirthdayToday(entry.user) && <BirthdayGift name={entry.name} />}{pinnedConversationKeys.includes(entry.key)&&<Pin size={12}/>}<span>{entry.name}</span>{entry.user&&<PresenceBadge user={entry.user} now={presenceNow}/>}</strong><small>{last ? messagePreview(last) : entry.isGroup ? "Grupo privado" : entry.user?.jobTitle || entry.user?.departmentName || "Inicie uma conversa"}</small></span>
-              <span className="internal-chat-room-meta">{entry.room && <time>{chatListDateLabel(entry.room.lastMessageAt,presenceNow)}</time>}{!!entry.room?.unreadCount && <b>{entry.room.unreadCount}</b>}</span>
-            </button>;
-          })}
+        <div className="module-page-actions">
+          <button
+            type="button"
+            className="secondary-button chat-expand-button"
+            onClick={() => expandChat(!expanded)}
+          >
+            {expanded ? <ArrowLeft size={17} /> : <Maximize2 size={17} />}
+            <span>{expanded ? "Voltar" : "Expandir chat"}</span>
+          </button>
+          <button
+            type="button"
+            className="secondary-button chat-appearance-open"
+            onClick={() => setAppearanceOpen(true)}
+          >
+            <Palette size={17} />
+            Personalizar chat
+          </button>
+          {canCreateGroup && (
+            <button
+              className="primary-button"
+              onClick={() => setCreatingGroup(true)}
+            >
+              <Plus size={17} /> Novo grupo
+            </button>
+          )}
         </div>
-        <div className="internal-chat-privacy"><LockKeyhole size={14} /><span>Conversas visíveis somente para os participantes.</span></div>
-      </aside>
+      </header>
 
-      <main className="internal-chat-conversation" style={chatAppearanceStyle(appearance) as CSSProperties}>
-        {!selectedConversation ? <div className="internal-chat-welcome"><div><MessageCircleMore size={38} /></div><h2>Escolha um colaborador</h2><p>A conversa será criada automaticamente ao enviar a primeira mensagem.</p></div> : <>
-          <header className="internal-chat-conversation-head" data-reminder-entity-id={selectedConversation.user ? `user:${selectedConversation.user.id}` : selectedConversation.key}>
-            <button type="button" className="internal-chat-back internal-chat-head-tool" onClick={() => setSelectedKey("")} aria-label="Voltar às conversas" title="Voltar às conversas"><ArrowLeft size={19}/></button>
-            <span className="internal-chat-group-photo-wrap" role={selectedConversation.user?"button":undefined} tabIndex={selectedConversation.user?0:undefined} onClick={()=>selectedConversation.user&&onOpenProfile(selectedConversation.user.id)} onKeyDown={event=>{if(selectedConversation.user&&(event.key==="Enter"||event.key===" ")){event.preventDefault();onOpenProfile(selectedConversation.user.id)}}}><Avatar name={selectedConversation.name} photo={selectedConversation.photoDataUrl} group={selectedConversation.isGroup} coordinator={selectedConversation.user?.isCoordinator} />
-              {selectedRoom?.isGroup && selectedRoom.canManage && canEdit && <><input ref={groupPhotoInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void updateGroupPhoto(event.target.files?.[0])} /><button type="button" onClick={() => groupPhotoInput.current?.click()} aria-label="Alterar foto do grupo" title="Alterar foto do grupo"><Camera size={11} /></button></>}
-            </span>
-            <div role={selectedConversation.user||selectedRoom?.isGroup?"button":undefined} tabIndex={selectedConversation.user||selectedRoom?.isGroup?0:undefined} onKeyDown={event=>{if(event.target!==event.currentTarget)return;if(event.key==="Enter"||event.key===" "){event.preventDefault();if(selectedConversation.user)onOpenProfile(selectedConversation.user.id);else if(selectedRoom?.isGroup)setParticipantsOpen(value=>!value)}}} className={selectedConversation.user?"internal-chat-profile-link":selectedRoom?.isGroup?"internal-chat-group-profile-link":""} onClick={()=>selectedConversation.user?onOpenProfile(selectedConversation.user.id):selectedRoom?.isGroup&&setParticipantsOpen(value=>!value)}><h2>{userHasBirthdayToday(selectedConversation.user) && <BirthdayGift name={selectedConversation.name} />}{selectedConversation.name}{selectedConversation.user&&<PresenceBadge user={selectedConversation.user} now={presenceNow}/>}{selectedConversation.user?.isCoordinator&&<SupervisorBadge/>}</h2><p>{selectedConversation.isGroup ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · clique para visualizar` : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}</p></div>
-            <span className="internal-chat-secure"><LockKeyhole size={13} /> Privado</span>
-            <button type="button" className={`internal-chat-head-tool ${pinnedConversationKeys.includes(selectedConversation.key)?"active":""}`} onClick={toggleConversationPin} title={pinnedConversationKeys.includes(selectedConversation.key)?"Desafixar conversa":"Fixar conversa"}>{pinnedConversationKeys.includes(selectedConversation.key)?<PinOff size={16}/>:<Pin size={16}/>}</button>
-            {selectedRoom?.isGroup && <button type="button" className={`internal-chat-head-tool ${pinnedOpen ? "active" : ""}`} onClick={() => setPinnedOpen((value) => !value)} title="Mensagens fixadas"><Pin size={16} />{pinnedMessages.length > 0 && <b>{pinnedMessages.length}</b>}</button>}
-            {selectedRoom && <button type="button" className="internal-chat-head-tool" aria-pressed={Boolean(selectedRoom.isMuted)} disabled={busy} aria-label={selectedRoom.isMuted?"Ativar notificações da conversa":"Silenciar conversa"} title={selectedRoom.isMuted?"Ativar notificações":"Silenciar conversa ou grupo"} onClick={()=>void operate({action:"setInternalChatRoomMuted",roomId:selectedRoom.id,muted:!selectedRoom.isMuted},selectedRoom.isMuted?"Notificações ativadas.":"Conversa silenciada.")}>{selectedRoom.isMuted?<BellOff size={18}/>:<Bell size={18}/>}</button>}{selectedRoom && canEdit && <button type="button" className="internal-chat-archive" onClick={() => void archive()} title={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"} aria-label={selectedRoom.isArchived ? "Restaurar conversa" : "Arquivar conversa"}>{selectedRoom.isArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>}
-          </header>
-          {selectedRoom?.isGroup && pinnedOpen && <div className="internal-chat-pinned-panel"><header><span><Pin size={14} /> Mensagens fixadas</span><button type="button" onClick={() => setPinnedOpen(false)}><X size={14} /></button></header>{pinnedMessages.length ? pinnedMessages.map((entry) => <article key={entry.id}><b>{entry.senderName}</b><span>{messagePreview(entry)}</span><time>{roomTime.format(new Date(entry.createdAt))}</time></article>) : <p>Nenhuma mensagem foi fixada neste grupo.</p>}</div>}
-          {selectedRoom?.isGroup && participantsOpen && <div className="internal-chat-participants-panel"><header><span><UsersRound size={15}/> Participantes ({selectedRoom.memberUserIds.length})</span><button type="button" onClick={()=>setParticipantsOpen(false)} aria-label="Fechar participantes"><X size={14}/></button></header><div>{selectedRoom.memberUserIds.map(userId=>{const person=module.users.find(user=>user.id===userId);return <div className="internal-chat-participant-row" key={userId}><button type="button" onClick={()=>person&&onOpenProfile(person.id)}><Avatar name={person?.name||"Colaborador"} photo={person?.photoDataUrl} coordinator={person?.isCoordinator}/><span><strong>{person?.name||"Colaborador removido"}</strong><small>{person?.jobTitle||person?.departmentName||"Participante"}</small></span></button>{selectedRoom.canManage&&canEdit&&userId!==module.currentUserId&&<button type="button" className="participant-remove" aria-label={`Remover ${person?.name||"participante"}`} disabled={busy} onClick={()=>void operate({action:"removeInternalChatMember",roomId:selectedRoom.id,id:userId},"Participante removido.")}><X size={15}/></button>}</div>})}</div><small>Novos participantes visualizam somente mensagens enviadas após a entrada no grupo.</small><footer>{selectedRoom.canManage&&canEdit&&<button type="button" disabled={busy} onClick={()=>setManagingMembers(true)}><Plus size={15}/>Adicionar participantes</button>}<button type="button" disabled={busy} onClick={()=>void operate({action:"leaveInternalChatGroup",roomId:selectedRoom.id},"Você saiu do grupo.").then(result=>{if(result){setParticipantsOpen(false);setSelectedKey("")}})}><LogOut size={15}/>Sair do grupo</button></footer></div>}
-          <div className="internal-chat-history"><div className="internal-chat-messages" ref={messagesRef}>
-            {sendError && <p role="alert">{sendError}</p>}
-            {selectedRoom && (hasEarlierMessages || !historyExhausted[selectedRoom.id]) && <button type="button" className="secondary-button" disabled={historyLoading} onClick={() => void loadOlderMessages()}>{historyLoading ? "Carregando..." : hasEarlierMessages ? "Mostrar mensagens anteriores" : "Carregar mais conversas (30 dias anteriores)"}</button>}{historyError && <p role="alert">{historyError}</p>}
-            {!visibleMessages.length && <div className="internal-chat-first-message"><SmilePlus size={23} /><strong>Diga olá!</strong><span>Envie a primeira mensagem para iniciar esta conversa privada.</span></div>}
-            {displayedMessages.map((item,index) => <Fragment key={item.id}>{(index===0||chatDayKey(displayedMessages[index-1].createdAt)!==chatDayKey(item.createdAt))&&<div className="chat-day-separator"><time dateTime={chatDayKey(item.createdAt)}>{chatDayLabel(item.createdAt,presenceNow)}</time></div>}<MessageBubble onReply={selectReply} message={item} showSeenReceipt={item.id===lastSeenMessageId} now={presenceNow} onReact={reactMessage} own={item.senderUserId === module.currentUserId} birthday={userHasBirthdayToday(module.users.find((user) => user.id === item.senderUserId))} currentUserId={module.currentUserId} group={Boolean(selectedRoom?.isGroup)} canCreate={canCreate} canEdit={canEdit} busy={busy} onEdit={editMessage} onDelete={deleteMessage} onVote={votePoll} onPin={togglePin} onPreview={setMediaPreview} /></Fragment>)}
-            <div aria-hidden="true" />
-          </div></div>
-          {!canCreate && <p className="module-access-note" role="status"><LockKeyhole size={14}/>Seu perfil permite consultar as conversas. O envio de mensagens está bloqueado.</p>}
-          {pastedImages.length > 0 && <section className="internal-chat-pasted-images" aria-label="Imagens para enviar"><header><strong>{pastedImages.length} imagem(ns) para enviar</strong><span>Clique em Enviar mensagem para confirmar.</span></header><div>{pastedImages.map(image => <PastedImagePreview key={image.id} image={image} disabled={busy} onRemove={() => setImageDrafts(current => ({ ...current, [effectiveSelectedKey]: (current[effectiveSelectedKey] ?? []).filter(entry => entry.id !== image.id) }))} />)}</div></section>}
-          {replyToMessageId && replyMessage && <section className="internal-chat-reply-draft" aria-label="Mensagem selecionada para responder"><Reply size={16}/><div><strong>Respondendo a {replyMessage.senderName}</strong><span>{chatReplyPreview(replyMessage)}</span></div><button type="button" aria-label="Cancelar resposta" onClick={() => clearReply(effectiveSelectedKey, replyToMessageId)}><X size={16}/></button></section>}
-          {(voice.state!=="idle"||voice.error)&&<div className="internal-chat-voice-panel" role="status">{voice.error&&<p role="alert">{voice.error}</p>}{voice.state==="requesting"&&<span>Aguardando acesso ao microfone…</span>}{voice.state==="recording"&&<><span className="voice-recording"><Mic size={16}/>Gravando áudio…</span><button type="button" onClick={voice.stop}><Square size={15}/>Concluir gravação</button></>}{voice.state==="processing"&&<span>Preparando áudio…</span>}{voice.draft&&<><audio controls preload="metadata" src={voice.draft.url}/><button type="button" disabled={busy} onClick={()=>{const draft=voice.draft;if(draft)void upload([draft.file]).then(sent=>{if(sent)voice.cancel()})}}><Send size={16}/>Enviar áudio</button></>}<button type="button" disabled={busy} onClick={voice.cancel}><X size={15}/>Cancelar áudio</button></div>}
-          {selectedRoom&&<ChatTypingIndicator roomId={selectedRoom.id} self={module.currentUserId} members={selectedRoom.memberUserIds} users={module.users}/>}
-          <form className="internal-chat-composer" onSubmit={sendMessage}>
-            <input ref={fileInput} hidden type="file" multiple onChange={(event) => void upload(event.target.files)} />
-            <button type="button" className="internal-chat-tool" onClick={() => fileInput.current?.click()} disabled={busy || !canCreate} aria-label="Anexar arquivo"><Paperclip size={19} /></button>
-            <div className="internal-chat-sticker-wrap"><button type="button" className="internal-chat-tool" onClick={() => setStickersOpen((value) => !value)} disabled={busy || !canCreate} aria-label="Enviar figurinha" title="Emojis e figurinhas"><SmilePlus size={19} /></button>{stickersOpen && <div className="internal-chat-stickers">{stickers.map((sticker) => <button type="button" key={sticker} aria-label={`Enviar emoji ${sticker}`} disabled={busy || !canCreate} onClick={() => void sendSticker(sticker)}>{sticker}</button>)}</div>}</div>
-            <input ref={gifInput} hidden type="file" accept="image/gif" onChange={event=>void upload(event.target.files)}/>
-            <button type="button" className="internal-chat-tool gif" disabled={busy||!canCreate} onClick={()=>gifInput.current?.click()} aria-label="Enviar GIF" title="Enviar GIF">GIF</button>
-            <button type="button" className="internal-chat-tool voice" disabled={busy||!canCreate||voice.state!=="idle"} onClick={()=>void voice.start()} aria-label="Gravar áudio" title="Gravar áudio"><Mic size={19}/></button>
-            {selectedRoom?.isGroup && <button type="button" className="internal-chat-tool poll" onClick={() => setPollOpen(true)} disabled={busy || !canCreate} aria-label="Criar enquete" title="Criar enquete"><BarChart3 size={19} /></button>}
-            <InternalChatDraftComposer drafts={drafts} conversationKey={effectiveSelectedKey} inputRef={composerInput} busy={busy} canCreate={canCreate} recording={voice.state === "recording" || voice.state === "requesting"} hasAttachments={pastedImages.length > 0} onPaste={pasteImages} onTyping={publishTyping} />
-          </form>
-        </>}
-      </main>
-    </section>
-    {appearanceOpen && <ChatAppearanceModal appearance={appearance} userId={module.currentUserId} onSave={setAppearance} onClose={() => setAppearanceOpen(false)} />}
-    {managingMembers&&selectedRoom?.isGroup&&selectedRoom.canManage&&canEdit&&<ManageGroupMembersModal module={module} room={selectedRoom} busy={busy} onClose={()=>setManagingMembers(false)} onAdd={async ids=>{if(await operate({action:"addInternalChatMembers",roomId:selectedRoom.id,memberUserIds:ids},"Participantes adicionados."))setManagingMembers(false)}}/>}
-    {creatingGroup && canCreateGroup && <CreateGroupModal module={module} busy={busy} onClose={() => setCreatingGroup(false)} onCreate={async (payload) => { const result = await operate({ action: "createInternalChatRoom", isGroup: true, ...payload }, "Grupo criado com sucesso."); if (result) { setCreatingGroup(false); if (result.id){setGroupsView(true);setArchivedView(false);setSelectedKey(result.id);} } }} />}
-    {pollOpen && selectedRoom?.isGroup && <CreatePollModal busy={busy} onClose={() => setPollOpen(false)} onCreate={createPoll} />}
-    {mediaPreview && <div className="internal-chat-media-backdrop" onMouseDown={(event)=>event.currentTarget===event.target&&setMediaPreview(null)}><section className="internal-chat-media-preview" role="dialog" aria-modal="true"><header><strong>{mediaPreview.name}</strong><button type="button" onClick={()=>setMediaPreview(null)} aria-label="Fechar"><X size={18}/></button></header>{mediaPreview.video?<video controls autoPlay><source src={mediaPreview.url}/></video>:<img src={mediaPreview.url} alt={mediaPreview.name}/>}<a href={mediaPreview.url} target="_blank" rel="noreferrer">Abrir em nova guia</a></section></div>}
-  </div>;
+      <section
+        className={`internal-chat-shell ${selectedKey ? "show-conversation" : ""}`}
+      >
+        <aside className="internal-chat-sidebar">
+          <div className="internal-chat-search">
+            <Search size={16} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar colaboradores ou grupos..."
+            />
+          </div>
+          <div className="internal-chat-view-tabs">
+            <button
+              className={!archivedView && !groupsView ? "active" : ""}
+              onClick={() => {
+                setArchivedView(false);
+                setGroupsView(false);
+                setSelectedKey("");
+              }}
+            >
+              Conversas
+              <UnreadBadge count={unreadTotals.conversations} />
+            </button>
+            <button
+              className={!archivedView && groupsView ? "active" : ""}
+              onClick={() => {
+                setArchivedView(false);
+                setGroupsView(true);
+                setSelectedKey("");
+              }}
+            >
+              Grupos
+              <UnreadBadge count={unreadTotals.groups} />
+            </button>
+            <button
+              className={archivedView ? "active" : ""}
+              onClick={() => {
+                setArchivedView(true);
+                setGroupsView(false);
+                setSelectedKey("");
+              }}
+            >
+              Arquivadas
+              <UnreadBadge count={unreadTotals.archived} />
+            </button>
+          </div>
+          <span className="sr-only" role="status" aria-atomic="true">
+            {unreadTotals.conversations} mensagens não lidas em conversas,{" "}
+            {unreadTotals.groups} em grupos e {unreadTotals.archived} em
+            arquivadas.
+          </span>
+          <div className="internal-chat-room-list">
+            {filteredConversations.length === 0 && (
+              <div className="internal-chat-empty-list">
+                <Archive size={24} />
+                <span>
+                  {archivedView
+                    ? "Nenhuma conversa arquivada."
+                    : "Nenhum colaborador encontrado."}
+                </span>
+              </div>
+            )}
+            {filteredConversations.map((entry) => {
+              const last = entry.room?.messages.at(-1);
+              return (
+                <button
+                  className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`}
+                  onClick={() => setSelectedKey(entry.key)}
+                  key={entry.key}
+                >
+                  <Avatar
+                    name={entry.name}
+                    photo={entry.photoDataUrl}
+                    group={entry.isGroup}
+                  />
+                  <span className="internal-chat-room-copy">
+                    <strong>
+                      {userHasBirthdayToday(entry.user) && (
+                        <BirthdayGift name={entry.name} />
+                      )}
+                      {pinnedConversationKeys.includes(entry.key) && (
+                        <Pin size={12} />
+                      )}
+                      <span>{entry.name}</span>
+                      {entry.user && (
+                        <PresenceBadge user={entry.user} now={presenceNow} />
+                      )}
+                    </strong>
+                    <small>
+                      {last
+                        ? messagePreview(last)
+                        : entry.isGroup
+                          ? "Grupo privado"
+                          : entry.user?.jobTitle ||
+                            entry.user?.departmentName ||
+                            "Inicie uma conversa"}
+                    </small>
+                  </span>
+                  <span className="internal-chat-room-meta">
+                    {entry.room && (
+                      <time>
+                        {chatListDateLabel(
+                          entry.room.lastMessageAt,
+                          presenceNow,
+                        )}
+                      </time>
+                    )}
+                    {!!entry.room?.unreadCount && (
+                      <b>{entry.room.unreadCount}</b>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="internal-chat-privacy">
+            <LockKeyhole size={14} />
+            <span>Conversas visíveis somente para os participantes.</span>
+          </div>
+        </aside>
+
+        <main
+          className="internal-chat-conversation"
+          style={chatAppearanceStyle(appearance) as CSSProperties}
+        >
+          {!selectedConversation ? (
+            <div className="internal-chat-welcome">
+              <div>
+                <MessageCircleMore size={38} />
+              </div>
+              <h2>Escolha um colaborador</h2>
+              <p>
+                A conversa será criada automaticamente ao enviar a primeira
+                mensagem.
+              </p>
+            </div>
+          ) : (
+            <>
+              <header
+                className="internal-chat-conversation-head"
+                data-reminder-entity-id={
+                  selectedConversation.user
+                    ? `user:${selectedConversation.user.id}`
+                    : selectedConversation.key
+                }
+              >
+                <button
+                  type="button"
+                  className="internal-chat-back internal-chat-head-tool"
+                  onClick={() => setSelectedKey("")}
+                  aria-label="Voltar às conversas"
+                  title="Voltar às conversas"
+                >
+                  <ArrowLeft size={19} />
+                </button>
+                <span
+                  className="internal-chat-group-photo-wrap"
+                  role={selectedConversation.user ? "button" : undefined}
+                  tabIndex={selectedConversation.user ? 0 : undefined}
+                  onClick={() =>
+                    selectedConversation.user &&
+                    onOpenProfile(selectedConversation.user.id)
+                  }
+                  onKeyDown={(event) => {
+                    if (
+                      selectedConversation.user &&
+                      (event.key === "Enter" || event.key === " ")
+                    ) {
+                      event.preventDefault();
+                      onOpenProfile(selectedConversation.user.id);
+                    }
+                  }}
+                >
+                  <Avatar
+                    name={selectedConversation.name}
+                    photo={selectedConversation.photoDataUrl}
+                    group={selectedConversation.isGroup}
+                    coordinator={selectedConversation.user?.isCoordinator}
+                  />
+                  {selectedRoom?.isGroup &&
+                    selectedRoom.canManage &&
+                    canEdit && (
+                      <>
+                        <input
+                          ref={groupPhotoInput}
+                          hidden
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          onChange={(event) =>
+                            void updateGroupPhoto(event.target.files?.[0])
+                          }
+                        />
+                        <button
+                          type="button"
+                          onClick={() => groupPhotoInput.current?.click()}
+                          aria-label="Alterar foto do grupo"
+                          title="Alterar foto do grupo"
+                        >
+                          <Camera size={11} />
+                        </button>
+                      </>
+                    )}
+                </span>
+                <div
+                  role={
+                    selectedConversation.user || selectedRoom?.isGroup
+                      ? "button"
+                      : undefined
+                  }
+                  tabIndex={
+                    selectedConversation.user || selectedRoom?.isGroup
+                      ? 0
+                      : undefined
+                  }
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      if (selectedConversation.user)
+                        onOpenProfile(selectedConversation.user.id);
+                      else if (selectedRoom?.isGroup)
+                        setParticipantsOpen((value) => !value);
+                    }
+                  }}
+                  className={
+                    selectedConversation.user
+                      ? "internal-chat-profile-link"
+                      : selectedRoom?.isGroup
+                        ? "internal-chat-group-profile-link"
+                        : ""
+                  }
+                  onClick={() =>
+                    selectedConversation.user
+                      ? onOpenProfile(selectedConversation.user.id)
+                      : selectedRoom?.isGroup &&
+                        setParticipantsOpen((value) => !value)
+                  }
+                >
+                  <h2>
+                    {userHasBirthdayToday(selectedConversation.user) && (
+                      <BirthdayGift name={selectedConversation.name} />
+                    )}
+                    {selectedConversation.name}
+                    {selectedConversation.user && (
+                      <PresenceBadge
+                        user={selectedConversation.user}
+                        now={presenceNow}
+                      />
+                    )}
+                    {selectedConversation.user?.isCoordinator && (
+                      <SupervisorBadge />
+                    )}
+                  </h2>
+                  <p>
+                    {selectedConversation.isGroup
+                      ? `${selectedRoom?.memberUserIds.length ?? 0} participantes · clique para visualizar`
+                      : `${selectedConversation.user?.jobTitle || "Conversa privada"} · ver perfil`}
+                  </p>
+                </div>
+                <span className="internal-chat-secure">
+                  <LockKeyhole size={13} /> Privado
+                </span>
+                <button
+                  type="button"
+                  className={`internal-chat-head-tool ${pinnedConversationKeys.includes(selectedConversation.key) ? "active" : ""}`}
+                  onClick={toggleConversationPin}
+                  title={
+                    pinnedConversationKeys.includes(selectedConversation.key)
+                      ? "Desafixar conversa"
+                      : "Fixar conversa"
+                  }
+                >
+                  {pinnedConversationKeys.includes(selectedConversation.key) ? (
+                    <PinOff size={16} />
+                  ) : (
+                    <Pin size={16} />
+                  )}
+                </button>
+                {selectedRoom?.isGroup && (
+                  <button
+                    type="button"
+                    className={`internal-chat-head-tool ${pinnedOpen ? "active" : ""}`}
+                    onClick={() => setPinnedOpen((value) => !value)}
+                    title="Mensagens fixadas"
+                  >
+                    <Pin size={16} />
+                    {pinnedMessages.length > 0 && (
+                      <b>{pinnedMessages.length}</b>
+                    )}
+                  </button>
+                )}
+                {selectedRoom && (
+                  <button
+                    type="button"
+                    className="internal-chat-head-tool"
+                    aria-pressed={Boolean(selectedRoom.isMuted)}
+                    disabled={busy}
+                    aria-label={
+                      selectedRoom.isMuted
+                        ? "Ativar notificações da conversa"
+                        : "Silenciar conversa"
+                    }
+                    title={
+                      selectedRoom.isMuted
+                        ? "Ativar notificações"
+                        : "Silenciar conversa ou grupo"
+                    }
+                    onClick={() =>
+                      void operate(
+                        {
+                          action: "setInternalChatRoomMuted",
+                          roomId: selectedRoom.id,
+                          muted: !selectedRoom.isMuted,
+                        },
+                        selectedRoom.isMuted
+                          ? "Notificações ativadas."
+                          : "Conversa silenciada.",
+                      )
+                    }
+                  >
+                    {selectedRoom.isMuted ? (
+                      <BellOff size={18} />
+                    ) : (
+                      <Bell size={18} />
+                    )}
+                  </button>
+                )}
+                {selectedRoom && canEdit && (
+                  <button
+                    type="button"
+                    className="internal-chat-archive"
+                    onClick={() => void archive()}
+                    title={
+                      selectedRoom.isArchived
+                        ? "Restaurar conversa"
+                        : "Arquivar conversa"
+                    }
+                    aria-label={
+                      selectedRoom.isArchived
+                        ? "Restaurar conversa"
+                        : "Arquivar conversa"
+                    }
+                  >
+                    {selectedRoom.isArchived ? (
+                      <ArchiveRestore size={18} />
+                    ) : (
+                      <Archive size={18} />
+                    )}
+                  </button>
+                )}
+              </header>
+              {selectedRoom?.isGroup && pinnedOpen && (
+                <div className="internal-chat-pinned-panel">
+                  <header>
+                    <span>
+                      <Pin size={14} /> Mensagens fixadas
+                    </span>
+                    <button type="button" onClick={() => setPinnedOpen(false)}>
+                      <X size={14} />
+                    </button>
+                  </header>
+                  {pinnedMessages.length ? (
+                    pinnedMessages.map((entry) => (
+                      <article key={entry.id}>
+                        <b>{entry.senderName}</b>
+                        <span>{messagePreview(entry)}</span>
+                        <time>
+                          {roomTime.format(new Date(entry.createdAt))}
+                        </time>
+                      </article>
+                    ))
+                  ) : (
+                    <p>Nenhuma mensagem foi fixada neste grupo.</p>
+                  )}
+                </div>
+              )}
+              {selectedRoom?.isGroup && participantsOpen && (
+                <div className="internal-chat-participants-panel">
+                  <header>
+                    <span>
+                      <UsersRound size={15} /> Participantes (
+                      {selectedRoom.memberUserIds.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setParticipantsOpen(false)}
+                      aria-label="Fechar participantes"
+                    >
+                      <X size={14} />
+                    </button>
+                  </header>
+                  <div>
+                    {selectedRoom.memberUserIds.map((userId) => {
+                      const person = module.users.find(
+                        (user) => user.id === userId,
+                      );
+                      return (
+                        <div
+                          className="internal-chat-participant-row"
+                          key={userId}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => person && onOpenProfile(person.id)}
+                          >
+                            <Avatar
+                              name={person?.name || "Colaborador"}
+                              photo={person?.photoDataUrl}
+                              coordinator={person?.isCoordinator}
+                            />
+                            <span>
+                              <strong>
+                                {person?.name || "Colaborador removido"}
+                              </strong>
+                              <small>
+                                {person?.jobTitle ||
+                                  person?.departmentName ||
+                                  "Participante"}
+                              </small>
+                            </span>
+                          </button>
+                          {selectedRoom.canManage &&
+                            canEdit &&
+                            userId !== module.currentUserId && (
+                              <button
+                                type="button"
+                                className="participant-remove"
+                                aria-label={`Remover ${person?.name || "participante"}`}
+                                disabled={busy}
+                                onClick={() =>
+                                  void operate(
+                                    {
+                                      action: "removeInternalChatMember",
+                                      roomId: selectedRoom.id,
+                                      id: userId,
+                                    },
+                                    "Participante removido.",
+                                  )
+                                }
+                              >
+                                <X size={15} />
+                              </button>
+                            )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <small>
+                    Novos participantes visualizam somente mensagens enviadas
+                    após a entrada no grupo.
+                  </small>
+                  <footer>
+                    {selectedRoom.canManage && canEdit && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setManagingMembers(true)}
+                      >
+                        <Plus size={15} />
+                        Adicionar participantes
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void operate(
+                          {
+                            action: "leaveInternalChatGroup",
+                            roomId: selectedRoom.id,
+                          },
+                          "Você saiu do grupo.",
+                        ).then((result) => {
+                          if (result) {
+                            setParticipantsOpen(false);
+                            setSelectedKey("");
+                          }
+                        })
+                      }
+                    >
+                      <LogOut size={15} />
+                      Sair do grupo
+                    </button>
+                  </footer>
+                </div>
+              )}
+              <div className="internal-chat-history">
+                <div className="internal-chat-messages" ref={messagesRef}>
+                  {sendError && <p role="alert">{sendError}</p>}
+                  {selectedRoom &&
+                    (hasEarlierMessages ||
+                      !historyExhausted[selectedRoom.id]) && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={historyLoading}
+                        onClick={() => void loadOlderMessages()}
+                      >
+                        {historyLoading
+                          ? "Carregando..."
+                          : hasEarlierMessages
+                            ? "Mostrar mensagens anteriores"
+                            : "Carregar mais conversas (30 dias anteriores)"}
+                      </button>
+                    )}
+                  {historyError && <p role="alert">{historyError}</p>}
+                  {!visibleMessages.length && (
+                    <div className="internal-chat-first-message">
+                      <SmilePlus size={23} />
+                      <strong>Diga olá!</strong>
+                      <span>
+                        Envie a primeira mensagem para iniciar esta conversa
+                        privada.
+                      </span>
+                    </div>
+                  )}
+                  {displayedMessages.map((item, index) => (
+                    <Fragment key={item.id}>
+                      {(index === 0 ||
+                        chatDayKey(displayedMessages[index - 1].createdAt) !==
+                          chatDayKey(item.createdAt)) && (
+                        <div className="chat-day-separator">
+                          <time dateTime={chatDayKey(item.createdAt)}>
+                            {chatDayLabel(item.createdAt, presenceNow)}
+                          </time>
+                        </div>
+                      )}
+                      <MessageBubble
+                        onReply={selectReply}
+                        message={item}
+                        showSeenReceipt={item.id === lastSeenMessageId}
+                        now={presenceNow}
+                        onReact={reactMessage}
+                        own={item.senderUserId === module.currentUserId}
+                        birthday={userHasBirthdayToday(
+                          module.users.find(
+                            (user) => user.id === item.senderUserId,
+                          ),
+                        )}
+                        currentUserId={module.currentUserId}
+                        group={Boolean(selectedRoom?.isGroup)}
+                        canCreate={canCreate}
+                        canEdit={canEdit}
+                        busy={busy}
+                        onEdit={editMessage}
+                        onDelete={deleteMessage}
+                        onVote={votePoll}
+                        onPin={togglePin}
+                        onPreview={setMediaPreview}
+                      />
+                    </Fragment>
+                  ))}
+                  <div aria-hidden="true" />
+                </div>
+              </div>
+              {!canCreate && (
+                <p className="module-access-note" role="status">
+                  <LockKeyhole size={14} />
+                  Seu perfil permite consultar as conversas. O envio de
+                  mensagens está bloqueado.
+                </p>
+              )}
+              {pastedImages.length > 0 && (
+                <section
+                  className="internal-chat-pasted-images"
+                  aria-label="Imagens para enviar"
+                >
+                  <header>
+                    <strong>
+                      {pastedImages.length} imagem(ns) para enviar
+                    </strong>
+                    <span>Clique em Enviar mensagem para confirmar.</span>
+                  </header>
+                  <div>
+                    {pastedImages.map((image) => (
+                      <PastedImagePreview
+                        key={image.id}
+                        image={image}
+                        disabled={busy}
+                        onRemove={() =>
+                          setImageDrafts((current) => ({
+                            ...current,
+                            [effectiveSelectedKey]: (
+                              current[effectiveSelectedKey] ?? []
+                            ).filter((entry) => entry.id !== image.id),
+                          }))
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+              {replyToMessageId && replyMessage && (
+                <section
+                  className="internal-chat-reply-draft"
+                  aria-label="Mensagem selecionada para responder"
+                >
+                  <Reply size={16} />
+                  <div>
+                    <strong>Respondendo a {replyMessage.senderName}</strong>
+                    <span>{chatReplyPreview(replyMessage)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Cancelar resposta"
+                    onClick={() =>
+                      clearReply(effectiveSelectedKey, replyToMessageId)
+                    }
+                  >
+                    <X size={16} />
+                  </button>
+                </section>
+              )}
+              {(voice.state !== "idle" || voice.error) && (
+                <div className="internal-chat-voice-panel" role="status">
+                  {voice.error && <p role="alert">{voice.error}</p>}
+                  {voice.state === "requesting" && (
+                    <span>Aguardando acesso ao microfone…</span>
+                  )}
+                  {voice.state === "recording" && (
+                    <>
+                      <span className="voice-recording">
+                        <Mic size={16} />
+                        Gravando áudio…
+                      </span>
+                      <button type="button" onClick={voice.stop}>
+                        <Square size={15} />
+                        Concluir gravação
+                      </button>
+                    </>
+                  )}
+                  {voice.state === "processing" && (
+                    <span>Preparando áudio…</span>
+                  )}
+                  {voice.draft && (
+                    <>
+                      <audio
+                        controls
+                        preload="metadata"
+                        src={voice.draft.url}
+                      />
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          const draft = voice.draft;
+                          if (draft)
+                            void upload([draft.file]).then((sent) => {
+                              if (sent) voice.cancel();
+                            });
+                        }}
+                      >
+                        <Send size={16} />
+                        Enviar áudio
+                      </button>
+                    </>
+                  )}
+                  <button type="button" disabled={busy} onClick={voice.cancel}>
+                    <X size={15} />
+                    Cancelar áudio
+                  </button>
+                </div>
+              )}
+              {selectedRoom && (
+                <ChatTypingIndicator
+                  roomId={selectedRoom.id}
+                  self={module.currentUserId}
+                  members={selectedRoom.memberUserIds}
+                  users={module.users}
+                />
+              )}
+              <form className="internal-chat-composer" onSubmit={sendMessage}>
+                <input
+                  ref={fileInput}
+                  hidden
+                  type="file"
+                  multiple
+                  onChange={(event) => void upload(event.target.files)}
+                />
+                <button
+                  type="button"
+                  className="internal-chat-tool"
+                  onClick={() => fileInput.current?.click()}
+                  disabled={busy || !canCreate}
+                  aria-label="Anexar arquivo"
+                >
+                  <Paperclip size={19} />
+                </button>
+                <div className="internal-chat-sticker-wrap">
+                  <button
+                    type="button"
+                    className="internal-chat-tool"
+                    onClick={() => setStickersOpen((value) => !value)}
+                    disabled={busy || !canCreate}
+                    aria-label="Enviar figurinha"
+                    title="Emojis e figurinhas"
+                  >
+                    <SmilePlus size={19} />
+                  </button>
+                  {stickersOpen && (
+                    <div className="internal-chat-stickers">
+                      {stickers.map((sticker) => (
+                        <button
+                          type="button"
+                          key={sticker}
+                          aria-label={`Enviar emoji ${sticker}`}
+                          disabled={busy || !canCreate}
+                          onClick={() => void sendSticker(sticker)}
+                        >
+                          {sticker}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={gifInput}
+                  hidden
+                  type="file"
+                  accept="image/gif"
+                  onChange={(event) => void upload(event.target.files)}
+                />
+                <button
+                  type="button"
+                  className="internal-chat-tool gif"
+                  disabled={busy || !canCreate}
+                  onClick={() => gifInput.current?.click()}
+                  aria-label="Enviar GIF"
+                  title="Enviar GIF"
+                >
+                  GIF
+                </button>
+                <button
+                  type="button"
+                  className="internal-chat-tool voice"
+                  disabled={busy || !canCreate || voice.state !== "idle"}
+                  onClick={() => void voice.start()}
+                  aria-label="Gravar áudio"
+                  title="Gravar áudio"
+                >
+                  <Mic size={19} />
+                </button>
+                {selectedRoom?.isGroup && (
+                  <button
+                    type="button"
+                    className="internal-chat-tool poll"
+                    onClick={() => setPollOpen(true)}
+                    disabled={busy || !canCreate}
+                    aria-label="Criar enquete"
+                    title="Criar enquete"
+                  >
+                    <BarChart3 size={19} />
+                  </button>
+                )}
+                <InternalChatDraftComposer
+                  drafts={drafts}
+                  conversationKey={effectiveSelectedKey}
+                  inputRef={composerInput}
+                  busy={busy}
+                  canCreate={canCreate}
+                  recording={
+                    voice.state === "recording" || voice.state === "requesting"
+                  }
+                  hasAttachments={pastedImages.length > 0}
+                  onPaste={pasteImages}
+                  onTyping={publishTyping}
+                />
+              </form>
+            </>
+          )}
+        </main>
+      </section>
+      {appearanceOpen && (
+        <ChatAppearanceModal
+          appearance={appearance}
+          userId={module.currentUserId}
+          onSave={setAppearance}
+          onClose={() => setAppearanceOpen(false)}
+        />
+      )}
+      {managingMembers &&
+        selectedRoom?.isGroup &&
+        selectedRoom.canManage &&
+        canEdit && (
+          <ManageGroupMembersModal
+            module={module}
+            room={selectedRoom}
+            busy={busy}
+            onClose={() => setManagingMembers(false)}
+            onAdd={async (ids) => {
+              if (
+                await operate(
+                  {
+                    action: "addInternalChatMembers",
+                    roomId: selectedRoom.id,
+                    memberUserIds: ids,
+                  },
+                  "Participantes adicionados.",
+                )
+              )
+                setManagingMembers(false);
+            }}
+          />
+        )}
+      {creatingGroup && canCreateGroup && (
+        <CreateGroupModal
+          module={module}
+          busy={busy}
+          onClose={() => setCreatingGroup(false)}
+          onCreate={async (payload) => {
+            const result = await operate(
+              { action: "createInternalChatRoom", isGroup: true, ...payload },
+              "Grupo criado com sucesso.",
+            );
+            if (result) {
+              setCreatingGroup(false);
+              if (result.id) {
+                setGroupsView(true);
+                setArchivedView(false);
+                setSelectedKey(result.id);
+              }
+            }
+          }}
+        />
+      )}
+      {pollOpen && selectedRoom?.isGroup && (
+        <CreatePollModal
+          busy={busy}
+          onClose={() => setPollOpen(false)}
+          onCreate={createPoll}
+        />
+      )}
+      {mediaPreview && (
+        <div
+          className="internal-chat-media-backdrop"
+          onMouseDown={(event) =>
+            event.currentTarget === event.target && setMediaPreview(null)
+          }
+        >
+          <section
+            className="internal-chat-media-preview"
+            role="dialog"
+            aria-modal="true"
+          >
+            <header>
+              <strong>{mediaPreview.name}</strong>
+              <button
+                type="button"
+                onClick={() => setMediaPreview(null)}
+                aria-label="Fechar"
+              >
+                <X size={18} />
+              </button>
+            </header>
+            {mediaPreview.video ? (
+              <video controls autoPlay>
+                <source src={mediaPreview.url} />
+              </video>
+            ) : (
+              <img src={mediaPreview.url} alt={mediaPreview.name} />
+            )}
+            <a href={mediaPreview.url} target="_blank" rel="noreferrer">
+              Abrir em nova guia
+            </a>
+          </section>
+        </div>
+      )}
+    </div>
+  );
 }
 
-function PastedImagePreview({ image, disabled, onRemove }: { image: ImageDraft; disabled: boolean; onRemove: () => void }) {
+function PastedImagePreview({
+  image,
+  disabled,
+  onRemove,
+}: {
+  image: ImageDraft;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
   const preview = useRef<HTMLImageElement>(null);
   useEffect(() => {
     const url = URL.createObjectURL(image.file);
     if (preview.current) preview.current.src = url;
     return () => URL.revokeObjectURL(url);
   }, [image.file]);
-  return <article><img ref={preview} alt={image.file.name} /><span>{image.file.name}</span><button type="button" disabled={disabled} onClick={onRemove} aria-label={`Remover imagem ${image.file.name}`}><X size={14} /></button></article>;
+  return (
+    <article>
+      <img ref={preview} alt={image.file.name} />
+      <span>{image.file.name}</span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onRemove}
+        aria-label={`Remover imagem ${image.file.name}`}
+      >
+        <X size={14} />
+      </button>
+    </article>
+  );
 }
 
-function buildConversations(module: InternalChatModuleData, archived: boolean): Conversation[] {
-  const others = module.users.filter((user) => user.id !== module.currentUserId);
+function buildConversations(
+  module: InternalChatModuleData,
+  archived: boolean,
+): Conversation[] {
+  const others = module.users.filter(
+    (user) => user.id !== module.currentUserId,
+  );
   const directRooms = module.rooms.filter((room) => !room.isGroup);
-  const groups: Conversation[] = module.rooms.filter((room) => room.isGroup && room.isArchived === archived).map((room) => ({ key: room.id, name: room.name, photoDataUrl: room.photoDataUrl, isGroup: true, room }));
+  const groups: Conversation[] = module.rooms
+    .filter((room) => room.isGroup && room.isArchived === archived)
+    .map((room) => ({
+      key: room.id,
+      name: room.name,
+      photoDataUrl: room.photoDataUrl,
+      isGroup: true,
+      room,
+    }));
   const directs: Conversation[] = others.flatMap((user) => {
-    const room = directRooms.find((item) => item.memberUserIds.includes(user.id));
+    const room = directRooms.find((item) =>
+      item.memberUserIds.includes(user.id),
+    );
     if (archived && !room?.isArchived) return [];
     if (!archived && room?.isArchived) return [];
-    return [{ key: room?.id ?? `user:${user.id}`, name: user.name, photoDataUrl: user.photoDataUrl, isGroup: false, room, user }];
+    return [
+      {
+        key: room?.id ?? `user:${user.id}`,
+        name: user.name,
+        photoDataUrl: user.photoDataUrl,
+        isGroup: false,
+        room,
+        user,
+      },
+    ];
   });
   return [...groups, ...directs].sort((a, b) => {
-    if (a.room && b.room) return new Date(b.room.lastMessageAt).getTime() - new Date(a.room.lastMessageAt).getTime();
+    if (a.room && b.room)
+      return (
+        new Date(b.room.lastMessageAt).getTime() -
+        new Date(a.room.lastMessageAt).getTime()
+      );
     if (a.room) return -1;
     if (b.room) return 1;
     return a.name.localeCompare(b.name, "pt-BR");
   });
 }
 
-function PresenceBadge({user,now}:{user:InternalChatUser;now:number}){const online=userIsOnline(user,now);return <small className={`chat-presence ${online?"online":"offline"}`} title={online?"Conectado ao sistema":user.lastSeenAt?`Último acesso: ${new Date(user.lastSeenAt).toLocaleString("pt-BR")}`:"Desconectado do sistema"}><i aria-hidden="true"/>{online?"Online":"Offline"}</small>;}
-function SupervisorBadge(){return <small className="chat-supervisor-badge"><BadgeCheck size={11}/>Coordenador</small>;}
+function PresenceBadge({ user, now }: { user: InternalChatUser; now: number }) {
+  const online = userIsOnline(user, now);
+  return (
+    <small
+      className={`chat-presence ${online ? "online" : "offline"}`}
+      title={
+        online
+          ? "Conectado ao sistema"
+          : user.lastSeenAt
+            ? `Último acesso: ${new Date(user.lastSeenAt).toLocaleString("pt-BR")}`
+            : "Desconectado do sistema"
+      }
+    >
+      <i aria-hidden="true" />
+      {online ? "Online" : "Offline"}
+    </small>
+  );
+}
+function SupervisorBadge() {
+  return (
+    <small className="chat-supervisor-badge">
+      <BadgeCheck size={11} />
+      Coordenador
+    </small>
+  );
+}
 
 function BirthdayGift({ name }: { name: string }) {
-  return <span className="internal-chat-birthday-gift" title={`Hoje é aniversário de ${name}`} aria-label={`Aniversário de ${name}`}><Gift size={12} aria-hidden="true" /></span>;
+  return (
+    <span
+      className="internal-chat-birthday-gift"
+      title={`Hoje é aniversário de ${name}`}
+      aria-label={`Aniversário de ${name}`}
+    >
+      <Gift size={12} aria-hidden="true" />
+    </span>
+  );
 }
 
-const MessageBubble = memo(function MessageBubble({ message, onReply, showSeenReceipt, now, onReact, own, birthday, currentUserId, group, canCreate, canEdit, busy, onEdit, onDelete, onVote, onPin, onPreview }: { message: InternalChatMessage; onReply: (message: InternalChatMessage) => void; showSeenReceipt: boolean; now:number; onReact:(message:InternalChatMessage,emoji:string,reacted:boolean)=>Promise<boolean>; own: boolean; birthday: boolean; currentUserId: string; group: boolean; canCreate: boolean; canEdit: boolean; busy: boolean; onEdit: (message: InternalChatMessage, body: string) => Promise<boolean>; onDelete: (message: InternalChatMessage) => Promise<void>; onVote: (messageId: string, optionIndex: number) => void; onPin: (message: InternalChatMessage) => void; onPreview: (preview: { url: string; name: string; video: boolean }) => void }) {
+const MessageBubble = memo(function MessageBubble({
+  message,
+  onReply,
+  showSeenReceipt,
+  now,
+  onReact,
+  own,
+  birthday,
+  currentUserId,
+  group,
+  canCreate,
+  canEdit,
+  busy,
+  onEdit,
+  onDelete,
+  onVote,
+  onPin,
+  onPreview,
+}: {
+  message: InternalChatMessage;
+  onReply: (message: InternalChatMessage) => void;
+  showSeenReceipt: boolean;
+  now: number;
+  onReact: (
+    message: InternalChatMessage,
+    emoji: string,
+    reacted: boolean,
+  ) => Promise<boolean>;
+  own: boolean;
+  birthday: boolean;
+  currentUserId: string;
+  group: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  busy: boolean;
+  onEdit: (message: InternalChatMessage, body: string) => Promise<boolean>;
+  onDelete: (message: InternalChatMessage) => Promise<void>;
+  onVote: (messageId: string, optionIndex: number) => void;
+  onPin: (message: InternalChatMessage) => void;
+  onPreview: (preview: { url: string; name: string; video: boolean }) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(message.body);
-  const [reactionsOpen,setReactionsOpen]=useState(false);
-  const reactionControl=useRef<HTMLSpanElement>(null);
-  useEffect(()=>{if(!reactionsOpen)return;const close=(event:PointerEvent)=>{if(!reactionControl.current?.contains(event.target as Node))setReactionsOpen(false)};document.addEventListener("pointerdown",close);return()=>document.removeEventListener("pointerdown",close)},[reactionsOpen]);
-  const seenLabel=chatSeenLabel(message.seenAt,now,message.seenByCount,message.recipientCount);
-  const react=async(emoji:string)=>{if(own||!canCreate||busy||message.deletedAt)return;const reacted=message.reactions?.some(entry=>entry.emoji===emoji&&entry.userIds.includes(currentUserId))??false;if(await onReact(message,emoji,!reacted))setReactionsOpen(false)};
+  const [reactionsOpen, setReactionsOpen] = useState(false);
+  const reactionControl = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!reactionsOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!reactionControl.current?.contains(event.target as Node))
+        setReactionsOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [reactionsOpen]);
+  const seenLabel = chatSeenLabel(
+    message.seenAt,
+    now,
+    message.seenByCount,
+    message.recipientCount,
+  );
+  const react = async (emoji: string) => {
+    if (own || !canCreate || busy || message.deletedAt) return;
+    const reacted =
+      message.reactions?.some(
+        (entry) =>
+          entry.emoji === emoji && entry.userIds.includes(currentUserId),
+      ) ?? false;
+    if (await onReact(message, emoji, !reacted)) setReactionsOpen(false);
+  };
   const fileUrl = `/api/internal-chat-files/${message.id}`;
-  return <article data-chat-message-id={message.id} className={`internal-chat-message ${own ? "own" : ""}`}>
-    {!own && message.type!=="audio" && <Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator} />}
-    <div className="internal-chat-bubble-wrap">{!own && <strong>{birthday && <BirthdayGift name={message.senderName} />}{message.senderName}</strong>}{!message.deletedAt && (canCreate || group && canEdit) && <div className="internal-chat-message-toolbar">{group && canEdit && <button type="button" className={message.isPinned ? "active" : ""} disabled={busy} onClick={() => onPin(message)} aria-label={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={11}/> : <Pin size={11}/>}</button>}{canCreate && <button type="button" disabled={busy} onClick={() => onReply(message)} aria-label="Responder mensagem" title="Responder mensagem"><Reply size={12}/></button>}</div>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
-      {!message.deletedAt && message.replyTo && <div className="internal-chat-quoted-message"><strong>{message.replyTo.senderName}</strong><span>{chatReplyPreview(message.replyTo)}</span></div>}
-      {message.deletedAt ? <p className="internal-chat-deleted-message">Mensagem excluída</p> : editing ? <form className="internal-chat-message-editor" onSubmit={async event=>{event.preventDefault();if(editBody.trim()&&await onEdit(message,editBody.trim()))setEditing(false);}}><textarea aria-label="Editar mensagem" autoFocus rows={3} maxLength={4000} value={editBody} onChange={event=>setEditBody(event.target.value)} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setEditing(false)}}}/><div><button type="button" disabled={busy} onClick={()=>setEditing(false)}>Cancelar</button><button type="submit" disabled={busy||!editBody.trim()}>Salvar</button></div></form> : message.type === "text" && <p><MessageText text={message.body}/></p>}
-      {!message.deletedAt && message.type === "sticker" && <span className="internal-chat-sticker-message">{message.body}</span>}
-      {!message.deletedAt && message.type === "image" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Imagem enviada",video:false})}><img src={fileUrl} alt={message.fileName || "Imagem enviada"} loading="lazy" /></button>}
-      {!message.deletedAt && message.type === "video" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Vídeo enviado",video:true})}><video muted preload="metadata"><source src={fileUrl} type={message.contentType} />Seu navegador não suporta vídeo.</video></button>}
-      {!message.deletedAt && message.type === "audio" && <div className="internal-chat-audio-row"><Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator}/><audio className="internal-chat-audio" controls preload="metadata" src={fileUrl}/></div> }
-      {!message.deletedAt && message.type === "file" && <a className="internal-chat-file" href={fileUrl} download={message.fileName}><FileText size={24} /><span><b>{message.fileName}</b><small>{message.contentType || "Arquivo"}</small></span><Download size={18} /></a>}
-      {!message.deletedAt && message.type === "poll" && <PollMessage message={message} currentUserId={currentUserId} busy={busy || !canCreate} onVote={onVote} />}
+  return (
+    <article
+      data-chat-message-id={message.id}
+      className={`internal-chat-message ${own ? "own" : ""}`}
+    >
+      {!own && message.type !== "audio" && (
+        <Avatar
+          name={message.senderName}
+          photo={message.senderPhotoDataUrl}
+          coordinator={message.senderIsCoordinator}
+        />
+      )}
+      <div className="internal-chat-bubble-wrap">
+        {!own && (
+          <strong>
+            {birthday && <BirthdayGift name={message.senderName} />}
+            {message.senderName}
+          </strong>
+        )}
+        {!message.deletedAt && (canCreate || (group && canEdit)) && (
+          <div className="internal-chat-message-toolbar">
+            {group && canEdit && (
+              <button
+                type="button"
+                className={message.isPinned ? "active" : ""}
+                disabled={busy}
+                onClick={() => onPin(message)}
+                aria-label={
+                  message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"
+                }
+                title={
+                  message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"
+                }
+              >
+                {message.isPinned ? <PinOff size={11} /> : <Pin size={11} />}
+              </button>
+            )}
+            {canCreate && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onReply(message)}
+                aria-label="Responder mensagem"
+                title="Responder mensagem"
+              >
+                <Reply size={12} />
+              </button>
+            )}
+          </div>
+        )}
+        <div
+          className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}
+        >
+          {!message.deletedAt && message.replyTo && (
+            <div className="internal-chat-quoted-message">
+              <strong>{message.replyTo.senderName}</strong>
+              <span>{chatReplyPreview(message.replyTo)}</span>
+            </div>
+          )}
+          {message.deletedAt ? (
+            <p className="internal-chat-deleted-message">Mensagem excluída</p>
+          ) : editing ? (
+            <form
+              className="internal-chat-message-editor"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (editBody.trim() && (await onEdit(message, editBody.trim())))
+                  setEditing(false);
+              }}
+            >
+              <textarea
+                aria-label="Editar mensagem"
+                autoFocus
+                rows={3}
+                maxLength={4000}
+                value={editBody}
+                onChange={(event) => setEditBody(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.stopPropagation();
+                    setEditing(false);
+                  }
+                }}
+              />
+              <div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setEditing(false)}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" disabled={busy || !editBody.trim()}>
+                  Salvar
+                </button>
+              </div>
+            </form>
+          ) : (
+            message.type === "text" && (
+              <p>
+                <MessageText text={message.body} />
+              </p>
+            )
+          )}
+          {!message.deletedAt && message.type === "sticker" && (
+            <span className="internal-chat-sticker-message">
+              {message.body}
+            </span>
+          )}
+          {!message.deletedAt && message.type === "image" && (
+            <button
+              type="button"
+              className="internal-chat-media-message"
+              onClick={() =>
+                onPreview({
+                  url: fileUrl,
+                  name: message.fileName || "Imagem enviada",
+                  video: false,
+                })
+              }
+            >
+              <img
+                src={fileUrl}
+                alt={message.fileName || "Imagem enviada"}
+                loading="lazy"
+              />
+            </button>
+          )}
+          {!message.deletedAt && message.type === "video" && (
+            <button
+              type="button"
+              className="internal-chat-media-message"
+              onClick={() =>
+                onPreview({
+                  url: fileUrl,
+                  name: message.fileName || "Vídeo enviado",
+                  video: true,
+                })
+              }
+            >
+              <video muted preload="metadata">
+                <source src={fileUrl} type={message.contentType} />
+                Seu navegador não suporta vídeo.
+              </video>
+            </button>
+          )}
+          {!message.deletedAt && message.type === "audio" && (
+            <div className="internal-chat-audio-row">
+              <Avatar
+                name={message.senderName}
+                photo={message.senderPhotoDataUrl}
+                coordinator={message.senderIsCoordinator}
+              />
+              <audio
+                className="internal-chat-audio"
+                controls
+                preload="metadata"
+                src={fileUrl}
+              />
+            </div>
+          )}
+          {!message.deletedAt && message.type === "file" && (
+            <a
+              className="internal-chat-file"
+              href={fileUrl}
+              download={message.fileName}
+            >
+              <FileText size={24} />
+              <span>
+                <b>{message.fileName}</b>
+                <small>{message.contentType || "Arquivo"}</small>
+              </span>
+              <Download size={18} />
+            </a>
+          )}
+          {!message.deletedAt && message.type === "poll" && (
+            <PollMessage
+              message={message}
+              currentUserId={currentUserId}
+              busy={busy || !canCreate}
+              onVote={onVote}
+            />
+          )}
 
-      <span className="internal-chat-message-meta">{!own&&canCreate&&!message.deletedAt&&!editing&&<span ref={reactionControl} className="internal-chat-reaction-control"><button type="button" className="internal-chat-react-button" aria-label="Reagir à mensagem" aria-expanded={reactionsOpen} disabled={busy} onClick={()=>setReactionsOpen(value=>!value)} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setReactionsOpen(false)}}}><SmilePlus size={15}/></button>{reactionsOpen&&<span className="internal-chat-reaction-picker" role="group" aria-label="Reações disponíveis">{CHAT_REACTIONS.map(emoji=><button type="button" key={emoji} disabled={busy} aria-label={`Reagir com ${emoji}`} onClick={()=>void react(emoji)}>{emoji}</button>)}</span>}</span>}{own && canCreate && !message.deletedAt && !editing && <span className="internal-chat-message-actions">{message.type === "text" && <button type="button" disabled={busy} aria-label="Editar mensagem" title="Editar mensagem" onClick={()=>{setEditBody(message.body);setEditing(true)}}><Pencil size={13}/></button>}<button type="button" disabled={busy} aria-label="Excluir mensagem" title="Excluir mensagem para todos" onClick={()=>void onDelete(message)}><Trash2 size={13}/></button></span>}{message.editedAt && !message.deletedAt && <small title={new Date(message.editedAt).toLocaleString("pt-BR")}>editada</small>}<time>{messageTime.format(new Date(message.createdAt))}</time>{own && <i className={`internal-chat-receipt ${message.receiptState||"sent"}`} title={seenLabel|| (message.receiptState==="seen"?"Visto":message.receiptState==="delivered"?"Recebido":"Enviado")}>{message.receiptState==="seen"||message.receiptState==="delivered"?<CheckCheck size={15}/>:<Check size={14}/>}</i>}</span>
-    </div>{!message.deletedAt&&Boolean(message.reactions?.length)&&<div className="internal-chat-message-reactions" aria-label="Reações da mensagem">{message.reactions!.map(reaction=>own?<span key={reaction.emoji} className="internal-chat-reaction-summary" title={reaction.userNames.join(", ")}><span>{reaction.emoji}</span><small>{reaction.count}</small></span>:<button type="button" key={reaction.emoji} disabled={busy||!canCreate} aria-label={`${reaction.emoji} · ${reaction.count} reação(ões): ${reaction.userNames.join(", ")}`} aria-pressed={reaction.userIds.includes(currentUserId)} title={reaction.userNames.join(", ")} onClick={()=>void react(reaction.emoji)}><span>{reaction.emoji}</span><small>{reaction.count}</small></button>)}</div>}{own&&showSeenReceipt&&seenLabel&&!message.deletedAt&&<span className="internal-chat-seen-at" title={new Date(message.seenAt!).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}><CheckCheck size={14}/>{seenLabel}</span>}</div>
-  </article>;
+          <span className="internal-chat-message-meta">
+            {!own && canCreate && !message.deletedAt && !editing && (
+              <span
+                ref={reactionControl}
+                className="internal-chat-reaction-control"
+              >
+                <button
+                  type="button"
+                  className="internal-chat-react-button"
+                  aria-label="Reagir à mensagem"
+                  aria-expanded={reactionsOpen}
+                  disabled={busy}
+                  onClick={() => setReactionsOpen((value) => !value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      setReactionsOpen(false);
+                    }
+                  }}
+                >
+                  <SmilePlus size={15} />
+                </button>
+                {reactionsOpen && (
+                  <span
+                    className="internal-chat-reaction-picker"
+                    role="group"
+                    aria-label="Reações disponíveis"
+                  >
+                    {CHAT_REACTIONS.map((emoji) => (
+                      <button
+                        type="button"
+                        key={emoji}
+                        disabled={busy}
+                        aria-label={`Reagir com ${emoji}`}
+                        onClick={() => void react(emoji)}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </span>
+            )}
+            {own && canCreate && !message.deletedAt && !editing && (
+              <span className="internal-chat-message-actions">
+                {message.type === "text" && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label="Editar mensagem"
+                    title="Editar mensagem"
+                    onClick={() => {
+                      setEditBody(message.body);
+                      setEditing(true);
+                    }}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label="Excluir mensagem"
+                  title="Excluir mensagem para todos"
+                  onClick={() => void onDelete(message)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </span>
+            )}
+            {message.editedAt && !message.deletedAt && (
+              <small title={new Date(message.editedAt).toLocaleString("pt-BR")}>
+                editada
+              </small>
+            )}
+            <time>{messageTime.format(new Date(message.createdAt))}</time>
+            {own && (
+              <i
+                className={`internal-chat-receipt ${message.receiptState || "sent"}`}
+                title={
+                  seenLabel ||
+                  (message.receiptState === "seen"
+                    ? "Visto"
+                    : message.receiptState === "delivered"
+                      ? "Recebido"
+                      : "Enviado")
+                }
+              >
+                {message.receiptState === "seen" ||
+                message.receiptState === "delivered" ? (
+                  <CheckCheck size={15} />
+                ) : (
+                  <Check size={14} />
+                )}
+              </i>
+            )}
+          </span>
+        </div>
+        {!message.deletedAt && Boolean(message.reactions?.length) && (
+          <div
+            className="internal-chat-message-reactions"
+            aria-label="Reações da mensagem"
+          >
+            {message.reactions!.map((reaction) =>
+              own ? (
+                <span
+                  key={reaction.emoji}
+                  className="internal-chat-reaction-summary"
+                  title={reaction.userNames.join(", ")}
+                >
+                  <span>{reaction.emoji}</span>
+                  <small>{reaction.count}</small>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  key={reaction.emoji}
+                  disabled={busy || !canCreate}
+                  aria-label={`${reaction.emoji} · ${reaction.count} reação(ões): ${reaction.userNames.join(", ")}`}
+                  aria-pressed={reaction.userIds.includes(currentUserId)}
+                  title={reaction.userNames.join(", ")}
+                  onClick={() => void react(reaction.emoji)}
+                >
+                  <span>{reaction.emoji}</span>
+                  <small>{reaction.count}</small>
+                </button>
+              ),
+            )}
+          </div>
+        )}
+        {own && showSeenReceipt && seenLabel && !message.deletedAt && (
+          <span
+            className="internal-chat-seen-at"
+            title={new Date(message.seenAt!).toLocaleString("pt-BR", {
+              timeZone: "America/Sao_Paulo",
+            })}
+          >
+            <CheckCheck size={14} />
+            {seenLabel}
+          </span>
+        )}
+      </div>
+    </article>
+  );
 });
 
-function PollMessage({ message, currentUserId, busy, onVote }: { message: InternalChatMessage; currentUserId: string; busy: boolean; onVote: (messageId: string, optionIndex: number) => void }) {
+function PollMessage({
+  message,
+  currentUserId,
+  busy,
+  onVote,
+}: {
+  message: InternalChatMessage;
+  currentUserId: string;
+  busy: boolean;
+  onVote: (messageId: string, optionIndex: number) => void;
+}) {
   const poll = parsePoll(message.body);
   if (!poll) return <p>Não foi possível exibir esta enquete.</p>;
-  const total = poll.options.reduce((sum, option) => sum + option.voterUserIds.length, 0);
-  const selected = poll.options.findIndex((option) => option.voterUserIds.includes(currentUserId));
-  return <div className="internal-chat-poll"><span className="internal-chat-poll-label"><BarChart3 size={14} /> ENQUETE</span><h3>{poll.question}</h3><div>{poll.options.map((option, index) => { const votes = option.voterUserIds.length; const width = total ? votes / total * 100 : 0; return <button type="button" key={`${option.text}-${index}`} className={selected === index ? "selected" : ""} disabled={busy} onClick={() => onVote(message.id, index)}><i style={{ width: `${width}%` }} /><span>{option.text}</span><b>{votes} · {Math.round(width)}%</b></button>; })}</div><small>{total} voto(s) · {selected >= 0 ? "seu voto está registrado" : "selecione uma opção"}</small></div>;
+  const total = poll.options.reduce(
+    (sum, option) => sum + option.voterUserIds.length,
+    0,
+  );
+  const selected = poll.options.findIndex((option) =>
+    option.voterUserIds.includes(currentUserId),
+  );
+  return (
+    <div className="internal-chat-poll">
+      <span className="internal-chat-poll-label">
+        <BarChart3 size={14} /> ENQUETE
+      </span>
+      <h3>{poll.question}</h3>
+      <div>
+        {poll.options.map((option, index) => {
+          const votes = option.voterUserIds.length;
+          const width = total ? (votes / total) * 100 : 0;
+          return (
+            <button
+              type="button"
+              key={`${option.text}-${index}`}
+              className={selected === index ? "selected" : ""}
+              disabled={busy}
+              onClick={() => onVote(message.id, index)}
+            >
+              <i style={{ width: `${width}%` }} />
+              <span>{option.text}</span>
+              <b>
+                {votes} · {Math.round(width)}%
+              </b>
+            </button>
+          );
+        })}
+      </div>
+      <small>
+        {total} voto(s) ·{" "}
+        {selected >= 0 ? "seu voto está registrado" : "selecione uma opção"}
+      </small>
+    </div>
+  );
 }
 
-function ManageGroupMembersModal({module,room,busy,onClose,onAdd}:{module:InternalChatModuleData;room:InternalChatRoom;busy:boolean;onClose:()=>void;onAdd:(ids:string[])=>Promise<void>}){
- const [ids,setIds]=useState<string[]>([]);const options=module.users.filter(user=>!room.memberUserIds.includes(user.id)).map(user=>({id:user.id,label:`${user.name} · ${user.departmentName}`}));
- return <div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&onClose()}><section className="modal internal-chat-modal internal-chat-members-modal" role="dialog" aria-modal="true" aria-label="Adicionar participantes"><header className="modal-head"><div><h2>Adicionar participantes</h2><p>Busque e selecione os colaboradores que vão participar do grupo.</p></div><button type="button" onClick={onClose} aria-label="Fechar"><X size={18}/></button></header><form className="internal-chat-members-form" onSubmit={event=>{event.preventDefault();if(ids.length)void onAdd(ids)}}><CheckboxMultiSelect inline label="Colaboradores" name="memberUserIds" options={options} defaultValue={ids} onSelectionChange={setIds} disabled={busy}/><footer className="form-actions"><span role="status">{ids.length} participante(s) selecionado(s)</span><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy||!ids.length}>{busy?"Adicionando...":"Adicionar participantes"}</button></footer></form></section></div>;
+function ManageGroupMembersModal({
+  module,
+  room,
+  busy,
+  onClose,
+  onAdd,
+}: {
+  module: InternalChatModuleData;
+  room: InternalChatRoom;
+  busy: boolean;
+  onClose: () => void;
+  onAdd: (ids: string[]) => Promise<void>;
+}) {
+  const [ids, setIds] = useState<string[]>([]);
+  const options = module.users
+    .filter((user) => !room.memberUserIds.includes(user.id))
+    .map((user) => ({
+      id: user.id,
+      label: `${user.name} · ${user.departmentName}`,
+    }));
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        className="modal internal-chat-modal internal-chat-members-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Adicionar participantes"
+      >
+        <header className="modal-head">
+          <div>
+            <h2>Adicionar participantes</h2>
+            <p>
+              Busque e selecione os colaboradores que vão participar do grupo.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </header>
+        <form
+          className="internal-chat-members-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (ids.length) void onAdd(ids);
+          }}
+        >
+          <CheckboxMultiSelect
+            inline
+            label="Colaboradores"
+            name="memberUserIds"
+            options={options}
+            defaultValue={ids}
+            onSelectionChange={setIds}
+            disabled={busy}
+          />
+          <footer className="form-actions">
+            <span role="status">
+              {ids.length} participante(s) selecionado(s)
+            </span>
+            <button type="button" onClick={onClose}>
+              Cancelar
+            </button>
+            <button className="primary-button" disabled={busy || !ids.length}>
+              {busy ? "Adicionando..." : "Adicionar participantes"}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
+  );
 }
 
-function CreatePollModal({ busy, onClose, onCreate }: { busy: boolean; onClose: () => void; onCreate: (question: string, options: string[]) => void }) {
+function CreatePollModal({
+  busy,
+  onClose,
+  onCreate,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  onCreate: (question: string, options: string[]) => void;
+}) {
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState(["", ""]);
-  const submit = (event: FormEvent) => { event.preventDefault(); onCreate(question.trim(), options.map((entry) => entry.trim()).filter(Boolean)); };
-  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className="modal internal-chat-modal internal-chat-poll-modal" role="dialog" aria-modal="true" aria-label="Nova enquete"><div className="modal-head"><div><span className="eyebrow">CHAT INTERNO · GRUPO</span><h2>Nova enquete</h2><p>Crie uma pergunta e acompanhe os votos em tempo real.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div><form onSubmit={submit}><label>Pergunta *<textarea value={question} onChange={(event) => setQuestion(event.target.value)} required minLength={3} maxLength={240} placeholder="O que você deseja perguntar ao grupo?" /></label><div className="internal-chat-poll-options"><strong>Opções de resposta</strong>{options.map((option, index) => <label key={index}><span>{index + 1}</span><input value={option} onChange={(event) => setOptions((current) => current.map((entry, currentIndex) => currentIndex === index ? event.target.value : entry))} required={index < 2} maxLength={120} placeholder={`Opção ${index + 1}`} />{options.length > 2 && <button type="button" onClick={() => setOptions((current) => current.filter((_, currentIndex) => currentIndex !== index))}><X size={14} /></button>}</label>)}</div>{options.length < 8 && <button type="button" className="internal-chat-add-option" onClick={() => setOptions((current) => [...current, ""])}><Plus size={15} /> Adicionar opção</button>}<div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || question.trim().length < 3 || options.filter((entry) => entry.trim()).length < 2} type="submit"><BarChart3 size={16} /> {busy ? "Enviando..." : "Enviar enquete"}</button></div></form></div></div>;
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    onCreate(
+      question.trim(),
+      options.map((entry) => entry.trim()).filter(Boolean),
+    );
+  };
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <div
+        className="modal internal-chat-modal internal-chat-poll-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Nova enquete"
+      >
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">CHAT INTERNO · GRUPO</span>
+            <h2>Nova enquete</h2>
+            <p>Crie uma pergunta e acompanhe os votos em tempo real.</p>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Fechar">
+            <X size={20} />
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          <label>
+            Pergunta *
+            <textarea
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              required
+              minLength={3}
+              maxLength={240}
+              placeholder="O que você deseja perguntar ao grupo?"
+            />
+          </label>
+          <div className="internal-chat-poll-options">
+            <strong>Opções de resposta</strong>
+            {options.map((option, index) => (
+              <label key={index}>
+                <span>{index + 1}</span>
+                <input
+                  value={option}
+                  onChange={(event) =>
+                    setOptions((current) =>
+                      current.map((entry, currentIndex) =>
+                        currentIndex === index ? event.target.value : entry,
+                      ),
+                    )
+                  }
+                  required={index < 2}
+                  maxLength={120}
+                  placeholder={`Opção ${index + 1}`}
+                />
+                {options.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOptions((current) =>
+                        current.filter(
+                          (_, currentIndex) => currentIndex !== index,
+                        ),
+                      )
+                    }
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </label>
+            ))}
+          </div>
+          {options.length < 8 && (
+            <button
+              type="button"
+              className="internal-chat-add-option"
+              onClick={() => setOptions((current) => [...current, ""])}
+            >
+              <Plus size={15} /> Adicionar opção
+            </button>
+          )}
+          <div className="form-actions">
+            <button type="button" onClick={onClose}>
+              Cancelar
+            </button>
+            <button
+              className="primary-button"
+              disabled={
+                busy ||
+                question.trim().length < 3 ||
+                options.filter((entry) => entry.trim()).length < 2
+              }
+              type="submit"
+            >
+              <BarChart3 size={16} /> {busy ? "Enviando..." : "Enviar enquete"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
-const normalizeMemberSearch=(text:string)=>text.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+const normalizeMemberSearch = (text: string) =>
+  text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
 
-function CreateGroupModal({ module, busy, onClose, onCreate }: { module: InternalChatModuleData; busy: boolean; onClose: () => void; onCreate: (payload: { name: string; photoDataUrl: string; memberUserIds: string[] }) => void }) {
+function CreateGroupModal({
+  module,
+  busy,
+  onClose,
+  onCreate,
+}: {
+  module: InternalChatModuleData;
+  busy: boolean;
+  onClose: () => void;
+  onCreate: (payload: {
+    name: string;
+    photoDataUrl: string;
+    memberUserIds: string[];
+  }) => void;
+}) {
   const [selected, setSelected] = useState<string[]>([]);
-  const [query,setQuery]=useState("");
+  const [query, setQuery] = useState("");
   const [photoDataUrl, setPhotoDataUrl] = useState("");
   const photoInput = useRef<HTMLInputElement>(null);
-  const available = module.users.filter((user) => user.id !== module.currentUserId);
-  const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); onCreate({ name: String(form.get("name") ?? ""), photoDataUrl, memberUserIds: selected }); };
-  const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className="modal internal-chat-modal internal-chat-members-modal" role="dialog" aria-modal="true" aria-label="Novo grupo">
-    <div className="modal-head"><div><span className="eyebrow">CHAT INTERNO</span><h2>Novo grupo privado</h2><p>Adicione uma foto e escolha os participantes do grupo.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>
-    <form className="internal-chat-members-form" onSubmit={submit}>
-      <div className="internal-chat-group-identity"><button type="button" onClick={() => photoInput.current?.click()}><Avatar name="Novo grupo" photo={photoDataUrl} group /><span><Camera size={14} /> {photoDataUrl ? "Trocar foto" : "Adicionar foto"}</span></button><input ref={photoInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={async (event) => setPhotoDataUrl(await readImage(event.target.files?.[0]) ?? "")} /><label className="internal-chat-group-name">Nome do grupo *<input name="name" required minLength={2} maxLength={120} placeholder="Ex.: Equipe de suporte" /></label></div>
-      <div className="internal-chat-member-title"><strong>Colaboradores</strong><span>{selected.length} selecionado(s)</span></div>
-      <label className="internal-chat-members-search"><Search size={16}/><input type="search" aria-label="Buscar colaboradores do novo grupo" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar colaborador, setor ou e-mail"/></label>
-      <div className="internal-chat-member-list">{available.filter(user=>normalizeMemberSearch(`${user.name} ${user.departmentName} ${user.email}`).includes(normalizeMemberSearch(query))).map((user) => <button type="button" aria-pressed={selected.includes(user.id)} className={selected.includes(user.id) ? "selected" : ""} onClick={() => toggle(user.id)} key={user.id}><Avatar name={user.name} photo={user.photoDataUrl} coordinator={user.isCoordinator} /><span><strong>{user.name}</strong><small>{user.jobTitle || user.departmentName || user.email}</small></span><i>{selected.includes(user.id) ? "✓" : "+"}</i></button>)}</div>
-      {available.length === 0 && <div className="internal-chat-no-members">Cadastre outro colaborador ativo para criar um grupo.</div>}
-      <div className="form-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || selected.length === 0} type="submit"><UsersRound size={16} /> {busy ? "Criando..." : "Criar grupo"}</button></div>
-    </form>
-  </div></div>;
+  const available = module.users.filter(
+    (user) => user.id !== module.currentUserId,
+  );
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    onCreate({
+      name: String(form.get("name") ?? ""),
+      photoDataUrl,
+      memberUserIds: selected,
+    });
+  };
+  const toggle = (id: string) =>
+    setSelected((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <div
+        className="modal internal-chat-modal internal-chat-members-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Novo grupo"
+      >
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">CHAT INTERNO</span>
+            <h2>Novo grupo privado</h2>
+            <p>Adicione uma foto e escolha os participantes do grupo.</p>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Fechar">
+            <X size={20} />
+          </button>
+        </div>
+        <form className="internal-chat-members-form" onSubmit={submit}>
+          <div className="internal-chat-group-identity">
+            <button type="button" onClick={() => photoInput.current?.click()}>
+              <Avatar name="Novo grupo" photo={photoDataUrl} group />
+              <span>
+                <Camera size={14} />{" "}
+                {photoDataUrl ? "Trocar foto" : "Adicionar foto"}
+              </span>
+            </button>
+            <input
+              ref={photoInput}
+              hidden
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={async (event) =>
+                setPhotoDataUrl(
+                  (await readImage(event.target.files?.[0])) ?? "",
+                )
+              }
+            />
+            <label className="internal-chat-group-name">
+              Nome do grupo *
+              <input
+                name="name"
+                required
+                minLength={2}
+                maxLength={120}
+                placeholder="Ex.: Equipe de suporte"
+              />
+            </label>
+          </div>
+          <div className="internal-chat-member-title">
+            <strong>Colaboradores</strong>
+            <span>{selected.length} selecionado(s)</span>
+          </div>
+          <label className="internal-chat-members-search">
+            <Search size={16} />
+            <input
+              type="search"
+              aria-label="Buscar colaboradores do novo grupo"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar colaborador, setor ou e-mail"
+            />
+          </label>
+          <div className="internal-chat-member-list">
+            {available
+              .filter((user) =>
+                normalizeMemberSearch(
+                  `${user.name} ${user.departmentName} ${user.email}`,
+                ).includes(normalizeMemberSearch(query)),
+              )
+              .map((user) => (
+                <button
+                  type="button"
+                  aria-pressed={selected.includes(user.id)}
+                  className={selected.includes(user.id) ? "selected" : ""}
+                  onClick={() => toggle(user.id)}
+                  key={user.id}
+                >
+                  <Avatar
+                    name={user.name}
+                    photo={user.photoDataUrl}
+                    coordinator={user.isCoordinator}
+                  />
+                  <span>
+                    <strong>{user.name}</strong>
+                    <small>
+                      {user.jobTitle || user.departmentName || user.email}
+                    </small>
+                  </span>
+                  <i>{selected.includes(user.id) ? "✓" : "+"}</i>
+                </button>
+              ))}
+          </div>
+          {available.length === 0 && (
+            <div className="internal-chat-no-members">
+              Cadastre outro colaborador ativo para criar um grupo.
+            </div>
+          )}
+          <div className="form-actions">
+            <button type="button" onClick={onClose}>
+              Cancelar
+            </button>
+            <button
+              className="primary-button"
+              disabled={busy || selected.length === 0}
+              type="submit"
+            >
+              <UsersRound size={16} /> {busy ? "Criando..." : "Criar grupo"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function UnreadBadge({ count }: { count: number }) {
-  return count > 0 ? <b className="internal-chat-unread-badge" aria-label={`${count} mensagens não lidas`}>{count}</b> : null;
+  return count > 0 ? (
+    <b
+      className="internal-chat-unread-badge"
+      aria-label={`${count} mensagens não lidas`}
+    >
+      {count}
+    </b>
+  ) : null;
 }
 
-function Avatar({ name, photo, group = false, coordinator = false }: { name: string; photo?: string; group?: boolean; coordinator?: boolean }) {
-  return <span className={`internal-chat-avatar ${group ? "group" : ""} ${photo ? "has-photo" : ""}`} aria-label={photo?`Foto de ${name}`:undefined} style={photo ? { backgroundImage: `url("${photo}")` } : undefined}>{!photo && (group ? <UsersRound size={18} /> : initials(name))}{coordinator && !group && <i className="coordinator-mark" title="Supervisor / coordenador"><BadgeCheck size={12} /></i>}</span>;
+function Avatar({
+  name,
+  photo,
+  group = false,
+  coordinator = false,
+}: {
+  name: string;
+  photo?: string;
+  group?: boolean;
+  coordinator?: boolean;
+}) {
+  return (
+    <span
+      className={`internal-chat-avatar ${group ? "group" : ""} ${photo ? "has-photo" : ""}`}
+      aria-label={photo ? `Foto de ${name}` : undefined}
+      style={photo ? { backgroundImage: `url("${photo}")` } : undefined}
+    >
+      {!photo && (group ? <UsersRound size={18} /> : initials(name))}
+      {coordinator && !group && (
+        <i className="coordinator-mark" title="Supervisor / coordenador">
+          <BadgeCheck size={12} />
+        </i>
+      )}
+    </span>
+  );
 }
 
 async function readImage(file?: File) {
-  if (!file || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) || file.size > 2 * 1024 * 1024) return null;
-  return await new Promise<string | null>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result ?? "")); reader.onerror = () => resolve(null); reader.readAsDataURL(file); });
+  if (
+    !file ||
+    !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+      file.type,
+    ) ||
+    file.size > 2 * 1024 * 1024
+  )
+    return null;
+  return await new Promise<string | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
 }
 
-function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?"; }
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
 function messagePreview(message: InternalChatMessage) {
   if (message.deletedAt) return "Mensagem excluída";
   if (message.type === "sticker") return `${message.body} Figurinha`;
@@ -597,25 +2941,50 @@ function messagePreview(message: InternalChatMessage) {
   if (message.type === "video") return "Vídeo";
   if (message.type === "audio") return "Áudio";
   if (message.type === "file") return message.fileName || "Arquivo";
-  if (message.type === "poll") return `Enquete: ${parsePoll(message.body)?.question ?? "pergunta"}`;
+  if (message.type === "poll")
+    return `Enquete: ${parsePoll(message.body)?.question ?? "pergunta"}`;
   return message.body;
 }
 
-function parsePoll(raw: string): { question: string; options: { text: string; voterUserIds: string[] }[] } | null {
+function parsePoll(
+  raw: string,
+): {
+  question: string;
+  options: { text: string; voterUserIds: string[] }[];
+} | null {
   try {
     const value = JSON.parse(raw) as { question?: unknown; options?: unknown };
-    if (typeof value.question !== "string" || !Array.isArray(value.options)) return null;
+    if (typeof value.question !== "string" || !Array.isArray(value.options))
+      return null;
     const options = value.options.flatMap((entry) => {
       if (!entry || typeof entry !== "object") return [];
       const option = entry as { text?: unknown; voterUserIds?: unknown };
-      return typeof option.text === "string" ? [{ text: option.text, voterUserIds: Array.isArray(option.voterUserIds) ? option.voterUserIds.filter((id): id is string => typeof id === "string") : [] }] : [];
+      return typeof option.text === "string"
+        ? [
+            {
+              text: option.text,
+              voterUserIds: Array.isArray(option.voterUserIds)
+                ? option.voterUserIds.filter(
+                    (id): id is string => typeof id === "string",
+                  )
+                : [],
+            },
+          ]
+        : [];
     });
     return options.length >= 2 ? { question: value.question, options } : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // Keep history rows stable when presence or room controls update during typing.
-function useLatestChatCallback<Args extends unknown[],Result>(callback:(...args:Args)=>Result){
- const latest=useRef(callback);useLayoutEffect(()=>{latest.current=callback});
- return useCallback((...args:Args)=>latest.current(...args),[]);
+function useLatestChatCallback<Args extends unknown[], Result>(
+  callback: (...args: Args) => Result,
+) {
+  const latest = useRef(callback);
+  useLayoutEffect(() => {
+    latest.current = callback;
+  });
+  return useCallback((...args: Args) => latest.current(...args), []);
 }

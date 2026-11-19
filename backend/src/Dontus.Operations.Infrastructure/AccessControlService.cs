@@ -87,8 +87,11 @@ public sealed class AccessControlService(
             foreach (var permission in defaults)
                 collaboratorsGroup.Permissions.Add(new GroupPermission
                 {
-                    GroupId = collaboratorsGroup.Id, Screen = permission.Screen,
-                    CanView = true, CanCreate = permission.Create, CanEdit = permission.Edit,
+                    GroupId = collaboratorsGroup.Id,
+                    Screen = permission.Screen,
+                    CanView = true,
+                    CanCreate = permission.Create,
+                    CanEdit = permission.Edit,
                 });
             db.AccessGroups.Add(collaboratorsGroup);
         }
@@ -241,7 +244,8 @@ public sealed class AccessControlService(
             groups.Count == 0 ? "Sem grupo" : string.Join(", ", groups.Select(group => group.Name).Order()),
             user.Department,
             permissions,
-            fullAccess) { AccessAllowedUntil = accessAllowedUntil };
+            fullAccess)
+        { AccessAllowedUntil = accessAllowedUntil };
     }
 
     public async Task<AccessManagementDto> GetManagementAsync(
@@ -252,10 +256,26 @@ public sealed class AccessControlService(
 
         var users = await db.Users.AsNoTracking()
             .OrderBy(user => user.DisplayName)
-            .Select(user => new { user.Id, user.Email, user.DisplayName, user.Department, user.UpdatedAt,
-                HasPhoto = user.PhotoDataUrl != "", user.JobTitle, user.IsCoordinator, user.Active, user.BlockedAt,
-                user.LastAccessAt, user.CreatedAt, user.BirthDate, user.StartedAt, user.EmployeeLevelId, user.AccessScheduleJson,
-                Groups = user.Groups.Select(membership => new { membership.GroupId, GroupName = membership.Group.Name }).ToArray() })
+            .Select(user => new
+            {
+                user.Id,
+                user.Email,
+                user.DisplayName,
+                user.Department,
+                user.UpdatedAt,
+                HasPhoto = user.PhotoDataUrl != "",
+                user.JobTitle,
+                user.IsCoordinator,
+                user.Active,
+                user.BlockedAt,
+                user.LastAccessAt,
+                user.CreatedAt,
+                user.BirthDate,
+                user.StartedAt,
+                user.EmployeeLevelId,
+                user.AccessScheduleJson,
+                Groups = user.Groups.Select(membership => new { membership.GroupId, GroupName = membership.Group.Name }).ToArray()
+            })
             .ToListAsync(cancellationToken);
         var groups = await db.AccessGroups.AsNoTracking()
             .Include(group => group.Users)
@@ -592,12 +612,19 @@ public sealed class AccessControlService(
             hrCard.Description = JsonSerializer.Serialize(new
             {
                 kind = "hrEmployee",
-                employeeId = user.Id.ToString(), fullName = user.DisplayName, email = user.Email,
-                jobTitle = user.JobTitle, department = user.Department,
+                employeeId = user.Id.ToString(),
+                fullName = user.DisplayName,
+                email = user.Email,
+                jobTitle = user.JobTitle,
+                department = user.Department,
                 startedAt = user.StartedAt?.ToString("yyyy-MM-dd") ?? "",
-                birthDate = user.BirthDate?.ToString("yyyy-MM-dd") ?? "", photoDataUrl = user.PhotoDataUrl,
-                comments = hrProfile.Comments, vacations = hrProfile.Vacations, documents = hrProfile.Documents,
-                termination = hrProfile.Termination, readmissions = hrProfile.Readmissions,
+                birthDate = user.BirthDate?.ToString("yyyy-MM-dd") ?? "",
+                photoDataUrl = user.PhotoDataUrl,
+                comments = hrProfile.Comments,
+                vacations = hrProfile.Vacations,
+                documents = hrProfile.Documents,
+                termination = hrProfile.Termination,
+                readmissions = hrProfile.Readmissions,
             });
             hrCard.UpdatedAt = DateTimeOffset.UtcNow;
             hrCard.Version++;

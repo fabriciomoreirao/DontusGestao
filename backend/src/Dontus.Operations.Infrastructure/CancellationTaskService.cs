@@ -45,25 +45,50 @@ public sealed class CancellationTaskService(OperationsDbContext db, ITaskService
             var origin = $"Cancelamento {protocol} · {customer} · ID {clientId}";
             var result = await tasks.CreateAsync(draft with
             {
-                SourceDepartmentId = department.Id, CurrentDepartmentId = department.Id,
-                CustomerId = source.CustomerId, CustomerCode = clientId, CustomerName = customer,
+                SourceDepartmentId = department.Id,
+                CurrentDepartmentId = department.Id,
+                CustomerId = source.CustomerId,
+                CustomerCode = clientId,
+                CustomerName = customer,
                 ExternalLink = $"/?mod=cancellations&cancellation={source.Id}",
                 Description = $"{(draft.Description ?? "").Trim()}\n\nOrigem: {origin}",
             }, actor, ct);
             var task = await db.CorporateTasks.SingleAsync(entry => entry.Id == result.Id, ct);
             var at = DateTimeOffset.UtcNow;
             var text = $"Tarefa {result.Protocol} criada no setor {department.Name}: {task.Title}.";
-            history.Add(new JsonObject { ["id"] = Guid.NewGuid().ToString(), ["type"] = "Tarefa criada", ["text"] = text,
-                ["at"] = at.ToString("O"), ["author"] = actor.DisplayName, ["taskId"] = task.Id.ToString(),
-                ["taskProtocol"] = result.Protocol, ["taskCreationId"] = requestId.ToString() });
+            history.Add(new JsonObject
+            {
+                ["id"] = Guid.NewGuid().ToString(),
+                ["type"] = "Tarefa criada",
+                ["text"] = text,
+                ["at"] = at.ToString("O"),
+                ["author"] = actor.DisplayName,
+                ["taskId"] = task.Id.ToString(),
+                ["taskProtocol"] = result.Protocol,
+                ["taskCreationId"] = requestId.ToString()
+            });
             if (detail["history"] is not JsonArray) detail["history"] = history;
             source.Description = detail.ToJsonString(); source.UpdatedAt = at; source.Version++;
-            db.TaskHistory.Add(new TaskHistory { TaskId = task.Id, ActorUserId = task.CreatorUserId, EventType = "cancellation_linked",
-                Summary = $"Tarefa criada a partir do {origin}.", Source = "cancellations",
-                NewValueJson = JsonSerializer.Serialize(new { cancellationId = source.Id, cancellationProtocol = protocol }), CreatedAt = at });
+            db.TaskHistory.Add(new TaskHistory
+            {
+                TaskId = task.Id,
+                ActorUserId = task.CreatorUserId,
+                EventType = "cancellation_linked",
+                Summary = $"Tarefa criada a partir do {origin}.",
+                Source = "cancellations",
+                NewValueJson = JsonSerializer.Serialize(new { cancellationId = source.Id, cancellationProtocol = protocol }),
+                CreatedAt = at
+            });
             db.Activities.Add(new Activity { EntityType = "work_item", EntityId = source.Id, Module = "cancellations", Kind = "Tarefa criada", Summary = text, Actor = actor.DisplayName });
-            db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = "CreateTask", Resource = "work_item", ResourceId = source.Id.ToString(), Module = "cancellations",
-                DetailsJson = JsonSerializer.Serialize(new { taskId = task.Id, taskProtocol = result.Protocol, departmentId = department.Id, taskCreationId = requestId }) });
+            db.AuditEvents.Add(new AuditEvent
+            {
+                ActorEmail = actor.Email,
+                Action = "CreateTask",
+                Resource = "work_item",
+                ResourceId = source.Id.ToString(),
+                Module = "cancellations",
+                DetailsJson = JsonSerializer.Serialize(new { taskId = task.Id, taskProtocol = result.Protocol, departmentId = department.Id, taskCreationId = requestId })
+            });
             await db.SaveChangesAsync(ct);
             if (transaction is not null) await transaction.CommitAsync(ct);
             return result;

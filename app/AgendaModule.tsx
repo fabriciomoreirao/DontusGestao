@@ -2,51 +2,190 @@
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
-import { CalendarDays, ChevronLeft, ChevronRight, Edit3, Eye, EyeOff, Filter, Plus, Save, Settings, Tag, Trash2, X } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, isCommercialAvailabilityBlock } from "@/lib/commercial-scheduling";
-export { COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, isCommercialAvailabilityBlock, commercialSlotIsBlocked } from "@/lib/commercial-scheduling";
-import { agendaTimeSlots, agendaWeekdays, AGENDA_START_MINUTE, AGENDA_END_MINUTE, AGENDA_SLOT_HEIGHT, positionAgendaEntries } from "@/lib/agenda-time-grid";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Edit3,
+  Eye,
+  EyeOff,
+  Filter,
+  Plus,
+  Save,
+  Settings,
+  Tag,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import {
+  COMMERCIAL_AVAILABILITY_BLOCK_PREFIX,
+  isCommercialAvailabilityBlock,
+} from "@/lib/commercial-scheduling";
+export {
+  COMMERCIAL_AVAILABILITY_BLOCK_PREFIX,
+  isCommercialAvailabilityBlock,
+  commercialSlotIsBlocked,
+} from "@/lib/commercial-scheduling";
+import {
+  agendaTimeSlots,
+  agendaWeekdays,
+  AGENDA_START_MINUTE,
+  AGENDA_END_MINUTE,
+  AGENDA_SLOT_HEIGHT,
+  positionAgendaEntries,
+} from "@/lib/agenda-time-grid";
 import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
-import AgendaRecurrenceField, { type AgendaRecurrenceSelection } from "@/app/AgendaRecurrenceField";
+import AgendaRecurrenceField, {
+  type AgendaRecurrenceSelection,
+} from "@/app/AgendaRecurrenceField";
 
-export type AgendaCalendar = { id: string; name: string; description: string; departmentId: string; departmentName: string; active: boolean };
-export type AgendaDepartment = { id: string; name: string; active: boolean };
-export type AgendaType = { id: string; name: string; description: string; color: string; active: boolean };
-export type AgendaStatus = { id: string; name: string; description: string; color: string; active: boolean };
-export type AgendaCollaborator = { id: string; name: string; email: string; departmentId: string; departmentName: string; birthDate: string | null; startedAt: string | null; agendaIds?: string[] };
-export type AgendaCelebrant = { id: string; name: string; birthDate: string | null; startedAt: string | null };
-export type AgendaCommitment = {
-  id: string; agendaId: string; agendaTypeId: string; agendaStatusId: string; title: string; description: string;
-  startsAt: string; endsAt: string; responsibleUserId: string; responsibleName: string; typeName: string;
-  statusChangedAt?: string | null; statusName: string; statusColor: string; createdBy: string; participantUserIds: string[]; recurrenceGroupId?: string | null; recurrenceCount?: number;
+export type AgendaCalendar = {
+  id: string;
+  name: string;
+  description: string;
+  departmentId: string;
+  departmentName: string;
+  active: boolean;
 };
-export type AgendaModuleData = { calendars: AgendaCalendar[]; departments: AgendaDepartment[]; types: AgendaType[]; statuses: AgendaStatus[]; collaborators: AgendaCollaborator[]; celebrants: AgendaCelebrant[]; commitments: AgendaCommitment[]; canManage: boolean; alerts?:Array<{id:string;title:string;startsAt:string;statusChangedAt:string}> };
-export type QuickAgendaPreset = { title?: string; description?: string; responsibleName?: string };
-type Operate = (payload: Record<string, unknown>, success: string) => Promise<{ id?: string } | false>;
-
-
+export type AgendaDepartment = { id: string; name: string; active: boolean };
+export type AgendaType = {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  active: boolean;
+};
+export type AgendaStatus = {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  active: boolean;
+};
+export type AgendaCollaborator = {
+  id: string;
+  name: string;
+  email: string;
+  departmentId: string;
+  departmentName: string;
+  birthDate: string | null;
+  startedAt: string | null;
+  agendaIds?: string[];
+};
+export type AgendaCelebrant = {
+  id: string;
+  name: string;
+  birthDate: string | null;
+  startedAt: string | null;
+};
+export type AgendaCommitment = {
+  id: string;
+  agendaId: string;
+  agendaTypeId: string;
+  agendaStatusId: string;
+  title: string;
+  description: string;
+  startsAt: string;
+  endsAt: string;
+  responsibleUserId: string;
+  responsibleName: string;
+  typeName: string;
+  statusChangedAt?: string | null;
+  statusName: string;
+  statusColor: string;
+  createdBy: string;
+  participantUserIds: string[];
+  recurrenceGroupId?: string | null;
+  recurrenceCount?: number;
+};
+export type AgendaModuleData = {
+  calendars: AgendaCalendar[];
+  departments: AgendaDepartment[];
+  types: AgendaType[];
+  statuses: AgendaStatus[];
+  collaborators: AgendaCollaborator[];
+  celebrants: AgendaCelebrant[];
+  commitments: AgendaCommitment[];
+  canManage: boolean;
+  alerts?: Array<{
+    id: string;
+    title: string;
+    startsAt: string;
+    statusChangedAt: string;
+  }>;
+};
+export type QuickAgendaPreset = {
+  title?: string;
+  description?: string;
+  responsibleName?: string;
+};
+type Operate = (
+  payload: Record<string, unknown>,
+  success: string,
+) => Promise<{ id?: string } | false>;
 
 const PORTAL_ROOM_MARKER = "[PORTAL_ROOM:";
-const normalizedAgendaText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
-const isMeetingRoomCalendar = (calendar?: Pick<AgendaCalendar, "name" | "description">) => {
-  const value = normalizedAgendaText(`${calendar?.name ?? ""} ${calendar?.description ?? ""}`);
+const normalizedAgendaText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+const isMeetingRoomCalendar = (
+  calendar?: Pick<AgendaCalendar, "name" | "description">,
+) => {
+  const value = normalizedAgendaText(
+    `${calendar?.name ?? ""} ${calendar?.description ?? ""}`,
+  );
   return value.includes("sala") && value.includes("reuni");
 };
-const isMeetingRoomCommitment = (entry: AgendaCommitment, calendars: AgendaCalendar[]) =>
-  entry.description.includes(PORTAL_ROOM_MARKER) || isMeetingRoomCalendar(calendars.find((calendar) => calendar.id === entry.agendaId));
-const calendarCommitmentTitle = (entry: AgendaCommitment, calendars: AgendaCalendar[]) =>
-  `${isMeetingRoomCommitment(entry, calendars) ? "🏢 " : ""}${entry.title}`;
+const isMeetingRoomCommitment = (
+  entry: AgendaCommitment,
+  calendars: AgendaCalendar[],
+) =>
+  entry.description.includes(PORTAL_ROOM_MARKER) ||
+  isMeetingRoomCalendar(
+    calendars.find((calendar) => calendar.id === entry.agendaId),
+  );
+const calendarCommitmentTitle = (
+  entry: AgendaCommitment,
+  calendars: AgendaCalendar[],
+) => `${isMeetingRoomCommitment(entry, calendars) ? "🏢 " : ""}${entry.title}`;
 
-const canEditCommitment = (module: AgendaModuleData, commitment: AgendaCommitment | undefined, currentEmail: string) =>
-  !commitment || module.canManage || commitment.createdBy.toLowerCase() === currentEmail.toLowerCase()
-    || module.collaborators.some(person => person.id === commitment.responsibleUserId && person.email.toLowerCase() === currentEmail.toLowerCase());
+const canEditCommitment = (
+  module: AgendaModuleData,
+  commitment: AgendaCommitment | undefined,
+  currentEmail: string,
+) =>
+  !commitment ||
+  module.canManage ||
+  commitment.createdBy.toLowerCase() === currentEmail.toLowerCase() ||
+  module.collaborators.some(
+    (person) =>
+      person.id === commitment.responsibleUserId &&
+      person.email.toLowerCase() === currentEmail.toLowerCase(),
+  );
 
-const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
+const monthFormatter = new Intl.DateTimeFormat("pt-BR", {
+  month: "long",
+  year: "numeric",
+});
 const dayFormatter = new Intl.DateTimeFormat("pt-BR", { weekday: "short" });
-const dayKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const dayKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const dateKey = (iso: string) => dayKey(new Date(iso));
-const time = (iso: string) => new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+const time = (iso: string) =>
+  new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
 const dateInput = (iso: string) => dayKey(new Date(iso));
 const timeInput = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
 
@@ -111,12 +250,17 @@ export function brazilianHolidayName(date: string) {
   const month = Number(monthText) - 1;
   const day = Number(dayText);
   if (!year || month < 0 || !day) return undefined;
-  const fixed = NATIONAL_HOLIDAYS.find(([holidayMonth, holidayDay]) => holidayMonth === month && holidayDay === day);
+  const fixed = NATIONAL_HOLIDAYS.find(
+    ([holidayMonth, holidayDay]) =>
+      holidayMonth === month && holidayDay === day,
+  );
   if (fixed) return fixed[2];
-  return movableHolidays(year).find((holiday) => dayKey(holiday.date) === date)?.name;
+  return movableHolidays(year).find((holiday) => dayKey(holiday.date) === date)
+    ?.name;
 }
 
-export const isBrazilianHoliday = (date: string) => Boolean(brazilianHolidayName(date));
+export const isBrazilianHoliday = (date: string) =>
+  Boolean(brazilianHolidayName(date));
 
 function recurringDate(year: number, source: string) {
   const [, monthText, dayText] = source.slice(0, 10).split("-");
@@ -125,18 +269,29 @@ function recurringDate(year: number, source: string) {
   return new Date(year, month, Math.min(Number(dayText), lastDay));
 }
 
-function specialEventsForCalendar(month: Date, collaborators: AgendaCelebrant[]): AgendaSpecialEvent[] {
-  const years = [month.getFullYear() - 1, month.getFullYear(), month.getFullYear() + 1];
-  const uniqueCollaborators = [...new Map(collaborators.map((item) => [item.id, item])).values()];
+function specialEventsForCalendar(
+  month: Date,
+  collaborators: AgendaCelebrant[],
+): AgendaSpecialEvent[] {
+  const years = [
+    month.getFullYear() - 1,
+    month.getFullYear(),
+    month.getFullYear() + 1,
+  ];
+  const uniqueCollaborators = [
+    ...new Map(collaborators.map((item) => [item.id, item])).values(),
+  ];
   return years.flatMap((year) => {
-    const fixedHolidays = NATIONAL_HOLIDAYS.map(([holidayMonth, date, name]) => ({
-      id: `holiday-${year}-${holidayMonth}-${date}`,
-      date: dayKey(new Date(year, holidayMonth, date)),
-      title: `🇧🇷 ${name}`,
-      detail: "Feriado nacional",
-      color: "#dc2626",
-      kind: "holiday" as const,
-    }));
+    const fixedHolidays = NATIONAL_HOLIDAYS.map(
+      ([holidayMonth, date, name]) => ({
+        id: `holiday-${year}-${holidayMonth}-${date}`,
+        date: dayKey(new Date(year, holidayMonth, date)),
+        title: `🇧🇷 ${name}`,
+        detail: "Feriado nacional",
+        color: "#dc2626",
+        kind: "holiday" as const,
+      }),
+    );
     const movingHolidays = movableHolidays(year).map((holiday) => ({
       id: `holiday-${dayKey(holiday.date)}`,
       date: dayKey(holiday.date),
@@ -177,21 +332,42 @@ function specialEventsForCalendar(month: Date, collaborators: AgendaCelebrant[])
   });
 }
 
-export default function AgendaModule({ module, busy, operate, currentEmail, currentUserIsCoordinator, onOpenSettings }: { module: AgendaModuleData; busy: boolean; operate: Operate; currentEmail: string; currentUserIsCoordinator: boolean; onOpenSettings?: () => void }) {
+export default function AgendaModule({
+  module,
+  busy,
+  operate,
+  currentEmail,
+  currentUserIsCoordinator,
+  onOpenSettings,
+}: {
+  module: AgendaModuleData;
+  busy: boolean;
+  operate: Operate;
+  currentEmail: string;
+  currentUserIsCoordinator: boolean;
+  onOpenSettings?: () => void;
+}) {
   const [month, setMonth] = useState(() => new Date());
-  const [calendarView, setCalendarView] = useState<"month" | "week" | "day">("month");
+  const [calendarView, setCalendarView] = useState<"month" | "week" | "day">(
+    "month",
+  );
   const [typeFilter, setTypeFilter] = useState("all");
   const [collaboratorFilter, setCollaboratorFilter] = useState("all");
   const [calendarFilter, setCalendarFilter] = useState("all");
-  const [showMeetingRoomCommitments, setShowMeetingRoomCommitments] = useState(true);
+  const [showMeetingRoomCommitments, setShowMeetingRoomCommitments] =
+    useState(true);
   const [creating, setCreating] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const [selected, setSelected] = useState<AgendaCommitment | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   useEffect(() => {
-    const commitmentId = new URLSearchParams(window.location.search).get("commitment");
+    const commitmentId = new URLSearchParams(window.location.search).get(
+      "commitment",
+    );
     if (!commitmentId) return;
-    const commitment = module.commitments.find((entry) => entry.id === commitmentId);
+    const commitment = module.commitments.find(
+      (entry) => entry.id === commitmentId,
+    );
     if (!commitment) return;
     const date = new Date(commitment.startsAt);
     setMonth(date);
@@ -203,233 +379,2209 @@ export default function AgendaModule({ module, busy, operate, currentEmail, curr
     url.searchParams.delete("commitment");
     window.history.replaceState({}, "", url);
   };
-  const effectiveCalendarFilter = calendarFilter === "all" || module.calendars.some((item) => item.id === calendarFilter && item.active) ? calendarFilter : "all";
-  const effectiveTypeFilter = typeFilter === "all" || module.types.some((item) => item.id === typeFilter && item.active) ? typeFilter : "all";
-  const agendaViewer=module.collaborators.find(person=>person.email.toLowerCase()===currentEmail.toLowerCase());
-  const isOwnSectorView=module.calendars.some(calendar=>calendar.id===effectiveCalendarFilter&&calendar.departmentId===agendaViewer?.departmentId);
-  const filtered = useMemo(() => module.commitments.filter((entry) =>
-    (effectiveCalendarFilter === "all" || entry.agendaId === effectiveCalendarFilter || isOwnSectorView && entry.participantUserIds.includes(agendaViewer?.id??"")) &&
-    (effectiveTypeFilter === "all" || entry.agendaTypeId === effectiveTypeFilter) &&
-    (collaboratorFilter === "all" || entry.responsibleUserId === collaboratorFilter || entry.participantUserIds.includes(collaboratorFilter)),
-  ), [module.commitments, effectiveCalendarFilter, effectiveTypeFilter, collaboratorFilter,isOwnSectorView,agendaViewer?.id]);
+  const effectiveCalendarFilter =
+    calendarFilter === "all" ||
+    module.calendars.some((item) => item.id === calendarFilter && item.active)
+      ? calendarFilter
+      : "all";
+  const effectiveTypeFilter =
+    typeFilter === "all" ||
+    module.types.some((item) => item.id === typeFilter && item.active)
+      ? typeFilter
+      : "all";
+  const agendaViewer = module.collaborators.find(
+    (person) => person.email.toLowerCase() === currentEmail.toLowerCase(),
+  );
+  const isOwnSectorView = module.calendars.some(
+    (calendar) =>
+      calendar.id === effectiveCalendarFilter &&
+      calendar.departmentId === agendaViewer?.departmentId,
+  );
+  const filtered = useMemo(
+    () =>
+      module.commitments.filter(
+        (entry) =>
+          (effectiveCalendarFilter === "all" ||
+            entry.agendaId === effectiveCalendarFilter ||
+            (isOwnSectorView &&
+              entry.participantUserIds.includes(agendaViewer?.id ?? ""))) &&
+          (effectiveTypeFilter === "all" ||
+            entry.agendaTypeId === effectiveTypeFilter) &&
+          (collaboratorFilter === "all" ||
+            entry.responsibleUserId === collaboratorFilter ||
+            entry.participantUserIds.includes(collaboratorFilter)),
+      ),
+    [
+      module.commitments,
+      effectiveCalendarFilter,
+      effectiveTypeFilter,
+      collaboratorFilter,
+      isOwnSectorView,
+      agendaViewer?.id,
+    ],
+  );
   const visibleCommitments = showMeetingRoomCommitments
     ? filtered
-    : filtered.filter((entry) => !isMeetingRoomCommitment(entry, module.calendars));
-  const setupRequired = !module.calendars.some((item) => item.active && (currentUserIsCoordinator || !isMeetingRoomCalendar(item))) || !module.types.some((item) => item.active) || !module.statuses.some((item) => item.active);
+    : filtered.filter(
+        (entry) => !isMeetingRoomCommitment(entry, module.calendars),
+      );
+  const setupRequired =
+    !module.calendars.some(
+      (item) =>
+        item.active &&
+        (currentUserIsCoordinator || !isMeetingRoomCalendar(item)),
+    ) ||
+    !module.types.some((item) => item.active) ||
+    !module.statuses.some((item) => item.active);
 
-  return <>
-    <header className="page-header agenda-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO · AGENDA</span><h1>Agenda</h1><p>Visualize os compromissos do seu setor e use os filtros para encontrar rapidamente o que precisa.</p></span></div><div className="module-page-actions commercial-header-actions">{onOpenSettings && <button className="icon-button commercial-settings-button" onClick={onOpenSettings} aria-label="Configurar Agenda" title="Configurar Agenda"><Settings size={18} /></button>}{module.canManage && <button className="secondary-button" disabled={setupRequired} onClick={() => setBlocking(true)}><CalendarDays size={16} /> Bloquear período</button>}<button className="primary-button" disabled={setupRequired} onClick={() => setCreating(true)}><Plus size={17} /> Novo compromisso</button></div></header>
-    {setupRequired && <div className="agenda-setup-note"><CalendarDays size={19} /><span><strong>Os cadastros da Agenda precisam ser concluídos.</strong><small>Crie ao menos uma agenda, um tipo e um status em Cadastros › Agenda.</small></span></div>}
-    <section className="agenda-filters">
-      <div className="agenda-filter-heading"><span><Filter size={16} /></span><div><strong>Filtros da agenda</strong><small>Refine a visualização dos compromissos</small></div></div>
-      <div className="agenda-filter-controls">
-        <label className="agenda-filter-field"><span>Agenda</span><select value={effectiveCalendarFilter} onChange={(event) => setCalendarFilter(event.target.value)}><option value="all">Todas as agendas</option>{module.calendars.filter((calendar) => calendar.active).map((calendar) => <option key={calendar.id} value={calendar.id}>{calendar.name} · {calendar.departmentName}</option>)}</select></label>
-        <label className="agenda-filter-field"><span>Tipo</span><select value={effectiveTypeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Todos os tipos</option>{module.types.filter((type) => type.active).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></label>
-        <label className="agenda-filter-field"><span>Colaborador</span><SearchablePeopleSelect searchLabel="Colaborador" value={collaboratorFilter} onChange={(event) => setCollaboratorFilter(event.target.value)}><option value="all">Todos os colaboradores</option>{module.collaborators.map((collaborator) => <option key={`${collaborator.id}-${collaborator.departmentId}`} value={collaborator.id}>{collaborator.name}</option>)}</SearchablePeopleSelect></label>
-        <label className={`agenda-room-visibility ${showMeetingRoomCommitments ? "active" : ""}`} title="Mostrar ou ocultar na Agenda geral somente os compromissos da sala de reunião"><input type="checkbox" checked={showMeetingRoomCommitments} onChange={(event) => setShowMeetingRoomCommitments(event.target.checked)} /><span className="agenda-room-visibility-icon">{showMeetingRoomCommitments ? <Eye size={16} /> : <EyeOff size={16} />}</span><span><strong>Sala de reunião</strong><small>{showMeetingRoomCommitments ? "Compromissos visíveis" : "Compromissos ocultos"}</small></span></label>
-      </div>
-      <div className="agenda-view-switch" aria-label="Modo de visualização">{([['month','Mês'],['week','Semana'],['day','Dia']] as const).map(([value,label])=><button type="button" className={calendarView===value?"active":""} onClick={()=>setCalendarView(value)} key={value}>{label}</button>)}</div>
-    </section>
-    {calendarView === "month" ? <MonthCalendar month={month} commitments={visibleCommitments} calendars={module.calendars} specialEvents={specialEventsForCalendar(month, module.celebrants ?? module.collaborators)} onPrevious={() => setMonth((value) => { const targetMonth=value.getMonth()-1; const day=Math.min(value.getDate(),new Date(value.getFullYear(),targetMonth+1,0).getDate()); return new Date(value.getFullYear(),targetMonth,day); })} onNext={() => setMonth((value) => { const targetMonth=value.getMonth()+1; const day=Math.min(value.getDate(),new Date(value.getFullYear(),targetMonth+1,0).getDate()); return new Date(value.getFullYear(),targetMonth,day); })} onOpenDay={setSelectedDay} /> : <ScheduleCalendar view={calendarView} anchor={month} commitments={visibleCommitments} calendars={module.calendars} specialEvents={specialEventsForCalendar(month, module.celebrants ?? module.collaborators)} onPrevious={() => setMonth((value) => { const next=new Date(value); next.setDate(next.getDate()-(calendarView==="week"?7:1)); return next; })} onNext={() => setMonth((value) => { const next=new Date(value); next.setDate(next.getDate()+(calendarView==="week"?7:1)); return next; })} onOpenDay={setSelectedDay} onOpenCommitment={setSelected} />}
-    {creating && <CommitmentModal module={module} busy={busy} currentEmail={currentEmail} canReserveMeetingRoom={currentUserIsCoordinator} onClose={() => setCreating(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Compromisso agendado com sucesso."); if (result) setCreating(false); }} />}
-    {blocking && <AvailabilityBlockForm module={module} busy={busy} onClose={() => setBlocking(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Período bloqueado para novos agendamentos do Comercial."); if (result) setBlocking(false); }} />}
-    {selectedDay && <DayCommitmentsModal currentEmail={currentEmail} collaborators={module.collaborators} onDelete={async entry => Boolean(await operate({ action: "deleteAgendaCommitment", id: entry.id }, "Compromisso excluído com sucesso."))} date={selectedDay} commitments={visibleCommitments.filter((entry) => dateKey(entry.startsAt) === selectedDay)} statuses={module.statuses} calendars={module.calendars} busy={busy} onClose={() => setSelectedDay(null)} onOpenCommitment={(entry) => { setSelectedDay(null); setSelected(entry); }} onChangeStatus={async (commitmentId, agendaStatusId) => Boolean(await operate({ action: "changeAgendaCommitmentStatus", id: commitmentId, agendaStatusId }, "Status do compromisso atualizado com sucesso."))} />}
-    {selected && <AgendaCommitmentModal module={module} commitment={selected} busy={busy} currentEmail={currentEmail} canReserveMeetingRoom={currentUserIsCoordinator} onClose={closeSelected} onSave={async (payload) => { const result = await operate({ action: "updateAgendaCommitment", requireConfirmation: true, id: selected.id, ...payload }, "Compromisso atualizado com sucesso."); if (result) closeSelected(); }} onDelete={async (series = false) => { const result = await operate({ action: series ? "deleteAgendaCommitmentSeries" : "deleteAgendaCommitment", id: selected.id }, series ? "Todos os compromissos da série foram excluídos." : "Compromisso excluído com sucesso."); if (result) closeSelected(); }} />}
-  </>;
+  return (
+    <>
+      <header className="page-header agenda-header module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <CalendarDays size={21} />
+          </span>
+          <span className="module-page-copy">
+            <span className="eyebrow">MÓDULO · AGENDA</span>
+            <h1>Agenda</h1>
+            <p>
+              Visualize os compromissos do seu setor e use os filtros para
+              encontrar rapidamente o que precisa.
+            </p>
+          </span>
+        </div>
+        <div className="module-page-actions commercial-header-actions">
+          {onOpenSettings && (
+            <button
+              className="icon-button commercial-settings-button"
+              onClick={onOpenSettings}
+              aria-label="Configurar Agenda"
+              title="Configurar Agenda"
+            >
+              <Settings size={18} />
+            </button>
+          )}
+          {module.canManage && (
+            <button
+              className="secondary-button"
+              disabled={setupRequired}
+              onClick={() => setBlocking(true)}
+            >
+              <CalendarDays size={16} /> Bloquear período
+            </button>
+          )}
+          <button
+            className="primary-button"
+            disabled={setupRequired}
+            onClick={() => setCreating(true)}
+          >
+            <Plus size={17} /> Novo compromisso
+          </button>
+        </div>
+      </header>
+      {setupRequired && (
+        <div className="agenda-setup-note">
+          <CalendarDays size={19} />
+          <span>
+            <strong>Os cadastros da Agenda precisam ser concluídos.</strong>
+            <small>
+              Crie ao menos uma agenda, um tipo e um status em Cadastros ›
+              Agenda.
+            </small>
+          </span>
+        </div>
+      )}
+      <section className="agenda-filters">
+        <div className="agenda-filter-heading">
+          <span>
+            <Filter size={16} />
+          </span>
+          <div>
+            <strong>Filtros da agenda</strong>
+            <small>Refine a visualização dos compromissos</small>
+          </div>
+        </div>
+        <div className="agenda-filter-controls">
+          <label className="agenda-filter-field">
+            <span>Agenda</span>
+            <select
+              value={effectiveCalendarFilter}
+              onChange={(event) => setCalendarFilter(event.target.value)}
+            >
+              <option value="all">Todas as agendas</option>
+              {module.calendars
+                .filter((calendar) => calendar.active)
+                .map((calendar) => (
+                  <option key={calendar.id} value={calendar.id}>
+                    {calendar.name} · {calendar.departmentName}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="agenda-filter-field">
+            <span>Tipo</span>
+            <select
+              value={effectiveTypeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+            >
+              <option value="all">Todos os tipos</option>
+              {module.types
+                .filter((type) => type.active)
+                .map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="agenda-filter-field">
+            <span>Colaborador</span>
+            <SearchablePeopleSelect
+              searchLabel="Colaborador"
+              value={collaboratorFilter}
+              onChange={(event) => setCollaboratorFilter(event.target.value)}
+            >
+              <option value="all">Todos os colaboradores</option>
+              {module.collaborators.map((collaborator) => (
+                <option
+                  key={`${collaborator.id}-${collaborator.departmentId}`}
+                  value={collaborator.id}
+                >
+                  {collaborator.name}
+                </option>
+              ))}
+            </SearchablePeopleSelect>
+          </label>
+          <label
+            className={`agenda-room-visibility ${showMeetingRoomCommitments ? "active" : ""}`}
+            title="Mostrar ou ocultar na Agenda geral somente os compromissos da sala de reunião"
+          >
+            <input
+              type="checkbox"
+              checked={showMeetingRoomCommitments}
+              onChange={(event) =>
+                setShowMeetingRoomCommitments(event.target.checked)
+              }
+            />
+            <span className="agenda-room-visibility-icon">
+              {showMeetingRoomCommitments ? (
+                <Eye size={16} />
+              ) : (
+                <EyeOff size={16} />
+              )}
+            </span>
+            <span>
+              <strong>Sala de reunião</strong>
+              <small>
+                {showMeetingRoomCommitments
+                  ? "Compromissos visíveis"
+                  : "Compromissos ocultos"}
+              </small>
+            </span>
+          </label>
+        </div>
+        <div className="agenda-view-switch" aria-label="Modo de visualização">
+          {(
+            [
+              ["month", "Mês"],
+              ["week", "Semana"],
+              ["day", "Dia"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              type="button"
+              className={calendarView === value ? "active" : ""}
+              onClick={() => setCalendarView(value)}
+              key={value}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
+      {calendarView === "month" ? (
+        <MonthCalendar
+          month={month}
+          commitments={visibleCommitments}
+          calendars={module.calendars}
+          specialEvents={specialEventsForCalendar(
+            month,
+            module.celebrants ?? module.collaborators,
+          )}
+          onPrevious={() =>
+            setMonth((value) => {
+              const targetMonth = value.getMonth() - 1;
+              const day = Math.min(
+                value.getDate(),
+                new Date(value.getFullYear(), targetMonth + 1, 0).getDate(),
+              );
+              return new Date(value.getFullYear(), targetMonth, day);
+            })
+          }
+          onNext={() =>
+            setMonth((value) => {
+              const targetMonth = value.getMonth() + 1;
+              const day = Math.min(
+                value.getDate(),
+                new Date(value.getFullYear(), targetMonth + 1, 0).getDate(),
+              );
+              return new Date(value.getFullYear(), targetMonth, day);
+            })
+          }
+          onOpenDay={setSelectedDay}
+        />
+      ) : (
+        <ScheduleCalendar
+          view={calendarView}
+          anchor={month}
+          commitments={visibleCommitments}
+          calendars={module.calendars}
+          specialEvents={specialEventsForCalendar(
+            month,
+            module.celebrants ?? module.collaborators,
+          )}
+          onPrevious={() =>
+            setMonth((value) => {
+              const next = new Date(value);
+              next.setDate(next.getDate() - (calendarView === "week" ? 7 : 1));
+              return next;
+            })
+          }
+          onNext={() =>
+            setMonth((value) => {
+              const next = new Date(value);
+              next.setDate(next.getDate() + (calendarView === "week" ? 7 : 1));
+              return next;
+            })
+          }
+          onOpenDay={setSelectedDay}
+          onOpenCommitment={setSelected}
+        />
+      )}
+      {creating && (
+        <CommitmentModal
+          module={module}
+          busy={busy}
+          currentEmail={currentEmail}
+          canReserveMeetingRoom={currentUserIsCoordinator}
+          onClose={() => setCreating(false)}
+          onSave={async (payload) => {
+            const result = await operate(
+              { action: "createAgendaCommitment", ...payload },
+              "Compromisso agendado com sucesso.",
+            );
+            if (result) setCreating(false);
+          }}
+        />
+      )}
+      {blocking && (
+        <AvailabilityBlockForm
+          module={module}
+          busy={busy}
+          onClose={() => setBlocking(false)}
+          onSave={async (payload) => {
+            const result = await operate(
+              { action: "createAgendaCommitment", ...payload },
+              "Período bloqueado para novos agendamentos do Comercial.",
+            );
+            if (result) setBlocking(false);
+          }}
+        />
+      )}
+      {selectedDay && (
+        <DayCommitmentsModal
+          currentEmail={currentEmail}
+          collaborators={module.collaborators}
+          onDelete={async (entry) =>
+            Boolean(
+              await operate(
+                { action: "deleteAgendaCommitment", id: entry.id },
+                "Compromisso excluído com sucesso.",
+              ),
+            )
+          }
+          date={selectedDay}
+          commitments={visibleCommitments.filter(
+            (entry) => dateKey(entry.startsAt) === selectedDay,
+          )}
+          statuses={module.statuses}
+          calendars={module.calendars}
+          busy={busy}
+          onClose={() => setSelectedDay(null)}
+          onOpenCommitment={(entry) => {
+            setSelectedDay(null);
+            setSelected(entry);
+          }}
+          onChangeStatus={async (commitmentId, agendaStatusId) =>
+            Boolean(
+              await operate(
+                {
+                  action: "changeAgendaCommitmentStatus",
+                  id: commitmentId,
+                  agendaStatusId,
+                },
+                "Status do compromisso atualizado com sucesso.",
+              ),
+            )
+          }
+        />
+      )}
+      {selected && (
+        <AgendaCommitmentModal
+          module={module}
+          commitment={selected}
+          busy={busy}
+          currentEmail={currentEmail}
+          canReserveMeetingRoom={currentUserIsCoordinator}
+          onClose={closeSelected}
+          onSave={async (payload) => {
+            const result = await operate(
+              {
+                action: "updateAgendaCommitment",
+                requireConfirmation: true,
+                id: selected.id,
+                ...payload,
+              },
+              "Compromisso atualizado com sucesso.",
+            );
+            if (result) closeSelected();
+          }}
+          onDelete={async (series = false) => {
+            const result = await operate(
+              {
+                action: series
+                  ? "deleteAgendaCommitmentSeries"
+                  : "deleteAgendaCommitment",
+                id: selected.id,
+              },
+              series
+                ? "Todos os compromissos da série foram excluídos."
+                : "Compromisso excluído com sucesso.",
+            );
+            if (result) closeSelected();
+          }}
+        />
+      )}
+    </>
+  );
 }
 
-export function AgendaCatalogsModule({ module, busy, operate, currentEmail }: { module: AgendaModuleData; busy: boolean; operate: Operate; currentEmail: string }) {
-  const [tab, setTab] = useState<"calendars" | "types" | "statuses" | "blocks">("calendars");
-  const [calendar, setCalendar] = useState<AgendaCalendar | null | undefined>(undefined);
+export function AgendaCatalogsModule({
+  module,
+  busy,
+  operate,
+  currentEmail,
+}: {
+  module: AgendaModuleData;
+  busy: boolean;
+  operate: Operate;
+  currentEmail: string;
+}) {
+  const [tab, setTab] = useState<"calendars" | "types" | "statuses" | "blocks">(
+    "calendars",
+  );
+  const [calendar, setCalendar] = useState<AgendaCalendar | null | undefined>(
+    undefined,
+  );
   const [type, setType] = useState<AgendaType | null | undefined>(undefined);
-  const [status, setStatus] = useState<AgendaStatus | null | undefined>(undefined);
+  const [status, setStatus] = useState<AgendaStatus | null | undefined>(
+    undefined,
+  );
   const [creatingBlock, setCreatingBlock] = useState(false);
-  const blocks = module.commitments.filter(isCommercialAvailabilityBlock).sort((a, b) => b.startsAt.localeCompare(a.startsAt));
-  const remove = async (action: string, id: string, label: string) => { await operate({ action, id }, `${label} excluído com sucesso.`); };
-  return <>
-    <header className="page-header agenda-header module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21} /></span><span className="module-page-copy"><span className="eyebrow">CADASTROS · AGENDA</span><h1>Cadastros da Agenda</h1><p>Gerencie agendas, tipos, status e os períodos indisponíveis para novos agendamentos do Comercial.</p></span></div></header>
-    <div className="agenda-tabs"><button className={tab === "calendars" ? "active" : ""} onClick={() => setTab("calendars")}><CalendarDays size={15} /> Agendas</button><button className={tab === "types" ? "active" : ""} onClick={() => setTab("types")}><Tag size={15} /> Tipos</button><button className={tab === "statuses" ? "active" : ""} onClick={() => setTab("statuses")}><Tag size={15} /> Status</button><button className={tab === "blocks" ? "active" : ""} onClick={() => setTab("blocks")}><CalendarDays size={15} /> Bloqueios</button></div>
-    <section className="agenda-catalog-card"><div className="agenda-catalog-head"><div><span className="eyebrow">{tab === "calendars" ? "AGENDAS" : tab === "types" ? "TIPOS" : tab === "statuses" ? "STATUS" : "BLOQUEIOS"}</span><h2>{tab === "calendars" ? "Agendas por setor" : tab === "types" ? "Tipos de agendamento" : tab === "statuses" ? "Status do compromisso" : "Períodos indisponíveis"}</h2><p>{tab === "calendars" ? "Cada agenda é exibida apenas para colaboradores vinculados ao seu setor." : tab === "types" ? "Nenhuma opção padrão é criada automaticamente." : tab === "statuses" ? "A cor do status é aplicada diretamente no compromisso do calendário." : "Cadastre intervalos em que o time Comercial não poderá reservar horários."}</p></div><button className="primary-button" onClick={() => tab === "calendars" ? setCalendar(null) : tab === "types" ? setType(null) : tab === "statuses" ? setStatus(null) : setCreatingBlock(true)}><Plus size={16} /> {tab === "blocks" ? "Novo bloqueio" : "Novo"}</button></div>
-      {tab === "calendars" && <CatalogList items={module.calendars} icon={<CalendarDays size={18} />} onEdit={(item) => setCalendar(item)} onDelete={(item) => void remove("deleteAgendaCalendar", item.id, "agenda")} render={(item) => <><strong>{item.name}</strong><small>{item.description || item.departmentName}</small></>} />}
-      {tab === "types" && <CatalogList items={module.types} icon={<i className="agenda-type-dot" />} onEdit={(item) => setType(item)} onDelete={(item) => void remove("deleteAgendaType", item.id, "tipo de agendamento")} render={(item) => <><strong>{item.name}</strong><small>{item.description || `Cor de identificação: ${item.color}`}</small></>} />}
-      {tab === "statuses" && <CatalogList items={module.statuses} icon={<i className="agenda-type-dot" />} onEdit={(item) => setStatus(item)} onDelete={(item) => void remove("deleteAgendaStatus", item.id, "status")} render={(item) => <><strong>{item.name}</strong><small>{item.description || `Cor aplicada ao agendamento: ${item.color}`}</small></>} />}
-      {tab === "blocks" && <div className="agenda-catalog-list agenda-block-list">{blocks.length === 0 ? <EmptyAgenda text="Nenhum período de bloqueio cadastrado." /> : blocks.map((item) => { const calendarItem = module.calendars.find((entry) => entry.id === item.agendaId); return <article key={item.id}><span className="agenda-list-icon"><CalendarDays size={18} /></span><span className="agenda-list-data"><strong>{item.title.replace(COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, "").trim() || "Bloqueio comercial"}</strong><small>{calendarItem?.name ?? "Agenda"} · {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.startsAt))} até {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.endsAt))}</small>{item.description && <small>{item.description}</small>}</span>{item.createdBy.toLowerCase() === currentEmail.toLowerCase() && <button type="button" className="catalog-icon-button delete" disabled={busy} onClick={() => void remove("deleteAgendaCommitment", item.id, "bloqueio")} aria-label="Excluir bloqueio"><Trash2 size={15} /></button>}</article>; })}</div>}
-    </section>
-    {calendar !== undefined && <CalendarForm item={calendar} departments={module.departments} busy={busy} onClose={() => setCalendar(undefined)} onSave={async (payload) => { const result = await operate({ action: "saveAgendaCalendar", id: calendar?.id, ...payload }, calendar ? "Agenda atualizada com sucesso." : "Agenda cadastrada com sucesso."); if (result) setCalendar(undefined); }} />}
-    {type !== undefined && <NamedColorForm title="Tipo de agendamento" item={type} busy={busy} onClose={() => setType(undefined)} onSave={async (payload) => { const result = await operate({ action: "saveAgendaType", id: type?.id, ...payload }, type ? "Tipo atualizado com sucesso." : "Tipo cadastrado com sucesso."); if (result) setType(undefined); }} />}
-    {status !== undefined && <NamedColorForm title="Status do compromisso" item={status} busy={busy} onClose={() => setStatus(undefined)} onSave={async (payload) => { const result = await operate({ action: "saveAgendaStatus", id: status?.id, ...payload }, status ? "Status atualizado com sucesso." : "Status cadastrado com sucesso."); if (result) setStatus(undefined); }} />}
-    {creatingBlock && <AvailabilityBlockForm module={module} busy={busy} onClose={() => setCreatingBlock(false)} onSave={async (payload) => { const result = await operate({ action: "createAgendaCommitment", ...payload }, "Período bloqueado para novos agendamentos do Comercial."); if (result) setCreatingBlock(false); }} />}
-  </>;
+  const blocks = module.commitments
+    .filter(isCommercialAvailabilityBlock)
+    .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+  const remove = async (action: string, id: string, label: string) => {
+    await operate({ action, id }, `${label} excluído com sucesso.`);
+  };
+  return (
+    <>
+      <header className="page-header agenda-header module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <CalendarDays size={21} />
+          </span>
+          <span className="module-page-copy">
+            <span className="eyebrow">CADASTROS · AGENDA</span>
+            <h1>Cadastros da Agenda</h1>
+            <p>
+              Gerencie agendas, tipos, status e os períodos indisponíveis para
+              novos agendamentos do Comercial.
+            </p>
+          </span>
+        </div>
+      </header>
+      <div className="agenda-tabs">
+        <button
+          className={tab === "calendars" ? "active" : ""}
+          onClick={() => setTab("calendars")}
+        >
+          <CalendarDays size={15} /> Agendas
+        </button>
+        <button
+          className={tab === "types" ? "active" : ""}
+          onClick={() => setTab("types")}
+        >
+          <Tag size={15} /> Tipos
+        </button>
+        <button
+          className={tab === "statuses" ? "active" : ""}
+          onClick={() => setTab("statuses")}
+        >
+          <Tag size={15} /> Status
+        </button>
+        <button
+          className={tab === "blocks" ? "active" : ""}
+          onClick={() => setTab("blocks")}
+        >
+          <CalendarDays size={15} /> Bloqueios
+        </button>
+      </div>
+      <section className="agenda-catalog-card">
+        <div className="agenda-catalog-head">
+          <div>
+            <span className="eyebrow">
+              {tab === "calendars"
+                ? "AGENDAS"
+                : tab === "types"
+                  ? "TIPOS"
+                  : tab === "statuses"
+                    ? "STATUS"
+                    : "BLOQUEIOS"}
+            </span>
+            <h2>
+              {tab === "calendars"
+                ? "Agendas por setor"
+                : tab === "types"
+                  ? "Tipos de agendamento"
+                  : tab === "statuses"
+                    ? "Status do compromisso"
+                    : "Períodos indisponíveis"}
+            </h2>
+            <p>
+              {tab === "calendars"
+                ? "Cada agenda é exibida apenas para colaboradores vinculados ao seu setor."
+                : tab === "types"
+                  ? "Nenhuma opção padrão é criada automaticamente."
+                  : tab === "statuses"
+                    ? "A cor do status é aplicada diretamente no compromisso do calendário."
+                    : "Cadastre intervalos em que o time Comercial não poderá reservar horários."}
+            </p>
+          </div>
+          <button
+            className="primary-button"
+            onClick={() =>
+              tab === "calendars"
+                ? setCalendar(null)
+                : tab === "types"
+                  ? setType(null)
+                  : tab === "statuses"
+                    ? setStatus(null)
+                    : setCreatingBlock(true)
+            }
+          >
+            <Plus size={16} /> {tab === "blocks" ? "Novo bloqueio" : "Novo"}
+          </button>
+        </div>
+        {tab === "calendars" && (
+          <CatalogList
+            items={module.calendars}
+            icon={<CalendarDays size={18} />}
+            onEdit={(item) => setCalendar(item)}
+            onDelete={(item) =>
+              void remove("deleteAgendaCalendar", item.id, "agenda")
+            }
+            render={(item) => (
+              <>
+                <strong>{item.name}</strong>
+                <small>{item.description || item.departmentName}</small>
+              </>
+            )}
+          />
+        )}
+        {tab === "types" && (
+          <CatalogList
+            items={module.types}
+            icon={<i className="agenda-type-dot" />}
+            onEdit={(item) => setType(item)}
+            onDelete={(item) =>
+              void remove("deleteAgendaType", item.id, "tipo de agendamento")
+            }
+            render={(item) => (
+              <>
+                <strong>{item.name}</strong>
+                <small>
+                  {item.description || `Cor de identificação: ${item.color}`}
+                </small>
+              </>
+            )}
+          />
+        )}
+        {tab === "statuses" && (
+          <CatalogList
+            items={module.statuses}
+            icon={<i className="agenda-type-dot" />}
+            onEdit={(item) => setStatus(item)}
+            onDelete={(item) =>
+              void remove("deleteAgendaStatus", item.id, "status")
+            }
+            render={(item) => (
+              <>
+                <strong>{item.name}</strong>
+                <small>
+                  {item.description ||
+                    `Cor aplicada ao agendamento: ${item.color}`}
+                </small>
+              </>
+            )}
+          />
+        )}
+        {tab === "blocks" && (
+          <div className="agenda-catalog-list agenda-block-list">
+            {blocks.length === 0 ? (
+              <EmptyAgenda text="Nenhum período de bloqueio cadastrado." />
+            ) : (
+              blocks.map((item) => {
+                const calendarItem = module.calendars.find(
+                  (entry) => entry.id === item.agendaId,
+                );
+                return (
+                  <article key={item.id}>
+                    <span className="agenda-list-icon">
+                      <CalendarDays size={18} />
+                    </span>
+                    <span className="agenda-list-data">
+                      <strong>
+                        {item.title
+                          .replace(COMMERCIAL_AVAILABILITY_BLOCK_PREFIX, "")
+                          .trim() || "Bloqueio comercial"}
+                      </strong>
+                      <small>
+                        {calendarItem?.name ?? "Agenda"} ·{" "}
+                        {new Intl.DateTimeFormat("pt-BR", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        }).format(new Date(item.startsAt))}{" "}
+                        até{" "}
+                        {new Intl.DateTimeFormat("pt-BR", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        }).format(new Date(item.endsAt))}
+                      </small>
+                      {item.description && <small>{item.description}</small>}
+                    </span>
+                    {item.createdBy.toLowerCase() ===
+                      currentEmail.toLowerCase() && (
+                      <button
+                        type="button"
+                        className="catalog-icon-button delete"
+                        disabled={busy}
+                        onClick={() =>
+                          void remove(
+                            "deleteAgendaCommitment",
+                            item.id,
+                            "bloqueio",
+                          )
+                        }
+                        aria-label="Excluir bloqueio"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </article>
+                );
+              })
+            )}
+          </div>
+        )}
+      </section>
+      {calendar !== undefined && (
+        <CalendarForm
+          item={calendar}
+          departments={module.departments}
+          busy={busy}
+          onClose={() => setCalendar(undefined)}
+          onSave={async (payload) => {
+            const result = await operate(
+              { action: "saveAgendaCalendar", id: calendar?.id, ...payload },
+              calendar
+                ? "Agenda atualizada com sucesso."
+                : "Agenda cadastrada com sucesso.",
+            );
+            if (result) setCalendar(undefined);
+          }}
+        />
+      )}
+      {type !== undefined && (
+        <NamedColorForm
+          title="Tipo de agendamento"
+          item={type}
+          busy={busy}
+          onClose={() => setType(undefined)}
+          onSave={async (payload) => {
+            const result = await operate(
+              { action: "saveAgendaType", id: type?.id, ...payload },
+              type
+                ? "Tipo atualizado com sucesso."
+                : "Tipo cadastrado com sucesso.",
+            );
+            if (result) setType(undefined);
+          }}
+        />
+      )}
+      {status !== undefined && (
+        <NamedColorForm
+          title="Status do compromisso"
+          item={status}
+          busy={busy}
+          onClose={() => setStatus(undefined)}
+          onSave={async (payload) => {
+            const result = await operate(
+              { action: "saveAgendaStatus", id: status?.id, ...payload },
+              status
+                ? "Status atualizado com sucesso."
+                : "Status cadastrado com sucesso.",
+            );
+            if (result) setStatus(undefined);
+          }}
+        />
+      )}
+      {creatingBlock && (
+        <AvailabilityBlockForm
+          module={module}
+          busy={busy}
+          onClose={() => setCreatingBlock(false)}
+          onSave={async (payload) => {
+            const result = await operate(
+              { action: "createAgendaCommitment", ...payload },
+              "Período bloqueado para novos agendamentos do Comercial.",
+            );
+            if (result) setCreatingBlock(false);
+          }}
+        />
+      )}
+    </>
+  );
 }
 
-function AvailabilityBlockForm({ module, busy, onClose, onSave }: { module: AgendaModuleData; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
+function AvailabilityBlockForm({
+  module,
+  busy,
+  onClose,
+  onSave,
+}: {
+  module: AgendaModuleData;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (payload: Record<string, unknown>) => void;
+}) {
   const calendars = module.calendars.filter((item) => item.active);
   const [agendaId, setAgendaId] = useState(calendars[0]?.id ?? "");
   const calendar = calendars.find((item) => item.id === agendaId);
-  const responsible = module.collaborators.find((item) => Boolean(calendar && item.agendaIds?.includes(calendar.id)));
+  const responsible = module.collaborators.find((item) =>
+    Boolean(calendar && item.agendaIds?.includes(calendar.id)),
+  );
   const type = module.types.find((item) => item.active);
   const status = module.statuses.find((item) => item.active);
   const ready = Boolean(calendar && responsible && type && status);
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!calendar || !responsible || !type || !status) return;
     const form = new FormData(event.currentTarget);
     const reason = String(form.get("reason") || "Período indisponível").trim();
-    const startsAt = new Date(`${form.get("startDate")}T${form.get("startTime")}:00`);
+    const startsAt = new Date(
+      `${form.get("startDate")}T${form.get("startTime")}:00`,
+    );
     const endsAt = new Date(`${form.get("endDate")}T${form.get("endTime")}:00`);
-    onSave({ agendaId: calendar.id, agendaTypeId: type.id, agendaStatusId: status.id, responsibleUserId: responsible.id, title: `${COMMERCIAL_AVAILABILITY_BLOCK_PREFIX} ${reason}`, description: String(form.get("description") || "").trim(), startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), participantUserIds: [], recurrence: "none" });
+    onSave({
+      agendaId: calendar.id,
+      agendaTypeId: type.id,
+      agendaStatusId: status.id,
+      responsibleUserId: responsible.id,
+      title: `${COMMERCIAL_AVAILABILITY_BLOCK_PREFIX} ${reason}`,
+      description: String(form.get("description") || "").trim(),
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      participantUserIds: [],
+      recurrence: "none",
+    });
   };
-  return <AgendaModal title="Bloquear período" onClose={onClose}><form className="form-grid agenda-form" onSubmit={submit}><label className="wide">Agenda *<select value={agendaId} onChange={(event) => setAgendaId(event.target.value)} required><option value="">Selecionar agenda...</option>{calendars.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.departmentName}</option>)}</select></label><label className="wide">Motivo *<input name="reason" required maxLength={180} placeholder="Ex.: Treinamento interno, recesso ou reunião do time" /></label><label>Data inicial *<input name="startDate" type="date" required defaultValue={dayKey(tomorrow)} /></label><label>Hora inicial *<input name="startTime" type="time" required defaultValue="09:00" /></label><label>Data final *<input name="endDate" type="date" required defaultValue={dayKey(tomorrow)} /></label><label>Hora final *<input name="endTime" type="time" required defaultValue="18:00" /></label><label className="wide">Observação<textarea name="description" rows={3} placeholder="Detalhes opcionais sobre o período bloqueado." /></label>{!ready && <div className="wide agenda-setup-note"><CalendarDays size={18} /><span><strong>Configuração incompleta.</strong><small>A agenda precisa ter tipo, status e ao menos um colaborador ativo no setor.</small></span></div>}<div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy || !ready}><Save size={16} /> {busy ? "Salvando..." : "Bloquear período"}</button></div></form></AgendaModal>;
+  return (
+    <AgendaModal title="Bloquear período" onClose={onClose}>
+      <form className="form-grid agenda-form" onSubmit={submit}>
+        <label className="wide">
+          Agenda *
+          <select
+            value={agendaId}
+            onChange={(event) => setAgendaId(event.target.value)}
+            required
+          >
+            <option value="">Selecionar agenda...</option>
+            {calendars.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.name} · {item.departmentName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="wide">
+          Motivo *
+          <input
+            name="reason"
+            required
+            maxLength={180}
+            placeholder="Ex.: Treinamento interno, recesso ou reunião do time"
+          />
+        </label>
+        <label>
+          Data inicial *
+          <input
+            name="startDate"
+            type="date"
+            required
+            defaultValue={dayKey(tomorrow)}
+          />
+        </label>
+        <label>
+          Hora inicial *
+          <input name="startTime" type="time" required defaultValue="09:00" />
+        </label>
+        <label>
+          Data final *
+          <input
+            name="endDate"
+            type="date"
+            required
+            defaultValue={dayKey(tomorrow)}
+          />
+        </label>
+        <label>
+          Hora final *
+          <input name="endTime" type="time" required defaultValue="18:00" />
+        </label>
+        <label className="wide">
+          Observação
+          <textarea
+            name="description"
+            rows={3}
+            placeholder="Detalhes opcionais sobre o período bloqueado."
+          />
+        </label>
+        {!ready && (
+          <div className="wide agenda-setup-note">
+            <CalendarDays size={18} />
+            <span>
+              <strong>Configuração incompleta.</strong>
+              <small>
+                A agenda precisa ter tipo, status e ao menos um colaborador
+                ativo no setor.
+              </small>
+            </span>
+          </div>
+        )}
+        <div className="form-actions wide">
+          <button type="button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={busy || !ready}
+          >
+            <Save size={16} /> {busy ? "Salvando..." : "Bloquear período"}
+          </button>
+        </div>
+      </form>
+    </AgendaModal>
+  );
 }
 
-function MonthCalendar({ month, commitments, calendars, specialEvents, onPrevious, onNext, onOpenDay }: { month: Date; commitments: AgendaCommitment[]; calendars: AgendaCalendar[]; specialEvents: AgendaSpecialEvent[]; onPrevious: () => void; onNext: () => void; onOpenDay: (date: string) => void }) {
-  const days = useMemo(() => { const first = new Date(month.getFullYear(), month.getMonth(), 1); const start = new Date(first); start.setDate(first.getDate() - first.getDay()); return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; }); }, [month]);
+function MonthCalendar({
+  month,
+  commitments,
+  calendars,
+  specialEvents,
+  onPrevious,
+  onNext,
+  onOpenDay,
+}: {
+  month: Date;
+  commitments: AgendaCommitment[];
+  calendars: AgendaCalendar[];
+  specialEvents: AgendaSpecialEvent[];
+  onPrevious: () => void;
+  onNext: () => void;
+  onOpenDay: (date: string) => void;
+}) {
+  const days = useMemo(() => {
+    const first = new Date(month.getFullYear(), month.getMonth(), 1);
+    const start = new Date(first);
+    start.setDate(first.getDate() - first.getDay());
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return date;
+    });
+  }, [month]);
   const today = dayKey(new Date());
-  return <section className="agenda-calendar-card"><header className="agenda-calendar-title"><button className="icon-button" onClick={onPrevious} aria-label="Mês anterior"><ChevronLeft size={19} /></button><h2>{monthFormatter.format(month)}</h2><button className="icon-button" onClick={onNext} aria-label="Próximo mês"><ChevronRight size={19} /></button></header><div className="agenda-weekdays">{Array.from({ length: 7 }, (_, index) => <span key={index}>{dayFormatter.format(new Date(2023, 0, index + 1)).replace(".", "")}</span>)}</div><div className="agenda-month-grid">{days.map((day) => { const key = dayKey(day); const commemorations = specialEvents.filter((entry) => entry.date === key); const entries = commitments.filter((entry) => dateKey(entry.startsAt) === key).sort((a, b) => a.startsAt.localeCompare(b.startsAt)); const visible = 3; const shownCommemorations = commemorations.slice(0, visible); const shownCommitments = entries.slice(0, Math.max(visible - shownCommemorations.length, 0)); const hidden = commemorations.length + entries.length - shownCommemorations.length - shownCommitments.length; const outside = day.getMonth() !== month.getMonth(); return <div className={`agenda-day ${outside ? "outside" : ""}`} key={key}><time className={key === today ? "today" : ""}>{day.getDate()}</time>{shownCommemorations.map((entry) => <div className={`agenda-event agenda-special-event ${entry.kind}`} key={entry.id} style={{ "--event-color": entry.color } as CSSProperties} title={`${entry.title} · ${entry.detail}`}><span>{entry.title}</span><small>dia inteiro</small></div>)}{shownCommitments.map((entry) => <button className={`agenda-event ${isMeetingRoomCommitment(entry, calendars) ? "meeting-room" : ""}`} key={entry.id} onClick={() => onOpenDay(key)} style={{ "--event-color": entry.statusColor } as CSSProperties} aria-label={`Ver todos os compromissos de ${day.toLocaleDateString("pt-BR")}`}><span>{calendarCommitmentTitle(entry, calendars)}</span><small>{time(entry.startsAt)}</small></button>)}{hidden > 0 && (entries.length > 0 ? <button type="button" className="agenda-more" onClick={() => onOpenDay(key)} aria-label={`Ver mais compromissos de ${day.toLocaleDateString("pt-BR")}`}>+{hidden} mais</button> : <span className="agenda-more">+{hidden} mais</span>)}</div>; })}</div></section>;
+  return (
+    <section className="agenda-calendar-card">
+      <header className="agenda-calendar-title">
+        <button
+          className="icon-button"
+          onClick={onPrevious}
+          aria-label="Mês anterior"
+        >
+          <ChevronLeft size={19} />
+        </button>
+        <h2>{monthFormatter.format(month)}</h2>
+        <button
+          className="icon-button"
+          onClick={onNext}
+          aria-label="Próximo mês"
+        >
+          <ChevronRight size={19} />
+        </button>
+      </header>
+      <div className="agenda-weekdays">
+        {Array.from({ length: 7 }, (_, index) => (
+          <span key={index}>
+            {dayFormatter.format(new Date(2023, 0, index + 1)).replace(".", "")}
+          </span>
+        ))}
+      </div>
+      <div className="agenda-month-grid">
+        {days.map((day) => {
+          const key = dayKey(day);
+          const commemorations = specialEvents.filter(
+            (entry) => entry.date === key,
+          );
+          const entries = commitments
+            .filter((entry) => dateKey(entry.startsAt) === key)
+            .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+          const visible = 3;
+          const shownCommemorations = commemorations.slice(0, visible);
+          const shownCommitments = entries.slice(
+            0,
+            Math.max(visible - shownCommemorations.length, 0),
+          );
+          const hidden =
+            commemorations.length +
+            entries.length -
+            shownCommemorations.length -
+            shownCommitments.length;
+          const outside = day.getMonth() !== month.getMonth();
+          return (
+            <div className={`agenda-day ${outside ? "outside" : ""}`} key={key}>
+              <time className={key === today ? "today" : ""}>
+                {day.getDate()}
+              </time>
+              {shownCommemorations.map((entry) => (
+                <div
+                  className={`agenda-event agenda-special-event ${entry.kind}`}
+                  key={entry.id}
+                  style={{ "--event-color": entry.color } as CSSProperties}
+                  title={`${entry.title} · ${entry.detail}`}
+                >
+                  <span>{entry.title}</span>
+                  <small>dia inteiro</small>
+                </div>
+              ))}
+              {shownCommitments.map((entry) => (
+                <button
+                  className={`agenda-event ${isMeetingRoomCommitment(entry, calendars) ? "meeting-room" : ""}`}
+                  key={entry.id}
+                  onClick={() => onOpenDay(key)}
+                  style={
+                    { "--event-color": entry.statusColor } as CSSProperties
+                  }
+                  aria-label={`Ver todos os compromissos de ${day.toLocaleDateString("pt-BR")}`}
+                >
+                  <span>{calendarCommitmentTitle(entry, calendars)}</span>
+                  <small>{time(entry.startsAt)}</small>
+                </button>
+              ))}
+              {hidden > 0 &&
+                (entries.length > 0 ? (
+                  <button
+                    type="button"
+                    className="agenda-more"
+                    onClick={() => onOpenDay(key)}
+                    aria-label={`Ver mais compromissos de ${day.toLocaleDateString("pt-BR")}`}
+                  >
+                    +{hidden} mais
+                  </button>
+                ) : (
+                  <span className="agenda-more">+{hidden} mais</span>
+                ))}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
-function ScheduleCalendar({ view, anchor, commitments, calendars, specialEvents, onPrevious, onNext, onOpenDay, onOpenCommitment }: { view: "week" | "day"; anchor: Date; commitments: AgendaCommitment[]; calendars: AgendaCalendar[]; specialEvents: AgendaSpecialEvent[]; onPrevious: () => void; onNext: () => void; onOpenDay: (date: string) => void; onOpenCommitment: (entry: AgendaCommitment) => void }) {
+function ScheduleCalendar({
+  view,
+  anchor,
+  commitments,
+  calendars,
+  specialEvents,
+  onPrevious,
+  onNext,
+  onOpenDay,
+  onOpenCommitment,
+}: {
+  view: "week" | "day";
+  anchor: Date;
+  commitments: AgendaCommitment[];
+  calendars: AgendaCalendar[];
+  specialEvents: AgendaSpecialEvent[];
+  onPrevious: () => void;
+  onNext: () => void;
+  onOpenDay: (date: string) => void;
+  onOpenCommitment: (entry: AgendaCommitment) => void;
+}) {
   const scroll = useRef<HTMLDivElement>(null);
   const days = useMemo(() => {
     if (view === "day") return [new Date(anchor)];
     return agendaWeekdays(anchor);
   }, [anchor, view]);
-  useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0; }, [anchor, view]);
-  const label = view === "day"
-    ? new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(days[0])
-    : `${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${days[days.length - 1].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
-  const gridStyle = { "--schedule-days": days.length, "--schedule-slot-count": agendaTimeSlots.length, "--slot-height": `${AGENDA_SLOT_HEIGHT}px` } as CSSProperties;
-  return <section className={`agenda-calendar-card agenda-time-calendar ${view}`}>
-    <header className="agenda-calendar-title"><button className="icon-button" onClick={onPrevious} aria-label="Período anterior"><ChevronLeft size={19} /></button><h2>{label}</h2><button className="icon-button" onClick={onNext} aria-label="Próximo período"><ChevronRight size={19} /></button></header>
-    <div className="agenda-time-scroll" ref={scroll} style={gridStyle}>
-      <div className="agenda-time-head"><span>Horário</span>{days.map(day => <button key={dayKey(day)} type="button" className={dayKey(day) === dayKey(new Date()) ? "today" : ""} onClick={() => onOpenDay(dayKey(day))}>{day.toLocaleDateString("pt-BR", { weekday:"short", day:"2-digit", month:"2-digit" })}</button>)}</div>
-      {specialEvents.some(event => days.some(day => dayKey(day) === event.date)) && <div className="agenda-time-special"><span>Dia inteiro</span>{days.map(day => <div key={dayKey(day)}>{specialEvents.filter(event => event.date === dayKey(day)).map(event => <span key={event.id} style={{ "--event-color": event.color } as CSSProperties}>{event.title}</span>)}</div>)}</div>}
-      <div className="agenda-time-body"><div className="agenda-time-labels">{agendaTimeSlots.map(slot => <time key={slot.minutes}>{slot.label}</time>)}<time className="agenda-time-end">21:00</time></div>
-        {days.map(day => { const key = dayKey(day); return <div className="agenda-time-day" key={key} aria-label={day.toLocaleDateString("pt-BR")}>
-          {agendaTimeSlots.map(slot => <button key={slot.minutes} type="button" className="agenda-time-slot" style={{ top: (slot.minutes - AGENDA_START_MINUTE) / 30 * AGENDA_SLOT_HEIGHT }} aria-label={`Ver compromissos de ${key} às ${slot.label}`} onClick={() => onOpenDay(key)} />)}
-          {positionAgendaEntries(commitments, key, { startMinute: AGENDA_START_MINUTE, endMinute: AGENDA_END_MINUTE }).map(({ entry, startMinute, endMinute, column, columns }) => <button type="button" className="agenda-time-event" key={entry.id} style={{ "--event-color":entry.statusColor, top: (startMinute - AGENDA_START_MINUTE) / 30 * AGENDA_SLOT_HEIGHT, height: Math.max(24, (endMinute-startMinute) / 30 * AGENDA_SLOT_HEIGHT - 3), left: `calc(${column / columns * 100}% + 3px)`, width: `calc(${100 / columns}% - 6px)` } as CSSProperties} title={`${time(entry.startsAt)} – ${time(entry.endsAt)} · ${entry.title} · ${entry.responsibleName}`} onClick={() => onOpenCommitment(entry)}><time>{time(entry.startsAt)} – {time(entry.endsAt)}</time><strong>{calendarCommitmentTitle(entry, calendars)}</strong><small>{entry.responsibleName} · {entry.statusName}</small></button>)}
-        </div>; })}
+  useEffect(() => {
+    if (scroll.current) scroll.current.scrollTop = 0;
+  }, [anchor, view]);
+  const label =
+    view === "day"
+      ? new Intl.DateTimeFormat("pt-BR", {
+          weekday: "long",
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        }).format(days[0])
+      : `${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${days[days.length - 1].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
+  const gridStyle = {
+    "--schedule-days": days.length,
+    "--schedule-slot-count": agendaTimeSlots.length,
+    "--slot-height": `${AGENDA_SLOT_HEIGHT}px`,
+  } as CSSProperties;
+  return (
+    <section className={`agenda-calendar-card agenda-time-calendar ${view}`}>
+      <header className="agenda-calendar-title">
+        <button
+          className="icon-button"
+          onClick={onPrevious}
+          aria-label="Período anterior"
+        >
+          <ChevronLeft size={19} />
+        </button>
+        <h2>{label}</h2>
+        <button
+          className="icon-button"
+          onClick={onNext}
+          aria-label="Próximo período"
+        >
+          <ChevronRight size={19} />
+        </button>
+      </header>
+      <div className="agenda-time-scroll" ref={scroll} style={gridStyle}>
+        <div className="agenda-time-head">
+          <span>Horário</span>
+          {days.map((day) => (
+            <button
+              key={dayKey(day)}
+              type="button"
+              className={dayKey(day) === dayKey(new Date()) ? "today" : ""}
+              onClick={() => onOpenDay(dayKey(day))}
+            >
+              {day.toLocaleDateString("pt-BR", {
+                weekday: "short",
+                day: "2-digit",
+                month: "2-digit",
+              })}
+            </button>
+          ))}
+        </div>
+        {specialEvents.some((event) =>
+          days.some((day) => dayKey(day) === event.date),
+        ) && (
+          <div className="agenda-time-special">
+            <span>Dia inteiro</span>
+            {days.map((day) => (
+              <div key={dayKey(day)}>
+                {specialEvents
+                  .filter((event) => event.date === dayKey(day))
+                  .map((event) => (
+                    <span
+                      key={event.id}
+                      style={{ "--event-color": event.color } as CSSProperties}
+                    >
+                      {event.title}
+                    </span>
+                  ))}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="agenda-time-body">
+          <div className="agenda-time-labels">
+            {agendaTimeSlots.map((slot) => (
+              <time key={slot.minutes}>{slot.label}</time>
+            ))}
+            <time className="agenda-time-end">21:00</time>
+          </div>
+          {days.map((day) => {
+            const key = dayKey(day);
+            return (
+              <div
+                className="agenda-time-day"
+                key={key}
+                aria-label={day.toLocaleDateString("pt-BR")}
+              >
+                {agendaTimeSlots.map((slot) => (
+                  <button
+                    key={slot.minutes}
+                    type="button"
+                    className="agenda-time-slot"
+                    style={{
+                      top:
+                        ((slot.minutes - AGENDA_START_MINUTE) / 30) *
+                        AGENDA_SLOT_HEIGHT,
+                    }}
+                    aria-label={`Ver compromissos de ${key} às ${slot.label}`}
+                    onClick={() => onOpenDay(key)}
+                  />
+                ))}
+                {positionAgendaEntries(commitments, key, {
+                  startMinute: AGENDA_START_MINUTE,
+                  endMinute: AGENDA_END_MINUTE,
+                }).map(({ entry, startMinute, endMinute, column, columns }) => (
+                  <button
+                    type="button"
+                    className="agenda-time-event"
+                    key={entry.id}
+                    style={
+                      {
+                        "--event-color": entry.statusColor,
+                        top:
+                          ((startMinute - AGENDA_START_MINUTE) / 30) *
+                          AGENDA_SLOT_HEIGHT,
+                        height: Math.max(
+                          24,
+                          ((endMinute - startMinute) / 30) *
+                            AGENDA_SLOT_HEIGHT -
+                            3,
+                        ),
+                        left: `calc(${(column / columns) * 100}% + 3px)`,
+                        width: `calc(${100 / columns}% - 6px)`,
+                      } as CSSProperties
+                    }
+                    title={`${time(entry.startsAt)} – ${time(entry.endsAt)} · ${entry.title} · ${entry.responsibleName}`}
+                    onClick={() => onOpenCommitment(entry)}
+                  >
+                    <time>
+                      {time(entry.startsAt)} – {time(entry.endsAt)}
+                    </time>
+                    <strong>{calendarCommitmentTitle(entry, calendars)}</strong>
+                    <small>
+                      {entry.responsibleName} · {entry.statusName}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
-  </section>;
+    </section>
+  );
 }
 
-export function DayCommitmentsModal({ date, commitments, statuses, calendars, collaborators, currentEmail, busy, onClose, onOpenCommitment, onChangeStatus, onDelete }: { collaborators: AgendaCollaborator[]; currentEmail: string; onDelete: (entry: AgendaCommitment) => Promise<boolean>; date: string; commitments: AgendaCommitment[]; statuses: AgendaStatus[]; calendars: AgendaCalendar[]; busy: boolean; onClose: () => void; onOpenCommitment: (entry: AgendaCommitment) => void; onChangeStatus: (commitmentId: string, statusId: string) => Promise<boolean> }) {
-  const ordered = useMemo(() => [...commitments].sort((a, b) => a.startsAt.localeCompare(b.startsAt)), [commitments]);
+export function DayCommitmentsModal({
+  date,
+  commitments,
+  statuses,
+  calendars,
+  collaborators,
+  currentEmail,
+  busy,
+  onClose,
+  onOpenCommitment,
+  onChangeStatus,
+  onDelete,
+}: {
+  collaborators: AgendaCollaborator[];
+  currentEmail: string;
+  onDelete: (entry: AgendaCommitment) => Promise<boolean>;
+  date: string;
+  commitments: AgendaCommitment[];
+  statuses: AgendaStatus[];
+  calendars: AgendaCalendar[];
+  busy: boolean;
+  onClose: () => void;
+  onOpenCommitment: (entry: AgendaCommitment) => void;
+  onChangeStatus: (commitmentId: string, statusId: string) => Promise<boolean>;
+}) {
+  const ordered = useMemo(
+    () => [...commitments].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+    [commitments],
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [statusId, setStatusId] = useState("");
   const [saving, setSaving] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!editingId) return;
-    const frame = requestAnimationFrame(() => list.current?.querySelector<HTMLElement>('[aria-expanded="true"]')?.closest("article")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    const frame = requestAnimationFrame(() =>
+      list.current
+        ?.querySelector<HTMLElement>('[aria-expanded="true"]')
+        ?.closest("article")
+        ?.scrollIntoView({ block: "nearest", behavior: "smooth" }),
+    );
     return () => cancelAnimationFrame(frame);
   }, [editingId]);
   const deleteEntry = async (entry: AgendaCommitment) => {
     if (busy || saving) return;
     setSaving(true);
-    try { if (await onDelete(entry)) setEditingId(null); }
-    finally { setSaving(false); }
+    try {
+      if (await onDelete(entry)) setEditingId(null);
+    } finally {
+      setSaving(false);
+    }
   };
-  const formattedDate = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`));
+  const formattedDate = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(`${date}T12:00:00`));
   const startEditing = (entry: AgendaCommitment) => {
     setEditingId(entry.id);
     setStatusId(entry.agendaStatusId);
   };
   const saveStatus = async (entry: AgendaCommitment) => {
-    if (!statusId || statusId === entry.agendaStatusId) { setEditingId(null); return; }
+    if (!statusId || statusId === entry.agendaStatusId) {
+      setEditingId(null);
+      return;
+    }
     setSaving(true);
     const saved = await onChangeStatus(entry.id, statusId);
     setSaving(false);
     if (saved) setEditingId(null);
   };
-  return <AgendaModal title="Compromissos do dia" className="agenda-day-modal" onClose={onClose}>
-    <section className="agenda-day-summary">
-      <header><span className="agenda-day-summary-icon"><CalendarDays size={18} /></span><span><strong>{formattedDate}</strong><small>{ordered.length} {ordered.length === 1 ? "compromisso" : "compromissos"} no dia</small></span></header>
-      <div className="agenda-day-list" ref={list}>{ordered.length === 0 ? <EmptyAgenda text="Nenhum compromisso encontrado neste dia." /> : ordered.map((entry) => {
-        const editing = editingId === entry.id;
-        const calendar = calendars.find((item) => item.id === entry.agendaId);
-        return <article key={entry.id} className={editing ? "editing" : ""} style={{ "--event-color": entry.statusColor } as CSSProperties}>
-          <button type="button" className="agenda-day-entry" onClick={() => editing ? setEditingId(null) : startEditing(entry)} aria-expanded={editing}>
-            <span className="agenda-day-entry-time"><strong>{time(entry.startsAt)}</strong><small>{time(entry.endsAt)}</small></span>
-            <span className="agenda-day-entry-copy"><strong>{calendarCommitmentTitle(entry, calendars)}</strong><small>{entry.responsibleName}{calendar ? ` · ${calendar.departmentName || calendar.name}` : ""}</small></span>
-            <span className="agenda-day-entry-status" style={{ "--status-color": entry.statusColor } as CSSProperties}><i />{entry.statusName || "Sem status"}</span>
-            <ChevronRight size={17} />
-          </button>
-          {editing && <div className="agenda-day-expanded">
-            <dl className="agenda-day-details"><div><dt>Compromisso</dt><dd>{entry.title}</dd></div><div><dt>Horário</dt><dd>{time(entry.startsAt)} às {time(entry.endsAt)}</dd></div><div><dt>Agenda</dt><dd>{calendar?.name || "—"}</dd></div><div><dt>Tipo</dt><dd>{entry.typeName || "—"}</dd></div><div><dt>Responsável</dt><dd>{entry.responsibleName || "—"}</dd></div><div><dt>Participantes</dt><dd>{entry.participantUserIds.map(id => collaborators.find(person => person.id === id)?.name).filter(Boolean).join(", ") || "Sem participantes adicionais"}</dd></div>{entry.description && <div className="wide"><dt>Descrição</dt><dd>{entry.description}</dd></div>}</dl>
-            <div className="agenda-day-status-editor"><label><span>Editar status</span><select value={statusId} disabled={busy || saving} onChange={(event) => setStatusId(event.target.value)}><option value="" disabled>Selecione uma opção cadastrada e ativa</option>{statuses.filter((status) => status.active).map((status) => <option value={status.id} key={status.id}>{status.name}</option>)}</select></label><div><button type="button" className="secondary-button compact" disabled={busy || saving} onClick={() => onOpenCommitment(entry)}><Edit3 size={15} /> Abrir detalhes</button><button type="button" className="primary-button compact" disabled={busy || saving || !statusId || statusId === entry.agendaStatusId} onClick={() => void saveStatus(entry)}><Save size={15} /> {saving ? "Salvando..." : "Salvar status"}</button>{entry.createdBy.toLowerCase() === currentEmail.toLowerCase() && <button type="button" className="secondary-button compact danger-action" disabled={busy || saving} onClick={() => void deleteEntry(entry)}><Trash2 size={15} /> Excluir agendamento</button>}</div></div>
-          </div>}
-        </article>;
-      })}</div>
-    </section>
-  </AgendaModal>;
+  return (
+    <AgendaModal
+      title="Compromissos do dia"
+      className="agenda-day-modal"
+      onClose={onClose}
+    >
+      <section className="agenda-day-summary">
+        <header>
+          <span className="agenda-day-summary-icon">
+            <CalendarDays size={18} />
+          </span>
+          <span>
+            <strong>{formattedDate}</strong>
+            <small>
+              {ordered.length}{" "}
+              {ordered.length === 1 ? "compromisso" : "compromissos"} no dia
+            </small>
+          </span>
+        </header>
+        <div className="agenda-day-list" ref={list}>
+          {ordered.length === 0 ? (
+            <EmptyAgenda text="Nenhum compromisso encontrado neste dia." />
+          ) : (
+            ordered.map((entry) => {
+              const editing = editingId === entry.id;
+              const calendar = calendars.find(
+                (item) => item.id === entry.agendaId,
+              );
+              return (
+                <article
+                  key={entry.id}
+                  className={editing ? "editing" : ""}
+                  style={
+                    { "--event-color": entry.statusColor } as CSSProperties
+                  }
+                >
+                  <button
+                    type="button"
+                    className="agenda-day-entry"
+                    onClick={() =>
+                      editing ? setEditingId(null) : startEditing(entry)
+                    }
+                    aria-expanded={editing}
+                  >
+                    <span className="agenda-day-entry-time">
+                      <strong>{time(entry.startsAt)}</strong>
+                      <small>{time(entry.endsAt)}</small>
+                    </span>
+                    <span className="agenda-day-entry-copy">
+                      <strong>
+                        {calendarCommitmentTitle(entry, calendars)}
+                      </strong>
+                      <small>
+                        {entry.responsibleName}
+                        {calendar
+                          ? ` · ${calendar.departmentName || calendar.name}`
+                          : ""}
+                      </small>
+                    </span>
+                    <span
+                      className="agenda-day-entry-status"
+                      style={
+                        { "--status-color": entry.statusColor } as CSSProperties
+                      }
+                    >
+                      <i />
+                      {entry.statusName || "Sem status"}
+                    </span>
+                    <ChevronRight size={17} />
+                  </button>
+                  {editing && (
+                    <div className="agenda-day-expanded">
+                      <dl className="agenda-day-details">
+                        <div>
+                          <dt>Compromisso</dt>
+                          <dd>{entry.title}</dd>
+                        </div>
+                        <div>
+                          <dt>Horário</dt>
+                          <dd>
+                            {time(entry.startsAt)} às {time(entry.endsAt)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Agenda</dt>
+                          <dd>{calendar?.name || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>Tipo</dt>
+                          <dd>{entry.typeName || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>Responsável</dt>
+                          <dd>{entry.responsibleName || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt>Participantes</dt>
+                          <dd>
+                            {entry.participantUserIds
+                              .map(
+                                (id) =>
+                                  collaborators.find(
+                                    (person) => person.id === id,
+                                  )?.name,
+                              )
+                              .filter(Boolean)
+                              .join(", ") || "Sem participantes adicionais"}
+                          </dd>
+                        </div>
+                        {entry.description && (
+                          <div className="wide">
+                            <dt>Descrição</dt>
+                            <dd>{entry.description}</dd>
+                          </div>
+                        )}
+                      </dl>
+                      <div className="agenda-day-status-editor">
+                        <label>
+                          <span>Editar status</span>
+                          <select
+                            value={statusId}
+                            disabled={busy || saving}
+                            onChange={(event) =>
+                              setStatusId(event.target.value)
+                            }
+                          >
+                            <option value="" disabled>
+                              Selecione uma opção cadastrada e ativa
+                            </option>
+                            {statuses
+                              .filter((status) => status.active)
+                              .map((status) => (
+                                <option value={status.id} key={status.id}>
+                                  {status.name}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                        <div>
+                          <button
+                            type="button"
+                            className="secondary-button compact"
+                            disabled={busy || saving}
+                            onClick={() => onOpenCommitment(entry)}
+                          >
+                            <Edit3 size={15} /> Abrir detalhes
+                          </button>
+                          <button
+                            type="button"
+                            className="primary-button compact"
+                            disabled={
+                              busy ||
+                              saving ||
+                              !statusId ||
+                              statusId === entry.agendaStatusId
+                            }
+                            onClick={() => void saveStatus(entry)}
+                          >
+                            <Save size={15} />{" "}
+                            {saving ? "Salvando..." : "Salvar status"}
+                          </button>
+                          {entry.createdBy.toLowerCase() ===
+                            currentEmail.toLowerCase() && (
+                            <button
+                              type="button"
+                              className="secondary-button compact danger-action"
+                              disabled={busy || saving}
+                              onClick={() => void deleteEntry(entry)}
+                            >
+                              <Trash2 size={15} /> Excluir agendamento
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })
+          )}
+        </div>
+      </section>
+    </AgendaModal>
+  );
 }
 
-function CommitmentModal({ module, commitment, preset, busy, currentEmail, canReserveMeetingRoom = false, onClose, onSave }: { module: AgendaModuleData; commitment?: AgendaCommitment; preset?: QuickAgendaPreset; busy: boolean; currentEmail: string; canReserveMeetingRoom?: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
-  module = { ...module, calendars: module.calendars.filter((item) => item.active), types: module.types.filter((item) => item.active), statuses: module.statuses.filter((item) => item.active) };
-  module = { ...module, calendars: module.calendars.filter((item) => canReserveMeetingRoom || !isMeetingRoomCalendar(item) || item.id === commitment?.agendaId) };
+function CommitmentModal({
+  module,
+  commitment,
+  preset,
+  busy,
+  currentEmail,
+  canReserveMeetingRoom = false,
+  onClose,
+  onSave,
+}: {
+  module: AgendaModuleData;
+  commitment?: AgendaCommitment;
+  preset?: QuickAgendaPreset;
+  busy: boolean;
+  currentEmail: string;
+  canReserveMeetingRoom?: boolean;
+  onClose: () => void;
+  onSave: (payload: Record<string, unknown>) => void;
+}) {
+  module = {
+    ...module,
+    calendars: module.calendars.filter((item) => item.active),
+    types: module.types.filter((item) => item.active),
+    statuses: module.statuses.filter((item) => item.active),
+  };
+  module = {
+    ...module,
+    calendars: module.calendars.filter(
+      (item) =>
+        canReserveMeetingRoom ||
+        !isMeetingRoomCalendar(item) ||
+        item.id === commitment?.agendaId,
+    ),
+  };
   const [editing, setEditing] = useState(!commitment);
-  const [recurrence, setRecurrence] = useState<AgendaRecurrenceSelection>({ mode: "none", dates: [] });
-  const presetCollaborator = module.collaborators.find((entry) => entry.name.toLocaleLowerCase("pt-BR") === preset?.responsibleName?.toLocaleLowerCase("pt-BR"));
-  const preferredCalendar = module.calendars.find((entry) => presetCollaborator?.agendaIds?.includes(entry.id));
-  const [agendaId, setAgendaId] = useState(commitment?.agendaId ?? preferredCalendar?.id ?? module.calendars[0]?.id ?? "");
+  const [recurrence, setRecurrence] = useState<AgendaRecurrenceSelection>({
+    mode: "none",
+    dates: [],
+  });
+  const presetCollaborator = module.collaborators.find(
+    (entry) =>
+      entry.name.toLocaleLowerCase("pt-BR") ===
+      preset?.responsibleName?.toLocaleLowerCase("pt-BR"),
+  );
+  const preferredCalendar = module.calendars.find((entry) =>
+    presetCollaborator?.agendaIds?.includes(entry.id),
+  );
+  const [agendaId, setAgendaId] = useState(
+    commitment?.agendaId ??
+      preferredCalendar?.id ??
+      module.calendars[0]?.id ??
+      "",
+  );
   const calendar = module.calendars.find((item) => item.id === agendaId);
-  const collaborators = module.collaborators.filter((entry) => Boolean(calendar && entry.agendaIds?.includes(calendar.id)));
-  const defaultResponsible = collaborators.find((entry) => entry.id === presetCollaborator?.id || entry.email.toLowerCase() === currentEmail.toLowerCase());
+  const collaborators = module.collaborators.filter((entry) =>
+    Boolean(calendar && entry.agendaIds?.includes(calendar.id)),
+  );
+  const defaultResponsible = collaborators.find(
+    (entry) =>
+      entry.id === presetCollaborator?.id ||
+      entry.email.toLowerCase() === currentEmail.toLowerCase(),
+  );
   const defaultStart = new Date(Date.now() + 60 * 60 * 1000);
   defaultStart.setMinutes(Math.ceil(defaultStart.getMinutes() / 15) * 15, 0, 0);
   const defaultEnd = new Date(defaultStart.getTime() + 60 * 60 * 1000);
-  const [referenceDate, setReferenceDate] = useState(commitment ? dateInput(commitment.startsAt) : dateInput(defaultStart.toISOString()));
-  const canEdit = canEditCommitment(module, commitment, currentEmail) && (canReserveMeetingRoom || !isMeetingRoomCalendar(calendar));
-  const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); const date = String(form.get("date")); const startTime = String(form.get("startTime")); const endTime = String(form.get("endTime")); onSave({ agendaId, agendaTypeId: form.get("agendaTypeId"), agendaStatusId: form.get("agendaStatusId"), responsibleUserId: form.get("responsibleUserId"), title: form.get("title"), description: form.get("description"), startsAt: new Date(`${date}T${startTime}:00`).toISOString(), endsAt: new Date(`${date}T${endTime}:00`).toISOString(), participantUserIds: form.getAll("participantUserIds"), recurrence: recurrence.mode, recurrenceDates: recurrence.mode === "dates" ? recurrence.dates : [] }); };
-  const disabled = !editing;
-  return <AgendaModal title={commitment ? "Compromisso" : "Novo compromisso"} onClose={onClose}><form className="form-grid agenda-form" onSubmit={submit}><label className="wide">Título *<input name="title" required disabled={disabled} defaultValue={commitment?.title ?? preset?.title} placeholder="Nome do compromisso" /></label><label>Agenda *<select value={agendaId} disabled={disabled} onChange={(event) => setAgendaId(event.target.value)}>{module.calendars.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.departmentName}</option>)}</select></label><label>Tipo *<select name="agendaTypeId" disabled={disabled} required defaultValue={commitment?.agendaTypeId ?? module.types[0]?.id ?? ""}><option value="">Selecionar...</option>{module.types.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Status *<select name="agendaStatusId" disabled={disabled} required defaultValue={commitment?.agendaStatusId ?? module.statuses[0]?.id ?? ""}><option value="">Selecionar...</option>{module.statuses.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Responsável *<SearchablePeopleSelect searchLabel="Responsável *" name="responsibleUserId" disabled={disabled} required defaultValue={commitment?.responsibleUserId ?? defaultResponsible?.id ?? ""}><option value="">Selecionar responsável...</option>{collaborators.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</SearchablePeopleSelect></label><label>Data *<input name="date" type="date" disabled={disabled} required value={referenceDate} onChange={(event) => setReferenceDate(event.target.value)} /></label><label>Hora início *<input name="startTime" type="time" disabled={disabled} required defaultValue={commitment ? timeInput(commitment.startsAt) : timeInput(defaultStart.toISOString())} /></label><label>Hora fim *<input name="endTime" type="time" disabled={disabled} required defaultValue={commitment ? timeInput(commitment.endsAt) : timeInput(defaultEnd.toISOString())} /></label><CheckboxMultiSelect label="Colaboradores" name="participantUserIds" disabled={disabled} defaultValue={commitment?.participantUserIds ?? []} options={collaborators.map(item => ({ id: item.id, label: item.name }))} key={agendaId} /><label className="wide">Descrição<textarea name="description" rows={3} disabled={disabled} defaultValue={commitment?.description ?? preset?.description} placeholder="Detalhes do compromisso..." /></label>{!commitment && <AgendaRecurrenceField value={recurrence} onChange={setRecurrence} referenceDate={referenceDate} />}<div className="form-actions wide"><button type="button" onClick={onClose}>Fechar</button>{canEdit && !editing && <button className="secondary-button" type="button" onClick={() => setEditing(true)}><Edit3 size={15} /> Editar agendamento</button>}{editing && <button className="primary-button" disabled={busy || (!commitment && recurrence.mode === "dates" && recurrence.dates.length === 0)} type="submit"><Save size={16} /> {busy ? "Salvando..." : commitment ? "Salvar alterações" : "Criar compromisso"}</button>}</div></form></AgendaModal>;
-}
-
-export function QuickAgendaCommitmentModal(props: { module: AgendaModuleData; preset?: QuickAgendaPreset; busy: boolean; currentEmail: string; canReserveMeetingRoom?: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
-  return <CommitmentModal {...props} />;
-}
-
-function AgendaCommitmentModal({ module, commitment, busy, currentEmail, canReserveMeetingRoom = false, onClose, onSave, onDelete }: { module: AgendaModuleData; commitment?: AgendaCommitment; busy: boolean; currentEmail: string; canReserveMeetingRoom?: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void; onDelete?: (series?: boolean) => void; onChangeStatus?: (statusId: string) => Promise<boolean> }) {
-  module = { ...module, calendars: module.calendars.filter((item) => item.active), types: module.types.filter((item) => item.active), statuses: module.statuses.filter((item) => item.active) };
-  const [editing, setEditing] = useState(!commitment);
-  const [recurrence, setRecurrence] = useState<AgendaRecurrenceSelection>({ mode: "none", dates: [] });
-  const [agendaId, setAgendaId] = useState(commitment?.agendaId ?? module.calendars[0]?.id ?? "");
-  const [referenceDate, setReferenceDate] = useState(commitment ? dateInput(commitment.startsAt) : "");
-  const calendar = module.calendars.find((item) => item.id === agendaId);
-  const collaborators = module.collaborators.filter((entry) => Boolean(calendar && entry.agendaIds?.includes(calendar.id)));
-  const canEdit = canEditCommitment(module, commitment, currentEmail) && (canReserveMeetingRoom || !isMeetingRoomCalendar(calendar));
+  const [referenceDate, setReferenceDate] = useState(
+    commitment
+      ? dateInput(commitment.startsAt)
+      : dateInput(defaultStart.toISOString()),
+  );
+  const canEdit =
+    canEditCommitment(module, commitment, currentEmail) &&
+    (canReserveMeetingRoom || !isMeetingRoomCalendar(calendar));
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const date = String(form.get("date"));
     const startTime = String(form.get("startTime"));
     const endTime = String(form.get("endTime"));
-    onSave({ agendaId, agendaTypeId: form.get("agendaTypeId"), agendaStatusId: form.get("agendaStatusId"), responsibleUserId: form.get("responsibleUserId"), title: form.get("title"), description: form.get("description"), startsAt: new Date(`${date}T${startTime}:00`).toISOString(), endsAt: new Date(`${date}T${endTime}:00`).toISOString(), participantUserIds: form.getAll("participantUserIds"), recurrence: recurrence.mode, recurrenceDates: recurrence.mode === "dates" ? recurrence.dates : [] });
+    onSave({
+      agendaId,
+      agendaTypeId: form.get("agendaTypeId"),
+      agendaStatusId: form.get("agendaStatusId"),
+      responsibleUserId: form.get("responsibleUserId"),
+      title: form.get("title"),
+      description: form.get("description"),
+      startsAt: new Date(`${date}T${startTime}:00`).toISOString(),
+      endsAt: new Date(`${date}T${endTime}:00`).toISOString(),
+      participantUserIds: form.getAll("participantUserIds"),
+      recurrence: recurrence.mode,
+      recurrenceDates: recurrence.mode === "dates" ? recurrence.dates : [],
+    });
   };
   const disabled = !editing;
-  return <AgendaModal title={commitment ? "Compromisso" : "Novo compromisso"} onClose={onClose}>
-    <form className="form-grid agenda-form" onSubmit={submit}>
-      <label className="wide">Título *<input name="title" required disabled={disabled} defaultValue={commitment?.title} placeholder="Nome do compromisso" /></label>
-      <label>Agenda *<select value={agendaId} disabled={disabled} onChange={(event) => setAgendaId(event.target.value)}>{module.calendars.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.departmentName}</option>)}</select></label>
-      <label>Tipo *<select name="agendaTypeId" disabled={disabled} required defaultValue={commitment?.agendaTypeId ?? ""}><option value="">Selecionar...</option>{module.types.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-      <label>Status *<select name="agendaStatusId" disabled={disabled} required defaultValue={commitment?.agendaStatusId ?? ""}><option value="">Selecionar...</option>{module.statuses.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-      <label>Responsável *<SearchablePeopleSelect searchLabel="Responsável *" name="responsibleUserId" disabled={disabled} required defaultValue={commitment?.responsibleUserId ?? ""}><option value="">Selecionar responsável...</option>{collaborators.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</SearchablePeopleSelect></label>
-      <label>Data *<input name="date" type="date" disabled={disabled} required value={referenceDate} onChange={(event) => setReferenceDate(event.target.value)} /></label>
-      <label>Hora início *<input name="startTime" type="time" disabled={disabled} required defaultValue={commitment ? timeInput(commitment.startsAt) : ""} /></label>
-      <label>Hora fim *<input name="endTime" type="time" disabled={disabled} required defaultValue={commitment ? timeInput(commitment.endsAt) : ""} /></label>
-      <CheckboxMultiSelect label="Colaboradores" name="participantUserIds" disabled={disabled} defaultValue={commitment?.participantUserIds ?? []} options={collaborators.map(item => ({ id: item.id, label: item.name }))} key={agendaId} />
-      <label className="wide">Descrição<textarea name="description" rows={3} disabled={disabled} defaultValue={commitment?.description} placeholder="Detalhes do compromisso..." /></label>
-      {!commitment && <AgendaRecurrenceField value={recurrence} onChange={setRecurrence} referenceDate={referenceDate} />}
-      <div className="form-actions wide">{commitment && commitment.createdBy.toLowerCase() === currentEmail.toLowerCase() && onDelete && <><button className="secondary-button danger-action" type="button" disabled={busy} onClick={() => onDelete(false)}><Trash2 size={15} /> Excluir compromisso</button>{commitment.recurrenceGroupId && <button className="secondary-button danger-action" type="button" disabled={busy} onClick={() => onDelete(true)}><Trash2 size={15} /> Excluir série ({commitment.recurrenceCount ?? 1})</button>}</>}<button type="button" onClick={onClose}>Fechar</button>{canEdit && !editing && <button className="secondary-button" type="button" onClick={() => setEditing(true)}><Edit3 size={15} /> Editar agendamento</button>}{editing && <button className="primary-button" disabled={busy || (!commitment && recurrence.mode === "dates" && recurrence.dates.length === 0)} type="submit"><Save size={16} /> {busy ? "Salvando..." : commitment ? "Salvar alterações" : "Criar compromisso"}</button>}</div>
-    </form>
-  </AgendaModal>;
+  return (
+    <AgendaModal
+      title={commitment ? "Compromisso" : "Novo compromisso"}
+      onClose={onClose}
+    >
+      <form className="form-grid agenda-form" onSubmit={submit}>
+        <label className="wide">
+          Título *
+          <input
+            name="title"
+            required
+            disabled={disabled}
+            defaultValue={commitment?.title ?? preset?.title}
+            placeholder="Nome do compromisso"
+          />
+        </label>
+        <label>
+          Agenda *
+          <select
+            value={agendaId}
+            disabled={disabled}
+            onChange={(event) => setAgendaId(event.target.value)}
+          >
+            {module.calendars.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.name} · {item.departmentName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Tipo *
+          <select
+            name="agendaTypeId"
+            disabled={disabled}
+            required
+            defaultValue={commitment?.agendaTypeId ?? module.types[0]?.id ?? ""}
+          >
+            <option value="">Selecionar...</option>
+            {module.types
+              .filter((item) => item.active)
+              .map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Status *
+          <select
+            name="agendaStatusId"
+            disabled={disabled}
+            required
+            defaultValue={
+              commitment?.agendaStatusId ?? module.statuses[0]?.id ?? ""
+            }
+          >
+            <option value="">Selecionar...</option>
+            {module.statuses
+              .filter((item) => item.active)
+              .map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Responsável *
+          <SearchablePeopleSelect
+            searchLabel="Responsável *"
+            name="responsibleUserId"
+            disabled={disabled}
+            required
+            defaultValue={
+              commitment?.responsibleUserId ?? defaultResponsible?.id ?? ""
+            }
+          >
+            <option value="">Selecionar responsável...</option>
+            {collaborators.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </SearchablePeopleSelect>
+        </label>
+        <label>
+          Data *
+          <input
+            name="date"
+            type="date"
+            disabled={disabled}
+            required
+            value={referenceDate}
+            onChange={(event) => setReferenceDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Hora início *
+          <input
+            name="startTime"
+            type="time"
+            disabled={disabled}
+            required
+            defaultValue={
+              commitment
+                ? timeInput(commitment.startsAt)
+                : timeInput(defaultStart.toISOString())
+            }
+          />
+        </label>
+        <label>
+          Hora fim *
+          <input
+            name="endTime"
+            type="time"
+            disabled={disabled}
+            required
+            defaultValue={
+              commitment
+                ? timeInput(commitment.endsAt)
+                : timeInput(defaultEnd.toISOString())
+            }
+          />
+        </label>
+        <CheckboxMultiSelect
+          label="Colaboradores"
+          name="participantUserIds"
+          disabled={disabled}
+          defaultValue={commitment?.participantUserIds ?? []}
+          options={collaborators.map((item) => ({
+            id: item.id,
+            label: item.name,
+          }))}
+          key={agendaId}
+        />
+        <label className="wide">
+          Descrição
+          <textarea
+            name="description"
+            rows={3}
+            disabled={disabled}
+            defaultValue={commitment?.description ?? preset?.description}
+            placeholder="Detalhes do compromisso..."
+          />
+        </label>
+        {!commitment && (
+          <AgendaRecurrenceField
+            value={recurrence}
+            onChange={setRecurrence}
+            referenceDate={referenceDate}
+          />
+        )}
+        <div className="form-actions wide">
+          <button type="button" onClick={onClose}>
+            Fechar
+          </button>
+          {canEdit && !editing && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setEditing(true)}
+            >
+              <Edit3 size={15} /> Editar agendamento
+            </button>
+          )}
+          {editing && (
+            <button
+              className="primary-button"
+              disabled={
+                busy ||
+                (!commitment &&
+                  recurrence.mode === "dates" &&
+                  recurrence.dates.length === 0)
+              }
+              type="submit"
+            >
+              <Save size={16} />{" "}
+              {busy
+                ? "Salvando..."
+                : commitment
+                  ? "Salvar alterações"
+                  : "Criar compromisso"}
+            </button>
+          )}
+        </div>
+      </form>
+    </AgendaModal>
+  );
 }
 
-function CatalogList<T extends { id: string; active: boolean; color?: string }>({ items, icon, render, onEdit, onDelete }: { items: T[]; icon: React.ReactNode; render: (item: T) => React.ReactNode; onEdit: (item: T) => void; onDelete: (item: T) => void }) { return <div className="agenda-catalog-list">{items.length === 0 ? <EmptyAgenda text="Nenhum cadastro encontrado." /> : items.map((item) => <article key={item.id}><span className="agenda-list-icon" style={item.color ? { color: item.color, background: `${item.color}18` } : undefined}>{icon}</span><span className="agenda-list-data">{render(item)}</span><b className={`status-pill ${item.active ? "positive" : "negative"}`}>{item.active ? "Ativo" : "Inativo"}</b><button className="catalog-icon-button" onClick={() => onEdit(item)} aria-label="Editar"><Edit3 size={15} /></button><button className="catalog-icon-button delete" onClick={() => onDelete(item)} aria-label="Excluir"><Trash2 size={15} /></button></article>)}</div>; }
-function CalendarForm({ item, departments, busy, onClose, onSave }: { item: AgendaCalendar | null; departments: AgendaDepartment[]; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) { const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); onSave({ name: form.get("name"), description: form.get("description"), departmentId: form.get("departmentId"), active: form.get("active") === "on" }); }; return <AgendaModal title={item ? "Editar agenda" : "Nova agenda"} onClose={onClose}><form className="form-grid" onSubmit={submit}><label className="wide">Nome da agenda<input name="name" required defaultValue={item?.name} /></label><label className="wide">Descrição<textarea name="description" required maxLength={600} rows={3} defaultValue={item?.description} placeholder="Explique a finalidade desta agenda." /></label><label className="wide">Setor<select name="departmentId" required defaultValue={item?.departmentId ?? ""}><option value="">Selecionar setor...</option>{departments.filter((department) => department.active).map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}</select></label><label className="checkbox-label wide"><input name="active" type="checkbox" defaultChecked={item?.active ?? true} /> Agenda ativa</label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy} type="submit"><Save size={16} /> Salvar</button></div></form></AgendaModal>; }
-function NamedColorForm({ title, item, busy, onClose, onSave }: { title: string; item: AgendaType | AgendaStatus | null; busy: boolean; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) { const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); onSave({ name: form.get("name"), description: form.get("description"), color: form.get("color"), active: form.get("active") === "on" }); }; return <AgendaModal title={item ? `Editar ${title.toLowerCase()}` : `Novo ${title.toLowerCase()}`} onClose={onClose}><form className="form-grid" onSubmit={submit}><label>Nome<input name="name" required defaultValue={item?.name} /></label><label>Cor<input name="color" type="color" defaultValue={item?.color ?? "#2563eb"} /></label><label className="wide">Descrição<textarea name="description" required maxLength={600} rows={3} defaultValue={item?.description} placeholder="Explique quando este cadastro deve ser utilizado." /></label><label className="checkbox-label wide"><input name="active" type="checkbox" defaultChecked={item?.active ?? true} /> Cadastro ativo</label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy} type="submit"><Save size={16} /> Salvar</button></div></form></AgendaModal>; }
-function AgendaModal({ title, onClose, headerAction, className = "", children }: { title: string; onClose: () => void; headerAction?: React.ReactNode; className?: string; children: React.ReactNode }) { return <div className="modal-backdrop action-modal-backdrop agenda-action-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className={`modal agenda-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-label={title}><div className="modal-head"><div><span className="eyebrow">AGENDA</span><h2>{title}</h2></div>{headerAction}<button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div>{children}</div></div>; }
-function EmptyAgenda({ text }: { text: string }) { return <div className="agenda-empty"><CalendarDays size={22} /><p>{text}</p></div>; }
+export function QuickAgendaCommitmentModal(props: {
+  module: AgendaModuleData;
+  preset?: QuickAgendaPreset;
+  busy: boolean;
+  currentEmail: string;
+  canReserveMeetingRoom?: boolean;
+  onClose: () => void;
+  onSave: (payload: Record<string, unknown>) => void;
+}) {
+  return <CommitmentModal {...props} />;
+}
+
+function AgendaCommitmentModal({
+  module,
+  commitment,
+  busy,
+  currentEmail,
+  canReserveMeetingRoom = false,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  module: AgendaModuleData;
+  commitment?: AgendaCommitment;
+  busy: boolean;
+  currentEmail: string;
+  canReserveMeetingRoom?: boolean;
+  onClose: () => void;
+  onSave: (payload: Record<string, unknown>) => void;
+  onDelete?: (series?: boolean) => void;
+  onChangeStatus?: (statusId: string) => Promise<boolean>;
+}) {
+  module = {
+    ...module,
+    calendars: module.calendars.filter((item) => item.active),
+    types: module.types.filter((item) => item.active),
+    statuses: module.statuses.filter((item) => item.active),
+  };
+  const [editing, setEditing] = useState(!commitment);
+  const [recurrence, setRecurrence] = useState<AgendaRecurrenceSelection>({
+    mode: "none",
+    dates: [],
+  });
+  const [agendaId, setAgendaId] = useState(
+    commitment?.agendaId ?? module.calendars[0]?.id ?? "",
+  );
+  const [referenceDate, setReferenceDate] = useState(
+    commitment ? dateInput(commitment.startsAt) : "",
+  );
+  const calendar = module.calendars.find((item) => item.id === agendaId);
+  const collaborators = module.collaborators.filter((entry) =>
+    Boolean(calendar && entry.agendaIds?.includes(calendar.id)),
+  );
+  const canEdit =
+    canEditCommitment(module, commitment, currentEmail) &&
+    (canReserveMeetingRoom || !isMeetingRoomCalendar(calendar));
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const date = String(form.get("date"));
+    const startTime = String(form.get("startTime"));
+    const endTime = String(form.get("endTime"));
+    onSave({
+      agendaId,
+      agendaTypeId: form.get("agendaTypeId"),
+      agendaStatusId: form.get("agendaStatusId"),
+      responsibleUserId: form.get("responsibleUserId"),
+      title: form.get("title"),
+      description: form.get("description"),
+      startsAt: new Date(`${date}T${startTime}:00`).toISOString(),
+      endsAt: new Date(`${date}T${endTime}:00`).toISOString(),
+      participantUserIds: form.getAll("participantUserIds"),
+      recurrence: recurrence.mode,
+      recurrenceDates: recurrence.mode === "dates" ? recurrence.dates : [],
+    });
+  };
+  const disabled = !editing;
+  return (
+    <AgendaModal
+      title={commitment ? "Compromisso" : "Novo compromisso"}
+      onClose={onClose}
+    >
+      <form className="form-grid agenda-form" onSubmit={submit}>
+        <label className="wide">
+          Título *
+          <input
+            name="title"
+            required
+            disabled={disabled}
+            defaultValue={commitment?.title}
+            placeholder="Nome do compromisso"
+          />
+        </label>
+        <label>
+          Agenda *
+          <select
+            value={agendaId}
+            disabled={disabled}
+            onChange={(event) => setAgendaId(event.target.value)}
+          >
+            {module.calendars.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.name} · {item.departmentName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Tipo *
+          <select
+            name="agendaTypeId"
+            disabled={disabled}
+            required
+            defaultValue={commitment?.agendaTypeId ?? ""}
+          >
+            <option value="">Selecionar...</option>
+            {module.types
+              .filter((item) => item.active)
+              .map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Status *
+          <select
+            name="agendaStatusId"
+            disabled={disabled}
+            required
+            defaultValue={commitment?.agendaStatusId ?? ""}
+          >
+            <option value="">Selecionar...</option>
+            {module.statuses
+              .filter((item) => item.active)
+              .map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Responsável *
+          <SearchablePeopleSelect
+            searchLabel="Responsável *"
+            name="responsibleUserId"
+            disabled={disabled}
+            required
+            defaultValue={commitment?.responsibleUserId ?? ""}
+          >
+            <option value="">Selecionar responsável...</option>
+            {collaborators.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </SearchablePeopleSelect>
+        </label>
+        <label>
+          Data *
+          <input
+            name="date"
+            type="date"
+            disabled={disabled}
+            required
+            value={referenceDate}
+            onChange={(event) => setReferenceDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Hora início *
+          <input
+            name="startTime"
+            type="time"
+            disabled={disabled}
+            required
+            defaultValue={commitment ? timeInput(commitment.startsAt) : ""}
+          />
+        </label>
+        <label>
+          Hora fim *
+          <input
+            name="endTime"
+            type="time"
+            disabled={disabled}
+            required
+            defaultValue={commitment ? timeInput(commitment.endsAt) : ""}
+          />
+        </label>
+        <CheckboxMultiSelect
+          label="Colaboradores"
+          name="participantUserIds"
+          disabled={disabled}
+          defaultValue={commitment?.participantUserIds ?? []}
+          options={collaborators.map((item) => ({
+            id: item.id,
+            label: item.name,
+          }))}
+          key={agendaId}
+        />
+        <label className="wide">
+          Descrição
+          <textarea
+            name="description"
+            rows={3}
+            disabled={disabled}
+            defaultValue={commitment?.description}
+            placeholder="Detalhes do compromisso..."
+          />
+        </label>
+        {!commitment && (
+          <AgendaRecurrenceField
+            value={recurrence}
+            onChange={setRecurrence}
+            referenceDate={referenceDate}
+          />
+        )}
+        <div className="form-actions wide">
+          {commitment &&
+            commitment.createdBy.toLowerCase() === currentEmail.toLowerCase() &&
+            onDelete && (
+              <>
+                <button
+                  className="secondary-button danger-action"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onDelete(false)}
+                >
+                  <Trash2 size={15} /> Excluir compromisso
+                </button>
+                {commitment.recurrenceGroupId && (
+                  <button
+                    className="secondary-button danger-action"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onDelete(true)}
+                  >
+                    <Trash2 size={15} /> Excluir série (
+                    {commitment.recurrenceCount ?? 1})
+                  </button>
+                )}
+              </>
+            )}
+          <button type="button" onClick={onClose}>
+            Fechar
+          </button>
+          {canEdit && !editing && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setEditing(true)}
+            >
+              <Edit3 size={15} /> Editar agendamento
+            </button>
+          )}
+          {editing && (
+            <button
+              className="primary-button"
+              disabled={
+                busy ||
+                (!commitment &&
+                  recurrence.mode === "dates" &&
+                  recurrence.dates.length === 0)
+              }
+              type="submit"
+            >
+              <Save size={16} />{" "}
+              {busy
+                ? "Salvando..."
+                : commitment
+                  ? "Salvar alterações"
+                  : "Criar compromisso"}
+            </button>
+          )}
+        </div>
+      </form>
+    </AgendaModal>
+  );
+}
+
+function CatalogList<
+  T extends { id: string; active: boolean; color?: string },
+>({
+  items,
+  icon,
+  render,
+  onEdit,
+  onDelete,
+}: {
+  items: T[];
+  icon: React.ReactNode;
+  render: (item: T) => React.ReactNode;
+  onEdit: (item: T) => void;
+  onDelete: (item: T) => void;
+}) {
+  return (
+    <div className="agenda-catalog-list">
+      {items.length === 0 ? (
+        <EmptyAgenda text="Nenhum cadastro encontrado." />
+      ) : (
+        items.map((item) => (
+          <article key={item.id}>
+            <span
+              className="agenda-list-icon"
+              style={
+                item.color
+                  ? { color: item.color, background: `${item.color}18` }
+                  : undefined
+              }
+            >
+              {icon}
+            </span>
+            <span className="agenda-list-data">{render(item)}</span>
+            <b
+              className={`status-pill ${item.active ? "positive" : "negative"}`}
+            >
+              {item.active ? "Ativo" : "Inativo"}
+            </b>
+            <button
+              className="catalog-icon-button"
+              onClick={() => onEdit(item)}
+              aria-label="Editar"
+            >
+              <Edit3 size={15} />
+            </button>
+            <button
+              className="catalog-icon-button delete"
+              onClick={() => onDelete(item)}
+              aria-label="Excluir"
+            >
+              <Trash2 size={15} />
+            </button>
+          </article>
+        ))
+      )}
+    </div>
+  );
+}
+function CalendarForm({
+  item,
+  departments,
+  busy,
+  onClose,
+  onSave,
+}: {
+  item: AgendaCalendar | null;
+  departments: AgendaDepartment[];
+  busy: boolean;
+  onClose: () => void;
+  onSave: (payload: Record<string, unknown>) => void;
+}) {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    onSave({
+      name: form.get("name"),
+      description: form.get("description"),
+      departmentId: form.get("departmentId"),
+      active: form.get("active") === "on",
+    });
+  };
+  return (
+    <AgendaModal
+      title={item ? "Editar agenda" : "Nova agenda"}
+      onClose={onClose}
+    >
+      <form className="form-grid" onSubmit={submit}>
+        <label className="wide">
+          Nome da agenda
+          <input name="name" required defaultValue={item?.name} />
+        </label>
+        <label className="wide">
+          Descrição
+          <textarea
+            name="description"
+            required
+            maxLength={600}
+            rows={3}
+            defaultValue={item?.description}
+            placeholder="Explique a finalidade desta agenda."
+          />
+        </label>
+        <label className="wide">
+          Setor
+          <select
+            name="departmentId"
+            required
+            defaultValue={item?.departmentId ?? ""}
+          >
+            <option value="">Selecionar setor...</option>
+            {departments
+              .filter((department) => department.active)
+              .map((department) => (
+                <option value={department.id} key={department.id}>
+                  {department.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className="checkbox-label wide">
+          <input
+            name="active"
+            type="checkbox"
+            defaultChecked={item?.active ?? true}
+          />{" "}
+          Agenda ativa
+        </label>
+        <div className="form-actions wide">
+          <button type="button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="primary-button" disabled={busy} type="submit">
+            <Save size={16} /> Salvar
+          </button>
+        </div>
+      </form>
+    </AgendaModal>
+  );
+}
+function NamedColorForm({
+  title,
+  item,
+  busy,
+  onClose,
+  onSave,
+}: {
+  title: string;
+  item: AgendaType | AgendaStatus | null;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (payload: Record<string, unknown>) => void;
+}) {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    onSave({
+      name: form.get("name"),
+      description: form.get("description"),
+      color: form.get("color"),
+      active: form.get("active") === "on",
+    });
+  };
+  return (
+    <AgendaModal
+      title={
+        item ? `Editar ${title.toLowerCase()}` : `Novo ${title.toLowerCase()}`
+      }
+      onClose={onClose}
+    >
+      <form className="form-grid" onSubmit={submit}>
+        <label>
+          Nome
+          <input name="name" required defaultValue={item?.name} />
+        </label>
+        <label>
+          Cor
+          <input
+            name="color"
+            type="color"
+            defaultValue={item?.color ?? "#2563eb"}
+          />
+        </label>
+        <label className="wide">
+          Descrição
+          <textarea
+            name="description"
+            required
+            maxLength={600}
+            rows={3}
+            defaultValue={item?.description}
+            placeholder="Explique quando este cadastro deve ser utilizado."
+          />
+        </label>
+        <label className="checkbox-label wide">
+          <input
+            name="active"
+            type="checkbox"
+            defaultChecked={item?.active ?? true}
+          />{" "}
+          Cadastro ativo
+        </label>
+        <div className="form-actions wide">
+          <button type="button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="primary-button" disabled={busy} type="submit">
+            <Save size={16} /> Salvar
+          </button>
+        </div>
+      </form>
+    </AgendaModal>
+  );
+}
+function AgendaModal({
+  title,
+  onClose,
+  headerAction,
+  className = "",
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  headerAction?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="modal-backdrop action-modal-backdrop agenda-action-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <div
+        className={`modal agenda-modal ${className}`.trim()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">AGENDA</span>
+            <h2>{title}</h2>
+          </div>
+          {headerAction}
+          <button className="icon-button" onClick={onClose} aria-label="Fechar">
+            <X size={20} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+function EmptyAgenda({ text }: { text: string }) {
+  return (
+    <div className="agenda-empty">
+      <CalendarDays size={22} />
+      <p>{text}</p>
+    </div>
+  );
+}

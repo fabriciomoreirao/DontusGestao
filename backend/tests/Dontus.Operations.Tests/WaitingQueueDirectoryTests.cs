@@ -78,8 +78,16 @@ public sealed class WaitingQueueDirectoryTests
     public async Task Claiming_the_shared_contact_preserves_waiting_state_until_contact_is_confirmed()
     {
         await using var db = Context(); var user = User("Ana"); db.Users.Add(user);
-        var item = new WorkItem { Module = "waitingQueue", RecordType = "Encaminhamento", Title = "Clínica", Status = "Novo",
-            Owner = "Fila compartilhada", CreatedBy = "portal", Description = "{\"kind\":\"waitingQueue\",\"state\":\"waiting\"}" };
+        var item = new WorkItem
+        {
+            Module = "waitingQueue",
+            RecordType = "Encaminhamento",
+            Title = "Clínica",
+            Status = "Novo",
+            Owner = "Fila compartilhada",
+            CreatedBy = "portal",
+            Description = "{\"kind\":\"waitingQueue\",\"state\":\"waiting\"}"
+        };
         db.WorkItems.Add(item); await db.SaveChangesAsync(); var service = new OperationsService(db); var detail = JsonNode.Parse(item.Description)!;
         detail["responsibleUserId"] = user.Id.ToString(); detail["responsibleName"] = user.DisplayName;
         await service.UpdateWorkItemAsync(new(item.Id, item.Title, user.DisplayName, 0, detail.ToJsonString(), null, null, item.Version), Actor(user));

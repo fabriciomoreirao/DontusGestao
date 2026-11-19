@@ -1,164 +1,1857 @@
 "use client";
 
 import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
-import CommentInput, {CommentContent} from "@/app/CommentInput";
+import CommentInput, { CommentContent } from "@/app/CommentInput";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
-import { ArrowLeft, BadgeCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Link2, MonitorUp, Plus, Send, Search, Clock3, RefreshCw, Sparkles, Upload, UserPlus, X } from "lucide-react";
+import {
+  ArrowLeft,
+  BadgeCheck,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Link2,
+  MonitorUp,
+  Plus,
+  Send,
+  Search,
+  Clock3,
+  RefreshCw,
+  Sparkles,
+  Upload,
+  UserPlus,
+  X,
+} from "lucide-react";
 import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import type { AgendaCommitment, AgendaModuleData } from "@/app/AgendaModule";
-import AgendaRecurrenceField, { type AgendaRecurrenceSelection } from "@/app/AgendaRecurrenceField";
+import AgendaRecurrenceField, {
+  type AgendaRecurrenceSelection,
+} from "@/app/AgendaRecurrenceField";
 import type { NoticesModuleData } from "@/app/NoticesModule";
-import { belongsToWaitingQueueDepartment, departmentQueueMode } from "@/lib/waitingQueue";
+import {
+  belongsToWaitingQueueDepartment,
+  departmentQueueMode,
+} from "@/lib/waitingQueue";
 import type { WaitingQueueDetail } from "@/app/WaitingQueueModule";
 import { ReferralPortalPage } from "@/app/ReferralsModule";
 import { PortalLinksPage } from "@/app/PortalLinksModule";
 import MediaUploadField from "@/app/MediaUploadField";
 
-type WorkItem={id:string;module:string;record_type:string;title:string;customer_name:string;owner:string;team:string;status:string;priority:string;description:string;version:number;created_at:string;updated_at:string;amount_cents:number};
-type Employee={id:string;displayName:string;email:string;departmentId:string|null;departmentName:string;departmentIds:string[];departmentNames:string[];active:boolean};
-type Department={id:string;name:string;description:string;active:boolean};
-type Catalog={id:string;catalog:string;name:string;description:string;active:boolean};
-type PortalData={user:{email:string;displayName:string;role:string;department:string;isCoordinator:boolean};items:WorkItem[];assignmentDirectory?:{employees:Employee[];departments:Department[]}|null;access:{employees:Employee[];departments:Department[]}|null;agendaModule:AgendaModuleData|null;noticesModule:NoticesModuleData|null;customerModule:{catalogs:Catalog[]}|null;taskModule:{departments:Array<{id:string;name:string;description:string;active:boolean}>}|null};
-type OperationResult={id?:string}|false;
-type PortalSection="home"|"dispatch-status"|"referrals"|"meeting-room"|"versions"|"events"|"links";
+type WorkItem = {
+  id: string;
+  module: string;
+  record_type: string;
+  title: string;
+  customer_name: string;
+  owner: string;
+  team: string;
+  status: string;
+  priority: string;
+  description: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  amount_cents: number;
+};
+type Employee = {
+  id: string;
+  displayName: string;
+  email: string;
+  departmentId: string | null;
+  departmentName: string;
+  departmentIds: string[];
+  departmentNames: string[];
+  active: boolean;
+};
+type Department = {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+};
+type Catalog = {
+  id: string;
+  catalog: string;
+  name: string;
+  description: string;
+  active: boolean;
+};
+type PortalData = {
+  user: {
+    email: string;
+    displayName: string;
+    role: string;
+    department: string;
+    isCoordinator: boolean;
+  };
+  items: WorkItem[];
+  assignmentDirectory?: {
+    employees: Employee[];
+    departments: Department[];
+  } | null;
+  access: { employees: Employee[]; departments: Department[] } | null;
+  agendaModule: AgendaModuleData | null;
+  noticesModule: NoticesModuleData | null;
+  customerModule: { catalogs: Catalog[] } | null;
+  taskModule: {
+    departments: Array<{
+      id: string;
+      name: string;
+      description: string;
+      active: boolean;
+    }>;
+  } | null;
+};
+type OperationResult = { id?: string } | false;
+type PortalSection =
+  | "home"
+  | "dispatch-status"
+  | "referrals"
+  | "meeting-room"
+  | "versions"
+  | "events"
+  | "links";
 
-const fallbackDepartments:Department[]=[{id:"commercial",name:"Comercial",description:"Vendas, negociações e relacionamento com novos clientes.",active:true},{id:"management",name:"Diretoria",description:"Coordenação estratégica e decisões da operação.",active:true},{id:"financial",name:"Financeiro",description:"Demandas financeiras, cobranças e contratos.",active:true},{id:"cs",name:"Sucesso do Cliente",description:"Ativação, retenção e evolução dos clientes.",active:true},{id:"support",name:"Suporte",description:"Atendimento e resolução de solicitações técnicas.",active:true}];
-const normalize=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-const dt=(value?:string|null)=>value?new Intl.DateTimeFormat("pt-BR",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value)):"—";
+const fallbackDepartments: Department[] = [
+  {
+    id: "commercial",
+    name: "Comercial",
+    description: "Vendas, negociações e relacionamento com novos clientes.",
+    active: true,
+  },
+  {
+    id: "management",
+    name: "Diretoria",
+    description: "Coordenação estratégica e decisões da operação.",
+    active: true,
+  },
+  {
+    id: "financial",
+    name: "Financeiro",
+    description: "Demandas financeiras, cobranças e contratos.",
+    active: true,
+  },
+  {
+    id: "cs",
+    name: "Sucesso do Cliente",
+    description: "Ativação, retenção e evolução dos clientes.",
+    active: true,
+  },
+  {
+    id: "support",
+    name: "Suporte",
+    description: "Atendimento e resolução de solicitações técnicas.",
+    active: true,
+  },
+];
+const normalize = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+const dt = (value?: string | null) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(value))
+    : "—";
 
-export default function PortalDontus({data,busy,operate,onBack}:{data:PortalData;busy:boolean;operate:(payload:Record<string,unknown>,success:string)=>Promise<OperationResult>;onBack:()=>void}){
-  const [section,setSection]=useState<PortalSection>("home");
-  const [dispatchDepartmentId,setDispatchDepartmentId]=useState<string|null>(null);
-  const [dispatchSuccess,setDispatchSuccess]=useState("");
-  const departmentSources=[...(data.assignmentDirectory?.departments??data.access?.departments??[]),...(data.taskModule?.departments??[])].filter(department=>department.active);
-  const departments=[...new Map((departmentSources.length?departmentSources:fallbackDepartments).map(department=>[normalize(department.name),department])).values()].sort((a,b)=>a.name.localeCompare(b.name,"pt-BR"));
-  const selectedDepartment=dispatchDepartmentId?departments.find(department=>department.id===dispatchDepartmentId)??null:null;
-  const shortcuts=[{id:"referral",label:"Indicação",description:"Registrar uma nova indicação",icon:UserPlus,tone:"violet"},{id:"meeting-room",label:"Agenda | Sala de reunião",description:"Consultar horários e reservas",icon:CalendarDays,tone:"emerald"},{id:"versions",label:"Versões & Funcionalidades",description:"Novidades e recursos do sistema",icon:MonitorUp,tone:"slate"},{id:"events",label:"Eventos Dontus",description:"Mural de encontros e eventos",icon:Sparkles,tone:"blue"},{id:"links",label:"Links",description:"Atalhos e ambientes da operação",icon:Link2,tone:"cyan"}] as const;
-  const home=section==="home";
-  return <section className="portal-dontus-page"><header className="portal-dontus-topbar"><button className="portal-brand" type="button" onClick={()=>setSection("home")}><Image src="/dontus-mark.png" alt="" width={34} height={34} unoptimized/><span>Portal Dontus</span></button><button className="portal-back-button" onClick={onBack}><ArrowLeft size={17}/> Retornar ao sistema</button></header><main className={`portal-dontus-content ${section === "meeting-room" ? "portal-room-content" : ""}`}>
-    {home?<><section className="portal-dontus-hero"><span className="portal-kicker">PORTAL DE COMUNICAÇÃO</span><h1>Conectando pessoas,<br/><strong>transformando a gestão.</strong></h1><p>Um espaço único para comunicação, eventos e informações de cada setor da Dontus Gestão Odontológica.</p></section><section className="portal-sectors"><header><span><Send size={18}/></span><h2>Encaminhamentos e acessos</h2><i/></header><div className="portal-dispatch-actions"><button type="button" className="portal-action-button blue portal-status-entry" onClick={()=>setSection("dispatch-status")}><span><Search size={18}/></span><span><strong>Consultar status de cliente encaminhado</strong><small>Pesquisar pelo ID e verificar se o setor fez contato</small></span><ChevronRight size={18}/></button><button className="portal-dispatch-entry" onClick={()=>{setDispatchSuccess("");setDispatchDepartmentId("")}}><span className="portal-dispatch-entry-icon"><Send size={21}/></span><span><strong>Encaminhar cliente</strong><small>Preencha os dados e selecione o setor responsável no formulário.</small></span><ChevronRight size={19}/></button></div><div className="portal-action-grid">{shortcuts.map(shortcut=>{const Icon=shortcut.icon;return <button key={shortcut.id} className={`portal-action-button ${shortcut.tone}`} onClick={()=>setSection(shortcut.id==="referral"?"referrals":shortcut.id)}><span><Icon size={18}/></span><span><strong>{shortcut.label}</strong><small>{shortcut.description}</small></span><ChevronRight size={18}/></button>})}</div></section></>:section==="dispatch-status"?<DispatchStatusPage items={data.items} onBack={()=>setSection("home")}/>:section==="referrals"?<ReferralPortalPage items={data.items} catalogs={data.customerModule?.catalogs??[]} user={data.user} busy={busy} operate={operate} onBack={()=>setSection("home")}/>:section==="meeting-room"?<MeetingRoom data={data} busy={busy} operate={operate} onBack={()=>setSection("home")}/>:section==="versions"?<Versions items={data.items} onBack={()=>setSection("home")}/>:section==="links"?<PortalLinksPage catalogs={data.customerModule?.catalogs??[]} onBack={()=>setSection("home")}/>:<Events notices={data.noticesModule} onBack={()=>setSection("home")}/>}
-  </main><footer className="portal-dontus-footer">Dontus · Gestão Odontológica <span/> Portal Dontus</footer>{dispatchDepartmentId!==null&&(dispatchSuccess?<DispatchSuccess name={dispatchSuccess} department={selectedDepartment?.name??"setor selecionado"} onAgain={()=>{setDispatchSuccess("");setDispatchDepartmentId("")}} onClose={()=>{setDispatchSuccess("");setDispatchDepartmentId(null)}}/>:<DispatchModal initialDepartmentId={dispatchDepartmentId} departments={departments} employees={data.assignmentDirectory?.employees??data.access?.employees??[]} requestTypes={data.customerModule?.catalogs.filter(entry=>entry.active&&entry.catalog==="waitingQueueRequestType").map(entry=>entry.name)??[]} user={data.user} busy={busy} onClose={()=>setDispatchDepartmentId(null)} onSend={async(detail)=>{const result=await operate({action:"createWorkItem",module:"waitingQueue",recordType:"Encaminhamento do Portal",title:detail.clientName,customerName:detail.clientName,owner:detail.responsibleName||"Fila compartilhada",team:detail.departmentName,priority:detail.strategic?"P1":"P3",amountCents:0,description:JSON.stringify(detail)},`Cliente encaminhado para ${detail.departmentName}.`);if(result)setDispatchSuccess(detail.clientName)}}/> )}</section>;
+export default function PortalDontus({
+  data,
+  busy,
+  operate,
+  onBack,
+}: {
+  data: PortalData;
+  busy: boolean;
+  operate: (
+    payload: Record<string, unknown>,
+    success: string,
+  ) => Promise<OperationResult>;
+  onBack: () => void;
+}) {
+  const [section, setSection] = useState<PortalSection>("home");
+  const [dispatchDepartmentId, setDispatchDepartmentId] = useState<
+    string | null
+  >(null);
+  const [dispatchSuccess, setDispatchSuccess] = useState("");
+  const departmentSources = [
+    ...(data.assignmentDirectory?.departments ??
+      data.access?.departments ??
+      []),
+    ...(data.taskModule?.departments ?? []),
+  ].filter((department) => department.active);
+  const departments = [
+    ...new Map(
+      (departmentSources.length ? departmentSources : fallbackDepartments).map(
+        (department) => [normalize(department.name), department],
+      ),
+    ).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const selectedDepartment = dispatchDepartmentId
+    ? (departments.find(
+        (department) => department.id === dispatchDepartmentId,
+      ) ?? null)
+    : null;
+  const shortcuts = [
+    {
+      id: "referral",
+      label: "Indicação",
+      description: "Registrar uma nova indicação",
+      icon: UserPlus,
+      tone: "violet",
+    },
+    {
+      id: "meeting-room",
+      label: "Agenda | Sala de reunião",
+      description: "Consultar horários e reservas",
+      icon: CalendarDays,
+      tone: "emerald",
+    },
+    {
+      id: "versions",
+      label: "Versões & Funcionalidades",
+      description: "Novidades e recursos do sistema",
+      icon: MonitorUp,
+      tone: "slate",
+    },
+    {
+      id: "events",
+      label: "Eventos Dontus",
+      description: "Mural de encontros e eventos",
+      icon: Sparkles,
+      tone: "blue",
+    },
+    {
+      id: "links",
+      label: "Links",
+      description: "Atalhos e ambientes da operação",
+      icon: Link2,
+      tone: "cyan",
+    },
+  ] as const;
+  const home = section === "home";
+  return (
+    <section className="portal-dontus-page">
+      <header className="portal-dontus-topbar">
+        <button
+          className="portal-brand"
+          type="button"
+          onClick={() => setSection("home")}
+        >
+          <Image
+            src="/dontus-mark.png"
+            alt=""
+            width={34}
+            height={34}
+            unoptimized
+          />
+          <span>Portal Dontus</span>
+        </button>
+        <button className="portal-back-button" onClick={onBack}>
+          <ArrowLeft size={17} /> Retornar ao sistema
+        </button>
+      </header>
+      <main
+        className={`portal-dontus-content ${section === "meeting-room" ? "portal-room-content" : ""}`}
+      >
+        {home ? (
+          <>
+            <section className="portal-dontus-hero">
+              <span className="portal-kicker">PORTAL DE COMUNICAÇÃO</span>
+              <h1>
+                Conectando pessoas,
+                <br />
+                <strong>transformando a gestão.</strong>
+              </h1>
+              <p>
+                Um espaço único para comunicação, eventos e informações de cada
+                setor da Dontus Gestão Odontológica.
+              </p>
+            </section>
+            <section className="portal-sectors">
+              <header>
+                <span>
+                  <Send size={18} />
+                </span>
+                <h2>Encaminhamentos e acessos</h2>
+                <i />
+              </header>
+              <div className="portal-dispatch-actions">
+                <button
+                  type="button"
+                  className="portal-action-button blue portal-status-entry"
+                  onClick={() => setSection("dispatch-status")}
+                >
+                  <span>
+                    <Search size={18} />
+                  </span>
+                  <span>
+                    <strong>Consultar status de cliente encaminhado</strong>
+                    <small>
+                      Pesquisar pelo ID e verificar se o setor fez contato
+                    </small>
+                  </span>
+                  <ChevronRight size={18} />
+                </button>
+                <button
+                  className="portal-dispatch-entry"
+                  onClick={() => {
+                    setDispatchSuccess("");
+                    setDispatchDepartmentId("");
+                  }}
+                >
+                  <span className="portal-dispatch-entry-icon">
+                    <Send size={21} />
+                  </span>
+                  <span>
+                    <strong>Encaminhar cliente</strong>
+                    <small>
+                      Preencha os dados e selecione o setor responsável no
+                      formulário.
+                    </small>
+                  </span>
+                  <ChevronRight size={19} />
+                </button>
+              </div>
+              <div className="portal-action-grid">
+                {shortcuts.map((shortcut) => {
+                  const Icon = shortcut.icon;
+                  return (
+                    <button
+                      key={shortcut.id}
+                      className={`portal-action-button ${shortcut.tone}`}
+                      onClick={() =>
+                        setSection(
+                          shortcut.id === "referral"
+                            ? "referrals"
+                            : shortcut.id,
+                        )
+                      }
+                    >
+                      <span>
+                        <Icon size={18} />
+                      </span>
+                      <span>
+                        <strong>{shortcut.label}</strong>
+                        <small>{shortcut.description}</small>
+                      </span>
+                      <ChevronRight size={18} />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </>
+        ) : section === "dispatch-status" ? (
+          <DispatchStatusPage
+            items={data.items}
+            onBack={() => setSection("home")}
+          />
+        ) : section === "referrals" ? (
+          <ReferralPortalPage
+            items={data.items}
+            catalogs={data.customerModule?.catalogs ?? []}
+            user={data.user}
+            busy={busy}
+            operate={operate}
+            onBack={() => setSection("home")}
+          />
+        ) : section === "meeting-room" ? (
+          <MeetingRoom
+            data={data}
+            busy={busy}
+            operate={operate}
+            onBack={() => setSection("home")}
+          />
+        ) : section === "versions" ? (
+          <Versions items={data.items} onBack={() => setSection("home")} />
+        ) : section === "links" ? (
+          <PortalLinksPage
+            catalogs={data.customerModule?.catalogs ?? []}
+            onBack={() => setSection("home")}
+          />
+        ) : (
+          <Events
+            notices={data.noticesModule}
+            onBack={() => setSection("home")}
+          />
+        )}
+      </main>
+      <footer className="portal-dontus-footer">
+        Dontus · Gestão Odontológica <span /> Portal Dontus
+      </footer>
+      {dispatchDepartmentId !== null &&
+        (dispatchSuccess ? (
+          <DispatchSuccess
+            name={dispatchSuccess}
+            department={selectedDepartment?.name ?? "setor selecionado"}
+            onAgain={() => {
+              setDispatchSuccess("");
+              setDispatchDepartmentId("");
+            }}
+            onClose={() => {
+              setDispatchSuccess("");
+              setDispatchDepartmentId(null);
+            }}
+          />
+        ) : (
+          <DispatchModal
+            initialDepartmentId={dispatchDepartmentId}
+            departments={departments}
+            employees={
+              data.assignmentDirectory?.employees ??
+              data.access?.employees ??
+              []
+            }
+            requestTypes={
+              data.customerModule?.catalogs
+                .filter(
+                  (entry) =>
+                    entry.active && entry.catalog === "waitingQueueRequestType",
+                )
+                .map((entry) => entry.name) ?? []
+            }
+            user={data.user}
+            busy={busy}
+            onClose={() => setDispatchDepartmentId(null)}
+            onSend={async (detail) => {
+              const result = await operate(
+                {
+                  action: "createWorkItem",
+                  module: "waitingQueue",
+                  recordType: "Encaminhamento do Portal",
+                  title: detail.clientName,
+                  customerName: detail.clientName,
+                  owner: detail.responsibleName || "Fila compartilhada",
+                  team: detail.departmentName,
+                  priority: detail.strategic ? "P1" : "P3",
+                  amountCents: 0,
+                  description: JSON.stringify(detail),
+                },
+                `Cliente encaminhado para ${detail.departmentName}.`,
+              );
+              if (result) setDispatchSuccess(detail.clientName);
+            }}
+          />
+        ))}
+    </section>
+  );
 }
 
-type DispatchStatus = { id:string; clientId:string; clientName:string; departmentName:string; responsibleName:string; state:"waiting"|"contacted"; sentAt:string; contactedAt?:string; contactedByName?:string };
+type DispatchStatus = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  departmentName: string;
+  responsibleName: string;
+  state: "waiting" | "contacted";
+  sentAt: string;
+  contactedAt?: string;
+  contactedByName?: string;
+};
 
-function DispatchStatusPage({items,onBack}:{items:WorkItem[];onBack:()=>void}) {
-  const [clientId,setClientId]=useState("");
-  const [search,setSearch]=useState<{id:string;version:number}|null>(null);
-  const [results,setResults]=useState<DispatchStatus[]>([]);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState("");
-  useEffect(()=>{
-    if(!search)return;
-    const controller=new AbortController();
-    setLoading(true);setError("");
-    void fetch("/api/portal/dispatch-status?clientId="+encodeURIComponent(search.id),{cache:"no-store",signal:controller.signal})
-      .then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.detail||"Não foi possível consultar o status.");if(!controller.signal.aborted)setResults(body);})
-      .catch(reason=>{if(!controller.signal.aborted){setResults([]);setError(reason instanceof Error?reason.message:"Não foi possível consultar o status.");}})
-      .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
-    return ()=>controller.abort();
-  },[search,items]);
-  return <section className="portal-subpage portal-dispatch-status"><PortalSubHeader kicker="ENCAMINHAMENTOS" title="Status de clientes encaminhados" description="Pesquise pelo ID do cliente para verificar se o contato já foi realizado pelo setor." onBack={onBack} icon={<Search size={25}/>}/>
-    <form className="portal-status-search" onSubmit={event=>{event.preventDefault();if(clientId.trim())setSearch({id:clientId.trim(),version:Date.now()});}}><label>ID do cliente<input required inputMode="numeric" pattern="[0-9]+" maxLength={64} value={clientId} onChange={event=>{setClientId(event.target.value.replace(/\D/g,""));setSearch(null);setResults([]);setError("");setLoading(false);}} placeholder="Digite o ID completo do cliente"/></label><button className="primary-button" disabled={loading||!clientId.trim()}><Search size={17}/>{loading?"Consultando...":"Consultar status"}</button></form>
-    {error&&<p className="form-error" role="alert">{error}</p>}
-    {search&&!loading&&!error&&<div className="portal-status-results" aria-live="polite"><header><strong>{results.length} encaminhamento(s) para o ID {search.id}</strong><button className="secondary-button" onClick={()=>setSearch({...search,version:Date.now()})}><RefreshCw size={15}/>Atualizar</button></header>{results.length===0?<p>Nenhum encaminhamento encontrado para este ID.</p>:results.map(entry=><article key={entry.id}><div><h2>{entry.clientName}</h2><small>ID {entry.clientId} · {entry.departmentName}</small></div><strong className={entry.state==="contacted"?"contacted":"waiting"}>{entry.state==="contacted"?<CheckCircle2 size={18}/>:<Clock3 size={18}/>} {entry.state==="contacted"?"Contato realizado":"Aguardando contato"}</strong><dl><div><dt>Encaminhado em</dt><dd>{dt(entry.sentAt)}</dd></div><div><dt>Responsável</dt><dd>{entry.responsibleName||"Fila compartilhada do setor"}</dd></div>{entry.state==="contacted"&&<><div><dt>Contato realizado em</dt><dd>{dt(entry.contactedAt)}</dd></div><div><dt>Contato realizado por</dt><dd>{entry.contactedByName||entry.responsibleName||"Setor responsável"}</dd></div></>}</dl></article>)}</div>}
-  </section>;
+function DispatchStatusPage({
+  items,
+  onBack,
+}: {
+  items: WorkItem[];
+  onBack: () => void;
+}) {
+  const [clientId, setClientId] = useState("");
+  const [search, setSearch] = useState<{ id: string; version: number } | null>(
+    null,
+  );
+  const [results, setResults] = useState<DispatchStatus[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!search) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    void fetch(
+      "/api/portal/dispatch-status?clientId=" + encodeURIComponent(search.id),
+      { cache: "no-store", signal: controller.signal },
+    )
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok)
+          throw new Error(
+            body.detail || "Não foi possível consultar o status.",
+          );
+        if (!controller.signal.aborted) setResults(body);
+      })
+      .catch((reason) => {
+        if (!controller.signal.aborted) {
+          setResults([]);
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Não foi possível consultar o status.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [search, items]);
+  return (
+    <section className="portal-subpage portal-dispatch-status">
+      <PortalSubHeader
+        kicker="ENCAMINHAMENTOS"
+        title="Status de clientes encaminhados"
+        description="Pesquise pelo ID do cliente para verificar se o contato já foi realizado pelo setor."
+        onBack={onBack}
+        icon={<Search size={25} />}
+      />
+      <form
+        className="portal-status-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (clientId.trim())
+            setSearch({ id: clientId.trim(), version: Date.now() });
+        }}
+      >
+        <label>
+          ID do cliente
+          <input
+            required
+            inputMode="numeric"
+            pattern="[0-9]+"
+            maxLength={64}
+            value={clientId}
+            onChange={(event) => {
+              setClientId(event.target.value.replace(/\D/g, ""));
+              setSearch(null);
+              setResults([]);
+              setError("");
+              setLoading(false);
+            }}
+            placeholder="Digite o ID completo do cliente"
+          />
+        </label>
+        <button
+          className="primary-button"
+          disabled={loading || !clientId.trim()}
+        >
+          <Search size={17} />
+          {loading ? "Consultando..." : "Consultar status"}
+        </button>
+      </form>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      {search && !loading && !error && (
+        <div className="portal-status-results" aria-live="polite">
+          <header>
+            <strong>
+              {results.length} encaminhamento(s) para o ID {search.id}
+            </strong>
+            <button
+              className="secondary-button"
+              onClick={() => setSearch({ ...search, version: Date.now() })}
+            >
+              <RefreshCw size={15} />
+              Atualizar
+            </button>
+          </header>
+          {results.length === 0 ? (
+            <p>Nenhum encaminhamento encontrado para este ID.</p>
+          ) : (
+            results.map((entry) => (
+              <article key={entry.id}>
+                <div>
+                  <h2>{entry.clientName}</h2>
+                  <small>
+                    ID {entry.clientId} · {entry.departmentName}
+                  </small>
+                </div>
+                <strong
+                  className={
+                    entry.state === "contacted" ? "contacted" : "waiting"
+                  }
+                >
+                  {entry.state === "contacted" ? (
+                    <CheckCircle2 size={18} />
+                  ) : (
+                    <Clock3 size={18} />
+                  )}{" "}
+                  {entry.state === "contacted"
+                    ? "Contato realizado"
+                    : "Aguardando contato"}
+                </strong>
+                <dl>
+                  <div>
+                    <dt>Encaminhado em</dt>
+                    <dd>{dt(entry.sentAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Responsável</dt>
+                    <dd>
+                      {entry.responsibleName || "Fila compartilhada do setor"}
+                    </dd>
+                  </div>
+                  {entry.state === "contacted" && (
+                    <>
+                      <div>
+                        <dt>Contato realizado em</dt>
+                        <dd>{dt(entry.contactedAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Contato realizado por</dt>
+                        <dd>
+                          {entry.contactedByName ||
+                            entry.responsibleName ||
+                            "Setor responsável"}
+                        </dd>
+                      </div>
+                    </>
+                  )}
+                </dl>
+              </article>
+            ))
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
-export function DispatchModal({initial,initialDepartmentId,departments,employees,requestTypes,user,busy,onClose,onSend}:{initial?:Partial<WaitingQueueDetail>;initialDepartmentId:string;departments:Department[];employees:Employee[];requestTypes:string[];user:PortalData["user"];busy:boolean;onClose:()=>void;onSend:(detail:WaitingQueueDetail)=>Promise<void>}){
-  const [departmentId,setDepartmentId]=useState(initialDepartmentId);
-  const [imageDataUrl,setImageDataUrl]=useState("");const [fileName,setFileName]=useState("");const [error,setError]=useState("");
-  const department=departments.find(entry=>entry.id===departmentId);
-  const sectorEmployees=employees.filter(employee=>employee.active&&belongsToWaitingQueueDepartment(employee,{departmentId,departmentName:department?.name??""}));
-  const types=requestTypes;
-  const chooseImage=(file?:File)=>{setError("");if(!file){setImageDataUrl("");setFileName("");return}if(file.size<=0||file.size>5*1024*1024){setError("Selecione um arquivo não vazio de até 5 MB.");return}const reader=new FileReader();reader.onload=()=>{setImageDataUrl(String(reader.result??""));setFileName(file.name)};reader.readAsDataURL(file)};
-  const submit=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!department)return;const form=new FormData(event.currentTarget);const responsibleUserId=String(form.get("responsibleUserId")??"");const responsible=sectorEmployees.find(entry=>entry.id===responsibleUserId);if(responsibleUserId&&!responsible)return;void onSend({kind:"waitingQueue",clientName:String(form.get("clientName")??"").trim(),whatsapp:String(form.get("whatsapp")??"").replace(/[^\d+]/g,""),clientCode:String(form.get("clientCode")??"").trim(),requestType:String(form.get("requestType")??""),responsibleUserId,responsibleName:responsible?.displayName??"",summary:String(form.get("summary")??"").trim(),imageDataUrl,fileName,strategic:form.get("strategic")==="on",departmentId:department.id,departmentName:department.name,senderName:user.displayName,senderEmail:user.email,sentAt:new Date().toISOString(),queueMode:departmentQueueMode(department.description),state:"waiting"})};
-  return <div className="portal-modal-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><section className="portal-dispatch-modal"><header><div><Image src="/dontus-mark.png" alt="" width={42} height={42} unoptimized/><span><small>PORTAL DE FILA DE ESPERA</small><h2>Encaminhar cliente</h2><p>{department?.name||"Selecione o setor de destino"}</p></span></div><button onClick={onClose}><X size={19}/></button></header><form onSubmit={submit}><label className="wide">Nome *<input name="clientName" defaultValue={initial?.clientName} required autoFocus placeholder="Nome do cliente"/></label><label>WhatsApp *<PhoneInput name="whatsapp" defaultValue={initial?.whatsapp} required inputMode="numeric" pattern="[0-9+() -]+" placeholder="(11) 99999-9999"/></label><label>ID do cliente<input name="clientCode" defaultValue={initial?.clientCode} inputMode="numeric" placeholder="000000"/></label><label className="wide">Setor de destino *<select required value={departmentId} onChange={event=>setDepartmentId(event.target.value)}><option value="">Selecionar setor</option>{departments.map(entry=><option value={entry.id} key={entry.id}>{entry.name}</option>)}</select></label><label>Tipo de solicitação *<select name="requestType" required defaultValue=""><option value="">Selecionar</option>{types.map(type=><option key={type}>{type}</option>)}</select></label><label>Responsável<SearchablePeopleSelect key={departmentId} searchLabel="Responsável" name="responsibleUserId" defaultValue=""><option value="">Sem responsável · fila compartilhada</option>{sectorEmployees.map(employee=><option value={employee.id} key={employee.id}>{employee.displayName}</option>)}</SearchablePeopleSelect></label><label className="wide">Resumo *<textarea name="summary" defaultValue={initial?.summary} required rows={4} placeholder="Descreva a solicitação e o contexto necessário para o setor."/></label><MediaUploadField className="wide" label="Arquivo" selectedText={fileName} previewUrl={imageDataUrl.startsWith("data:image/")?imageDataUrl:undefined} previewLabel={fileName||"Visualizar imagem selecionada"} onRemovePreview={()=>{setImageDataUrl("");setFileName("");}} hint="Imagem, vídeo, PDF, Excel ou outro arquivo de até 5 MB." onChange={event=>chooseImage(event.target.files?.[0])}/>{error&&<p className="portal-form-error wide">{error}</p>}<label className="portal-strategic wide"><input name="strategic" type="checkbox"/><BadgeCheck size={19}/><span><strong>Cliente estratégico</strong><small>Destacar este encaminhamento para maior atenção.</small></span></label><div className="portal-modal-destination wide"><small>SETOR DE DESTINO</small><strong>{department?.name||"Não selecionado"}</strong></div><button className="portal-send wide" disabled={busy||!department||Boolean(error)}><Send size={17}/>{busy?"ENCAMINHANDO...":`ENCAMINHAR PARA ${department?.name.toUpperCase()||"O SETOR"}`}</button></form><footer>Enviado por <strong>{user.displayName}</strong></footer></section></div>}
-
-function DispatchSuccess({name,department,onAgain,onClose}:{name:string;department:string;onAgain:()=>void;onClose:()=>void}){return <div className="portal-modal-backdrop"><section className="portal-dispatch-success"><button className="portal-success-close" onClick={onClose}><X size={18}/></button><CheckCircle2 size={54}/><h2>Cliente encaminhado com sucesso!</h2><p><strong>{name}</strong> foi adicionado à fila de <strong>{department}</strong>.</p><button onClick={onAgain}><Plus size={17}/> NOVO ENCAMINHAMENTO</button></section></div>}
-
-function PortalSubHeader({kicker,title,description,onBack,icon}:{kicker:string;title:string;description:string;onBack:()=>void;icon:React.ReactNode}){return <header className="portal-subheader"><button onClick={onBack}><ArrowLeft size={16}/>Voltar ao Portal</button><span>{icon}</span><small>{kicker}</small><h1>{title}</h1><p>{description}</p></header>}
-
-const PORTAL_ROOM_MARKER="[PORTAL_ROOM:";
-function portalRoomDepartment(description:string){const match=description.match(/\[PORTAL_ROOM:[^:]*:([^\]]+)\]/);return match?.[1]??"Setor não informado"}
-function portalRoomDepartmentId(description:string){const match=description.match(/\[PORTAL_ROOM:([^:]*):[^\]]+\]/);return match?.[1]??""}
-function portalRoomNotes(description:string){return description.replace(/\[PORTAL_ROOM:[^\]]+\]\s*/,"")}
-const portalDateKey=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-const portalStatusTone=(status:string)=>/cancel/i.test(status)?"cancelled":/conclu/i.test(status)?"completed":"reserved";
-
-function MeetingRoom({data,busy,operate,onBack}:{data:PortalData;busy:boolean;operate:(payload:Record<string,unknown>,success:string)=>Promise<OperationResult>;onBack:()=>void}){
-  const [cursor,setCursor]=useState(()=>new Date());
-  const [view,setView]=useState<"month"|"week"|"day">("month");
-  const [reserving,setReserving]=useState(false);
-  const [selected,setSelected]=useState<AgendaCommitment|null>(null);
-  const [expandedDay,setExpandedDay]=useState("");
-  const agenda=data.agendaModule;
-  const calendars=agenda?.calendars.filter(entry=>entry.active&&/sala.*reuni|reuni.*sala/i.test(normalize(`${entry.name} ${entry.description}`)))??[];
-  const commitments=agenda?.commitments.filter(entry=>entry.description.includes(PORTAL_ROOM_MARKER)&&calendars.some(calendar=>calendar.id===entry.agendaId))??[];
-  const shift=(direction:number)=>setCursor(current=>{const next=new Date(current);if(view==="month")next.setMonth(next.getMonth()+direction);else next.setDate(next.getDate()+direction*(view==="week"?7:1));return next});
-  const first=new Date(cursor.getFullYear(),cursor.getMonth(),1);const firstWeekday=first.getDay();const monthDays=new Date(cursor.getFullYear(),cursor.getMonth()+1,0).getDate();
-  const periodDays=view==="day"?[new Date(cursor)]:(()=>{const start=new Date(cursor);start.setDate(start.getDate()-start.getDay());return Array.from({length:7},(_,index)=>{const date=new Date(start);date.setDate(start.getDate()+index);return date})})();
-  const periodLabel=view==="month"?new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"}).format(cursor):view==="day"?new Intl.DateTimeFormat("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"}).format(cursor):`${periodDays[0].toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})} — ${periodDays[6].toLocaleDateString("pt-BR",{day:"2-digit",month:"short",year:"numeric"})}`;
-  const canReserveRoom=data.user.isCoordinator;
-  const canEdit=(entry:AgendaCommitment)=>canReserveRoom&&entry.createdBy.toLowerCase()===data.user.email.toLowerCase();
-  const openReservation=(entry:AgendaCommitment)=>{if(canEdit(entry))setSelected(entry)};
-  const departments=(data.assignmentDirectory?.departments??data.access?.departments??[]).filter(entry=>entry.active);
-  const expandedEntries=expandedDay?commitments.filter(entry=>portalDateKey(new Date(entry.startsAt))===expandedDay).sort((a,b)=>a.startsAt.localeCompare(b.startsAt)):[];
-  const today=portalDateKey(new Date());
-  const futureReservations=commitments.filter(entry=>new Date(entry.endsAt)>=new Date()&&!/cancel/i.test(entry.statusName)).length;
-  const todayReservations=commitments.filter(entry=>portalDateKey(new Date(entry.startsAt))===today&&!/cancel/i.test(entry.statusName)).length;
-  const completedReservations=commitments.filter(entry=>/conclu/i.test(entry.statusName)).length;
-  const formatHour=(value:string)=>new Intl.DateTimeFormat("pt-BR",{hour:"2-digit",minute:"2-digit"}).format(new Date(value));
-  return <section className="portal-subpage portal-room-agenda">
-    <PortalSubHeader kicker="RESERVAS" title="Agenda | Sala de reunião" description="Consulte a disponibilidade e acompanhe as reservas da sala com clareza." onBack={onBack} icon={<CalendarDays size={25}/>}/>
-    <section className="portal-room-overview" aria-label="Resumo das reservas">
-      <article><small>Hoje</small><strong>{todayReservations}</strong><span>reserva(s)</span></article>
-      <article><small>Próximas</small><strong>{futureReservations}</strong><span>ativas</span></article>
-      <article><small>Concluídas</small><strong>{completedReservations}</strong><span>no histórico</span></article>
-      <div className="portal-room-legend"><span className="reserved"><i/>Reservada</span><span className="completed"><i/>Concluída</span><span className="cancelled"><i/>Cancelada</span></div>
-    </section>
-    {!canReserveRoom&&<div className="portal-room-permission-note"><BadgeCheck size={18}/><span><strong>Consulta liberada</strong><small>Somente colaboradores marcados como coordenadores podem reservar ou editar a sala.</small></span></div>}
-    {!calendars.length&&<div className="portal-room-permission-note warning"><CalendarDays size={18}/><span><strong>Agenda da sala não configurada</strong><small>Cadastre uma agenda com “Sala de reunião” no nome ou na descrição.</small></span></div>}
-    <section className={`portal-calendar-panel portal-calendar-${view}`}>
-      <header><button onClick={()=>shift(-1)} aria-label="Período anterior"><ChevronLeft/></button><h2>{periodLabel}</h2><button onClick={()=>shift(1)} aria-label="Próximo período"><ChevronRight/></button><div className="portal-calendar-view-switch">{([['month','Mês'],['week','Semana'],['day','Dia']] as const).map(([value,label])=><button type="button" className={view===value?"active":""} onClick={()=>setView(value)} key={value}>{label}</button>)}</div><button className="portal-reserve-button" title={!canReserveRoom?"Apenas coordenadores podem reservar a sala":!calendars.length?"Configure a agenda da sala de reunião":"Reservar sala"} disabled={!calendars.length||!canReserveRoom} onClick={()=>setReserving(true)}><Plus size={16}/>Reservar sala</button></header>
-      {view==="month"?<div className="portal-calendar-month-scroll"><div className="portal-calendar-week">{["DOM","SEG","TER","QUA","QUI","SEX","SÁB"].map(day=><span key={day}>{day}</span>)}</div><div className="portal-calendar-grid">{Array.from({length:firstWeekday},(_,index)=><span className="empty" key={`e${index}`}/>)}{Array.from({length:monthDays},(_,index)=>{const date=new Date(cursor.getFullYear(),cursor.getMonth(),index+1);const key=portalDateKey(date);const dayEntries=commitments.filter(entry=>portalDateKey(new Date(entry.startsAt))===key).sort((a,b)=>a.startsAt.localeCompare(b.startsAt));return <article className={key===today?"today":""} key={key}><b>{index+1}</b>{dayEntries.slice(0,3).map(entry=><button type="button" className={`portal-calendar-event ${portalStatusTone(entry.statusName)} ${canEdit(entry)?"editable":""}`} onClick={()=>openReservation(entry)} key={entry.id} title={canEdit(entry)?"Clique para editar sua reserva":`${entry.title} · ${portalRoomDepartment(entry.description)}`}><span><time>{formatHour(entry.startsAt)}</time><em>{entry.statusName}</em></span><strong>🏢 {entry.title}</strong><small>{portalRoomDepartment(entry.description)}</small></button>)}{dayEntries.length>3&&<button type="button" className="portal-calendar-more" onClick={()=>setExpandedDay(key)}>+{dayEntries.length-3} reserva(s) · ver todas</button>}</article>})}</div></div>:<div className="portal-schedule-scroll"><div className="portal-schedule-grid">{periodDays.map(date=>{const key=portalDateKey(date);const entries=commitments.filter(entry=>portalDateKey(new Date(entry.startsAt))===key).sort((a,b)=>a.startsAt.localeCompare(b.startsAt));return <article className={key===today?"today":""} key={key}><header><strong>{date.toLocaleDateString("pt-BR",{weekday:"long"})}</strong><b>{date.getDate()}</b><small>{date.toLocaleDateString("pt-BR",{month:"long"})}</small></header><div>{entries.length?entries.map(entry=><button type="button" className={`${portalStatusTone(entry.statusName)} ${canEdit(entry)?"editable":""}`} onClick={()=>openReservation(entry)} key={entry.id}><time>{formatHour(entry.startsAt)}</time><span><strong>🏢 {entry.title}</strong><small>{portalRoomDepartment(entry.description)} · {entry.responsibleName}</small></span><em>{entry.statusName}</em></button>):<p>Nenhuma reserva</p>}</div></article>})}</div></div>}
-    </section>
-    {(reserving||selected)&&agenda&&canReserveRoom&&
-      <ReservationModal commitment={selected??undefined} module={agenda} calendars={calendars} departments={departments} user={data.user} busy={busy} onClose={()=>{setReserving(false);setSelected(null)}} onSave={async payload=>{const result=await operate(payload,selected?"Reserva atualizada com sucesso.":"Sala reservada com sucesso.");if(result){setReserving(false);setSelected(null)}}}/>
+export function DispatchModal({
+  initial,
+  initialDepartmentId,
+  departments,
+  employees,
+  requestTypes,
+  user,
+  busy,
+  onClose,
+  onSend,
+}: {
+  initial?: Partial<WaitingQueueDetail>;
+  initialDepartmentId: string;
+  departments: Department[];
+  employees: Employee[];
+  requestTypes: string[];
+  user: PortalData["user"];
+  busy: boolean;
+  onClose: () => void;
+  onSend: (detail: WaitingQueueDetail) => Promise<void>;
+}) {
+  const [departmentId, setDepartmentId] = useState(initialDepartmentId);
+  const [imageDataUrl, setImageDataUrl] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
+  const department = departments.find((entry) => entry.id === departmentId);
+  const sectorEmployees = employees.filter(
+    (employee) =>
+      employee.active &&
+      belongsToWaitingQueueDepartment(employee, {
+        departmentId,
+        departmentName: department?.name ?? "",
+      }),
+  );
+  const types = requestTypes;
+  const chooseImage = (file?: File) => {
+    setError("");
+    if (!file) {
+      setImageDataUrl("");
+      setFileName("");
+      return;
     }
-    {expandedDay&&<div className="portal-modal-backdrop" onMouseDown={event=>event.currentTarget===event.target&&setExpandedDay("")}><section className="portal-day-reservations"><header><div><small>RESERVAS DO DIA</small><h2>{new Date(`${expandedDay}T12:00:00`).toLocaleDateString("pt-BR",{dateStyle:"long"})}</h2></div><button onClick={()=>setExpandedDay("")}><X/></button></header><div>{expandedEntries.map(entry=><button type="button" className={`${portalStatusTone(entry.statusName)} ${canEdit(entry)?"editable":""}`} onClick={()=>{setExpandedDay("");openReservation(entry)}} key={entry.id}><time>{formatHour(entry.startsAt)}</time><span><strong>🏢 {entry.title}</strong><small>{portalRoomDepartment(entry.description)} · {entry.responsibleName}</small></span><em>{entry.statusName}</em></button>)}</div></section></div>}
-  </section>
+    if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
+      setError("Selecione um arquivo não vazio de até 5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImageDataUrl(String(reader.result ?? ""));
+      setFileName(file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!department) return;
+    const form = new FormData(event.currentTarget);
+    const responsibleUserId = String(form.get("responsibleUserId") ?? "");
+    const responsible = sectorEmployees.find(
+      (entry) => entry.id === responsibleUserId,
+    );
+    if (responsibleUserId && !responsible) return;
+    void onSend({
+      kind: "waitingQueue",
+      clientName: String(form.get("clientName") ?? "").trim(),
+      whatsapp: String(form.get("whatsapp") ?? "").replace(/[^\d+]/g, ""),
+      clientCode: String(form.get("clientCode") ?? "").trim(),
+      requestType: String(form.get("requestType") ?? ""),
+      responsibleUserId,
+      responsibleName: responsible?.displayName ?? "",
+      summary: String(form.get("summary") ?? "").trim(),
+      imageDataUrl,
+      fileName,
+      strategic: form.get("strategic") === "on",
+      departmentId: department.id,
+      departmentName: department.name,
+      senderName: user.displayName,
+      senderEmail: user.email,
+      sentAt: new Date().toISOString(),
+      queueMode: departmentQueueMode(department.description),
+      state: "waiting",
+    });
+  };
+  return (
+    <div
+      className="portal-modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <section className="portal-dispatch-modal">
+        <header>
+          <div>
+            <Image
+              src="/dontus-mark.png"
+              alt=""
+              width={42}
+              height={42}
+              unoptimized
+            />
+            <span>
+              <small>PORTAL DE FILA DE ESPERA</small>
+              <h2>Encaminhar cliente</h2>
+              <p>{department?.name || "Selecione o setor de destino"}</p>
+            </span>
+          </div>
+          <button onClick={onClose}>
+            <X size={19} />
+          </button>
+        </header>
+        <form onSubmit={submit}>
+          <label className="wide">
+            Nome *
+            <input
+              name="clientName"
+              defaultValue={initial?.clientName}
+              required
+              autoFocus
+              placeholder="Nome do cliente"
+            />
+          </label>
+          <label>
+            WhatsApp *
+            <PhoneInput
+              name="whatsapp"
+              defaultValue={initial?.whatsapp}
+              required
+              inputMode="numeric"
+              pattern="[0-9+() -]+"
+              placeholder="(11) 99999-9999"
+            />
+          </label>
+          <label>
+            ID do cliente
+            <input
+              name="clientCode"
+              defaultValue={initial?.clientCode}
+              inputMode="numeric"
+              placeholder="000000"
+            />
+          </label>
+          <label className="wide">
+            Setor de destino *
+            <select
+              required
+              value={departmentId}
+              onChange={(event) => setDepartmentId(event.target.value)}
+            >
+              <option value="">Selecionar setor</option>
+              {departments.map((entry) => (
+                <option value={entry.id} key={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Tipo de solicitação *
+            <select name="requestType" required defaultValue="">
+              <option value="">Selecionar</option>
+              {types.map((type) => (
+                <option key={type}>{type}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Responsável
+            <SearchablePeopleSelect
+              key={departmentId}
+              searchLabel="Responsável"
+              name="responsibleUserId"
+              defaultValue=""
+            >
+              <option value="">Sem responsável · fila compartilhada</option>
+              {sectorEmployees.map((employee) => (
+                <option value={employee.id} key={employee.id}>
+                  {employee.displayName}
+                </option>
+              ))}
+            </SearchablePeopleSelect>
+          </label>
+          <label className="wide">
+            Resumo *
+            <textarea
+              name="summary"
+              defaultValue={initial?.summary}
+              required
+              rows={4}
+              placeholder="Descreva a solicitação e o contexto necessário para o setor."
+            />
+          </label>
+          <MediaUploadField
+            className="wide"
+            label="Arquivo"
+            selectedText={fileName}
+            previewUrl={
+              imageDataUrl.startsWith("data:image/") ? imageDataUrl : undefined
+            }
+            previewLabel={fileName || "Visualizar imagem selecionada"}
+            onRemovePreview={() => {
+              setImageDataUrl("");
+              setFileName("");
+            }}
+            hint="Imagem, vídeo, PDF, Excel ou outro arquivo de até 5 MB."
+            onChange={(event) => chooseImage(event.target.files?.[0])}
+          />
+          {error && <p className="portal-form-error wide">{error}</p>}
+          <label className="portal-strategic wide">
+            <input name="strategic" type="checkbox" />
+            <BadgeCheck size={19} />
+            <span>
+              <strong>Cliente estratégico</strong>
+              <small>Destacar este encaminhamento para maior atenção.</small>
+            </span>
+          </label>
+          <div className="portal-modal-destination wide">
+            <small>SETOR DE DESTINO</small>
+            <strong>{department?.name || "Não selecionado"}</strong>
+          </div>
+          <button
+            className="portal-send wide"
+            disabled={busy || !department || Boolean(error)}
+          >
+            <Send size={17} />
+            {busy
+              ? "ENCAMINHANDO..."
+              : `ENCAMINHAR PARA ${department?.name.toUpperCase() || "O SETOR"}`}
+          </button>
+        </form>
+        <footer>
+          Enviado por <strong>{user.displayName}</strong>
+        </footer>
+      </section>
+    </div>
+  );
 }
 
-function ReservationModal({commitment,module,calendars,departments,user,busy,onClose,onSave}:{commitment?:AgendaCommitment;module:AgendaModuleData;calendars:AgendaModuleData["calendars"];departments:Department[];user:PortalData["user"];busy:boolean;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>Promise<void>}){
-  const startDate=commitment?new Date(commitment.startsAt):new Date();const endDate=commitment?new Date(commitment.endsAt):null;
+function DispatchSuccess({
+  name,
+  department,
+  onAgain,
+  onClose,
+}: {
+  name: string;
+  department: string;
+  onAgain: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="portal-modal-backdrop">
+      <section className="portal-dispatch-success">
+        <button className="portal-success-close" onClick={onClose}>
+          <X size={18} />
+        </button>
+        <CheckCircle2 size={54} />
+        <h2>Cliente encaminhado com sucesso!</h2>
+        <p>
+          <strong>{name}</strong> foi adicionado à fila de{" "}
+          <strong>{department}</strong>.
+        </p>
+        <button onClick={onAgain}>
+          <Plus size={17} /> NOVO ENCAMINHAMENTO
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function PortalSubHeader({
+  kicker,
+  title,
+  description,
+  onBack,
+  icon,
+}: {
+  kicker: string;
+  title: string;
+  description: string;
+  onBack: () => void;
+  icon: React.ReactNode;
+}) {
+  return (
+    <header className="portal-subheader">
+      <button onClick={onBack}>
+        <ArrowLeft size={16} />
+        Voltar ao Portal
+      </button>
+      <span>{icon}</span>
+      <small>{kicker}</small>
+      <h1>{title}</h1>
+      <p>{description}</p>
+    </header>
+  );
+}
+
+const PORTAL_ROOM_MARKER = "[PORTAL_ROOM:";
+function portalRoomDepartment(description: string) {
+  const match = description.match(/\[PORTAL_ROOM:[^:]*:([^\]]+)\]/);
+  return match?.[1] ?? "Setor não informado";
+}
+function portalRoomDepartmentId(description: string) {
+  const match = description.match(/\[PORTAL_ROOM:([^:]*):[^\]]+\]/);
+  return match?.[1] ?? "";
+}
+function portalRoomNotes(description: string) {
+  return description.replace(/\[PORTAL_ROOM:[^\]]+\]\s*/, "");
+}
+const portalDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const portalStatusTone = (status: string) =>
+  /cancel/i.test(status)
+    ? "cancelled"
+    : /conclu/i.test(status)
+      ? "completed"
+      : "reserved";
+
+function MeetingRoom({
+  data,
+  busy,
+  operate,
+  onBack,
+}: {
+  data: PortalData;
+  busy: boolean;
+  operate: (
+    payload: Record<string, unknown>,
+    success: string,
+  ) => Promise<OperationResult>;
+  onBack: () => void;
+}) {
+  const [cursor, setCursor] = useState(() => new Date());
+  const [view, setView] = useState<"month" | "week" | "day">("month");
+  const [reserving, setReserving] = useState(false);
+  const [selected, setSelected] = useState<AgendaCommitment | null>(null);
+  const [expandedDay, setExpandedDay] = useState("");
+  const agenda = data.agendaModule;
+  const calendars =
+    agenda?.calendars.filter(
+      (entry) =>
+        entry.active &&
+        /sala.*reuni|reuni.*sala/i.test(
+          normalize(`${entry.name} ${entry.description}`),
+        ),
+    ) ?? [];
+  const commitments =
+    agenda?.commitments.filter(
+      (entry) =>
+        entry.description.includes(PORTAL_ROOM_MARKER) &&
+        calendars.some((calendar) => calendar.id === entry.agendaId),
+    ) ?? [];
+  const shift = (direction: number) =>
+    setCursor((current) => {
+      const next = new Date(current);
+      if (view === "month") next.setMonth(next.getMonth() + direction);
+      else next.setDate(next.getDate() + direction * (view === "week" ? 7 : 1));
+      return next;
+    });
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const firstWeekday = first.getDay();
+  const monthDays = new Date(
+    cursor.getFullYear(),
+    cursor.getMonth() + 1,
+    0,
+  ).getDate();
+  const periodDays =
+    view === "day"
+      ? [new Date(cursor)]
+      : (() => {
+          const start = new Date(cursor);
+          start.setDate(start.getDate() - start.getDay());
+          return Array.from({ length: 7 }, (_, index) => {
+            const date = new Date(start);
+            date.setDate(start.getDate() + index);
+            return date;
+          });
+        })();
+  const periodLabel =
+    view === "month"
+      ? new Intl.DateTimeFormat("pt-BR", {
+          month: "long",
+          year: "numeric",
+        }).format(cursor)
+      : view === "day"
+        ? new Intl.DateTimeFormat("pt-BR", {
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+          }).format(cursor)
+        : `${periodDays[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${periodDays[6].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
+  const canReserveRoom = data.user.isCoordinator;
+  const canEdit = (entry: AgendaCommitment) =>
+    canReserveRoom &&
+    entry.createdBy.toLowerCase() === data.user.email.toLowerCase();
+  const openReservation = (entry: AgendaCommitment) => {
+    if (canEdit(entry)) setSelected(entry);
+  };
+  const departments = (
+    data.assignmentDirectory?.departments ??
+    data.access?.departments ??
+    []
+  ).filter((entry) => entry.active);
+  const expandedEntries = expandedDay
+    ? commitments
+        .filter(
+          (entry) => portalDateKey(new Date(entry.startsAt)) === expandedDay,
+        )
+        .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    : [];
+  const today = portalDateKey(new Date());
+  const futureReservations = commitments.filter(
+    (entry) =>
+      new Date(entry.endsAt) >= new Date() && !/cancel/i.test(entry.statusName),
+  ).length;
+  const todayReservations = commitments.filter(
+    (entry) =>
+      portalDateKey(new Date(entry.startsAt)) === today &&
+      !/cancel/i.test(entry.statusName),
+  ).length;
+  const completedReservations = commitments.filter((entry) =>
+    /conclu/i.test(entry.statusName),
+  ).length;
+  const formatHour = (value: string) =>
+    new Intl.DateTimeFormat("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  return (
+    <section className="portal-subpage portal-room-agenda">
+      <PortalSubHeader
+        kicker="RESERVAS"
+        title="Agenda | Sala de reunião"
+        description="Consulte a disponibilidade e acompanhe as reservas da sala com clareza."
+        onBack={onBack}
+        icon={<CalendarDays size={25} />}
+      />
+      <section
+        className="portal-room-overview"
+        aria-label="Resumo das reservas"
+      >
+        <article>
+          <small>Hoje</small>
+          <strong>{todayReservations}</strong>
+          <span>reserva(s)</span>
+        </article>
+        <article>
+          <small>Próximas</small>
+          <strong>{futureReservations}</strong>
+          <span>ativas</span>
+        </article>
+        <article>
+          <small>Concluídas</small>
+          <strong>{completedReservations}</strong>
+          <span>no histórico</span>
+        </article>
+        <div className="portal-room-legend">
+          <span className="reserved">
+            <i />
+            Reservada
+          </span>
+          <span className="completed">
+            <i />
+            Concluída
+          </span>
+          <span className="cancelled">
+            <i />
+            Cancelada
+          </span>
+        </div>
+      </section>
+      {!canReserveRoom && (
+        <div className="portal-room-permission-note">
+          <BadgeCheck size={18} />
+          <span>
+            <strong>Consulta liberada</strong>
+            <small>
+              Somente colaboradores marcados como coordenadores podem reservar
+              ou editar a sala.
+            </small>
+          </span>
+        </div>
+      )}
+      {!calendars.length && (
+        <div className="portal-room-permission-note warning">
+          <CalendarDays size={18} />
+          <span>
+            <strong>Agenda da sala não configurada</strong>
+            <small>
+              Cadastre uma agenda com “Sala de reunião” no nome ou na descrição.
+            </small>
+          </span>
+        </div>
+      )}
+      <section className={`portal-calendar-panel portal-calendar-${view}`}>
+        <header>
+          <button onClick={() => shift(-1)} aria-label="Período anterior">
+            <ChevronLeft />
+          </button>
+          <h2>{periodLabel}</h2>
+          <button onClick={() => shift(1)} aria-label="Próximo período">
+            <ChevronRight />
+          </button>
+          <div className="portal-calendar-view-switch">
+            {(
+              [
+                ["month", "Mês"],
+                ["week", "Semana"],
+                ["day", "Dia"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                type="button"
+                className={view === value ? "active" : ""}
+                onClick={() => setView(value)}
+                key={value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            className="portal-reserve-button"
+            title={
+              !canReserveRoom
+                ? "Apenas coordenadores podem reservar a sala"
+                : !calendars.length
+                  ? "Configure a agenda da sala de reunião"
+                  : "Reservar sala"
+            }
+            disabled={!calendars.length || !canReserveRoom}
+            onClick={() => setReserving(true)}
+          >
+            <Plus size={16} />
+            Reservar sala
+          </button>
+        </header>
+        {view === "month" ? (
+          <div className="portal-calendar-month-scroll">
+            <div className="portal-calendar-week">
+              {["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"].map((day) => (
+                <span key={day}>{day}</span>
+              ))}
+            </div>
+            <div className="portal-calendar-grid">
+              {Array.from({ length: firstWeekday }, (_, index) => (
+                <span className="empty" key={`e${index}`} />
+              ))}
+              {Array.from({ length: monthDays }, (_, index) => {
+                const date = new Date(
+                  cursor.getFullYear(),
+                  cursor.getMonth(),
+                  index + 1,
+                );
+                const key = portalDateKey(date);
+                const dayEntries = commitments
+                  .filter(
+                    (entry) => portalDateKey(new Date(entry.startsAt)) === key,
+                  )
+                  .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+                return (
+                  <article className={key === today ? "today" : ""} key={key}>
+                    <b>{index + 1}</b>
+                    {dayEntries.slice(0, 3).map((entry) => (
+                      <button
+                        type="button"
+                        className={`portal-calendar-event ${portalStatusTone(entry.statusName)} ${canEdit(entry) ? "editable" : ""}`}
+                        onClick={() => openReservation(entry)}
+                        key={entry.id}
+                        title={
+                          canEdit(entry)
+                            ? "Clique para editar sua reserva"
+                            : `${entry.title} · ${portalRoomDepartment(entry.description)}`
+                        }
+                      >
+                        <span>
+                          <time>{formatHour(entry.startsAt)}</time>
+                          <em>{entry.statusName}</em>
+                        </span>
+                        <strong>🏢 {entry.title}</strong>
+                        <small>{portalRoomDepartment(entry.description)}</small>
+                      </button>
+                    ))}
+                    {dayEntries.length > 3 && (
+                      <button
+                        type="button"
+                        className="portal-calendar-more"
+                        onClick={() => setExpandedDay(key)}
+                      >
+                        +{dayEntries.length - 3} reserva(s) · ver todas
+                      </button>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="portal-schedule-scroll">
+            <div className="portal-schedule-grid">
+              {periodDays.map((date) => {
+                const key = portalDateKey(date);
+                const entries = commitments
+                  .filter(
+                    (entry) => portalDateKey(new Date(entry.startsAt)) === key,
+                  )
+                  .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+                return (
+                  <article className={key === today ? "today" : ""} key={key}>
+                    <header>
+                      <strong>
+                        {date.toLocaleDateString("pt-BR", { weekday: "long" })}
+                      </strong>
+                      <b>{date.getDate()}</b>
+                      <small>
+                        {date.toLocaleDateString("pt-BR", { month: "long" })}
+                      </small>
+                    </header>
+                    <div>
+                      {entries.length ? (
+                        entries.map((entry) => (
+                          <button
+                            type="button"
+                            className={`${portalStatusTone(entry.statusName)} ${canEdit(entry) ? "editable" : ""}`}
+                            onClick={() => openReservation(entry)}
+                            key={entry.id}
+                          >
+                            <time>{formatHour(entry.startsAt)}</time>
+                            <span>
+                              <strong>🏢 {entry.title}</strong>
+                              <small>
+                                {portalRoomDepartment(entry.description)} ·{" "}
+                                {entry.responsibleName}
+                              </small>
+                            </span>
+                            <em>{entry.statusName}</em>
+                          </button>
+                        ))
+                      ) : (
+                        <p>Nenhuma reserva</p>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </section>
+      {(reserving || selected) && agenda && canReserveRoom && (
+        <ReservationModal
+          commitment={selected ?? undefined}
+          module={agenda}
+          calendars={calendars}
+          departments={departments}
+          user={data.user}
+          busy={busy}
+          onClose={() => {
+            setReserving(false);
+            setSelected(null);
+          }}
+          onSave={async (payload) => {
+            const result = await operate(
+              payload,
+              selected
+                ? "Reserva atualizada com sucesso."
+                : "Sala reservada com sucesso.",
+            );
+            if (result) {
+              setReserving(false);
+              setSelected(null);
+            }
+          }}
+        />
+      )}
+      {expandedDay && (
+        <div
+          className="portal-modal-backdrop"
+          onMouseDown={(event) =>
+            event.currentTarget === event.target && setExpandedDay("")
+          }
+        >
+          <section className="portal-day-reservations">
+            <header>
+              <div>
+                <small>RESERVAS DO DIA</small>
+                <h2>
+                  {new Date(`${expandedDay}T12:00:00`).toLocaleDateString(
+                    "pt-BR",
+                    { dateStyle: "long" },
+                  )}
+                </h2>
+              </div>
+              <button onClick={() => setExpandedDay("")}>
+                <X />
+              </button>
+            </header>
+            <div>
+              {expandedEntries.map((entry) => (
+                <button
+                  type="button"
+                  className={`${portalStatusTone(entry.statusName)} ${canEdit(entry) ? "editable" : ""}`}
+                  onClick={() => {
+                    setExpandedDay("");
+                    openReservation(entry);
+                  }}
+                  key={entry.id}
+                >
+                  <time>{formatHour(entry.startsAt)}</time>
+                  <span>
+                    <strong>🏢 {entry.title}</strong>
+                    <small>
+                      {portalRoomDepartment(entry.description)} ·{" "}
+                      {entry.responsibleName}
+                    </small>
+                  </span>
+                  <em>{entry.statusName}</em>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReservationModal({
+  commitment,
+  module,
+  calendars,
+  departments,
+  user,
+  busy,
+  onClose,
+  onSave,
+}: {
+  commitment?: AgendaCommitment;
+  module: AgendaModuleData;
+  calendars: AgendaModuleData["calendars"];
+  departments: Department[];
+  user: PortalData["user"];
+  busy: boolean;
+  onClose: () => void;
+  onSave: (payload: Record<string, unknown>) => Promise<void>;
+}) {
+  const startDate = commitment ? new Date(commitment.startsAt) : new Date();
+  const endDate = commitment ? new Date(commitment.endsAt) : null;
   const [referenceDate, setReferenceDate] = useState(portalDateKey(startDate));
-  const [recurrence, setRecurrence] = useState<AgendaRecurrenceSelection>({ mode: "none", dates: [] });
-  const submit=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();const form=new FormData(event.currentTarget);const date=String(form.get("date"));const start=String(form.get("start"));const end=String(form.get("end"));const departmentId=String(form.get("departmentId"));const department=departments.find(entry=>entry.id===departmentId);const responsible=commitment?module.collaborators.find(entry=>entry.id===commitment.responsibleUserId):(module.collaborators.find(entry=>entry.email===user.email)??module.collaborators[0]);const type=module.types.find(entry=>entry.id===String(form.get("agendaTypeId"))&&entry.active);const requestedStatusId=String(form.get("agendaStatusId")??"");const status=module.statuses.find(entry=>entry.id===requestedStatusId)??(commitment?module.statuses.find(entry=>entry.id===commitment.agendaStatusId):module.statuses.find(entry=>entry.active&&/reserv/i.test(entry.name))??module.statuses.find(entry=>entry.active));const calendar=commitment?calendars.find(entry=>entry.id===commitment.agendaId):calendars[0];if(!responsible||!type||!status||!department||!calendar)return;const notes=String(form.get("description")??"").trim();void onSave({action:commitment?"updateAgendaCommitment":"createAgendaCommitment",id:commitment?.id,agendaId:calendar.id,agendaTypeId:type.id,agendaStatusId:status.id,responsibleUserId:responsible.id,title:form.get("title"),description:`[PORTAL_ROOM:${department.id}:${department.name}]${notes?` ${notes}`:""}`,startsAt:new Date(`${date}T${start}:00`).toISOString(),endsAt:new Date(`${date}T${end}:00`).toISOString(),participantUserIds:form.getAll("participantUserIds").map(String),recurrence: recurrence.mode, recurrenceDates: recurrence.mode === "dates" ? recurrence.dates : []})};
-  return <div className="portal-modal-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><section className="portal-simple-modal"><header><span><CalendarDays/></span><div><h2>{commitment?"Editar reserva":"Reservar sala de reunião"}</h2></div><button onClick={onClose}><X/></button></header><form onSubmit={submit}><label className="wide">Setor solicitante *<select name="departmentId" required defaultValue={commitment?portalRoomDepartmentId(commitment.description):""}><option value="">Selecionar setor</option>{departments.map(entry=><option value={entry.id} key={entry.id}>{entry.name}</option>)}</select></label><label className="wide">Assunto *<input name="title" required defaultValue={commitment?.title}/></label><label className="wide">Tipo da reserva *<select name="agendaTypeId" required defaultValue={commitment?.agendaTypeId||""}><option value="">Selecionar tipo</option>{module.types.filter(entry=>entry.active).map(entry=><option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label>Data *<input name="date" type="date" required value={referenceDate} onChange={(event) => setReferenceDate(event.target.value)}/></label><label>Início *<input name="start" type="time" required defaultValue={commitment?startDate.toTimeString().slice(0,5):""}/></label><label>Fim *<input name="end" type="time" required defaultValue={endDate?.toTimeString().slice(0,5)??""}/></label><label>Status<select name="agendaStatusId" defaultValue={commitment?.agendaStatusId??module.statuses.find(entry=>entry.active&&/reserv/i.test(entry.name))?.id??module.statuses.find(entry=>entry.active)?.id}><option value="" disabled>Selecione uma opção cadastrada e ativa</option>{module.statuses.filter(entry=>entry.active).map(entry=><option value={entry.id} key={entry.id}>{entry.name}</option>)}</select></label><CheckboxMultiSelect label="Participantes" name="participantUserIds" options={module.collaborators.map(person=>({id:person.id,label:`${person.name} · ${person.departmentName}`}))} defaultValue={commitment?.participantUserIds??[]} disabled={busy}/><label className="wide">Observações<textarea name="description" rows={3} defaultValue={commitment?portalRoomNotes(commitment.description):""}/></label>{!commitment && <AgendaRecurrenceField value={recurrence} onChange={setRecurrence} referenceDate={referenceDate} />}<div className="portal-form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button disabled={busy || (!commitment && recurrence.mode === "dates" && recurrence.dates.length === 0)}>{commitment?"Salvar alterações":"Confirmar reserva"}</button></div></form></section></div>
+  const [recurrence, setRecurrence] = useState<AgendaRecurrenceSelection>({
+    mode: "none",
+    dates: [],
+  });
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const date = String(form.get("date"));
+    const start = String(form.get("start"));
+    const end = String(form.get("end"));
+    const departmentId = String(form.get("departmentId"));
+    const department = departments.find((entry) => entry.id === departmentId);
+    const responsible = commitment
+      ? module.collaborators.find(
+          (entry) => entry.id === commitment.responsibleUserId,
+        )
+      : (module.collaborators.find((entry) => entry.email === user.email) ??
+        module.collaborators[0]);
+    const type = module.types.find(
+      (entry) => entry.id === String(form.get("agendaTypeId")) && entry.active,
+    );
+    const requestedStatusId = String(form.get("agendaStatusId") ?? "");
+    const status =
+      module.statuses.find((entry) => entry.id === requestedStatusId) ??
+      (commitment
+        ? module.statuses.find(
+            (entry) => entry.id === commitment.agendaStatusId,
+          )
+        : (module.statuses.find(
+            (entry) => entry.active && /reserv/i.test(entry.name),
+          ) ?? module.statuses.find((entry) => entry.active)));
+    const calendar = commitment
+      ? calendars.find((entry) => entry.id === commitment.agendaId)
+      : calendars[0];
+    if (!responsible || !type || !status || !department || !calendar) return;
+    const notes = String(form.get("description") ?? "").trim();
+    void onSave({
+      action: commitment ? "updateAgendaCommitment" : "createAgendaCommitment",
+      id: commitment?.id,
+      agendaId: calendar.id,
+      agendaTypeId: type.id,
+      agendaStatusId: status.id,
+      responsibleUserId: responsible.id,
+      title: form.get("title"),
+      description: `[PORTAL_ROOM:${department.id}:${department.name}]${notes ? ` ${notes}` : ""}`,
+      startsAt: new Date(`${date}T${start}:00`).toISOString(),
+      endsAt: new Date(`${date}T${end}:00`).toISOString(),
+      participantUserIds: form.getAll("participantUserIds").map(String),
+      recurrence: recurrence.mode,
+      recurrenceDates: recurrence.mode === "dates" ? recurrence.dates : [],
+    });
+  };
+  return (
+    <div
+      className="portal-modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <section className="portal-simple-modal">
+        <header>
+          <span>
+            <CalendarDays />
+          </span>
+          <div>
+            <h2>
+              {commitment ? "Editar reserva" : "Reservar sala de reunião"}
+            </h2>
+          </div>
+          <button onClick={onClose}>
+            <X />
+          </button>
+        </header>
+        <form onSubmit={submit}>
+          <label className="wide">
+            Setor solicitante *
+            <select
+              name="departmentId"
+              required
+              defaultValue={
+                commitment ? portalRoomDepartmentId(commitment.description) : ""
+              }
+            >
+              <option value="">Selecionar setor</option>
+              {departments.map((entry) => (
+                <option value={entry.id} key={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="wide">
+            Assunto *
+            <input name="title" required defaultValue={commitment?.title} />
+          </label>
+          <label className="wide">
+            Tipo da reserva *
+            <select
+              name="agendaTypeId"
+              required
+              defaultValue={commitment?.agendaTypeId || ""}
+            >
+              <option value="">Selecionar tipo</option>
+              {module.types
+                .filter((entry) => entry.active)
+                .map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Data *
+            <input
+              name="date"
+              type="date"
+              required
+              value={referenceDate}
+              onChange={(event) => setReferenceDate(event.target.value)}
+            />
+          </label>
+          <label>
+            Início *
+            <input
+              name="start"
+              type="time"
+              required
+              defaultValue={
+                commitment ? startDate.toTimeString().slice(0, 5) : ""
+              }
+            />
+          </label>
+          <label>
+            Fim *
+            <input
+              name="end"
+              type="time"
+              required
+              defaultValue={endDate?.toTimeString().slice(0, 5) ?? ""}
+            />
+          </label>
+          <label>
+            Status
+            <select
+              name="agendaStatusId"
+              defaultValue={
+                commitment?.agendaStatusId ??
+                module.statuses.find(
+                  (entry) => entry.active && /reserv/i.test(entry.name),
+                )?.id ??
+                module.statuses.find((entry) => entry.active)?.id
+              }
+            >
+              <option value="" disabled>
+                Selecione uma opção cadastrada e ativa
+              </option>
+              {module.statuses
+                .filter((entry) => entry.active)
+                .map((entry) => (
+                  <option value={entry.id} key={entry.id}>
+                    {entry.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <CheckboxMultiSelect
+            label="Participantes"
+            name="participantUserIds"
+            options={module.collaborators.map((person) => ({
+              id: person.id,
+              label: `${person.name} · ${person.departmentName}`,
+            }))}
+            defaultValue={commitment?.participantUserIds ?? []}
+            disabled={busy}
+          />
+          <label className="wide">
+            Observações
+            <textarea
+              name="description"
+              rows={3}
+              defaultValue={
+                commitment ? portalRoomNotes(commitment.description) : ""
+              }
+            />
+          </label>
+          {!commitment && (
+            <AgendaRecurrenceField
+              value={recurrence}
+              onChange={setRecurrence}
+              referenceDate={referenceDate}
+            />
+          )}
+          <div className="portal-form-actions wide">
+            <button type="button" onClick={onClose}>
+              Cancelar
+            </button>
+            <button
+              disabled={
+                busy ||
+                (!commitment &&
+                  recurrence.mode === "dates" &&
+                  recurrence.dates.length === 0)
+              }
+            >
+              {commitment ? "Salvar alterações" : "Confirmar reserva"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
 }
 
-function parseRelease(raw:string){try{const parsed=JSON.parse(raw) as {kind?:string;plannedAt?:string;notes?:string;status?:string};return parsed.kind==="developmentRelease"?parsed:null}catch{return null}}
-function parseDevelopment(raw:string){try{const parsed=JSON.parse(raw) as {kind?:string;versionName?:string;processStage?:string;releaseNotes?:string};return parsed.kind==="developmentTask"?parsed:null}catch{return null}}
-function Versions({items,onBack}:{items:WorkItem[];onBack:()=>void}){
-  const [selected,setSelected]=useState<{item:WorkItem;detail:NonNullable<ReturnType<typeof parseDevelopment>>}|null>(null);
-  const releases=items.map(item=>({item,detail:parseRelease(item.description)}))
-    .filter((entry):entry is {item:WorkItem;detail:NonNullable<ReturnType<typeof parseRelease>>}=>entry.detail!==null&&["Liberada","Em produção"].includes(entry.detail.status??""))
-    .sort((a,b)=>new Date(b.item.updated_at).getTime()-new Date(a.item.updated_at).getTime());
-  const latest=releases[0];
-  const versionName=latest?.item.title||"Última versão";
-  const features=items.map(item=>({item,detail:parseDevelopment(item.description)}))
-    .filter((entry):entry is {item:WorkItem;detail:NonNullable<ReturnType<typeof parseDevelopment>>}=>entry.detail!==null&&(entry.detail.versionName===versionName||(!latest&&Boolean(entry.detail.versionName))))
-    .sort((a,b)=>new Date(b.item.updated_at).getTime()-new Date(a.item.updated_at).getTime());
-  return <section className="portal-subpage">
-    <PortalSubHeader kicker="VERSÕES" title="Funcionalidades & Novidades" description="Acompanhe a versão mais recente e as entregas registradas pelo time de Desenvolvimento." onBack={onBack} icon={<MonitorUp size={25}/>}/>
-    {latest?<section className="portal-version-card"><header><div><h2>{latest.item.title}</h2><b>{latest.detail.status}</b><small>Publicada em {dt(latest.item.updated_at)}</small></div><strong>{features.length}<small>ITENS</small></strong></header>{latest.detail.notes&&<p>{latest.detail.notes}</p>}<div>{features.length?features.map(({item,detail})=><button type="button" className="portal-version-feature" onClick={()=>setSelected({item,detail})} key={item.id}><CheckCircle2 size={17}/><span><strong>{item.title}</strong><small>{detail.releaseNotes||detail.processStage||item.record_type}</small></span><b>{detail.processStage||"Atualização"}</b><ChevronRight size={16}/></button>):<p className="portal-empty-copy">Nenhuma funcionalidade foi vinculada nominalmente a esta versão.</p>}</div></section>:<section className="portal-empty-panel"><MonitorUp/><h2>Nenhuma versão publicada</h2><p>Quando uma versão for marcada como Liberada em Desenvolvimento, ela aparecerá aqui automaticamente.</p></section>}
-    {selected&&<div className="portal-modal-backdrop portal-feature-summary-backdrop" onMouseDown={event=>event.currentTarget===event.target&&setSelected(null)}><section className="portal-feature-summary-modal" role="dialog" aria-modal="true" aria-label={`Resumo de ${selected.item.title}`}><header><span><CheckCircle2/></span><div><small>FUNCIONALIDADE LIBERADA · {selected.detail.versionName}</small><h2>{selected.item.title}</h2></div><button type="button" onClick={()=>setSelected(null)} aria-label="Fechar"><X/></button></header><div><p>{selected.detail.releaseNotes||"Esta funcionalidade foi incluída na versão liberada. Não há um resumo adicional cadastrado."}</p><dl><div><dt>Versão</dt><dd>{selected.detail.versionName||versionName}</dd></div><div><dt>Status</dt><dd>{selected.detail.processStage||"Em produção"}</dd></div><div><dt>Atualizada em</dt><dd>{dt(selected.item.updated_at)}</dd></div></dl></div></section></div>}
-  </section>;
+function parseRelease(raw: string) {
+  try {
+    const parsed = JSON.parse(raw) as {
+      kind?: string;
+      plannedAt?: string;
+      notes?: string;
+      status?: string;
+    };
+    return parsed.kind === "developmentRelease" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function parseDevelopment(raw: string) {
+  try {
+    const parsed = JSON.parse(raw) as {
+      kind?: string;
+      versionName?: string;
+      processStage?: string;
+      releaseNotes?: string;
+    };
+    return parsed.kind === "developmentTask" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function Versions({
+  items,
+  onBack,
+}: {
+  items: WorkItem[];
+  onBack: () => void;
+}) {
+  const [selected, setSelected] = useState<{
+    item: WorkItem;
+    detail: NonNullable<ReturnType<typeof parseDevelopment>>;
+  } | null>(null);
+  const releases = items
+    .map((item) => ({ item, detail: parseRelease(item.description) }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        item: WorkItem;
+        detail: NonNullable<ReturnType<typeof parseRelease>>;
+      } =>
+        entry.detail !== null &&
+        ["Liberada", "Em produção"].includes(entry.detail.status ?? ""),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.item.updated_at).getTime() -
+        new Date(a.item.updated_at).getTime(),
+    );
+  const latest = releases[0];
+  const versionName = latest?.item.title || "Última versão";
+  const features = items
+    .map((item) => ({ item, detail: parseDevelopment(item.description) }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        item: WorkItem;
+        detail: NonNullable<ReturnType<typeof parseDevelopment>>;
+      } =>
+        entry.detail !== null &&
+        (entry.detail.versionName === versionName ||
+          (!latest && Boolean(entry.detail.versionName))),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.item.updated_at).getTime() -
+        new Date(a.item.updated_at).getTime(),
+    );
+  return (
+    <section className="portal-subpage">
+      <PortalSubHeader
+        kicker="VERSÕES"
+        title="Funcionalidades & Novidades"
+        description="Acompanhe a versão mais recente e as entregas registradas pelo time de Desenvolvimento."
+        onBack={onBack}
+        icon={<MonitorUp size={25} />}
+      />
+      {latest ? (
+        <section className="portal-version-card">
+          <header>
+            <div>
+              <h2>{latest.item.title}</h2>
+              <b>{latest.detail.status}</b>
+              <small>Publicada em {dt(latest.item.updated_at)}</small>
+            </div>
+            <strong>
+              {features.length}
+              <small>ITENS</small>
+            </strong>
+          </header>
+          {latest.detail.notes && <p>{latest.detail.notes}</p>}
+          <div>
+            {features.length ? (
+              features.map(({ item, detail }) => (
+                <button
+                  type="button"
+                  className="portal-version-feature"
+                  onClick={() => setSelected({ item, detail })}
+                  key={item.id}
+                >
+                  <CheckCircle2 size={17} />
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>
+                      {detail.releaseNotes ||
+                        detail.processStage ||
+                        item.record_type}
+                    </small>
+                  </span>
+                  <b>{detail.processStage || "Atualização"}</b>
+                  <ChevronRight size={16} />
+                </button>
+              ))
+            ) : (
+              <p className="portal-empty-copy">
+                Nenhuma funcionalidade foi vinculada nominalmente a esta versão.
+              </p>
+            )}
+          </div>
+        </section>
+      ) : (
+        <section className="portal-empty-panel">
+          <MonitorUp />
+          <h2>Nenhuma versão publicada</h2>
+          <p>
+            Quando uma versão for marcada como Liberada em Desenvolvimento, ela
+            aparecerá aqui automaticamente.
+          </p>
+        </section>
+      )}
+      {selected && (
+        <div
+          className="portal-modal-backdrop portal-feature-summary-backdrop"
+          onMouseDown={(event) =>
+            event.currentTarget === event.target && setSelected(null)
+          }
+        >
+          <section
+            className="portal-feature-summary-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Resumo de ${selected.item.title}`}
+          >
+            <header>
+              <span>
+                <CheckCircle2 />
+              </span>
+              <div>
+                <small>
+                  FUNCIONALIDADE LIBERADA · {selected.detail.versionName}
+                </small>
+                <h2>{selected.item.title}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                aria-label="Fechar"
+              >
+                <X />
+              </button>
+            </header>
+            <div>
+              <p>
+                {selected.detail.releaseNotes ||
+                  "Esta funcionalidade foi incluída na versão liberada. Não há um resumo adicional cadastrado."}
+              </p>
+              <dl>
+                <div>
+                  <dt>Versão</dt>
+                  <dd>{selected.detail.versionName || versionName}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{selected.detail.processStage || "Em produção"}</dd>
+                </div>
+                <div>
+                  <dt>Atualizada em</dt>
+                  <dd>{dt(selected.item.updated_at)}</dd>
+                </div>
+              </dl>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
 }
 
-function Events({notices,onBack}:{notices:NoticesModuleData|null;onBack:()=>void}){const events=(notices?.notices??[]).filter(event=>event.active&&event.kind==="Evento"&&event.visibleToCurrentUser&&(!event.expiresAt||new Date(event.expiresAt)>=new Date())).sort((a,b)=>new Date(a.eventAt||a.publishedAt).getTime()-new Date(b.eventAt||b.publishedAt).getTime());return <section className="portal-subpage"><PortalSubHeader kicker="MURAL DONTUS" title="Eventos Dontus" description="Encontros, treinamentos e acontecimentos ativos publicados para a equipe." onBack={onBack} icon={<Sparkles size={25}/>}/>{events.length?<div className="portal-events-grid">{events.map(event=><article key={event.id}>{event.imageDataUrl?<Image src={event.imageDataUrl} alt="" width={900} height={480} unoptimized/>:<span><CalendarDays size={27}/></span>}<div><small>{event.type.toUpperCase()}</small><h2>{event.title}</h2><p><CommentContent text={event.body.replace(/\s*\[TASK_LINK:[^\]]+\]/g,"").trim()}/></p><strong><CalendarDays size={15}/>{dt(event.eventAt)}</strong><footer>Publicado por {event.authorName}</footer></div></article>)}</div>:<section className="portal-empty-panel"><Sparkles/><h2>Nenhum evento ativo</h2><p>Os eventos publicados em Avisos | Eventos aparecerão neste mural.</p></section>}</section>}
+function Events({
+  notices,
+  onBack,
+}: {
+  notices: NoticesModuleData | null;
+  onBack: () => void;
+}) {
+  const events = (notices?.notices ?? [])
+    .filter(
+      (event) =>
+        event.active &&
+        event.kind === "Evento" &&
+        event.visibleToCurrentUser &&
+        (!event.expiresAt || new Date(event.expiresAt) >= new Date()),
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.eventAt || a.publishedAt).getTime() -
+        new Date(b.eventAt || b.publishedAt).getTime(),
+    );
+  return (
+    <section className="portal-subpage">
+      <PortalSubHeader
+        kicker="MURAL DONTUS"
+        title="Eventos Dontus"
+        description="Encontros, treinamentos e acontecimentos ativos publicados para a equipe."
+        onBack={onBack}
+        icon={<Sparkles size={25} />}
+      />
+      {events.length ? (
+        <div className="portal-events-grid">
+          {events.map((event) => (
+            <article key={event.id}>
+              {event.imageDataUrl ? (
+                <Image
+                  src={event.imageDataUrl}
+                  alt=""
+                  width={900}
+                  height={480}
+                  unoptimized
+                />
+              ) : (
+                <span>
+                  <CalendarDays size={27} />
+                </span>
+              )}
+              <div>
+                <small>{event.type.toUpperCase()}</small>
+                <h2>{event.title}</h2>
+                <p>
+                  <CommentContent
+                    text={event.body
+                      .replace(/\s*\[TASK_LINK:[^\]]+\]/g, "")
+                      .trim()}
+                  />
+                </p>
+                <strong>
+                  <CalendarDays size={15} />
+                  {dt(event.eventAt)}
+                </strong>
+                <footer>Publicado por {event.authorName}</footer>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <section className="portal-empty-panel">
+          <Sparkles />
+          <h2>Nenhum evento ativo</h2>
+          <p>
+            Os eventos publicados em Avisos | Eventos aparecerão neste mural.
+          </p>
+        </section>
+      )}
+    </section>
+  );
+}

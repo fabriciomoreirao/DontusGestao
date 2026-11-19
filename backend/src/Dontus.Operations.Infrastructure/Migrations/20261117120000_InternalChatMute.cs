@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 namespace Dontus.Operations.Infrastructure.Migrations;
+
 [DbContext(typeof(OperationsDbContext))]
 [Migration("20261117120000_InternalChatMute")]
 public sealed class InternalChatMute : Migration

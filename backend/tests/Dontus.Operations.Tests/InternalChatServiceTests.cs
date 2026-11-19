@@ -13,14 +13,14 @@ public sealed class InternalChatServiceTests
     [InlineData(true)]
     public async Task Muting_is_personal_persistent_and_does_not_acknowledge_unread_messages(bool group)
     {
-        await using var db = CreateContext();var sender=AddUser(db,"mute-sender@test","Remetente");sender.IsCoordinator=true;var reader=AddUser(db,"mute-reader@test","Leitor");var outsider=AddUser(db,"mute-outsider@test","Outro");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new(group?"Equipe":null,null,group,[reader.Id]),Actor(sender));
-        await service.SendMessageAsync(new(room,"Mensagem não lida","text"),Actor(sender));
-        await service.SetMutedAsync(new(room,true),Actor(reader));
-        var muted=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms);Assert.True(muted.IsMuted);Assert.Equal(1,muted.UnreadCount);
+        await using var db = CreateContext(); var sender = AddUser(db, "mute-sender@test", "Remetente"); sender.IsCoordinator = true; var reader = AddUser(db, "mute-reader@test", "Leitor"); var outsider = AddUser(db, "mute-outsider@test", "Outro"); await db.SaveChangesAsync();
+        var service = CreateService(db); var room = await service.CreateRoomAsync(new(group ? "Equipe" : null, null, group, [reader.Id]), Actor(sender));
+        await service.SendMessageAsync(new(room, "Mensagem não lida", "text"), Actor(sender));
+        await service.SetMutedAsync(new(room, true), Actor(reader));
+        var muted = Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms); Assert.True(muted.IsMuted); Assert.Equal(1, muted.UnreadCount);
         Assert.False(Assert.Single((await service.GetModuleAsync(Actor(sender))).Rooms).IsMuted);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMutedAsync(new(room,true),Actor(outsider)))).StatusCode);
-        await service.SetMutedAsync(new(room,false),Actor(reader));Assert.False(Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms).IsMuted);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SetMutedAsync(new(room, true), Actor(outsider)))).StatusCode);
+        await service.SetMutedAsync(new(room, false), Actor(reader)); Assert.False(Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms).IsMuted);
     }
 
     [Fact]
@@ -73,109 +73,109 @@ public sealed class InternalChatServiceTests
     [InlineData(true)]
     public async Task Replies_keep_the_original_message_in_private_and_group_chats_even_outside_the_history_window(bool group)
     {
-        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
-        var reader=AddUser(db,"reader@test","Leitor");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new(group?"Equipe":null,null,group,[reader.Id]),Actor(sender));
-        var originalId=await service.SendMessageAsync(new(room,"Pergunta original","text"),Actor(sender));
-        foreach(var member in db.InternalChatRoomMembers)member.JoinedAt=DateTimeOffset.UtcNow.AddDays(-60);
-        var original=await db.InternalChatMessages.SingleAsync();original.CreatedAt=DateTimeOffset.UtcNow.AddDays(-45);original.UpdatedAt=original.CreatedAt;await db.SaveChangesAsync();
-        var replyId=await service.SendMessageAsync(new(room,"Minha resposta","text",originalId),Actor(reader));
-        var reply=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
-        Assert.Equal(replyId,reply.Id);Assert.Equal(originalId,reply.ReplyTo!.Id);Assert.Equal("Remetente",reply.ReplyTo.SenderName);Assert.Equal("Pergunta original",reply.ReplyTo.Body);
-        await service.DeleteMessageAsync(new(room,originalId,original.Version),Actor(sender));
-        var quoted=(await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single(message=>message.Id==replyId).ReplyTo!;
-        Assert.NotNull(quoted.DeletedAt);Assert.Empty(quoted.Body);Assert.Empty(quoted.FileName);
+        await using var db = CreateContext(); var sender = AddUser(db, "sender@test", "Remetente"); sender.IsCoordinator = true;
+        var reader = AddUser(db, "reader@test", "Leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var room = await service.CreateRoomAsync(new(group ? "Equipe" : null, null, group, [reader.Id]), Actor(sender));
+        var originalId = await service.SendMessageAsync(new(room, "Pergunta original", "text"), Actor(sender));
+        foreach (var member in db.InternalChatRoomMembers) member.JoinedAt = DateTimeOffset.UtcNow.AddDays(-60);
+        var original = await db.InternalChatMessages.SingleAsync(); original.CreatedAt = DateTimeOffset.UtcNow.AddDays(-45); original.UpdatedAt = original.CreatedAt; await db.SaveChangesAsync();
+        var replyId = await service.SendMessageAsync(new(room, "Minha resposta", "text", originalId), Actor(reader));
+        var reply = Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
+        Assert.Equal(replyId, reply.Id); Assert.Equal(originalId, reply.ReplyTo!.Id); Assert.Equal("Remetente", reply.ReplyTo.SenderName); Assert.Equal("Pergunta original", reply.ReplyTo.Body);
+        await service.DeleteMessageAsync(new(room, originalId, original.Version), Actor(sender));
+        var quoted = (await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single(message => message.Id == replyId).ReplyTo!;
+        Assert.NotNull(quoted.DeletedAt); Assert.Empty(quoted.Body); Assert.Empty(quoted.FileName);
     }
 
     [Fact]
     public async Task Replies_reject_other_rooms_deleted_messages_and_messages_from_before_joining()
     {
-        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
-        var reader=AddUser(db,"reader@test","Leitor");var outsider=AddUser(db,"other@test","Outro");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new("Equipe",null,true,[reader.Id]),Actor(sender));
-        var other=await service.CreateRoomAsync(new(null,null,false,[outsider.Id]),Actor(sender));
-        var originalId=await service.SendMessageAsync(new(room,"Reservado","text"),Actor(sender));
-        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(other,"Incorreta","text",originalId),Actor(sender)))).StatusCode);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(room,"Incorreta","text",originalId),Actor(outsider)))).StatusCode);
-        db.InternalChatRoomMembers.Add(new(){RoomId=room,UserId=outsider.Id,JoinedAt=DateTimeOffset.UtcNow.AddSeconds(1)});await db.SaveChangesAsync();
-        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(room,"Incorreta","text",originalId),Actor(outsider)))).StatusCode);
-        await service.DeleteMessageAsync(new(room,originalId,1),Actor(sender));
-        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(room,"Incorreta","text",originalId),Actor(reader)))).StatusCode);
+        await using var db = CreateContext(); var sender = AddUser(db, "sender@test", "Remetente"); sender.IsCoordinator = true;
+        var reader = AddUser(db, "reader@test", "Leitor"); var outsider = AddUser(db, "other@test", "Outro"); await db.SaveChangesAsync();
+        var service = CreateService(db); var room = await service.CreateRoomAsync(new("Equipe", null, true, [reader.Id]), Actor(sender));
+        var other = await service.CreateRoomAsync(new(null, null, false, [outsider.Id]), Actor(sender));
+        var originalId = await service.SendMessageAsync(new(room, "Reservado", "text"), Actor(sender));
+        Assert.Equal(404, (await Assert.ThrowsAsync<DomainException>(() => service.SendMessageAsync(new(other, "Incorreta", "text", originalId), Actor(sender)))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SendMessageAsync(new(room, "Incorreta", "text", originalId), Actor(outsider)))).StatusCode);
+        db.InternalChatRoomMembers.Add(new() { RoomId = room, UserId = outsider.Id, JoinedAt = DateTimeOffset.UtcNow.AddSeconds(1) }); await db.SaveChangesAsync();
+        Assert.Equal(404, (await Assert.ThrowsAsync<DomainException>(() => service.SendMessageAsync(new(room, "Incorreta", "text", originalId), Actor(outsider)))).StatusCode);
+        await service.DeleteMessageAsync(new(room, originalId, 1), Actor(sender));
+        Assert.Equal(404, (await Assert.ThrowsAsync<DomainException>(() => service.SendMessageAsync(new(room, "Incorreta", "text", originalId), Actor(reader)))).StatusCode);
     }
 
     [Fact]
     public async Task Attachment_and_poll_replies_keep_the_selected_message()
     {
-        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
-        var reader=AddUser(db,"reader@test","Leitor");await db.SaveChangesAsync();var service=CreateService(db);
-        var room=await service.CreateRoomAsync(new("Equipe",null,true,[reader.Id]),Actor(sender));
-        var original=await service.SendMessageAsync(new(room,"Qual arquivo?","text"),Actor(sender));
-        await using var content=new MemoryStream([1,2,3]);
-        var attachment=await service.UploadAttachmentAsync(new(room,"arquivo.txt","text/plain",content.Length,content,original),Actor(reader));
+        await using var db = CreateContext(); var sender = AddUser(db, "sender@test", "Remetente"); sender.IsCoordinator = true;
+        var reader = AddUser(db, "reader@test", "Leitor"); await db.SaveChangesAsync(); var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new("Equipe", null, true, [reader.Id]), Actor(sender));
+        var original = await service.SendMessageAsync(new(room, "Qual arquivo?", "text"), Actor(sender));
+        await using var content = new MemoryStream([1, 2, 3]);
+        var attachment = await service.UploadAttachmentAsync(new(room, "arquivo.txt", "text/plain", content.Length, content, original), Actor(reader));
         try
         {
-            var poll=await service.CreatePollAsync(new(room,"Concordam?",["Sim","Não"],original),Actor(reader));
-            var messages=(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages;
-            Assert.All(messages.Where(message=>message.Id==attachment||message.Id==poll),message=>Assert.Equal(original,message.ReplyTo!.Id));
+            var poll = await service.CreatePollAsync(new(room, "Concordam?", ["Sim", "Não"], original), Actor(reader));
+            var messages = (await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages;
+            Assert.All(messages.Where(message => message.Id == attachment || message.Id == poll), message => Assert.Equal(original, message.ReplyTo!.Id));
         }
-        finally {File.Delete((await service.GetAttachmentAsync(attachment,Actor(reader))).FullPath);}
+        finally { File.Delete((await service.GetAttachmentAsync(attachment, Actor(reader))).FullPath); }
     }
 
     [Fact]
     public async Task Seen_time_is_the_first_receipt_and_stays_stable_when_the_room_is_read_again()
     {
-        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");var reader=AddUser(db,"reader@test","Leitor");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender));
-        var id=await service.SendMessageAsync(new(room,"Primeira","text"),Actor(sender));
+        await using var db = CreateContext(); var sender = AddUser(db, "sender@test", "Remetente"); var reader = AddUser(db, "reader@test", "Leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var room = await service.CreateRoomAsync(new(null, null, false, [reader.Id]), Actor(sender));
+        var id = await service.SendMessageAsync(new(room, "Primeira", "text"), Actor(sender));
         Assert.Null((await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single().SeenAt);
-        await service.MarkReadAsync(new(room),Actor(reader));
-        var first=(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single();
-        Assert.NotNull(first.SeenAt);Assert.Equal("seen",first.ReceiptState);Assert.Equal(1,first.SeenByCount);Assert.Equal(1,first.RecipientCount);
-        await service.SendMessageAsync(new(room,"Segunda","text"),Actor(sender));
-        await service.MarkReadAsync(new(room),Actor(reader));await service.MarkReadAsync(new(room),Actor(reader));
-        Assert.Equal(first.SeenAt,(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single(message=>message.Id==id).SeenAt);
-        Assert.Equal(2,await db.InternalChatMessageReceipts.CountAsync());
+        await service.MarkReadAsync(new(room), Actor(reader));
+        var first = (await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single();
+        Assert.NotNull(first.SeenAt); Assert.Equal("seen", first.ReceiptState); Assert.Equal(1, first.SeenByCount); Assert.Equal(1, first.RecipientCount);
+        await service.SendMessageAsync(new(room, "Segunda", "text"), Actor(sender));
+        await service.MarkReadAsync(new(room), Actor(reader)); await service.MarkReadAsync(new(room), Actor(reader));
+        Assert.Equal(first.SeenAt, (await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single(message => message.Id == id).SeenAt);
+        Assert.Equal(2, await db.InternalChatMessageReceipts.CountAsync());
     }
 
     [Fact]
     public async Task Group_receipts_distinguish_partial_reads_and_exclude_people_who_joined_after_the_message()
     {
-        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
-        var first=AddUser(db,"first@test","Primeiro");var second=AddUser(db,"second@test","Segundo");var late=AddUser(db,"late@test","Novo");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new("Equipe",null,true,[first.Id,second.Id]),Actor(sender));
-        var id=await service.SendMessageAsync(new(room,"Mensagem anterior","text"),Actor(sender));
-        db.InternalChatRoomMembers.Add(new(){RoomId=room,UserId=late.Id,JoinedAt=DateTimeOffset.UtcNow.AddSeconds(1)});await db.SaveChangesAsync();
-        await service.MarkReadAsync(new(room),Actor(first));
-        var partial=(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single();
-        Assert.Equal(1,partial.SeenByCount);Assert.Equal(2,partial.RecipientCount);Assert.Equal("delivered",partial.ReceiptState);
-        await service.MarkReadAsync(new(room),Actor(second));
-        Assert.Equal("seen",(await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single().ReceiptState);
-        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(late)))).StatusCode);
+        await using var db = CreateContext(); var sender = AddUser(db, "sender@test", "Remetente"); sender.IsCoordinator = true;
+        var first = AddUser(db, "first@test", "Primeiro"); var second = AddUser(db, "second@test", "Segundo"); var late = AddUser(db, "late@test", "Novo"); await db.SaveChangesAsync();
+        var service = CreateService(db); var room = await service.CreateRoomAsync(new("Equipe", null, true, [first.Id, second.Id]), Actor(sender));
+        var id = await service.SendMessageAsync(new(room, "Mensagem anterior", "text"), Actor(sender));
+        db.InternalChatRoomMembers.Add(new() { RoomId = room, UserId = late.Id, JoinedAt = DateTimeOffset.UtcNow.AddSeconds(1) }); await db.SaveChangesAsync();
+        await service.MarkReadAsync(new(room), Actor(first));
+        var partial = (await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single();
+        Assert.Equal(1, partial.SeenByCount); Assert.Equal(2, partial.RecipientCount); Assert.Equal("delivered", partial.ReceiptState);
+        await service.MarkReadAsync(new(room), Actor(second));
+        Assert.Equal("seen", (await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single().ReceiptState);
+        Assert.Equal(404, (await Assert.ThrowsAsync<DomainException>(() => service.SetMessageReactionAsync(new(room, id, "👍", true), Actor(late)))).StatusCode);
     }
 
     [Fact]
     public async Task Reactions_are_persistent_idempotent_replaceable_and_private_to_the_room()
     {
-        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");var reader=AddUser(db,"reader@test","Leitor");var outsider=AddUser(db,"other@test","Outro");await db.SaveChangesAsync();
-        sender.IsCoordinator=true;var secondReader=AddUser(db,"second-reader@test","Segundo leitor");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new("Equipe",null,true,[reader.Id,secondReader.Id]),Actor(sender));
-        var id=await service.SendMessageAsync(new(room,"Pode conferir?","text"),Actor(sender));
-        await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader));await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader));
+        await using var db = CreateContext(); var sender = AddUser(db, "sender@test", "Remetente"); var reader = AddUser(db, "reader@test", "Leitor"); var outsider = AddUser(db, "other@test", "Outro"); await db.SaveChangesAsync();
+        sender.IsCoordinator = true; var secondReader = AddUser(db, "second-reader@test", "Segundo leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var room = await service.CreateRoomAsync(new("Equipe", null, true, [reader.Id, secondReader.Id]), Actor(sender));
+        var id = await service.SendMessageAsync(new(room, "Pode conferir?", "text"), Actor(sender));
+        await service.SetMessageReactionAsync(new(room, id, "👍", true), Actor(reader)); await service.SetMessageReactionAsync(new(room, id, "👍", true), Actor(reader));
         Assert.Single(db.InternalChatMessageReactions);
-        await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(secondReader));
-        var reaction=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Reactions);
-        Assert.Equal(2,reaction.Count);Assert.Contains(reader.Id,reaction.UserIds);Assert.Contains("Segundo leitor",reaction.UserNames);
-        await service.SetMessageReactionAsync(new(room,id,"❤️",true),Actor(reader));
-        Assert.Equal(2,await db.InternalChatMessageReactions.CountAsync());
-        await service.SetMessageReactionAsync(new(room,id,"👍",false),Actor(reader));
-        Assert.Contains(db.InternalChatMessageReactions,entry=>entry.UserId==reader.Id&&entry.Emoji=="❤️");
-        await service.SetMessageReactionAsync(new(room,id,"❤️",false),Actor(reader));
+        await service.SetMessageReactionAsync(new(room, id, "👍", true), Actor(secondReader));
+        var reaction = Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Reactions);
+        Assert.Equal(2, reaction.Count); Assert.Contains(reader.Id, reaction.UserIds); Assert.Contains("Segundo leitor", reaction.UserNames);
+        await service.SetMessageReactionAsync(new(room, id, "❤️", true), Actor(reader));
+        Assert.Equal(2, await db.InternalChatMessageReactions.CountAsync());
+        await service.SetMessageReactionAsync(new(room, id, "👍", false), Actor(reader));
+        Assert.Contains(db.InternalChatMessageReactions, entry => entry.UserId == reader.Id && entry.Emoji == "❤️");
+        await service.SetMessageReactionAsync(new(room, id, "❤️", false), Actor(reader));
         Assert.Single(db.InternalChatMessageReactions);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(outsider)))).StatusCode);
-        await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"texto",true),Actor(reader)));
-        await service.DeleteMessageAsync(new(room,id,1),Actor(sender));
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SetMessageReactionAsync(new(room, id, "👍", true), Actor(outsider)))).StatusCode);
+        await Assert.ThrowsAsync<DomainException>(() => service.SetMessageReactionAsync(new(room, id, "texto", true), Actor(reader)));
+        await service.DeleteMessageAsync(new(room, id, 1), Actor(sender));
         Assert.Empty((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Reactions);
-        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader)))).StatusCode);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.SetMessageReactionAsync(new(room, id, "👍", true), Actor(reader)))).StatusCode);
     }
 
     [Theory]
@@ -183,16 +183,16 @@ public sealed class InternalChatServiceTests
     [InlineData(true)]
     public async Task Reactions_are_allowed_only_on_received_messages_in_private_and_group_chats(bool group)
     {
-        await using var db=CreateContext();var sender=AddUser(db,"sender@test","Remetente");sender.IsCoordinator=true;
-        var reader=AddUser(db,"reader@test","Leitor");await db.SaveChangesAsync();var service=CreateService(db);
-        var room=await service.CreateRoomAsync(new(group?"Equipe":null,null,group,[reader.Id]),Actor(sender));
-        var id=await service.SendMessageAsync(new(room,"Mensagem enviada","text"),Actor(sender));
-        foreach(var reacted in new[]{true,false})
-            Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SetMessageReactionAsync(new(room,id,"👍",reacted),Actor(sender)))).StatusCode);
+        await using var db = CreateContext(); var sender = AddUser(db, "sender@test", "Remetente"); sender.IsCoordinator = true;
+        var reader = AddUser(db, "reader@test", "Leitor"); await db.SaveChangesAsync(); var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new(group ? "Equipe" : null, null, group, [reader.Id]), Actor(sender));
+        var id = await service.SendMessageAsync(new(room, "Mensagem enviada", "text"), Actor(sender));
+        foreach (var reacted in new[] { true, false })
+            Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SetMessageReactionAsync(new(room, id, "👍", reacted), Actor(sender)))).StatusCode);
         Assert.Empty(db.InternalChatMessageReactions);
-        await service.SetMessageReactionAsync(new(room,id,"👍",true),Actor(reader));
-        var reaction=Assert.Single((await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single().Reactions);
-        Assert.Equal(1,reaction.Count);Assert.Equal(reader.Id,Assert.Single(reaction.UserIds));
+        await service.SetMessageReactionAsync(new(room, id, "👍", true), Actor(reader));
+        var reaction = Assert.Single((await service.GetModuleAsync(Actor(sender))).Rooms.Single().Messages.Single().Reactions);
+        Assert.Equal(1, reaction.Count); Assert.Equal(reader.Id, Assert.Single(reaction.UserIds));
     }
 
     [Theory]
@@ -432,84 +432,84 @@ public sealed class InternalChatServiceTests
     [Fact]
     public async Task Authors_can_edit_and_delete_their_own_messages_with_server_timestamps_and_version_checks()
     {
-        await using var db = CreateContext(); var sender = AddUser(db,"author@test.local","Autor"); var recipient = AddUser(db,"reader@test.local","Leitor"); await db.SaveChangesAsync();
-        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null,null,false,[recipient.Id]),Actor(sender));
-        var id = await service.SendMessageAsync(new(roomId,"Texto original","text"),Actor(sender)); var createdAt = (await db.InternalChatMessages.SingleAsync()).CreatedAt;
-        await service.EditMessageAsync(new(roomId,id,"Texto corrigido",1),Actor(sender));
+        await using var db = CreateContext(); var sender = AddUser(db, "author@test.local", "Autor"); var recipient = AddUser(db, "reader@test.local", "Leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null, null, false, [recipient.Id]), Actor(sender));
+        var id = await service.SendMessageAsync(new(roomId, "Texto original", "text"), Actor(sender)); var createdAt = (await db.InternalChatMessages.SingleAsync()).CreatedAt;
+        await service.EditMessageAsync(new(roomId, id, "Texto corrigido", 1), Actor(sender));
         var edited = Assert.Single((await service.GetModuleAsync(Actor(recipient))).Rooms).Messages.Single();
-        Assert.Equal("Texto corrigido",edited.Body); Assert.NotNull(edited.EditedAt); Assert.Equal(createdAt,edited.CreatedAt); Assert.Equal(2,edited.Version);
-        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteMessageAsync(new(roomId,id,1),Actor(sender)))).StatusCode);
-        await service.DeleteMessageAsync(new(roomId,id,2),Actor(sender));
+        Assert.Equal("Texto corrigido", edited.Body); Assert.NotNull(edited.EditedAt); Assert.Equal(createdAt, edited.CreatedAt); Assert.Equal(2, edited.Version);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteMessageAsync(new(roomId, id, 1), Actor(sender)))).StatusCode);
+        await service.DeleteMessageAsync(new(roomId, id, 2), Actor(sender));
         var room = Assert.Single((await service.GetModuleAsync(Actor(recipient))).Rooms); var deleted = Assert.Single(room.Messages);
-        Assert.NotNull(deleted.DeletedAt); Assert.Equal("",deleted.Body); Assert.False(deleted.HasAttachment); Assert.False(deleted.IsPinned); Assert.Equal(0,room.UnreadCount);
-        Assert.Equal(409,(await Assert.ThrowsAsync<DomainException>(()=>service.EditMessageAsync(new(roomId,id,"Ressuscitar",3),Actor(sender)))).StatusCode);
-        Assert.Equal(new[]{"EditMessage","DeleteMessage"},await db.AuditEvents.Where(entry=>entry.Module=="internalChat" && entry.Resource=="internal_chat_message").OrderBy(entry=>entry.CreatedAt).Select(entry=>entry.Action).ToArrayAsync());
+        Assert.NotNull(deleted.DeletedAt); Assert.Equal("", deleted.Body); Assert.False(deleted.HasAttachment); Assert.False(deleted.IsPinned); Assert.Equal(0, room.UnreadCount);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.EditMessageAsync(new(roomId, id, "Ressuscitar", 3), Actor(sender)))).StatusCode);
+        Assert.Equal(new[] { "EditMessage", "DeleteMessage" }, await db.AuditEvents.Where(entry => entry.Module == "internalChat" && entry.Resource == "internal_chat_message").OrderBy(entry => entry.CreatedAt).Select(entry => entry.Action).ToArrayAsync());
     }
 
     [Fact]
     public async Task Even_administrators_cannot_change_other_peoples_messages_or_access_removed_attachments()
     {
-        await using var db = CreateContext(); var sender = AddUser(db,"author@test.local","Autor"); var reader = AddUser(db,"reader@test.local","Leitor"); await db.SaveChangesAsync();
-        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender)); var id = await service.SendMessageAsync(new(roomId,"Privado","text"),Actor(sender));
-        var admin = Actor(reader) with {FullAccess=true};
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.EditMessageAsync(new(roomId,id,"Alterado",1),admin))).StatusCode);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteMessageAsync(new(roomId,id,1),admin))).StatusCode);
+        await using var db = CreateContext(); var sender = AddUser(db, "author@test.local", "Autor"); var reader = AddUser(db, "reader@test.local", "Leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null, null, false, [reader.Id]), Actor(sender)); var id = await service.SendMessageAsync(new(roomId, "Privado", "text"), Actor(sender));
+        var admin = Actor(reader) with { FullAccess = true };
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.EditMessageAsync(new(roomId, id, "Alterado", 1), admin))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteMessageAsync(new(roomId, id, 1), admin))).StatusCode);
         await using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("anexo"));
-        var attachmentId = await service.UploadAttachmentAsync(new(roomId,"arquivo.txt","text/plain",content.Length,content),Actor(sender));
-        await service.DeleteMessageAsync(new(roomId,attachmentId,1),Actor(sender));
-        Assert.Equal(404,(await Assert.ThrowsAsync<DomainException>(()=>service.GetAttachmentAsync(attachmentId,Actor(reader)))).StatusCode);
-        var attachment = (await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single(entry=>entry.Id==attachmentId);
-        Assert.Equal("",attachment.FileName); Assert.Equal("",attachment.ContentType); Assert.False(attachment.HasAttachment);
+        var attachmentId = await service.UploadAttachmentAsync(new(roomId, "arquivo.txt", "text/plain", content.Length, content), Actor(sender));
+        await service.DeleteMessageAsync(new(roomId, attachmentId, 1), Actor(sender));
+        Assert.Equal(404, (await Assert.ThrowsAsync<DomainException>(() => service.GetAttachmentAsync(attachmentId, Actor(reader)))).StatusCode);
+        var attachment = (await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single(entry => entry.Id == attachmentId);
+        Assert.Equal("", attachment.FileName); Assert.Equal("", attachment.ContentType); Assert.False(attachment.HasAttachment);
     }
 
     [Fact]
     public async Task Editing_loaded_old_messages_returns_the_correction_in_the_current_snapshot()
     {
-        await using var db = CreateContext(); var sender = AddUser(db,"author@test.local","Autor"); var reader = AddUser(db,"reader@test.local","Leitor"); await db.SaveChangesAsync();
-        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender)); var id = await service.SendMessageAsync(new(roomId,"Antiga","text"),Actor(sender));
-        foreach(var member in db.InternalChatRoomMembers)member.JoinedAt=DateTimeOffset.UtcNow.AddDays(-60);
-        var oldMessage = await db.InternalChatMessages.SingleAsync(); oldMessage.CreatedAt=DateTimeOffset.UtcNow.AddDays(-45); oldMessage.UpdatedAt=oldMessage.CreatedAt; await db.SaveChangesAsync();
+        await using var db = CreateContext(); var sender = AddUser(db, "author@test.local", "Autor"); var reader = AddUser(db, "reader@test.local", "Leitor"); await db.SaveChangesAsync();
+        var service = CreateService(db); var roomId = await service.CreateRoomAsync(new(null, null, false, [reader.Id]), Actor(sender)); var id = await service.SendMessageAsync(new(roomId, "Antiga", "text"), Actor(sender));
+        foreach (var member in db.InternalChatRoomMembers) member.JoinedAt = DateTimeOffset.UtcNow.AddDays(-60);
+        var oldMessage = await db.InternalChatMessages.SingleAsync(); oldMessage.CreatedAt = DateTimeOffset.UtcNow.AddDays(-45); oldMessage.UpdatedAt = oldMessage.CreatedAt; await db.SaveChangesAsync();
         Assert.Empty((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
-        await service.EditMessageAsync(new(roomId,id,"Corrigida no histórico",1),Actor(sender));
-        Assert.Equal("Corrigida no histórico",(await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Body);
+        await service.EditMessageAsync(new(roomId, id, "Corrigida no histórico", 1), Actor(sender));
+        Assert.Equal("Corrigida no histórico", (await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages.Single().Body);
     }
 
     [Fact]
     public async Task Group_members_can_be_added_removed_and_leave_without_exposing_history_before_joining()
     {
-        await using var db=CreateContext();var owner=AddUser(db,"group-owner@test","Criador");owner.IsCoordinator=true;
-        var member=AddUser(db,"group-member@test","Membro");var invited=AddUser(db,"group-invited@test","Convidado");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new("Equipe",null,true,[member.Id]),Actor(owner));
-        var old=await service.SendMessageAsync(new(room,"Mensagem anterior ao convite","text"),Actor(owner));
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeMembersAsync(new(room,[invited.Id],null,false),Actor(member)))).StatusCode);
-        await service.ChangeMembersAsync(new(room,[invited.Id,invited.Id],null,false),Actor(owner));
-        Assert.Single(db.InternalChatRoomMembers.Where(entry=>entry.RoomId==room&&entry.UserId==invited.Id));
-        Assert.DoesNotContain((await service.GetModuleAsync(Actor(invited))).Rooms.Single().Messages,message=>message.Id==old);
-        var recent=await service.SendMessageAsync(new(room,"Depois do convite","text"),Actor(member));
-        Assert.Contains((await service.GetModuleAsync(Actor(invited))).Rooms.Single().Messages,message=>message.Id==recent);
-        var readOnlyInvitee=new ActorContext(invited.Email,invited.DisplayName,"Colaborador","",[new("internalChat",true,false,false,false,false)]);
-        await service.ChangeMembersAsync(new(room,null,null,true),readOnlyInvitee);
+        await using var db = CreateContext(); var owner = AddUser(db, "group-owner@test", "Criador"); owner.IsCoordinator = true;
+        var member = AddUser(db, "group-member@test", "Membro"); var invited = AddUser(db, "group-invited@test", "Convidado"); await db.SaveChangesAsync();
+        var service = CreateService(db); var room = await service.CreateRoomAsync(new("Equipe", null, true, [member.Id]), Actor(owner));
+        var old = await service.SendMessageAsync(new(room, "Mensagem anterior ao convite", "text"), Actor(owner));
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.ChangeMembersAsync(new(room, [invited.Id], null, false), Actor(member)))).StatusCode);
+        await service.ChangeMembersAsync(new(room, [invited.Id, invited.Id], null, false), Actor(owner));
+        Assert.Single(db.InternalChatRoomMembers.Where(entry => entry.RoomId == room && entry.UserId == invited.Id));
+        Assert.DoesNotContain((await service.GetModuleAsync(Actor(invited))).Rooms.Single().Messages, message => message.Id == old);
+        var recent = await service.SendMessageAsync(new(room, "Depois do convite", "text"), Actor(member));
+        Assert.Contains((await service.GetModuleAsync(Actor(invited))).Rooms.Single().Messages, message => message.Id == recent);
+        var readOnlyInvitee = new ActorContext(invited.Email, invited.DisplayName, "Colaborador", "", [new("internalChat", true, false, false, false, false)]);
+        await service.ChangeMembersAsync(new(room, null, null, true), readOnlyInvitee);
         Assert.Empty((await service.GetModuleAsync(readOnlyInvitee)).Rooms);
-        await service.ChangeMembersAsync(new(room,null,null,true),Actor(owner));
-        Assert.True((await db.InternalChatRoomMembers.SingleAsync(entry=>entry.RoomId==room&&entry.UserId==member.Id)).IsAdmin);
+        await service.ChangeMembersAsync(new(room, null, null, true), Actor(owner));
+        Assert.True((await db.InternalChatRoomMembers.SingleAsync(entry => entry.RoomId == room && entry.UserId == member.Id)).IsAdmin);
         Assert.Empty((await service.GetModuleAsync(Actor(owner))).Rooms);
-        await service.ChangeMembersAsync(new(room,[invited.Id],null,false),Actor(member));
-        await service.ChangeMembersAsync(new(room,null,invited.Id,false),Actor(member));
+        await service.ChangeMembersAsync(new(room, [invited.Id], null, false), Actor(member));
+        await service.ChangeMembersAsync(new(room, null, invited.Id, false), Actor(member));
         Assert.Empty((await service.GetModuleAsync(Actor(invited))).Rooms);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.SendMessageAsync(new(room,"Sem acesso","text"),Actor(invited)))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.SendMessageAsync(new(room, "Sem acesso", "text"), Actor(invited)))).StatusCode);
     }
 
     [Fact]
     public async Task Audio_uploads_keep_their_type_content_and_room_access_restrictions()
     {
-        await using var db=CreateContext();var sender=AddUser(db,"audio-sender@test","Remetente");var reader=AddUser(db,"audio-reader@test","Leitor");var outsider=AddUser(db,"audio-outsider@test","Outro");await db.SaveChangesAsync();
-        var service=CreateService(db);var room=await service.CreateRoomAsync(new(null,null,false,[reader.Id]),Actor(sender));
-        await using var bytes=new MemoryStream(new byte[]{82,73,70,70,1,2,3,4});
-        var id=await service.UploadAttachmentAsync(new(room,"gravacao.webm","audio/webm",bytes.Length,bytes),Actor(sender));
-        var message=Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
-        Assert.Equal("audio",message.Type);Assert.Equal("audio/webm",message.ContentType);Assert.True(message.HasAttachment);
-        var downloaded=await service.GetAttachmentAsync(id,Actor(reader));Assert.Equal("audio/webm",downloaded.ContentType);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.GetAttachmentAsync(id,Actor(outsider)))).StatusCode);
+        await using var db = CreateContext(); var sender = AddUser(db, "audio-sender@test", "Remetente"); var reader = AddUser(db, "audio-reader@test", "Leitor"); var outsider = AddUser(db, "audio-outsider@test", "Outro"); await db.SaveChangesAsync();
+        var service = CreateService(db); var room = await service.CreateRoomAsync(new(null, null, false, [reader.Id]), Actor(sender));
+        await using var bytes = new MemoryStream(new byte[] { 82, 73, 70, 70, 1, 2, 3, 4 });
+        var id = await service.UploadAttachmentAsync(new(room, "gravacao.webm", "audio/webm", bytes.Length, bytes), Actor(sender));
+        var message = Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms.Single().Messages);
+        Assert.Equal("audio", message.Type); Assert.Equal("audio/webm", message.ContentType); Assert.True(message.HasAttachment);
+        var downloaded = await service.GetAttachmentAsync(id, Actor(reader)); Assert.Equal("audio/webm", downloaded.ContentType);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetAttachmentAsync(id, Actor(outsider)))).StatusCode);
     }
 
     [Theory]
