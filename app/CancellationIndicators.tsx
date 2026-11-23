@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { useState } from "react";
 import { BarChart3 } from "lucide-react";
 import IndicatorTabs from "./IndicatorTabs";
@@ -376,21 +378,25 @@ export default function CancellationIndicators({
                           </tr>
                         </thead>
                         <tbody>
-                          {cancellationResponsibilitySummary(
-                            period,
-                            role.key,
-                          ).map((row) => (
-                            <tr key={row.name}>
-                              <th scope="row">{row.name}</th>
-                              <td>{row.total}</td>
-                              <td>{row.converted}</td>
-                              <td>{row.lost}</td>
-                              <td>{row.progress}</td>
-                              <td>{rate(row.converted, row.total)}</td>
-                              <td>{money(row.recoveredMrr)}</td>
-                              <td>{money(row.lostMrr)}</td>
-                            </tr>
-                          ))}
+                          {
+                            <PaginatedItems label="cancelamentos" table>
+                              {cancellationResponsibilitySummary(
+                                period,
+                                role.key,
+                              ).map((row) => (
+                                <tr key={row.name}>
+                                  <th scope="row">{row.name}</th>
+                                  <td>{row.total}</td>
+                                  <td>{row.converted}</td>
+                                  <td>{row.lost}</td>
+                                  <td>{row.progress}</td>
+                                  <td>{rate(row.converted, row.total)}</td>
+                                  <td>{money(row.recoveredMrr)}</td>
+                                  <td>{money(row.lostMrr)}</td>
+                                </tr>
+                              ))}
+                            </PaginatedItems>
+                          }
                         </tbody>
                       </table>
                     </div>
@@ -420,33 +426,38 @@ export default function CancellationIndicators({
                       </tr>
                     </thead>
                     <tbody>
-                      {period.map((entry) => (
-                        <tr
-                          data-reminder-entity-id={entry.item.id}
-                          key={entry.item.id}
-                        >
-                          <th scope="row">
-                            <strong>
-                              {entry.detail.customerName || entry.item.title}
-                            </strong>
-                            <small>
-                              ID {entry.detail.clientId}
-                              {entry.detail.protocol
-                                ? ` · ${entry.detail.protocol}`
-                                : ""}
-                            </small>
-                          </th>
-                          {cancellationRoles.map((role) => (
-                            <td key={role.key}>
-                              {cancellationResponsibleName(entry, role.key)}
-                            </td>
+                      {
+                        <PaginatedItems label="cancelamentos" table>
+                          {period.map((entry) => (
+                            <tr
+                              data-reminder-entity-id={entry.item.id}
+                              key={entry.item.id}
+                            >
+                              <th scope="row">
+                                <strong>
+                                  {entry.detail.customerName ||
+                                    entry.item.title}
+                                </strong>
+                                <small>
+                                  ID {entry.detail.clientId}
+                                  {entry.detail.protocol
+                                    ? ` · ${entry.detail.protocol}`
+                                    : ""}
+                                </small>
+                              </th>
+                              {cancellationRoles.map((role) => (
+                                <td key={role.key}>
+                                  {cancellationResponsibleName(entry, role.key)}
+                                </td>
+                              ))}
+                              <td>{entry.detail.reason}</td>
+                              <td>{entry.detail.plan}</td>
+                              <td>{entry.item.status}</td>
+                              <td>{money(entry.detail.monthlyValueCents)}</td>
+                            </tr>
                           ))}
-                          <td>{entry.detail.reason}</td>
-                          <td>{entry.detail.plan}</td>
-                          <td>{entry.item.status}</td>
-                          <td>{money(entry.detail.monthlyValueCents)}</td>
-                        </tr>
-                      ))}
+                        </PaginatedItems>
+                      }
                     </tbody>
                   </table>
                 </div>

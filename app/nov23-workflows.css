@@ -1,0 +1,203 @@
+.agenda-day {
+  position: relative;
+  isolation: isolate;
+}
+.agenda-day-create {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.agenda-day > :not(.agenda-day-create) {
+  position: relative;
+  z-index: 1;
+}
+.agenda-day > time,
+.agenda-day > .agenda-special-event {
+  pointer-events: none;
+}
+.agenda-day-create:focus-visible,
+.agenda-time-slot:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: -3px;
+  background: var(--primary-soft);
+}
+.internal-chat-mention-composer {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.internal-chat-mention-composer textarea {
+  width: 100%;
+  min-width: 0;
+}
+.internal-chat-mention-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 10px 32px #071e3530;
+}
+.internal-chat-mention-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+.internal-chat-mention-list button[aria-selected="true"],
+.internal-chat-mention-list button:hover {
+  background: var(--primary-soft);
+}
+.internal-chat-mention-list button span {
+  color: var(--primary);
+  font-weight: 800;
+}
+.internal-chat-mention-list p {
+  padding: 8px 12px;
+  margin: 0;
+  color: var(--muted);
+}
+.chat-mention {
+  color: #075a9c;
+  background: #dceeff;
+  border-radius: 4px;
+  padding: 1px 3px;
+  font-weight: 800;
+}
+.chat-mention.self {
+  color: #684400;
+  background: #fff0ae;
+}
+.theme-dark .chat-mention {
+  color: #b6ddff;
+  background: #153e60;
+}
+.theme-dark .chat-mention.self {
+  color: #ffecad;
+  background: #634b12;
+}
+.task-modal .task-priority-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #d6a214;
+  border-radius: 9px;
+  background: #facc15;
+  color: #422b00;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.task-modal .task-priority-action:hover {
+  background: #eab308;
+}
+.app-shell
+  .task-reference-overlay.task-detail-overlay
+  .task-ideal-header
+  button.task-priority-action {
+  color: #422b00;
+  background: #facc15;
+  border-color: #d6a214;
+}
+.app-shell
+  .task-reference-overlay.task-detail-overlay
+  .task-ideal-header
+  button.task-priority-action:hover {
+  background: #eab308;
+}
+.task-priority-action:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.task-priority-notice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #071e3566;
+}
+.task-priority-notice {
+  width: min(440px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  border: 1px solid #d6a214;
+  border-radius: 18px;
+  padding: 28px;
+  text-align: center;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 24px 64px #071e3540;
+}
+.task-priority-notice > svg {
+  color: #a16a00;
+}
+.theme-dark .task-priority-notice > svg {
+  color: #facc15;
+}
+.task-priority-notice h2 {
+  margin: 14px 0 8px;
+  font-size: 22px;
+}
+.task-priority-notice p {
+  margin: 0 0 24px;
+  overflow-wrap: anywhere;
+}
+.task-priority-notice button {
+  min-height: 44px;
+  width: 100%;
+  padding: 10px 20px;
+  border: 1px solid #d6a214;
+  border-radius: 10px;
+  background: #facc15;
+  color: #422b00;
+  font-weight: 800;
+}
+.task-priority-requested-by {
+  color: #624200;
+  background: #fff0ad;
+  border: 1px solid #d6a214;
+}
+.task-priority-requested-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.task-priority-requested-by svg {
+  flex-shrink: 0;
+}
+.task-priority-requested-by span {
+  overflow-wrap: anywhere;
+}
+.theme-dark .task-priority-requested-by {
+  color: #ffecad;
+  background: #634b12;
+  border-color: #b99325;
+}

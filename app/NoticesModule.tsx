@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
@@ -206,70 +208,72 @@ function NoticeSection({
             Tudo em dia. Nenhum aviso aguardando confirmação.
           </p>
         ) : (
-          items.map((notice) => (
-            <article
-              className={`notice-card ${notice.type.toLowerCase()} ${notice.kind.toLowerCase()} ${notice.isRead ? "read" : ""}`}
-              key={notice.id}
-            >
-              <span className="notice-card-icon">
-                <NoticeIcon type={notice.type} kind={notice.kind} />
-              </span>
-              <div className="notice-card-content">
-                <div>
-                  <b>
-                    {notice.kind} · {notice.type}
-                  </b>
-                  <span>{audienceLabel(notice)}</span>
+          <PaginatedItems label="avisos">
+            {items.map((notice) => (
+              <article
+                className={`notice-card ${notice.type.toLowerCase()} ${notice.kind.toLowerCase()} ${notice.isRead ? "read" : ""}`}
+                key={notice.id}
+              >
+                <span className="notice-card-icon">
+                  <NoticeIcon type={notice.type} kind={notice.kind} />
+                </span>
+                <div className="notice-card-content">
+                  <div>
+                    <b>
+                      {notice.kind} · {notice.type}
+                    </b>
+                    <span>{audienceLabel(notice)}</span>
+                  </div>
+                  <h2>{notice.title}</h2>
+                  {notice.imageDataUrl && (
+                    <img
+                      className="notice-card-image"
+                      src={notice.imageDataUrl}
+                      alt={`Imagem do aviso ${notice.title}`}
+                    />
+                  )}
+                  <p>
+                    <CommentContent text={visibleBody(notice)} />
+                  </p>
+                  {notice.kind === "Evento" && (
+                    <strong className="notice-event-date">
+                      <CalendarDays size={14} /> {dateTime(notice.eventAt)}
+                    </strong>
+                  )}
+                  <small>
+                    Publicado por {notice.authorName} em{" "}
+                    {dateTime(notice.publishedAt)}
+                    {notice.expiresAt
+                      ? ` · válido até ${dateTime(notice.expiresAt)}`
+                      : ""}
+                  </small>
                 </div>
-                <h2>{notice.title}</h2>
-                {notice.imageDataUrl && (
-                  <img
-                    className="notice-card-image"
-                    src={notice.imageDataUrl}
-                    alt={`Imagem do aviso ${notice.title}`}
-                  />
-                )}
-                <p>
-                  <CommentContent text={visibleBody(notice)} />
-                </p>
-                {notice.kind === "Evento" && (
-                  <strong className="notice-event-date">
-                    <CalendarDays size={14} /> {dateTime(notice.eventAt)}
-                  </strong>
-                )}
-                <small>
-                  Publicado por {notice.authorName} em{" "}
-                  {dateTime(notice.publishedAt)}
-                  {notice.expiresAt
-                    ? ` · válido até ${dateTime(notice.expiresAt)}`
-                    : ""}
-                </small>
-              </div>
-              <div className="notice-card-actions">
-                {taskLink(notice) && (
-                  <button
-                    className="notice-open-task"
-                    onClick={() => openTask(notice)}
-                  >
-                    <Eye size={16} /> Ver tarefa
-                  </button>
-                )}
-                {!notice.isRead ? (
-                  <button disabled={busy} onClick={() => void onRead(notice)}>
-                    <CheckCheck size={16} /> {confirmationLabel(notice)}
-                  </button>
-                ) : (
-                  <span className="notice-read-label">
-                    <CheckCheck size={15} />{" "}
-                    {notice.kind === "Evento"
-                      ? "Presença confirmada"
-                      : "Leitura confirmada"}{" "}
-                    em {dateTime(notice.readAt)}
-                  </span>
-                )}
-              </div>
-            </article>
-          ))
+                <div className="notice-card-actions">
+                  {taskLink(notice) && (
+                    <button
+                      className="notice-open-task"
+                      onClick={() => openTask(notice)}
+                    >
+                      <Eye size={16} /> Ver tarefa
+                    </button>
+                  )}
+                  {!notice.isRead ? (
+                    <button disabled={busy} onClick={() => void onRead(notice)}>
+                      <CheckCheck size={16} /> {confirmationLabel(notice)}
+                    </button>
+                  ) : (
+                    <span className="notice-read-label">
+                      <CheckCheck size={15} />{" "}
+                      {notice.kind === "Evento"
+                        ? "Presença confirmada"
+                        : "Leitura confirmada"}{" "}
+                      em {dateTime(notice.readAt)}
+                    </span>
+                  )}
+                </div>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </div>
     </section>
@@ -436,76 +440,80 @@ export function NoticesAdmin({
             <p>Crie o primeiro comunicado ou evento.</p>
           </div>
         ) : (
-          module.notices.map((notice) => (
-            <article key={notice.id}>
-              <span className={`notice-card-icon ${notice.type.toLowerCase()}`}>
-                <NoticeIcon type={notice.type} kind={notice.kind} />
-              </span>
-              <div>
-                <span>
-                  {notice.kind} · {audienceLabel(notice)}
+          <PaginatedItems label="avisos">
+            {module.notices.map((notice) => (
+              <article key={notice.id}>
+                <span
+                  className={`notice-card-icon ${notice.type.toLowerCase()}`}
+                >
+                  <NoticeIcon type={notice.type} kind={notice.kind} />
                 </span>
-                <strong>{notice.title}</strong>
-                <p>
-                  <CommentContent text={notice.body} />
-                </p>
-                <small>
-                  Publicado em {dateTime(notice.publishedAt)} ·{" "}
-                  {notice.viewedCount} visualização(ões) · {notice.readCount}{" "}
-                  confirmação(ões)
-                </small>
-              </div>
-              <b
-                className={`notice-active-state ${notice.active ? "active" : "inactive"}`}
-              >
-                {notice.active ? "Ativo" : "Inativo"}
-              </b>
-              <button
-                onClick={() => setInspecting(notice)}
-                aria-label={`Informações de ${notice.title}`}
-                title="Visualizações e confirmações"
-              >
-                <Eye size={15} />
-              </button>
-              <button
-                className={notice.active ? "deactivate" : "activate"}
-                onClick={() =>
-                  void operate(
-                    savePayload(notice, !notice.active),
+                <div>
+                  <span>
+                    {notice.kind} · {audienceLabel(notice)}
+                  </span>
+                  <strong>{notice.title}</strong>
+                  <p>
+                    <CommentContent text={notice.body} />
+                  </p>
+                  <small>
+                    Publicado em {dateTime(notice.publishedAt)} ·{" "}
+                    {notice.viewedCount} visualização(ões) · {notice.readCount}{" "}
+                    confirmação(ões)
+                  </small>
+                </div>
+                <b
+                  className={`notice-active-state ${notice.active ? "active" : "inactive"}`}
+                >
+                  {notice.active ? "Ativo" : "Inativo"}
+                </b>
+                <button
+                  onClick={() => setInspecting(notice)}
+                  aria-label={`Informações de ${notice.title}`}
+                  title="Visualizações e confirmações"
+                >
+                  <Eye size={15} />
+                </button>
+                <button
+                  className={notice.active ? "deactivate" : "activate"}
+                  onClick={() =>
+                    void operate(
+                      savePayload(notice, !notice.active),
+                      notice.active
+                        ? "Aviso inativado com sucesso."
+                        : "Aviso reativado com sucesso.",
+                    )
+                  }
+                  aria-label={
                     notice.active
-                      ? "Aviso inativado com sucesso."
-                      : "Aviso reativado com sucesso.",
-                  )
-                }
-                aria-label={
-                  notice.active
-                    ? `Inativar ${notice.title}`
-                    : `Ativar ${notice.title}`
-                }
-                title={notice.active ? "Inativar" : "Ativar"}
-              >
-                <Power size={15} />
-              </button>
-              <button
-                onClick={() => setEditing(notice)}
-                aria-label={`Editar ${notice.title}`}
-              >
-                <Pencil size={15} />
-              </button>
-              <button
-                className="delete"
-                onClick={() =>
-                  void operate(
-                    { action: "deleteNotice", id: notice.id },
-                    "Aviso excluído com sucesso.",
-                  )
-                }
-                aria-label={`Excluir ${notice.title}`}
-              >
-                <Trash2 size={15} />
-              </button>
-            </article>
-          ))
+                      ? `Inativar ${notice.title}`
+                      : `Ativar ${notice.title}`
+                  }
+                  title={notice.active ? "Inativar" : "Ativar"}
+                >
+                  <Power size={15} />
+                </button>
+                <button
+                  onClick={() => setEditing(notice)}
+                  aria-label={`Editar ${notice.title}`}
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  className="delete"
+                  onClick={() =>
+                    void operate(
+                      { action: "deleteNotice", id: notice.id },
+                      "Aviso excluído com sucesso.",
+                    )
+                  }
+                  aria-label={`Excluir ${notice.title}`}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </section>
       {editing !== undefined && (
@@ -846,33 +854,35 @@ function NoticeInfoModal({
           {notice.recipients.length === 0 ? (
             <p>Nenhum destinatário disponível.</p>
           ) : (
-            notice.recipients.map((recipient) => (
-              <article key={recipient.userId}>
-                <NoticeAvatar recipient={recipient} />
-                <div>
-                  <strong>{recipient.userName}</strong>
-                  <small>
-                    {recipient.viewedAt
-                      ? `Visualizou em ${dateTime(recipient.viewedAt)}`
-                      : "Ainda não visualizou"}
-                  </small>
-                </div>
-                <span
-                  className={recipient.confirmedAt ? "confirmed" : "pending"}
-                >
-                  {recipient.confirmedAt ? (
-                    <>
-                      <CheckCheck size={14} />{" "}
-                      {notice.kind === "Evento"
-                        ? "Presença confirmada"
-                        : "Leitura confirmada"}
-                    </>
-                  ) : (
-                    "Aguardando confirmação"
-                  )}
-                </span>
-              </article>
-            ))
+            <PaginatedItems label="avisos">
+              {notice.recipients.map((recipient) => (
+                <article key={recipient.userId}>
+                  <NoticeAvatar recipient={recipient} />
+                  <div>
+                    <strong>{recipient.userName}</strong>
+                    <small>
+                      {recipient.viewedAt
+                        ? `Visualizou em ${dateTime(recipient.viewedAt)}`
+                        : "Ainda não visualizou"}
+                    </small>
+                  </div>
+                  <span
+                    className={recipient.confirmedAt ? "confirmed" : "pending"}
+                  >
+                    {recipient.confirmedAt ? (
+                      <>
+                        <CheckCheck size={14} />{" "}
+                        {notice.kind === "Evento"
+                          ? "Presença confirmada"
+                          : "Leitura confirmada"}
+                      </>
+                    ) : (
+                      "Aguardando confirmação"
+                    )}
+                  </span>
+                </article>
+              ))}
+            </PaginatedItems>
           )}
         </div>
       </section>

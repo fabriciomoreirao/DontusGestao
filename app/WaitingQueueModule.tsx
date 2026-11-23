@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import MediaUploadField from "@/app/MediaUploadField";
 import FilePreview from "@/app/FilePreview";
 import { readCommentFiles } from "@/lib/comment-files";
@@ -412,6 +414,7 @@ export default function WaitingQueueModule({
   const [selected, setSelected] = useState<WorkItem | null>(null);
   const [editing, setEditing] = useState<WorkItem | null>(null);
   const [contacting, setContacting] = useState<WorkItem | null>(null);
+  const [contactPage, setContactPage] = useState(1);
   const [tab, setTab] = useState<"waiting" | "contacted">("waiting");
   const userEmployee = employees.find(
     (employee) => normalize(employee.email) === normalize(currentUser.email),
@@ -487,6 +490,12 @@ export default function WaitingQueueModule({
   const contacted = visible.filter(
     (entry) => entry.detail.state === "contacted",
   );
+  const contactPageCount = Math.max(1, Math.ceil(contacted.length / 10));
+  const currentContactPage = Math.min(contactPage, contactPageCount);
+  const pageContacts = contacted.slice(
+    (currentContactPage - 1) * 10,
+    currentContactPage * 10,
+  );
   return (
     <section className="waiting-queue-module">
       <header className="module-page-header">
@@ -552,7 +561,10 @@ export default function WaitingQueueModule({
           <CheckCircle2 size={15} /> Contato feito <b>{contacted.length}</b>
         </button>
       </nav>
-      <div className="reminder-filter-toolbar waiting-queue-filters">
+      <div
+        className="reminder-filter-toolbar waiting-queue-filters"
+        onChangeCapture={() => setContactPage(1)}
+      >
         <label className="waiting-queue-search">
           <Search size={17} />
           <input
@@ -602,7 +614,8 @@ export default function WaitingQueueModule({
           <QueueColumn
             title="Contato feito"
             tone="contacted"
-            records={contacted}
+            records={pageContacts}
+            totalCount={contacted.length}
             canEdit={canEdit}
             onOpen={setSelected}
             onEdit={setEditing}
@@ -615,6 +628,39 @@ export default function WaitingQueueModule({
           />
         )}
       </div>
+      {tab === "contacted" && (
+        <nav
+          className="chat-pagination service-pagination"
+          aria-label="Páginas de contatos feitos"
+        >
+          <span role="status" aria-live="polite">
+            {contacted.length
+              ? `${(currentContactPage - 1) * 10 + 1}–${Math.min(currentContactPage * 10, contacted.length)} de ${contacted.length} contatos`
+              : "0 contatos"}
+          </span>
+          <div>
+            <button
+              type="button"
+              disabled={currentContactPage <= 1}
+              onClick={() => setContactPage(currentContactPage - 1)}
+            >
+              Anterior
+            </button>
+            <span
+              aria-label={`Página ${currentContactPage} de ${contactPageCount}`}
+            >
+              {currentContactPage}/{contactPageCount}
+            </span>
+            <button
+              type="button"
+              disabled={currentContactPage >= contactPageCount}
+              onClick={() => setContactPage(currentContactPage + 1)}
+            >
+              Seguinte
+            </button>
+          </div>
+        </nav>
+      )}
       {editing && canEdit && (
         <QueueEditModal
           departments={departments}
@@ -701,6 +747,7 @@ function QueueColumn({
   title,
   tone,
   records,
+  totalCount = records.length,
   canEdit,
   onOpen,
   onEdit,
@@ -712,6 +759,7 @@ function QueueColumn({
 }: {
   title: string;
   tone: string;
+  totalCount?: number;
   records: Array<{ item: WorkItem; detail: WaitingQueueDetail }>;
   canEdit: boolean;
   onOpen: (item: WorkItem) => void;
@@ -729,106 +777,111 @@ function QueueColumn({
           <i />
           {title}
         </span>
-        <b>{records.length}</b>
+        <b>{totalCount}</b>
       </header>
       <div>
         {records.length === 0 ? (
           <p className="waiting-queue-empty">Nenhum cliente nesta coluna.</p>
         ) : (
-          records.map(({ item, detail }) => (
-            <article
-              data-reminder-entity-id={item.id}
-              className="waiting-queue-row"
-              key={item.id}
-            >
-              <div className="waiting-queue-client">
-                <span className="waiting-avatar">
-                  {detail.clientName.slice(0, 2).toUpperCase()}
-                </span>
-                <span>
-                  <strong>{detail.clientName}</strong>
-                  <small>
-                    ID {detail.clientCode || item.id.slice(0, 8)} ·{" "}
-                    <PhoneLink phone={detail.whatsapp} />
-                  </small>
-                </span>
-                {detail.strategic && (
-                  <b title="Cliente estratégico">
-                    <BadgeCheck size={15} />
-                    Estratégico
-                  </b>
-                )}
-              </div>
-              <div className="waiting-queue-summary">
-                <strong>{detail.requestType}</strong>
-                <p>{detail.summary}</p>
-                <small>
-                  Enviado por {detail.senderName} · {dt(detail.sentAt)}
-                </small>
-              </div>
-              <div
-                className="waiting-queue-owner"
-                data-collaborator-name={detail.responsibleName}
+          <PaginatedItems label="contatos">
+            {records.map(({ item, detail }) => (
+              <article
+                data-reminder-entity-id={item.id}
+                className="waiting-queue-row"
+                key={item.id}
               >
-                <UserRound size={14} />
-                <span>
-                  <small>Responsável</small>
-                  <strong>
-                    {detail.responsibleName || "Fila compartilhada"}
-                  </strong>
-                </span>
-              </div>
-              <div className="waiting-queue-actions">
-                <button
-                  onClick={() => onOpen(item)}
-                  title="Visualizar informações"
+                <div className="waiting-queue-client">
+                  <span className="waiting-avatar">
+                    {detail.clientName.slice(0, 2).toUpperCase()}
+                  </span>
+                  <span>
+                    <strong>{detail.clientName}</strong>
+                    <small>
+                      ID {detail.clientCode || item.id.slice(0, 8)} ·{" "}
+                      <PhoneLink phone={detail.whatsapp} />
+                    </small>
+                  </span>
+                  {detail.strategic && (
+                    <b title="Cliente estratégico">
+                      <BadgeCheck size={15} />
+                      Estratégico
+                    </b>
+                  )}
+                </div>
+                <div className="waiting-queue-summary">
+                  <strong>{detail.requestType}</strong>
+                  <p>{detail.summary}</p>
+                  <small>
+                    Enviado por {detail.senderName} · {dt(detail.sentAt)}
+                  </small>
+                </div>
+                <div
+                  className="waiting-queue-owner"
+                  data-collaborator-name={detail.responsibleName}
                 >
-                  <Eye size={16} />
-                </button>
-                {canEdit && (
-                  <>
-                    <button
-                      onClick={() => onEdit(item)}
-                      title="Editar registro"
-                      aria-label="Editar registro"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(item)}
-                      title="Excluir registro"
-                      aria-label="Excluir registro"
-                      className="delete"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </>
-                )}
-                {canEdit &&
-                  onClaim &&
-                  currentEmployee &&
-                  !detail.responsibleUserId &&
-                  belongsToWaitingQueueDepartment(currentEmployee, detail) && (
+                  <UserRound size={14} />
+                  <span>
+                    <small>Responsável</small>
+                    <strong>
+                      {detail.responsibleName || "Fila compartilhada"}
+                    </strong>
+                  </span>
+                </div>
+                <div className="waiting-queue-actions">
+                  <button
+                    onClick={() => onOpen(item)}
+                    title="Visualizar informações"
+                  >
+                    <Eye size={16} />
+                  </button>
+                  {canEdit && (
+                    <>
+                      <button
+                        onClick={() => onEdit(item)}
+                        title="Editar registro"
+                        aria-label="Editar registro"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => onDelete(item)}
+                        title="Excluir registro"
+                        aria-label="Excluir registro"
+                        className="delete"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
+                  {canEdit &&
+                    onClaim &&
+                    currentEmployee &&
+                    !detail.responsibleUserId &&
+                    belongsToWaitingQueueDepartment(
+                      currentEmployee,
+                      detail,
+                    ) && (
+                      <button
+                        className="contact"
+                        disabled={busy}
+                        onClick={() => onClaim(item)}
+                      >
+                        <UserRound size={15} /> Assumir contato
+                      </button>
+                    )}
+                  {onContact && (
                     <button
                       className="contact"
                       disabled={busy}
-                      onClick={() => onClaim(item)}
+                      onClick={() => onContact(item)}
                     >
-                      <UserRound size={15} /> Assumir contato
+                      <CheckCircle2 size={15} /> Contato feito
                     </button>
                   )}
-                {onContact && (
-                  <button
-                    className="contact"
-                    disabled={busy}
-                    onClick={() => onContact(item)}
-                  >
-                    <CheckCircle2 size={15} /> Contato feito
-                  </button>
-                )}
-              </div>
-            </article>
-          ))
+                </div>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </div>
     </section>

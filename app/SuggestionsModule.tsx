@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import { validateSuggestionFiles } from "@/lib/suggestion-upload";
 import FilePreview from "@/app/FilePreview";
 import CommentHistory from "@/app/CommentHistory";
@@ -726,94 +728,102 @@ function SuggestionList({
           </tr>
         </thead>
         <tbody>
-          {suggestions.map((entry) => (
-            <tr
-              data-reminder-entity-id={entry.id}
-              key={entry.id}
-              tabIndex={0}
-              onClick={() => onOpen(entry.id)}
-              onKeyDown={(event) => event.key === "Enter" && onOpen(entry.id)}
-            >
-              <td>
-                <strong className="suggestion-protocol">
-                  <Hash size={13} />
-                  {entry.protocol}
-                </strong>
-              </td>
-              <td>
-                <span className="suggestion-title-cell">
-                  <strong>{entry.name}</strong>
-                  <small>{entry.customerName}</small>
-                </span>
-              </td>
-              <td>
-                <FlagBadges suggestion={entry} compact />
-              </td>
-              <td>
-                <span
-                  className="suggestion-color-badge"
-                  style={
-                    { "--badge-color": entry.priorityColor } as CSSProperties
+          {
+            <PaginatedItems label="sugestões" table>
+              {suggestions.map((entry) => (
+                <tr
+                  data-reminder-entity-id={entry.id}
+                  key={entry.id}
+                  tabIndex={0}
+                  onClick={() => onOpen(entry.id)}
+                  onKeyDown={(event) =>
+                    event.key === "Enter" && onOpen(entry.id)
                   }
                 >
-                  {entry.priorityName}
-                </span>
-              </td>
-              <td>
-                <span
-                  className="suggestion-color-badge"
-                  style={
-                    { "--badge-color": entry.statusColor } as CSSProperties
-                  }
-                >
-                  {entry.statusName}
-                </span>
-              </td>
-              <td>
-                <span className="suggestion-owner">
-                  <Avatar
-                    name={entry.responsibleName}
-                    photo={entry.responsiblePhotoDataUrl}
-                    small
-                  />
-                  <span>{entry.responsibleName}</span>
-                </span>
-              </td>
-              <td>
-                <time>{dateTime(entry.updatedAt)}</time>
-              </td>
-              <td>
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label={`Editar ${entry.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onEdit(entry);
-                    }}
-                  >
-                    <Pencil size={15} />
-                  </button>
-                )}
-                {canDelete &&
-                  (entry.responsibleEmail === currentUserEmail ||
-                    canDeleteOthers) && (
-                    <button
-                      type="button"
-                      className="icon-button danger-action"
-                      aria-label={`Excluir ${entry.name}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDelete(entry);
-                      }}
+                  <td>
+                    <strong className="suggestion-protocol">
+                      <Hash size={13} />
+                      {entry.protocol}
+                    </strong>
+                  </td>
+                  <td>
+                    <span className="suggestion-title-cell">
+                      <strong>{entry.name}</strong>
+                      <small>{entry.customerName}</small>
+                    </span>
+                  </td>
+                  <td>
+                    <FlagBadges suggestion={entry} compact />
+                  </td>
+                  <td>
+                    <span
+                      className="suggestion-color-badge"
+                      style={
+                        {
+                          "--badge-color": entry.priorityColor,
+                        } as CSSProperties
+                      }
                     >
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-              </td>
-            </tr>
-          ))}
+                      {entry.priorityName}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      className="suggestion-color-badge"
+                      style={
+                        { "--badge-color": entry.statusColor } as CSSProperties
+                      }
+                    >
+                      {entry.statusName}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="suggestion-owner">
+                      <Avatar
+                        name={entry.responsibleName}
+                        photo={entry.responsiblePhotoDataUrl}
+                        small
+                      />
+                      <span>{entry.responsibleName}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <time>{dateTime(entry.updatedAt)}</time>
+                  </td>
+                  <td>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Editar ${entry.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEdit(entry);
+                        }}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                    {canDelete &&
+                      (entry.responsibleEmail === currentUserEmail ||
+                        canDeleteOthers) && (
+                        <button
+                          type="button"
+                          className="icon-button danger-action"
+                          aria-label={`Excluir ${entry.name}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDelete(entry);
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                  </td>
+                </tr>
+              ))}
+            </PaginatedItems>
+          }
         </tbody>
       </table>
     </div>
@@ -879,83 +889,87 @@ function SuggestionKanban({
               <b>{cards.length}</b>
             </header>
             <div className="suggestion-kanban-cards">
-              {cards.map((entry) => (
-                <article
-                  key={entry.id}
-                  className={entry.cancellationRisk ? "risk-card" : ""}
-                  data-reminder-entity-id={entry.id}
-                  data-reminder-client-id={entry.customerId}
-                  data-reminder-customer-name={entry.customerName}
-                  draggable={canEdit}
-                  onDragStart={(event) =>
-                    beginKanbanDrag(event, "text/suggestion-id", entry.id)
-                  }
-                  onClick={() => onOpen(entry.id)}
-                >
-                  <div className="suggestion-card-top">
-                    <span>{entry.protocol}</span>
-                    <span
-                      className="suggestion-color-badge"
-                      style={
-                        {
-                          "--badge-color": entry.priorityColor,
-                        } as CSSProperties
+              {
+                <PaginatedItems label="sugestões">
+                  {cards.map((entry) => (
+                    <article
+                      key={entry.id}
+                      className={entry.cancellationRisk ? "risk-card" : ""}
+                      data-reminder-entity-id={entry.id}
+                      data-reminder-client-id={entry.customerId}
+                      data-reminder-customer-name={entry.customerName}
+                      draggable={canEdit}
+                      onDragStart={(event) =>
+                        beginKanbanDrag(event, "text/suggestion-id", entry.id)
                       }
+                      onClick={() => onOpen(entry.id)}
                     >
-                      {entry.priorityName}
-                    </span>
-                  </div>
-                  <h3>{entry.name}</h3>
-                  <p>{entry.description || "Sem descrição informada."}</p>
-                  <FlagBadges suggestion={entry} />
-                  <footer>
-                    <span className="suggestion-owner">
-                      <Avatar
-                        name={entry.responsibleName}
-                        photo={entry.responsiblePhotoDataUrl}
-                        small
-                      />
-                      <span>{entry.responsibleName}</span>
-                    </span>
-                    <span className="suggestion-card-actions">
-                      {entry.comments.length > 0 && (
-                        <span>
-                          <MessageSquareText size={13} />
-                          {entry.comments.length}
-                        </span>
-                      )}
-                      {canEdit && (
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label={`Editar ${entry.name}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onEdit(entry);
-                          }}
+                      <div className="suggestion-card-top">
+                        <span>{entry.protocol}</span>
+                        <span
+                          className="suggestion-color-badge"
+                          style={
+                            {
+                              "--badge-color": entry.priorityColor,
+                            } as CSSProperties
+                          }
                         >
-                          <Pencil size={14} />
-                        </button>
-                      )}
-                      {canDelete &&
-                        (entry.responsibleEmail === currentUserEmail ||
-                          canDeleteOthers) && (
-                          <button
-                            type="button"
-                            className="icon-button danger-action"
-                            aria-label={`Excluir ${entry.name}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onDelete(entry);
-                            }}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                    </span>
-                  </footer>
-                </article>
-              ))}
+                          {entry.priorityName}
+                        </span>
+                      </div>
+                      <h3>{entry.name}</h3>
+                      <p>{entry.description || "Sem descrição informada."}</p>
+                      <FlagBadges suggestion={entry} />
+                      <footer>
+                        <span className="suggestion-owner">
+                          <Avatar
+                            name={entry.responsibleName}
+                            photo={entry.responsiblePhotoDataUrl}
+                            small
+                          />
+                          <span>{entry.responsibleName}</span>
+                        </span>
+                        <span className="suggestion-card-actions">
+                          {entry.comments.length > 0 && (
+                            <span>
+                              <MessageSquareText size={13} />
+                              {entry.comments.length}
+                            </span>
+                          )}
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="icon-button"
+                              aria-label={`Editar ${entry.name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onEdit(entry);
+                              }}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          )}
+                          {canDelete &&
+                            (entry.responsibleEmail === currentUserEmail ||
+                              canDeleteOthers) && (
+                              <button
+                                type="button"
+                                className="icon-button danger-action"
+                                aria-label={`Excluir ${entry.name}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onDelete(entry);
+                                }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                        </span>
+                      </footer>
+                    </article>
+                  ))}
+                </PaginatedItems>
+              }
               {cards.length === 0 && (
                 <div className="suggestion-column-empty">
                   Nenhuma sugestão nesta etapa
@@ -1710,56 +1724,62 @@ export function SuggestionCatalogsModule({
             As alterações são refletidas automaticamente no módulo Sugestões.
           </small>
         </header>
-        {items.map((item) => (
-          <article data-reminder-entity-id={item.id} key={item.id}>
-            <i style={{ background: item.color }} />
-            <div className="suggestion-catalog-data">
-              <strong>{item.name}</strong>
-              <small>
-                {item.description ||
-                  (isSuggestionStatus(item)
-                    ? `Coluna: ${item.kanbanColumn}`
-                    : `Ordem ${item.displayOrder}`)}
-              </small>
-            </div>
-            {isSuggestionStatus(item) && item.isInitial && (
-              <span className="suggestion-initial-badge">Etapa inicial</span>
-            )}
-            <span
-              className={`status-pill ${item.active ? "positive" : "negative"}`}
-            >
-              {item.active ? "Ativo" : "Inativo"}
-            </span>
-            <button
-              className="catalog-icon-button"
-              onClick={() =>
-                isSuggestionStatus(item)
-                  ? setEditingStatus(item)
-                  : setEditingPriority(item)
-              }
-              aria-label={`Editar ${item.name}`}
-            >
-              <Pencil size={15} />
-            </button>
-            <button
-              className="catalog-icon-button delete"
-              onClick={() =>
-                void operate(
-                  {
-                    action: isSuggestionStatus(item)
-                      ? "deleteSuggestionStatus"
-                      : "deleteSuggestionPriority",
-                    id: item.id,
-                  },
-                  `${isSuggestionStatus(item) ? "Status" : "Prioridade"} excluído com sucesso.`,
-                )
-              }
-              aria-label={`Excluir ${item.name}`}
-            >
-              <Trash2 size={15} />
-            </button>
-          </article>
-        ))}
+        {
+          <PaginatedItems label="sugestões">
+            {items.map((item) => (
+              <article data-reminder-entity-id={item.id} key={item.id}>
+                <i style={{ background: item.color }} />
+                <div className="suggestion-catalog-data">
+                  <strong>{item.name}</strong>
+                  <small>
+                    {item.description ||
+                      (isSuggestionStatus(item)
+                        ? `Coluna: ${item.kanbanColumn}`
+                        : `Ordem ${item.displayOrder}`)}
+                  </small>
+                </div>
+                {isSuggestionStatus(item) && item.isInitial && (
+                  <span className="suggestion-initial-badge">
+                    Etapa inicial
+                  </span>
+                )}
+                <span
+                  className={`status-pill ${item.active ? "positive" : "negative"}`}
+                >
+                  {item.active ? "Ativo" : "Inativo"}
+                </span>
+                <button
+                  className="catalog-icon-button"
+                  onClick={() =>
+                    isSuggestionStatus(item)
+                      ? setEditingStatus(item)
+                      : setEditingPriority(item)
+                  }
+                  aria-label={`Editar ${item.name}`}
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  className="catalog-icon-button delete"
+                  onClick={() =>
+                    void operate(
+                      {
+                        action: isSuggestionStatus(item)
+                          ? "deleteSuggestionStatus"
+                          : "deleteSuggestionPriority",
+                        id: item.id,
+                      },
+                      `${isSuggestionStatus(item) ? "Status" : "Prioridade"} excluído com sucesso.`,
+                    )
+                  }
+                  aria-label={`Excluir ${item.name}`}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </article>
+            ))}
+          </PaginatedItems>
+        }
       </div>
       {editingPriority !== undefined && (
         <SuggestionPriorityModal

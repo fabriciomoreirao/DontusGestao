@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import CommentHistory from "@/app/CommentHistory";
 import CommentInput, { CommentContent, openFile } from "@/app/CommentInput";
 
@@ -480,81 +482,85 @@ export default function MarketingWorkspaceModule({
                   }
                 </span>
               </header>
-              {visible
-                .filter(
-                  (record) => marketingStage(record.item.status) === stage,
-                )
-                .map(({ item, detail }) => (
-                  <article
-                    className="standard-card marketing-card"
-                    draggable={canEdit}
-                    data-reminder-entity-id={item.id}
-                    data-reminder-customer-name={
-                      item.customer_name || item.title
-                    }
-                    onDragStart={(event) => {
-                      setDragging(item);
-                      beginKanbanDrag(event, "text/plain", item.id);
-                    }}
-                    onDragEnd={() => {
-                      setDragging(null);
-                      setDropStage("");
-                    }}
-                    onClick={() => !dragging && setSelected(item)}
-                    key={item.id}
-                  >
-                    <small>{detail.type}</small>
-                    <h3>{item.title}</h3>
-                    <p>
-                      {detail.campaign ||
-                        detail.summary ||
-                        "Sem campanha vinculada"}
-                    </p>
-                    <div>
-                      <span>{detail.channel || "Canal não informado"}</span>
-                      <span>{date(detail.dueDate)}</span>
-                    </div>
-                    {detail.attachments.length > 0 && (
-                      <span className="marketing-media-count">
-                        <ImageIcon size={13} />
-                        {detail.attachments.length} arquivo(s)
-                      </span>
-                    )}
-                    <footer>
-                      <span
-                        className="marketing-owner-chip"
-                        data-collaborator-name={item.owner}
+              {
+                <PaginatedItems label="registros de marketing">
+                  {visible
+                    .filter(
+                      (record) => marketingStage(record.item.status) === stage,
+                    )
+                    .map(({ item, detail }) => (
+                      <article
+                        className="standard-card marketing-card"
+                        draggable={canEdit}
+                        data-reminder-entity-id={item.id}
+                        data-reminder-customer-name={
+                          item.customer_name || item.title
+                        }
+                        onDragStart={(event) => {
+                          setDragging(item);
+                          beginKanbanDrag(event, "text/plain", item.id);
+                        }}
+                        onDragEnd={() => {
+                          setDragging(null);
+                          setDropStage("");
+                        }}
+                        onClick={() => !dragging && setSelected(item)}
+                        key={item.id}
                       >
-                        {item.owner || "Fila de Marketing"}
-                      </span>
-                      <ChevronRight size={16} />
-                    </footer>
-                    {canEdit && (
-                      <span className="marketing-card-actions">
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditing(item);
-                          }}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          className="delete"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void operate(
-                              { action: "deleteWorkItem", id: item.id },
-                              "Item de Marketing excluído.",
-                            );
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </span>
-                    )}
-                  </article>
-                ))}
+                        <small>{detail.type}</small>
+                        <h3>{item.title}</h3>
+                        <p>
+                          {detail.campaign ||
+                            detail.summary ||
+                            "Sem campanha vinculada"}
+                        </p>
+                        <div>
+                          <span>{detail.channel || "Canal não informado"}</span>
+                          <span>{date(detail.dueDate)}</span>
+                        </div>
+                        {detail.attachments.length > 0 && (
+                          <span className="marketing-media-count">
+                            <ImageIcon size={13} />
+                            {detail.attachments.length} arquivo(s)
+                          </span>
+                        )}
+                        <footer>
+                          <span
+                            className="marketing-owner-chip"
+                            data-collaborator-name={item.owner}
+                          >
+                            {item.owner || "Fila de Marketing"}
+                          </span>
+                          <ChevronRight size={16} />
+                        </footer>
+                        {canEdit && (
+                          <span className="marketing-card-actions">
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditing(item);
+                              }}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              className="delete"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void operate(
+                                  { action: "deleteWorkItem", id: item.id },
+                                  "Item de Marketing excluído.",
+                                );
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </span>
+                        )}
+                      </article>
+                    ))}
+                </PaginatedItems>
+              }
             </section>
           ))}
         </div>
@@ -570,25 +576,29 @@ export default function MarketingWorkspaceModule({
             <span>PRAZO</span>
             <span />
           </header>
-          {visible.map(({ item, detail }) => (
-            <button
-              data-reminder-entity-id={item.id}
-              key={item.id}
-              onClick={() => setSelected(item)}
-            >
-              <span>{detail.type}</span>
-              <span>
-                <strong>{item.title}</strong>
-                <small>{detail.summary}</small>
-              </span>
-              <span>{detail.campaign || "—"}</span>
-              <span>{detail.channel || "—"}</span>
-              <span>{item.owner}</span>
-              <span>{marketingStage(item.status)}</span>
-              <span>{date(detail.dueDate)}</span>
-              <ChevronRight size={15} />
-            </button>
-          ))}
+          {
+            <PaginatedItems label="registros de marketing">
+              {visible.map(({ item, detail }) => (
+                <button
+                  data-reminder-entity-id={item.id}
+                  key={item.id}
+                  onClick={() => setSelected(item)}
+                >
+                  <span>{detail.type}</span>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{detail.summary}</small>
+                  </span>
+                  <span>{detail.campaign || "—"}</span>
+                  <span>{detail.channel || "—"}</span>
+                  <span>{item.owner}</span>
+                  <span>{marketingStage(item.status)}</span>
+                  <span>{date(detail.dueDate)}</span>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+            </PaginatedItems>
+          }
         </div>
       )}
       {visible.length === 0 && (
@@ -876,18 +886,21 @@ function CampaignWorkspace({
                 <header>Campanhas por responsável</header>
                 <div className="campaign-owner-ranking">
                   {owners.length ? (
-                    owners.map((name, index) => (
-                      <span key={name}>
-                        <b>#{index + 1}</b>
-                        <strong>{name}</strong>
-                        <em>
-                          {
-                            campaigns.filter(({ item }) => item.owner === name)
-                              .length
-                          }
-                        </em>
-                      </span>
-                    ))
+                    <PaginatedItems label="registros de marketing">
+                      {owners.map((name, index) => (
+                        <span key={name}>
+                          <b>#{index + 1}</b>
+                          <strong>{name}</strong>
+                          <em>
+                            {
+                              campaigns.filter(
+                                ({ item }) => item.owner === name,
+                              ).length
+                            }
+                          </em>
+                        </span>
+                      ))}
+                    </PaginatedItems>
                   ) : (
                     <p>Nenhuma campanha cadastrada.</p>
                   )}
@@ -899,24 +912,26 @@ function CampaignWorkspace({
                 <header>Campanhas publicadas</header>
                 {campaigns.filter(({ item }) => item.status === "Publicada")
                   .length ? (
-                  campaigns
-                    .filter(({ item }) => item.status === "Publicada")
-                    .map(({ item, detail }) => (
-                      <button
-                        data-reminder-entity-id={item.id}
-                        key={item.id}
-                        onClick={() => {
-                          setSelected(item);
-                          onChangeMode("campaigns");
-                        }}
-                      >
-                        <span>
-                          <strong>{detail.name}</strong>
-                          <small>Início em {date(detail.startDate)}</small>
-                        </span>
-                        <ChevronRight size={16} />
-                      </button>
-                    ))
+                  <PaginatedItems label="registros de marketing">
+                    {campaigns
+                      .filter(({ item }) => item.status === "Publicada")
+                      .map(({ item, detail }) => (
+                        <button
+                          data-reminder-entity-id={item.id}
+                          key={item.id}
+                          onClick={() => {
+                            setSelected(item);
+                            onChangeMode("campaigns");
+                          }}
+                        >
+                          <span>
+                            <strong>{detail.name}</strong>
+                            <small>Início em {date(detail.startDate)}</small>
+                          </span>
+                          <ChevronRight size={16} />
+                        </button>
+                      ))}
+                  </PaginatedItems>
                 ) : (
                   <p>Nenhuma campanha publicada.</p>
                 )}
@@ -1019,41 +1034,45 @@ function CampaignWorkspace({
                 {visible.filter(({ item }) => item.status === stage).length}
               </span>
             </header>
-            {visible
-              .filter(({ item }) => item.status === stage)
-              .map(({ item, detail }) => (
-                <article
-                  data-reminder-entity-id={item.id}
-                  className="standard-card campaign-card"
-                  draggable={canEdit}
-                  key={item.id}
-                  onDragStart={(event) => {
-                    beginKanbanDrag(event, "text/plain", item.id);
-                    setDragging(item);
-                  }}
-                  onDragEnd={() => setDragging(null)}
-                  onClick={() => !dragging && setSelected(item)}
-                >
-                  <small>{stage}</small>
-                  <h3>{detail.name}</h3>
-                  <p>{detail.description}</p>
-                  <div>
-                    <span>
-                      <CalendarDays size={13} /> {date(detail.startDate)}
-                    </span>
-                    <span>{detail.attachments.length} arquivo(s)</span>
-                  </div>
-                  <footer>
-                    <span
-                      className="marketing-owner-chip"
-                      data-collaborator-name={item.owner}
+            {
+              <PaginatedItems label="registros de marketing">
+                {visible
+                  .filter(({ item }) => item.status === stage)
+                  .map(({ item, detail }) => (
+                    <article
+                      data-reminder-entity-id={item.id}
+                      className="standard-card campaign-card"
+                      draggable={canEdit}
+                      key={item.id}
+                      onDragStart={(event) => {
+                        beginKanbanDrag(event, "text/plain", item.id);
+                        setDragging(item);
+                      }}
+                      onDragEnd={() => setDragging(null)}
+                      onClick={() => !dragging && setSelected(item)}
                     >
-                      {item.owner || "Marketing"}
-                    </span>
-                    <ChevronRight size={16} />
-                  </footer>
-                </article>
-              ))}
+                      <small>{stage}</small>
+                      <h3>{detail.name}</h3>
+                      <p>{detail.description}</p>
+                      <div>
+                        <span>
+                          <CalendarDays size={13} /> {date(detail.startDate)}
+                        </span>
+                        <span>{detail.attachments.length} arquivo(s)</span>
+                      </div>
+                      <footer>
+                        <span
+                          className="marketing-owner-chip"
+                          data-collaborator-name={item.owner}
+                        >
+                          {item.owner || "Marketing"}
+                        </span>
+                        <ChevronRight size={16} />
+                      </footer>
+                    </article>
+                  ))}
+              </PaginatedItems>
+            }
           </section>
         ))}
       </div>

@@ -1,5 +1,8 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+import { findJourneyAgendaType, journeyAgendaType } from "@/lib/agenda-context";
+
 import FollowupHistory from "@/app/FollowupHistory";
 import {
   followupVersion,
@@ -1128,33 +1131,37 @@ export default function CustomerSuccessJourneyModule({
         </div>
       ) : view === "grid" ? (
         <div className="cs-pipeline-grid">
-          {visible.map(({ item, journey }) => (
-            <JourneyCard
-              key={item.id}
-              item={item}
-              journey={journey}
-              featureUniverse={featureUniverse}
-              commercial={items.find(
-                (entry) => entry.id === journey.sourceLeadId,
-              )}
-              employee={employees.find(
-                (employee) => employee.displayName === item.owner,
-              )}
-              canEdit={phaseCanEdit(journey.phase)}
-              canDelete={
-                canDelete &&
-                (journey.phase !== "validation" || validationAccess.edit)
-              }
-              onOpen={() => setSelected(item)}
-              onEdit={() => setEditing(item)}
-              onDelete={() =>
-                void operate(
-                  { action: "deleteWorkItem", id: item.id },
-                  "Cliente excluído com sucesso.",
-                )
-              }
-            />
-          ))}
+          {
+            <PaginatedItems label="acompanhamentos">
+              {visible.map(({ item, journey }) => (
+                <JourneyCard
+                  key={item.id}
+                  item={item}
+                  journey={journey}
+                  featureUniverse={featureUniverse}
+                  commercial={items.find(
+                    (entry) => entry.id === journey.sourceLeadId,
+                  )}
+                  employee={employees.find(
+                    (employee) => employee.displayName === item.owner,
+                  )}
+                  canEdit={phaseCanEdit(journey.phase)}
+                  canDelete={
+                    canDelete &&
+                    (journey.phase !== "validation" || validationAccess.edit)
+                  }
+                  onOpen={() => setSelected(item)}
+                  onEdit={() => setEditing(item)}
+                  onDelete={() =>
+                    void operate(
+                      { action: "deleteWorkItem", id: item.id },
+                      "Cliente excluído com sucesso.",
+                    )
+                  }
+                />
+              ))}
+            </PaginatedItems>
+          }
         </div>
       ) : (
         <JourneyList
@@ -1803,77 +1810,86 @@ function JourneyList({
         <span>HEALTH</span>
         <span>AÇÕES</span>
       </header>
-      {records.map(({ item, journey }) => {
-        const lead = parseCommercial(
-          sourceItems.find((entry) => entry.id === journey.sourceLeadId)
-            ?.description || "",
-        );
-        const score = healthScore(journey, featureUniverse);
-        return (
-          <article data-reminder-entity-id={item.id} key={item.id}>
-            <span>{journey.clientId || item.id.slice(0, 8)}</span>
-            <span>
-              <strong>
-                {item.title}
-                {score < 50 && (
-                  <CircleHelp
-                    className="followup-critical-icon"
-                    size={16}
-                    aria-label={`Cliente com atenção: score ${score}%`}
-                  />
-                )}
-              </strong>
-              {hasTrainingPending(journey) && (
-                <span className="training-pending-badge">
-                  Treinamento em haver
+      {
+        <PaginatedItems label="acompanhamentos">
+          {records.map(({ item, journey }) => {
+            const lead = parseCommercial(
+              sourceItems.find((entry) => entry.id === journey.sourceLeadId)
+                ?.description || "",
+            );
+            const score = healthScore(journey, featureUniverse);
+            return (
+              <article data-reminder-entity-id={item.id} key={item.id}>
+                <span>{journey.clientId || item.id.slice(0, 8)}</span>
+                <span>
+                  <strong>
+                    {item.title}
+                    {score < 50 && (
+                      <CircleHelp
+                        className="followup-critical-icon"
+                        size={16}
+                        aria-label={`Cliente com atenção: score ${score}%`}
+                      />
+                    )}
+                  </strong>
+                  {hasTrainingPending(journey) && (
+                    <span className="training-pending-badge">
+                      Treinamento em haver
+                    </span>
+                  )}
+                  <small>
+                    <PhoneLink phone={lead?.phone || item.customer_name} />
+                  </small>
                 </span>
-              )}
-              <small>
-                <PhoneLink phone={lead?.phone || item.customer_name} />
-              </small>
-            </span>
-            <span data-collaborator-name={item.owner}>{item.owner}</span>
-            <span>
-              <b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>
-                {journey.status ||
-                  PHASES.find((entry) => entry.id === journey.phase)?.label}
-              </b>
-            </span>
-            <span>
-              {journey.phase === "tracking"
-                ? `${trackedDays(journey, item)} / ${journey.track === "retention" ? 30 : 90}`
-                : "—"}
-            </span>
-            <span
-              className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}
-            >
-              {score}%
-            </span>
-            <span>
-              <button onClick={() => onOpen(item)} aria-label="Abrir cliente">
-                <ExternalLink size={14} />
-              </button>
-              {canEdit && (
-                <button
-                  onClick={() => onEdit(item)}
-                  aria-label="Editar cliente"
+                <span data-collaborator-name={item.owner}>{item.owner}</span>
+                <span>
+                  <b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>
+                    {journey.status ||
+                      PHASES.find((entry) => entry.id === journey.phase)?.label}
+                  </b>
+                </span>
+                <span>
+                  {journey.phase === "tracking"
+                    ? `${trackedDays(journey, item)} / ${journey.track === "retention" ? 30 : 90}`
+                    : "—"}
+                </span>
+                <span
+                  className={
+                    score >= 70 ? "good" : score >= 40 ? "warn" : "bad"
+                  }
                 >
-                  <Pencil size={14} />
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  className="delete"
-                  onClick={() => onDelete(item)}
-                  aria-label="Excluir cliente"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </span>
-          </article>
-        );
-      })}
+                  {score}%
+                </span>
+                <span>
+                  <button
+                    onClick={() => onOpen(item)}
+                    aria-label="Abrir cliente"
+                  >
+                    <ExternalLink size={14} />
+                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => onEdit(item)}
+                      aria-label="Editar cliente"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      className="delete"
+                      onClick={() => onDelete(item)}
+                      aria-label="Excluir cliente"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </span>
+              </article>
+            );
+          })}
+        </PaginatedItems>
+      }
     </section>
   );
 }
@@ -2270,7 +2286,10 @@ export function JourneyDrawer({
           `${entry.name} ${entry.departmentName}`,
         ),
       ) ?? agendaModule.calendars.find((entry) => entry.active);
-    const type = agendaModule.types.find((entry) => entry.active);
+    const type = findJourneyAgendaType(
+      agendaModule.types,
+      journeyAgendaType("cs", item.description) ?? "Reunião",
+    );
     const agendaStatus = agendaModule.statuses.find((entry) => entry.active);
     const collaborator =
       agendaModule.collaborators.find(
@@ -3887,25 +3906,30 @@ function ScoreEvolutionPanel({ entries }: { entries: ScoreEvolutionEntry[] }) {
         </p>
       ) : (
         <div className="cs-score-evolution-list">
-          {visible.map((entry) => (
-            <article key={entry.id}>
-              <strong>
-                {entry.previousScore}% <ArrowRight size={13} /> {entry.score}%
-              </strong>
-              <span>
-                <b>Base</b> {entry.featuresBase.join(", ") || "Nenhuma"}
-              </span>
-              <span>
-                <b>Em uso</b> {entry.featuresActive.join(", ") || "Nenhuma"}
-              </span>
-              <span>
-                <b>Plus</b> {entry.featuresPlus.join(", ") || "Nenhuma"}
-              </span>
-              <footer>
-                {entry.actor} · {dateTime(entry.createdAt)}
-              </footer>
-            </article>
-          ))}
+          {
+            <PaginatedItems label="acompanhamentos">
+              {visible.map((entry) => (
+                <article key={entry.id}>
+                  <strong>
+                    {entry.previousScore}% <ArrowRight size={13} />{" "}
+                    {entry.score}%
+                  </strong>
+                  <span>
+                    <b>Base</b> {entry.featuresBase.join(", ") || "Nenhuma"}
+                  </span>
+                  <span>
+                    <b>Em uso</b> {entry.featuresActive.join(", ") || "Nenhuma"}
+                  </span>
+                  <span>
+                    <b>Plus</b> {entry.featuresPlus.join(", ") || "Nenhuma"}
+                  </span>
+                  <footer>
+                    {entry.actor} · {dateTime(entry.createdAt)}
+                  </footer>
+                </article>
+              ))}
+            </PaginatedItems>
+          }
         </div>
       )}
     </section>

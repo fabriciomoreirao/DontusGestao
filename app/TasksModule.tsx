@@ -1,5 +1,12 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import "./task-search-filters.css";
+import {
+  taskDeliveryDate,
+  taskPriorityRequest,
+  canRequestTaskPriority,
+} from "@/lib/task-details";
 import { canInteractWithTask } from "@/lib/task-interaction";
 import { LinkedDevelopmentDrawer } from "@/app/DevelopmentModule";
 import { desktopWhatsappUrl } from "@/lib/whatsapp";
@@ -361,7 +368,7 @@ function TaskDeliveryDeadline({
   task: Pick<CorporateTask, "dueAt" | "slaDueAt">;
   compact?: boolean;
 }) {
-  const value = task.dueAt ?? task.slaDueAt;
+  const value = taskDeliveryDate(task);
   const date = value ? new Date(value) : null;
   const valid = date !== null && Number.isFinite(date.getTime());
   const full = valid ? dt(value) : "Não definido";
@@ -385,6 +392,21 @@ function TaskDeliveryDeadline({
         {compact ? "Entrega: " : "Prazo de entrega: "}
         {valid ? <time dateTime={value!}>{label}</time> : "Não definido"}
       </span>
+    </span>
+  );
+}
+
+function TaskPriorityBadge({ history }: { history: TaskHistory[] }) {
+  const request = taskPriorityRequest(history);
+  if (!request) return null;
+  const label = `Prioridade solicitada por: ${request.actorName}`;
+  return (
+    <span
+      className="task-priority-requested-by"
+      title={`Prioridade solicitada por: ${request.actorName} · ${dt(request.createdAt)}`}
+    >
+      <Flag size={14} />
+      <span>{label}</span>
     </span>
   );
 }
@@ -997,7 +1019,6 @@ function Kanban({
   onMove: (task: CorporateTask, statusId: string) => void;
   onDelete: (task: CorporateTask) => void;
 }) {
-  const [limits, setLimits] = useState<Record<string, number>>({});
   const [draggedId, setDraggedId] = useState("");
   const visibleStatuses = statuses
     .filter(
@@ -1012,8 +1033,6 @@ function Kanban({
     <div className="task-board">
       {visibleStatuses.map((status) => {
         const column = tasks.filter((task) => task.statusId === status.id);
-        const limit = limits[status.id] ?? 10;
-        const visibleTasks = column.slice(0, limit);
         return (
           <section
             className="task-column"
@@ -1052,130 +1071,125 @@ function Kanban({
               {column.length === 0 && (
                 <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>
               )}
-              {visibleTasks.map((task) => (
-                <article
-                  draggable={!busy && canDrag(task)}
-                  tabIndex={0}
-                  role="button"
-                  className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`}
-                  data-reminder-entity-id={task.id}
-                  data-reminder-client-id={task.customerCode}
-                  data-reminder-customer-name={task.customerName}
-                  key={task.id}
-                  onDragStart={(e) => {
-                    beginKanbanDrag(e, "taskId", task.id);
-                    setDraggedId(task.id);
-                  }}
-                  onDragEnd={() => {
-                    setDraggedId("");
-                    document
-                      .querySelectorAll(".task-column.drag-over")
-                      .forEach((column) =>
-                        column.classList.remove("drag-over"),
-                      );
-                  }}
-                  onClick={() => onOpen(task)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.target === event.currentTarget &&
-                      (event.key === "Enter" || event.key === " ")
-                    ) {
-                      event.preventDefault();
-                      onOpen(task);
-                    }
-                  }}
-                >
-                  <div className="task-card-heading">
-                    <strong className="task-card-title">{task.title}</strong>
-                    <TaskClientStateBadge
-                      state={task.clientNotificationState}
-                    />
-                  </div>
-                  <div className="task-card-labels">
-                    <span className="task-card-type">
-                      <CircleDot size={13} />
-                      <span>{task.typeName}</span>
-                    </span>
-                  </div>
-                  <div className="task-card-meta">
-                    <span className="task-card-priority">
-                      <i style={{ background: task.priorityColor }} />
-                      {task.priorityName}
-                    </span>
-                    <span
-                      className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}
+              {
+                <PaginatedItems label="tarefas">
+                  {column.map((task) => (
+                    <article
+                      draggable={!busy && canDrag(task)}
+                      tabIndex={0}
+                      role="button"
+                      className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`}
+                      data-reminder-entity-id={task.id}
+                      data-reminder-client-id={task.customerCode}
+                      data-reminder-customer-name={task.customerName}
+                      key={task.id}
+                      onDragStart={(e) => {
+                        beginKanbanDrag(e, "taskId", task.id);
+                        setDraggedId(task.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedId("");
+                        document
+                          .querySelectorAll(".task-column.drag-over")
+                          .forEach((column) =>
+                            column.classList.remove("drag-over"),
+                          );
+                      }}
+                      onClick={() => onOpen(task)}
+                      onKeyDown={(event) => {
+                        if (
+                          event.target === event.currentTarget &&
+                          (event.key === "Enter" || event.key === " ")
+                        ) {
+                          event.preventDefault();
+                          onOpen(task);
+                        }
+                      }}
                     >
-                      <Clock3 size={12} />{" "}
-                      {task.completedAt
-                        ? "Concluída"
-                        : `${task.slaState} · ${dt(task.slaDueAt)}`}
-                    </span>
-                  </div>
-                  <footer>
-                    <div className="task-card-sector-deadline">
-                      <span className="task-card-department">
-                        <UsersRound size={14} /> {task.departmentName}
-                      </span>
-                      <TaskDeliveryDeadline task={task} compact />
-                    </div>
-                    <span className="task-card-owner">
-                      <CollaboratorAvatar
-                        collaborator={collaborators.find(
-                          (item) => item.id === task.assigneeUserId,
-                        )}
-                      />
-                      <span>
-                        <small>Responsável</small>
-                        <b>{task.assigneeName}</b>
-                      </span>
-                      <ChevronRight size={17} className="task-card-open-icon" />
-                    </span>
-                  </footer>
-                  {canEdit && task.canModify && (
-                    <div className="task-card-bottom-actions">
-                      <span className="task-card-actions">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onEdit(task);
-                          }}
-                          title="Editar tarefa"
-                          aria-label="Editar tarefa"
+                      <div className="task-card-heading">
+                        <strong className="task-card-title">
+                          {task.title}
+                        </strong>
+                        <TaskClientStateBadge
+                          state={task.clientNotificationState}
+                        />
+                      </div>
+                      <div className="task-card-labels">
+                        <span className="task-card-type">
+                          <CircleDot size={13} />
+                          <span>{task.typeName}</span>
+                        </span>
+                      </div>
+                      <div className="task-card-meta">
+                        <span className="task-card-priority">
+                          <i style={{ background: task.priorityColor }} />
+                          {task.priorityName}
+                        </span>
+                        <span
+                          className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}
                         >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="delete"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onDelete(task);
-                          }}
-                          title="Excluir tarefa"
-                          aria-label="Excluir tarefa"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </span>
-                    </div>
-                  )}
-                </article>
-              ))}
-              {column.length > visibleTasks.length && (
-                <button
-                  type="button"
-                  className="task-column-more"
-                  onClick={() =>
-                    setLimits((current) => ({
-                      ...current,
-                      [status.id]: limit + 10,
-                    }))
-                  }
-                >
-                  Ver mais ({column.length - visibleTasks.length})
-                </button>
-              )}
+                          <Clock3 size={12} />{" "}
+                          {task.completedAt
+                            ? "Concluída"
+                            : `${task.slaState} · ${dt(task.slaDueAt)}`}
+                        </span>
+                      </div>
+                      <footer>
+                        <div className="task-card-sector-deadline">
+                          <span className="task-card-department">
+                            <UsersRound size={14} /> {task.departmentName}
+                          </span>
+                          <TaskDeliveryDeadline task={task} compact />
+                        </div>
+                        <span className="task-card-owner">
+                          <CollaboratorAvatar
+                            collaborator={collaborators.find(
+                              (item) => item.id === task.assigneeUserId,
+                            )}
+                          />
+                          <span>
+                            <small>Responsável</small>
+                            <b>{task.assigneeName}</b>
+                          </span>
+                          <ChevronRight
+                            size={17}
+                            className="task-card-open-icon"
+                          />
+                        </span>
+                      </footer>
+                      {canEdit && task.canModify && (
+                        <div className="task-card-bottom-actions">
+                          <span className="task-card-actions">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onEdit(task);
+                              }}
+                              title="Editar tarefa"
+                              aria-label="Editar tarefa"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              className="delete"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onDelete(task);
+                              }}
+                              title="Excluir tarefa"
+                              aria-label="Excluir tarefa"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </span>
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </PaginatedItems>
+              }
             </div>
           </section>
         );
@@ -1235,58 +1249,60 @@ function TaskList({
           Nenhuma tarefa encontrada com estes filtros.
         </div>
       ) : (
-        tasks.map((task) => (
-          <button
-            className="task-table-row"
-            data-reminder-entity-id={task.id}
-            data-reminder-client-id={task.customerCode}
-            data-reminder-customer-name={task.customerName}
-            onClick={() => onOpen(task)}
-            key={task.id}
-          >
-            <span>
-              <b>
-                #{task.number} · {task.title}
-              </b>
-              <small>
-                {task.protocol || task.customerName || "Sem protocolo"}
-              </small>
-            </span>
-            <span>{task.typeName}</span>
-            <span>{task.departmentName}</span>
-            <span>
-              <i
-                className="priority-dot"
-                style={{ background: task.priorityColor }}
-              />
-              {task.priorityName}
-            </span>
-            <span>
-              <b>{task.statusName}</b>
-              <small className="task-list-client-state">
-                {task.clientNotificationState}
-              </small>
-            </span>
-            <span className="task-assignee">
-              <CollaboratorAvatar
-                collaborator={collaborators.find(
-                  (item) => item.id === task.assigneeUserId,
-                )}
-              />
-              <em>{task.assigneeName}</em>
-            </span>
-            <span>
-              <b className={task.slaState === "Vencido" ? "danger-text" : ""}>
-                {task.slaState}
-              </b>
-              <small>{dt(task.slaDueAt)}</small>
-            </span>
-            <span>
-              {dt(task.updatedAt)}
-              <ChevronRight size={15} />
-            </span>
-          </button>
-        ))
+        <PaginatedItems label="tarefas e cadastros">
+          {tasks.map((task) => (
+            <button
+              className="task-table-row"
+              data-reminder-entity-id={task.id}
+              data-reminder-client-id={task.customerCode}
+              data-reminder-customer-name={task.customerName}
+              onClick={() => onOpen(task)}
+              key={task.id}
+            >
+              <span>
+                <b>
+                  #{task.number} · {task.title}
+                </b>
+                <small>
+                  {task.protocol || task.customerName || "Sem protocolo"}
+                </small>
+              </span>
+              <span>{task.typeName}</span>
+              <span>{task.departmentName}</span>
+              <span>
+                <i
+                  className="priority-dot"
+                  style={{ background: task.priorityColor }}
+                />
+                {task.priorityName}
+              </span>
+              <span>
+                <b>{task.statusName}</b>
+                <small className="task-list-client-state">
+                  {task.clientNotificationState}
+                </small>
+              </span>
+              <span className="task-assignee">
+                <CollaboratorAvatar
+                  collaborator={collaborators.find(
+                    (item) => item.id === task.assigneeUserId,
+                  )}
+                />
+                <em>{task.assigneeName}</em>
+              </span>
+              <span>
+                <b className={task.slaState === "Vencido" ? "danger-text" : ""}>
+                  {task.slaState}
+                </b>
+                <small>{dt(task.slaDueAt)}</small>
+              </span>
+              <span>
+                {dt(task.updatedAt)}
+                <ChevronRight size={15} />
+              </span>
+            </button>
+          ))}
+        </PaginatedItems>
       )}
     </div>
   );
@@ -1457,7 +1473,10 @@ export function CreateTaskModal({
         statusId: null,
         sourceDepartmentId: departmentId,
         currentDepartmentId: departmentId,
-        assigneeUserId: null,
+        assigneeUserId:
+          module.collaborators.find(
+            (person) => person.email.toLowerCase() === user.email.toLowerCase(),
+          )?.id ?? null,
         customerId: customerId || null,
         customerCode,
         customerName:
@@ -2006,6 +2025,11 @@ export function TaskDetail({
       collaborator.email.toLocaleLowerCase() === user.email.toLocaleLowerCase(),
   );
   const currentUserId = currentCollaborator?.id;
+  const canRequestPriority = canRequestTaskPriority(
+    canEdit,
+    user.isCoordinator,
+    currentCollaborator,
+  );
   const { canClaim, canTransfer: canTransferResponsible } =
     taskAssignmentAccess(task, currentCollaborator);
   const responsibleChoices = canClaim
@@ -2160,6 +2184,7 @@ export function TaskDetail({
             {task.departmentName || "Setor não informado"}
           </span>
           <TaskDeliveryDeadline task={task} />
+          <TaskPriorityBadge history={task.history} />
         </>
       }
       eyebrow="Detalhes da tarefa"
@@ -2253,6 +2278,26 @@ export function TaskDetail({
             >
               <CalendarDays size={15} />
               Agendar
+            </button>
+          )}
+          {canRequestPriority && (
+            <button
+              type="button"
+              className="task-priority-action"
+              disabled={busy}
+              onClick={() =>
+                void operate(
+                  {
+                    action: "generateTaskPriority",
+                    taskId: task.id,
+                    version: task.version,
+                  },
+                  "Aviso de prioridade enviado ao responsável, aprovador e coordenadores do setor.",
+                )
+              }
+            >
+              <Flag size={15} />
+              Gerar prioridade
             </button>
           )}
         </>
@@ -3932,69 +3977,73 @@ function TaskSettings({
                 <b>{module.collaborators.length} registro(s)</b>
               </div>
               <div className="collaborator-list">
-                {module.collaborators.map((c) => (
-                  <form
-                    key={c.id}
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      const f = new FormData(e.currentTarget);
-                      await operate(
-                        {
-                          action: "saveTaskCollaborator",
-                          userId: c.id,
-                          phone: f.get("phone"),
-                          jobTitle: f.get("jobTitle"),
-                          departmentIds: f.getAll("departmentIds"),
-                          coordinatorDepartmentIds: f.getAll(
-                            "coordinatorDepartmentIds",
-                          ),
-                          active: f.has("active"),
-                        },
-                        "Colaborador atualizado.",
-                      );
-                    }}
-                  >
-                    <div className="collaborator-identity">
-                      <CollaboratorAvatar collaborator={c} />
-                      <span>
-                        <b>{c.name}</b>
-                        <small>{c.email}</small>
-                      </span>
-                    </div>
-                    <PhoneInput
-                      name="phone"
-                      defaultValue={c.phone}
-                      placeholder="Telefone"
-                      aria-label={`Telefone de ${c.name}`}
-                    />
-                    <input
-                      name="jobTitle"
-                      defaultValue={c.jobTitle}
-                      placeholder="Cargo"
-                      aria-label={`Cargo de ${c.name}`}
-                    />
-                    <CheckGroup
-                      legend="Setores"
-                      name="departmentIds"
-                      values={module.departments.map((d) => ({
-                        id: d.id,
-                        label: d.name,
-                      }))}
-                      selected={c.departmentIds}
-                    />
-                    <CheckGroup
-                      legend="Coordena"
-                      name="coordinatorDepartmentIds"
-                      values={module.departments.map((d) => ({
-                        id: d.id,
-                        label: d.name,
-                      }))}
-                      selected={c.coordinatorDepartmentIds}
-                    />
-                    <ActiveField value={c.active} />
-                    <button disabled={busy}>Salvar alterações</button>
-                  </form>
-                ))}
+                {
+                  <PaginatedItems label="tarefas e cadastros">
+                    {module.collaborators.map((c) => (
+                      <form
+                        key={c.id}
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          const f = new FormData(e.currentTarget);
+                          await operate(
+                            {
+                              action: "saveTaskCollaborator",
+                              userId: c.id,
+                              phone: f.get("phone"),
+                              jobTitle: f.get("jobTitle"),
+                              departmentIds: f.getAll("departmentIds"),
+                              coordinatorDepartmentIds: f.getAll(
+                                "coordinatorDepartmentIds",
+                              ),
+                              active: f.has("active"),
+                            },
+                            "Colaborador atualizado.",
+                          );
+                        }}
+                      >
+                        <div className="collaborator-identity">
+                          <CollaboratorAvatar collaborator={c} />
+                          <span>
+                            <b>{c.name}</b>
+                            <small>{c.email}</small>
+                          </span>
+                        </div>
+                        <PhoneInput
+                          name="phone"
+                          defaultValue={c.phone}
+                          placeholder="Telefone"
+                          aria-label={`Telefone de ${c.name}`}
+                        />
+                        <input
+                          name="jobTitle"
+                          defaultValue={c.jobTitle}
+                          placeholder="Cargo"
+                          aria-label={`Cargo de ${c.name}`}
+                        />
+                        <CheckGroup
+                          legend="Setores"
+                          name="departmentIds"
+                          values={module.departments.map((d) => ({
+                            id: d.id,
+                            label: d.name,
+                          }))}
+                          selected={c.departmentIds}
+                        />
+                        <CheckGroup
+                          legend="Coordena"
+                          name="coordinatorDepartmentIds"
+                          values={module.departments.map((d) => ({
+                            id: d.id,
+                            label: d.name,
+                          }))}
+                          selected={c.coordinatorDepartmentIds}
+                        />
+                        <ActiveField value={c.active} />
+                        <button disabled={busy}>Salvar alterações</button>
+                      </form>
+                    ))}
+                  </PaginatedItems>
+                }
               </div>
             </div>
           )}
@@ -4065,39 +4114,44 @@ function LegacyCatalog({
         </b>
       </div>
       <div className="catalog-list">
-        {items.map((item) => (
-          <article
-            className={editingId === item.id ? "selected" : ""}
-            key={item.id}
-          >
-            <i
-              style={{
-                background: item.color ?? (item.active ? "#22c55e" : "#94a3b8"),
-              }}
-            />
-            <span>
-              <b>{item.title}</b>
-              <small>{item.subtitle || "Sem descrição"}</small>
-            </span>
-            <em className={item.active ? "active" : "inactive"}>
-              {item.active ? "Ativo" : "Inativo"}
-            </em>
-            <button type="button" onClick={() => onEdit(item.id)}>
-              Editar
-            </button>
-            {actions && catalog && (
-              <button
-                type="button"
-                className="catalog-delete-action"
-                onClick={() =>
-                  void actions.remove(catalog, item.id, item.title)
-                }
+        {
+          <PaginatedItems label="tarefas e cadastros">
+            {items.map((item) => (
+              <article
+                className={editingId === item.id ? "selected" : ""}
+                key={item.id}
               >
-                <Trash2 size={14} /> Desativar
-              </button>
-            )}
-          </article>
-        ))}
+                <i
+                  style={{
+                    background:
+                      item.color ?? (item.active ? "#22c55e" : "#94a3b8"),
+                  }}
+                />
+                <span>
+                  <b>{item.title}</b>
+                  <small>{item.subtitle || "Sem descrição"}</small>
+                </span>
+                <em className={item.active ? "active" : "inactive"}>
+                  {item.active ? "Ativo" : "Inativo"}
+                </em>
+                <button type="button" onClick={() => onEdit(item.id)}>
+                  Editar
+                </button>
+                {actions && catalog && (
+                  <button
+                    type="button"
+                    className="catalog-delete-action"
+                    onClick={() =>
+                      void actions.remove(catalog, item.id, item.title)
+                    }
+                  >
+                    <Trash2 size={14} /> Desativar
+                  </button>
+                )}
+              </article>
+            ))}
+          </PaginatedItems>
+        }
       </div>
     </div>
   );
@@ -4188,47 +4242,54 @@ function Catalog({
             consultar e reativar registros.
           </p>
         )}
-        {visibleItems.map((item) => (
-          <article
-            className={editingId === item.id ? "selected" : ""}
-            key={item.id}
-          >
-            <i
-              style={{
-                background: item.color ?? (item.active ? "#22c55e" : "#94a3b8"),
-              }}
-            />
-            <span>
-              <b>{item.title}</b>
-              <small>{item.subtitle || "Sem descrição"}</small>
-            </span>
-            <em className={item.active ? "active" : "inactive"}>
-              {item.active ? "Ativo" : "Inativo"}
-            </em>
-            {actions && catalog && (
-              <button
-                type="button"
-                className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`}
-                onClick={() =>
-                  void actions.toggle(catalog, item.id, item.title)
-                }
-                aria-label={
-                  item.active
-                    ? `Bloquear ${item.title}`
-                    : `Reativar ${item.title}`
-                }
-                title={
-                  item.active ? "Bloquear temporariamente" : "Reativar cadastro"
-                }
+        {
+          <PaginatedItems label="tarefas e cadastros">
+            {visibleItems.map((item) => (
+              <article
+                className={editingId === item.id ? "selected" : ""}
+                key={item.id}
               >
-                <Power size={14} />
-              </button>
-            )}
-            <button type="button" onClick={() => onEdit(item.id)}>
-              Editar
-            </button>
-          </article>
-        ))}
+                <i
+                  style={{
+                    background:
+                      item.color ?? (item.active ? "#22c55e" : "#94a3b8"),
+                  }}
+                />
+                <span>
+                  <b>{item.title}</b>
+                  <small>{item.subtitle || "Sem descrição"}</small>
+                </span>
+                <em className={item.active ? "active" : "inactive"}>
+                  {item.active ? "Ativo" : "Inativo"}
+                </em>
+                {actions && catalog && (
+                  <button
+                    type="button"
+                    className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`}
+                    onClick={() =>
+                      void actions.toggle(catalog, item.id, item.title)
+                    }
+                    aria-label={
+                      item.active
+                        ? `Bloquear ${item.title}`
+                        : `Reativar ${item.title}`
+                    }
+                    title={
+                      item.active
+                        ? "Bloquear temporariamente"
+                        : "Reativar cadastro"
+                    }
+                  >
+                    <Power size={14} />
+                  </button>
+                )}
+                <button type="button" onClick={() => onEdit(item.id)}>
+                  Editar
+                </button>
+              </article>
+            ))}
+          </PaginatedItems>
+        }
       </div>
       {editorOpen && (
         <div

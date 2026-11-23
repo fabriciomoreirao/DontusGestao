@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import {
   ArrowRight,
   BarChart3,
@@ -280,68 +282,70 @@ export default function SatisfactionSurveysModule({
             <p>Crie a pesquisa, vincule o setor e monte as perguntas.</p>
           </div>
         ) : (
-          surveys.map(({ item, survey }) => (
-            <article key={item.id}>
-              <header>
-                <span>
-                  <small>{survey.sectorName}</small>
-                  <h2>{survey.name}</h2>
-                </span>
-                <b className={survey.active ? "active" : "inactive"}>
-                  {survey.active ? "Ativa" : "Inativa"}
-                </b>
-              </header>
-              <div>
-                <span>
-                  <strong>{survey.questions.length}</strong>
-                  <small>perguntas</small>
-                </span>
-                <span>
-                  <strong>
-                    {
-                      survey.assignments.filter(
-                        (entry) => entry.active !== false,
-                      ).length
-                    }
-                  </strong>
-                  <small>links ativos</small>
-                </span>
-                <span>
-                  <strong>{survey.responses.length}</strong>
-                  <small>respostas</small>
-                </span>
-              </div>
-              <footer>
-                <button type="button" onClick={() => setOpen(item)}>
-                  Links e respostas <ExternalLink />
-                </button>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => setEditing(item)}
-                    aria-label="Editar pesquisa"
-                    title="Editar pesquisa"
-                  >
-                    <Pencil />
+          <PaginatedItems label="registros de satisfação">
+            {surveys.map(({ item, survey }) => (
+              <article key={item.id}>
+                <header>
+                  <span>
+                    <small>{survey.sectorName}</small>
+                    <h2>{survey.name}</h2>
+                  </span>
+                  <b className={survey.active ? "active" : "inactive"}>
+                    {survey.active ? "Ativa" : "Inativa"}
+                  </b>
+                </header>
+                <div>
+                  <span>
+                    <strong>{survey.questions.length}</strong>
+                    <small>perguntas</small>
+                  </span>
+                  <span>
+                    <strong>
+                      {
+                        survey.assignments.filter(
+                          (entry) => entry.active !== false,
+                        ).length
+                      }
+                    </strong>
+                    <small>links ativos</small>
+                  </span>
+                  <span>
+                    <strong>{survey.responses.length}</strong>
+                    <small>respostas</small>
+                  </span>
+                </div>
+                <footer>
+                  <button type="button" onClick={() => setOpen(item)}>
+                    Links e respostas <ExternalLink />
                   </button>
-                )}
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="delete"
-                    onClick={() =>
-                      void operate(
-                        { action: "deleteWorkItem", id: item.id },
-                        "Pesquisa excluída.",
-                      )
-                    }
-                  >
-                    <Trash2 />
-                  </button>
-                )}
-              </footer>
-            </article>
-          ))
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing(item)}
+                      aria-label="Editar pesquisa"
+                      title="Editar pesquisa"
+                    >
+                      <Pencil />
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="delete"
+                      onClick={() =>
+                        void operate(
+                          { action: "deleteWorkItem", id: item.id },
+                          "Pesquisa excluída.",
+                        )
+                      }
+                    >
+                      <Trash2 />
+                    </button>
+                  )}
+                </footer>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </section>
       {creating && (
@@ -848,72 +852,76 @@ function SurveyDetail({
               </button>
             </section>
             <section className="survey-employee-grid">
-              {survey.assignments.map((entry) => {
-                const list = survey.responses.filter(
-                  (response) => response.token === entry.token,
-                );
-                const employeeScore = average(ratings(survey, list));
-                const photo = employeePhoto(entry.employeeId);
-                return (
-                  <article
-                    key={entry.token}
-                    className={entry.active === false ? "historical" : ""}
-                  >
-                    <header>
-                      <span
-                        className={`survey-avatar ${photo ? "has-photo" : ""}`}
-                        style={
-                          photo
-                            ? { backgroundImage: `url("${photo}")` }
-                            : undefined
-                        }
+              {
+                <PaginatedItems label="registros de satisfação">
+                  {survey.assignments.map((entry) => {
+                    const list = survey.responses.filter(
+                      (response) => response.token === entry.token,
+                    );
+                    const employeeScore = average(ratings(survey, list));
+                    const photo = employeePhoto(entry.employeeId);
+                    return (
+                      <article
+                        key={entry.token}
+                        className={entry.active === false ? "historical" : ""}
                       >
-                        {!photo && initials(entry.employeeName)}
-                      </span>
-                      <span>
-                        <strong>{entry.employeeName}</strong>
-                        <small>
-                          {entry.active === false ? "Histórico · " : ""}
-                          /pesquisa/{entry.token.slice(0, 8)}
-                        </small>
-                      </span>
-                      <CheckCircle2 />
-                    </header>
-                    <div>
-                      <span>
-                        <strong>{list.length}</strong>
-                        <small>respostas</small>
-                      </span>
-                      <span>
-                        <strong>{employeeScore.toFixed(1)}</strong>
-                        <small>nota média</small>
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="survey-link"
-                      disabled={entry.active === false}
-                      onClick={() => onCopy(entry.token)}
-                    >
-                      <ExternalLink />
-                      pesquisa/{entry.token.slice(0, 8)}
-                      <Copy />
-                    </button>
-                    <footer>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedToken(entry.token);
-                          setTab("overview");
-                        }}
-                      >
-                        <BarChart3 />
-                        Analisar respostas
-                      </button>
-                    </footer>
-                  </article>
-                );
-              })}
+                        <header>
+                          <span
+                            className={`survey-avatar ${photo ? "has-photo" : ""}`}
+                            style={
+                              photo
+                                ? { backgroundImage: `url("${photo}")` }
+                                : undefined
+                            }
+                          >
+                            {!photo && initials(entry.employeeName)}
+                          </span>
+                          <span>
+                            <strong>{entry.employeeName}</strong>
+                            <small>
+                              {entry.active === false ? "Histórico · " : ""}
+                              /pesquisa/{entry.token.slice(0, 8)}
+                            </small>
+                          </span>
+                          <CheckCircle2 />
+                        </header>
+                        <div>
+                          <span>
+                            <strong>{list.length}</strong>
+                            <small>respostas</small>
+                          </span>
+                          <span>
+                            <strong>{employeeScore.toFixed(1)}</strong>
+                            <small>nota média</small>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="survey-link"
+                          disabled={entry.active === false}
+                          onClick={() => onCopy(entry.token)}
+                        >
+                          <ExternalLink />
+                          pesquisa/{entry.token.slice(0, 8)}
+                          <Copy />
+                        </button>
+                        <footer>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedToken(entry.token);
+                              setTab("overview");
+                            }}
+                          >
+                            <BarChart3 />
+                            Analisar respostas
+                          </button>
+                        </footer>
+                      </article>
+                    );
+                  })}
+                </PaginatedItems>
+              }
             </section>
           </div>
         </aside>
@@ -1058,27 +1066,30 @@ function SurveyDetail({
                   <p>Nenhuma resposta recebida para este colaborador.</p>
                 </div>
               ) : (
-                responses
-                  .slice()
-                  .reverse()
-                  .map((response, responseIndex) => (
-                    <article key={response.id}>
-                      <header>
-                        <strong>
-                          Resposta {responses.length - responseIndex}
-                        </strong>
-                        <time>{stamp(response.submittedAt)}</time>
-                      </header>
-                      {survey.questions.map((question) => (
-                        <div key={question.id}>
-                          <small>{question.text}</small>
-                          <p>
-                            {response.answers[question.id] || "Não respondida"}
-                          </p>
-                        </div>
-                      ))}
-                    </article>
-                  ))
+                <PaginatedItems label="registros de satisfação">
+                  {responses
+                    .slice()
+                    .reverse()
+                    .map((response, responseIndex) => (
+                      <article key={response.id}>
+                        <header>
+                          <strong>
+                            Resposta {responses.length - responseIndex}
+                          </strong>
+                          <time>{stamp(response.submittedAt)}</time>
+                        </header>
+                        {survey.questions.map((question) => (
+                          <div key={question.id}>
+                            <small>{question.text}</small>
+                            <p>
+                              {response.answers[question.id] ||
+                                "Não respondida"}
+                            </p>
+                          </div>
+                        ))}
+                      </article>
+                    ))}
+                </PaginatedItems>
               )}
             </section>
           )}
@@ -1138,19 +1149,23 @@ function SurveyDetail({
                 <span>Respostas</span>
                 <span>Nota média</span>
               </header>
-              {allRanking.map((row, index) => (
-                <article
-                  key={row.entry.token}
-                  className={
-                    row.entry.token === assignment.token ? "selected" : ""
-                  }
-                >
-                  <b>{index + 1}º</b>
-                  <span>{row.entry.employeeName}</span>
-                  <strong>{row.count}</strong>
-                  <em>{row.score.toFixed(1)}</em>
-                </article>
-              ))}
+              {
+                <PaginatedItems label="registros de satisfação">
+                  {allRanking.map((row, index) => (
+                    <article
+                      key={row.entry.token}
+                      className={
+                        row.entry.token === assignment.token ? "selected" : ""
+                      }
+                    >
+                      <b>{index + 1}º</b>
+                      <span>{row.entry.employeeName}</span>
+                      <strong>{row.count}</strong>
+                      <em>{row.score.toFixed(1)}</em>
+                    </article>
+                  ))}
+                </PaginatedItems>
+              }
             </section>
           )}
           {tab === "comments" && (
@@ -1161,24 +1176,26 @@ function SurveyDetail({
                   <p>Nenhum comentário textual recebido.</p>
                 </div>
               ) : (
-                comments
-                  .slice()
-                  .reverse()
-                  .map(({ response, question, text }) => (
-                    <article key={`${response.id}-${question.id}`}>
-                      <header>
-                        <strong>
-                          {response.respondentName ||
-                            `ID ${response.id.slice(0, 6)}`}
-                        </strong>
-                        <span>
-                          <b>{stamp(response.submittedAt)}</b>
-                        </span>
-                      </header>
-                      <small>{question.text}</small>
-                      <p>{text}</p>
-                    </article>
-                  ))
+                <PaginatedItems label="registros de satisfação">
+                  {comments
+                    .slice()
+                    .reverse()
+                    .map(({ response, question, text }) => (
+                      <article key={`${response.id}-${question.id}`}>
+                        <header>
+                          <strong>
+                            {response.respondentName ||
+                              `ID ${response.id.slice(0, 6)}`}
+                          </strong>
+                          <span>
+                            <b>{stamp(response.submittedAt)}</b>
+                          </span>
+                        </header>
+                        <small>{question.text}</small>
+                        <p>{text}</p>
+                      </article>
+                    ))}
+                </PaginatedItems>
               )}
             </section>
           )}
@@ -1195,23 +1212,29 @@ function SurveyDetail({
                 </label>
                 <strong>{filteredAudit.length} registro(s)</strong>
               </header>
-              {filteredAudit.map((response) => (
-                <article key={response.id}>
-                  <Globe2 />
-                  <span>
-                    <strong>{response.ipAddress || "Não identificado"}</strong>
-                    <small>
-                      {response.respondentName || "Respondente anônimo"} ·{" "}
-                      {stamp(response.submittedAt)}
-                    </small>
-                  </span>
-                  <em>
-                    {response.userAgent
-                      ? response.userAgent.slice(0, 55)
-                      : "Navegador não informado"}
-                  </em>
-                </article>
-              ))}
+              {
+                <PaginatedItems label="registros de satisfação">
+                  {filteredAudit.map((response) => (
+                    <article key={response.id}>
+                      <Globe2 />
+                      <span>
+                        <strong>
+                          {response.ipAddress || "Não identificado"}
+                        </strong>
+                        <small>
+                          {response.respondentName || "Respondente anônimo"} ·{" "}
+                          {stamp(response.submittedAt)}
+                        </small>
+                      </span>
+                      <em>
+                        {response.userAgent
+                          ? response.userAgent.slice(0, 55)
+                          : "Navegador não informado"}
+                      </em>
+                    </article>
+                  ))}
+                </PaginatedItems>
+              }
             </section>
           )}
         </div>

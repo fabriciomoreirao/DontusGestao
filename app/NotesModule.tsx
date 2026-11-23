@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import {
   Copy,
   GripVertical,
@@ -234,49 +236,53 @@ export default function NotesModule({
         </div>
       ) : (
         <section className="notes-grid">
-          {visibleNotes.map((note) => (
-            <NoteCard
-              key={note.id}
-              note={note}
-              busy={busy}
-              dragging={draggedId === note.id}
-              copied={copiedId === note.id}
-              onEdit={() =>
-                note.canEdit
-                  ? setEditor({
-                      id: note.id,
-                      title: note.title,
-                      content: note.content,
-                      color: note.color,
-                      visibility: note.visibility,
-                      departmentId: note.departmentId,
-                      customerId: note.customerId,
-                      customerCode: note.customerCode,
-                    })
-                  : setViewing(note)
-              }
-              onCopy={() => void copyNote(note)}
-              onDuplicate={() =>
-                void operate(
-                  { action: "duplicateNote", id: note.id },
-                  "Anotação duplicada com sucesso.",
-                )
-              }
-              onDelete={() =>
-                void operate(
-                  { action: "deleteNote", id: note.id },
-                  "Anotação excluída com sucesso.",
-                )
-              }
-              onDragStart={(event) => {
-                if (busy) return;
-                event.dataTransfer.effectAllowed = "move";
-                setDraggedId(note.id);
-              }}
-              onDragEnd={() => setDraggedId(null)}
-              onDrop={() => void reorder(note.id)}
-            />
-          ))}
+          {
+            <PaginatedItems label="notas">
+              {visibleNotes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  busy={busy}
+                  dragging={draggedId === note.id}
+                  copied={copiedId === note.id}
+                  onEdit={() =>
+                    note.canEdit
+                      ? setEditor({
+                          id: note.id,
+                          title: note.title,
+                          content: note.content,
+                          color: note.color,
+                          visibility: note.visibility,
+                          departmentId: note.departmentId,
+                          customerId: note.customerId,
+                          customerCode: note.customerCode,
+                        })
+                      : setViewing(note)
+                  }
+                  onCopy={() => void copyNote(note)}
+                  onDuplicate={() =>
+                    void operate(
+                      { action: "duplicateNote", id: note.id },
+                      "Anotação duplicada com sucesso.",
+                    )
+                  }
+                  onDelete={() =>
+                    void operate(
+                      { action: "deleteNote", id: note.id },
+                      "Anotação excluída com sucesso.",
+                    )
+                  }
+                  onDragStart={(event) => {
+                    if (busy) return;
+                    event.dataTransfer.effectAllowed = "move";
+                    setDraggedId(note.id);
+                  }}
+                  onDragEnd={() => setDraggedId(null)}
+                  onDrop={() => void reorder(note.id)}
+                />
+              ))}
+            </PaginatedItems>
+          }
         </section>
       )}
 

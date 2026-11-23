@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import { useMemo, useState } from "react";
 import CommercialIndicatorClients from "@/app/CommercialIndicatorClients";
 import { ArrowLeft, BarChart3, Filter } from "lucide-react";
@@ -509,41 +511,45 @@ export default function CommercialAnalyticsBoard({
                         </tr>
                       </thead>
                       <tbody>
-                        {ranking.map((row) => (
-                          <tr key={row.name}>
-                            <th>{row.name}</th>
-                            <td>{row.cohort.length}</td>
-                            <td>
-                              <button
-                                className="indicator-cell-link"
-                                onClick={() =>
-                                  setDrilldown({
-                                    title: `Vendas de ${row.name}`,
-                                    entries: row.sales,
-                                  })
-                                }
-                              >
-                                {row.sales.length}
-                              </button>
-                            </td>
-                            <td>
-                              <button
-                                className="indicator-cell-link"
-                                onClick={() =>
-                                  setDrilldown({
-                                    title: `Receita de ${row.name}`,
-                                    entries: row.sales,
-                                  })
-                                }
-                              >
-                                {money(row.revenue)}
-                              </button>
-                            </td>
-                            <td>{money(row.ticket)}</td>
-                            <td>{row.conversion}%</td>
-                            <td>{row.open.length}</td>
-                          </tr>
-                        ))}
+                        {
+                          <PaginatedItems label="registros comerciais" table>
+                            {ranking.map((row) => (
+                              <tr key={row.name}>
+                                <th>{row.name}</th>
+                                <td>{row.cohort.length}</td>
+                                <td>
+                                  <button
+                                    className="indicator-cell-link"
+                                    onClick={() =>
+                                      setDrilldown({
+                                        title: `Vendas de ${row.name}`,
+                                        entries: row.sales,
+                                      })
+                                    }
+                                  >
+                                    {row.sales.length}
+                                  </button>
+                                </td>
+                                <td>
+                                  <button
+                                    className="indicator-cell-link"
+                                    onClick={() =>
+                                      setDrilldown({
+                                        title: `Receita de ${row.name}`,
+                                        entries: row.sales,
+                                      })
+                                    }
+                                  >
+                                    {money(row.revenue)}
+                                  </button>
+                                </td>
+                                <td>{money(row.ticket)}</td>
+                                <td>{row.conversion}%</td>
+                                <td>{row.open.length}</td>
+                              </tr>
+                            ))}
+                          </PaginatedItems>
+                        }
                         {!ranking.length && (
                           <tr>
                             <td colSpan={7}>
@@ -637,15 +643,19 @@ export default function CommercialAnalyticsBoard({
                       </tr>
                     </thead>
                     <tbody>
-                      {groups.map((row) => (
-                        <tr key={row.name}>
-                          <th>{row.name}</th>
-                          <td>{row.report.cohort.length}</td>
-                          <td>{row.report.sales.length}</td>
-                          <td>{money(row.report.revenue)}</td>
-                          <td>{money(row.report.ticket)}</td>
-                        </tr>
-                      ))}
+                      {
+                        <PaginatedItems label="registros comerciais" table>
+                          {groups.map((row) => (
+                            <tr key={row.name}>
+                              <th>{row.name}</th>
+                              <td>{row.report.cohort.length}</td>
+                              <td>{row.report.sales.length}</td>
+                              <td>{money(row.report.revenue)}</td>
+                              <td>{money(row.report.ticket)}</td>
+                            </tr>
+                          ))}
+                        </PaginatedItems>
+                      }
                     </tbody>
                     <tfoot>
                       <tr>
@@ -678,19 +688,26 @@ export default function CommercialAnalyticsBoard({
                         </tr>
                       </thead>
                       <tbody>
-                        {sales.map((entry) => (
-                          <tr key={entry.item.id}>
-                            <td>
-                              {entry.item.customer_name || entry.item.title}
-                            </td>
-                            <td>{entry.seller}</td>
-                            <td>{entry.funnel}</td>
-                            <td>
-                              {entry.saleDate.split("-").reverse().join("/")}
-                            </td>
-                            <td>{money(entry.amount)}</td>
-                          </tr>
-                        ))}
+                        {
+                          <PaginatedItems label="registros comerciais" table>
+                            {sales.map((entry) => (
+                              <tr key={entry.item.id}>
+                                <td>
+                                  {entry.item.customer_name || entry.item.title}
+                                </td>
+                                <td>{entry.seller}</td>
+                                <td>{entry.funnel}</td>
+                                <td>
+                                  {entry.saleDate
+                                    .split("-")
+                                    .reverse()
+                                    .join("/")}
+                                </td>
+                                <td>{money(entry.amount)}</td>
+                              </tr>
+                            ))}
+                          </PaginatedItems>
+                        }
                         {!sales.length && (
                           <tr>
                             <td colSpan={5}>
@@ -790,14 +807,18 @@ function OpportunityTable({
           </tr>
         </thead>
         <tbody>
-          {entries.map((entry) => (
-            <tr key={entry.item.id}>
-              <td>{entry.item.title}</td>
-              <td>{entry.seller}</td>
-              <td>{entry.stage}</td>
-              <td>{money(entry.amount)}</td>
-            </tr>
-          ))}
+          {
+            <PaginatedItems label="registros comerciais" table>
+              {entries.map((entry) => (
+                <tr key={entry.item.id}>
+                  <td>{entry.item.title}</td>
+                  <td>{entry.seller}</td>
+                  <td>{entry.stage}</td>
+                  <td>{money(entry.amount)}</td>
+                </tr>
+              ))}
+            </PaginatedItems>
+          }
           {!entries.length && (
             <tr>
               <td colSpan={4}>

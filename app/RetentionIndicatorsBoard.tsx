@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import { useMemo, useState } from "react";
 import {
   Activity,
@@ -302,21 +304,23 @@ export default function RetentionIndicatorsBoard({
                   <span>Conversão</span>
                 </div>
                 {versionRows.length ? (
-                  versionRows.map((entry) => (
-                    <div key={entry.name}>
-                      <strong>{entry.name}</strong>
-                      <b>{entry.total}</b>
-                      <span>{entry.process}</span>
-                      <span className="positive">{entry.success}</span>
-                      <span className="negative">{entry.failure}</span>
-                      <em>
-                        {entry.conversion.toLocaleString("pt-BR", {
-                          maximumFractionDigits: 1,
-                        })}
-                        %
-                      </em>
-                    </div>
-                  ))
+                  <PaginatedItems label="registros de retenção">
+                    {versionRows.map((entry) => (
+                      <div key={entry.name}>
+                        <strong>{entry.name}</strong>
+                        <b>{entry.total}</b>
+                        <span>{entry.process}</span>
+                        <span className="positive">{entry.success}</span>
+                        <span className="negative">{entry.failure}</span>
+                        <em>
+                          {entry.conversion.toLocaleString("pt-BR", {
+                            maximumFractionDigits: 1,
+                          })}
+                          %
+                        </em>
+                      </div>
+                    ))}
+                  </PaginatedItems>
                 ) : (
                   <p>Sem dados de versão para o filtro atual.</p>
                 )}
@@ -403,21 +407,23 @@ export default function RetentionIndicatorsBoard({
                     <span>Conversão</span>
                   </div>
                   {ownerRows.length ? (
-                    ownerRows.map((entry) => (
-                      <div key={entry.name}>
-                        <strong>{entry.name}</strong>
-                        <b>{entry.total}</b>
-                        <span>{entry.process}</span>
-                        <span className="positive">{entry.success}</span>
-                        <span className="negative">{entry.failure}</span>
-                        <em>
-                          {entry.conversion.toLocaleString("pt-BR", {
-                            maximumFractionDigits: 1,
-                          })}
-                          %
-                        </em>
-                      </div>
-                    ))
+                    <PaginatedItems label="registros de retenção">
+                      {ownerRows.map((entry) => (
+                        <div key={entry.name}>
+                          <strong>{entry.name}</strong>
+                          <b>{entry.total}</b>
+                          <span>{entry.process}</span>
+                          <span className="positive">{entry.success}</span>
+                          <span className="negative">{entry.failure}</span>
+                          <em>
+                            {entry.conversion.toLocaleString("pt-BR", {
+                              maximumFractionDigits: 1,
+                            })}
+                            %
+                          </em>
+                        </div>
+                      ))}
+                    </PaginatedItems>
                   ) : (
                     <p>Sem dados para detalhar.</p>
                   )}

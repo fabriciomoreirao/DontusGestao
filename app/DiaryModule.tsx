@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import {
@@ -288,23 +290,27 @@ export default function DiaryModule({
       {cancelled.length > 0 && (
         <section className="diary-cancelled">
           <h2>Cancelados ({cancelled.length})</h2>
-          {cancelled.map((entry) => (
-            <DiaryEntryCard
-              key={entry.id}
-              entry={entry}
-              module={module}
-              busy={busy}
-              canEdit={canEditEntries}
-              onEdit={setEditing}
-              onDelete={(entry) => {
-                void operate(
-                  { action: "deleteWorkItem", id: entry.id },
-                  "Atividade excluída.",
-                );
-              }}
-              onChangeStatus={changeStatus}
-            />
-          ))}
+          {
+            <PaginatedItems label="registros do diário">
+              {cancelled.map((entry) => (
+                <DiaryEntryCard
+                  key={entry.id}
+                  entry={entry}
+                  module={module}
+                  busy={busy}
+                  canEdit={canEditEntries}
+                  onEdit={setEditing}
+                  onDelete={(entry) => {
+                    void operate(
+                      { action: "deleteWorkItem", id: entry.id },
+                      "Atividade excluída.",
+                    );
+                  }}
+                  onChangeStatus={changeStatus}
+                />
+              ))}
+            </PaginatedItems>
+          }
         </section>
       )}
       {creating && (
@@ -395,18 +401,20 @@ function DiaryColumn({
           <p>{empty}</p>
         </div>
       ) : (
-        entries.map((entry) => (
-          <DiaryEntryCard
-            key={entry.id}
-            entry={entry}
-            module={module}
-            busy={busy}
-            canEdit={canEdit}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onChangeStatus={onChangeStatus}
-          />
-        ))
+        <PaginatedItems label="registros do diário">
+          {entries.map((entry) => (
+            <DiaryEntryCard
+              key={entry.id}
+              entry={entry}
+              module={module}
+              busy={busy}
+              canEdit={canEdit}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onChangeStatus={onChangeStatus}
+            />
+          ))}
+        </PaginatedItems>
       )}
     </section>
   );

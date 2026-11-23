@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import CommentHistory from "@/app/CommentHistory";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
@@ -516,90 +518,97 @@ export default function ReferralsModule({
         )}
       </section>
       <div className="referral-grid">
-        {visible.map(({ item, detail }) => (
-          <article
-            data-reminder-entity-id={item.id}
-            className="referral-card-shell"
-            key={item.id}
-          >
-            <button className="referral-card" onClick={() => setSelected(item)}>
-              <header>
-                <span>
-                  <small>ID {detail.clientId}</small>
-                  <h3>{detail.dentistName}</h3>
-                </span>
-                <b className={detail.phase}>
-                  {detail.phase === "tracking"
-                    ? "Em acompanhamento"
-                    : detail.phase === "conference"
-                      ? "Conferência"
-                      : detail.phase === "approved"
-                        ? "Aprovado"
-                        : "Reprovado"}
-                </b>
-              </header>
-              <div>
-                <span>
-                  <small>Módulo</small>
-                  <strong>{detail.moduleName}</strong>
-                </span>
-                <span>
-                  <small>Valor</small>
-                  <strong>{money(detail.valueCents)}</strong>
-                </span>
-                <span>
-                  <small>Comissão</small>
-                  <strong>{money(detail.commissionCents)}</strong>
-                </span>
-                <span>
-                  <small>Utilização</small>
-                  <strong>{detail.usageStatus || "Não informada"}</strong>
-                </span>
-              </div>
-              <footer>
-                {avatar(
-                  item.owner,
-                  employees.find(
-                    (employee) => employee.displayName === item.owner,
-                  )?.photoDataUrl,
+        {
+          <PaginatedItems label="indicações">
+            {visible.map(({ item, detail }) => (
+              <article
+                data-reminder-entity-id={item.id}
+                className="referral-card-shell"
+                key={item.id}
+              >
+                <button
+                  className="referral-card"
+                  onClick={() => setSelected(item)}
+                >
+                  <header>
+                    <span>
+                      <small>ID {detail.clientId}</small>
+                      <h3>{detail.dentistName}</h3>
+                    </span>
+                    <b className={detail.phase}>
+                      {detail.phase === "tracking"
+                        ? "Em acompanhamento"
+                        : detail.phase === "conference"
+                          ? "Conferência"
+                          : detail.phase === "approved"
+                            ? "Aprovado"
+                            : "Reprovado"}
+                    </b>
+                  </header>
+                  <div>
+                    <span>
+                      <small>Módulo</small>
+                      <strong>{detail.moduleName}</strong>
+                    </span>
+                    <span>
+                      <small>Valor</small>
+                      <strong>{money(detail.valueCents)}</strong>
+                    </span>
+                    <span>
+                      <small>Comissão</small>
+                      <strong>{money(detail.commissionCents)}</strong>
+                    </span>
+                    <span>
+                      <small>Utilização</small>
+                      <strong>{detail.usageStatus || "Não informada"}</strong>
+                    </span>
+                  </div>
+                  <footer>
+                    {avatar(
+                      item.owner,
+                      employees.find(
+                        (employee) => employee.displayName === item.owner,
+                      )?.photoDataUrl,
+                    )}
+                    <span>
+                      <strong data-collaborator-name={item.owner}>
+                        {item.owner}
+                      </strong>
+                      <small>{date(detail.date)}</small>
+                    </span>
+                    <ChevronRight size={16} />
+                  </footer>
+                </button>
+                {canEdit && (canManage || detail.phase === "tracking") && (
+                  <span className="referral-card-actions">
+                    <button
+                      type="button"
+                      title="Editar indicação"
+                      aria-label="Editar indicação"
+                      onClick={() => setEditing(item)}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="delete"
+                      title="Excluir indicação"
+                      aria-label="Excluir indicação"
+                      onClick={() => {
+                        void operate(
+                          { action: "deleteWorkItem", id: item.id },
+                          "Indicação excluída.",
+                        );
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </span>
                 )}
-                <span>
-                  <strong data-collaborator-name={item.owner}>
-                    {item.owner}
-                  </strong>
-                  <small>{date(detail.date)}</small>
-                </span>
-                <ChevronRight size={16} />
-              </footer>
-            </button>
-            {canEdit && (canManage || detail.phase === "tracking") && (
-              <span className="referral-card-actions">
-                <button
-                  type="button"
-                  title="Editar indicação"
-                  aria-label="Editar indicação"
-                  onClick={() => setEditing(item)}
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="delete"
-                  title="Excluir indicação"
-                  aria-label="Excluir indicação"
-                  onClick={() => {
-                    void operate(
-                      { action: "deleteWorkItem", id: item.id },
-                      "Indicação excluída.",
-                    );
-                  }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </span>
-            )}
-          </article>
-        ))}
+              </article>
+            ))}
+          </PaginatedItems>
+        }
       </div>
       {visible.length === 0 && (
         <div className="referral-empty">
@@ -1168,38 +1177,42 @@ function ReferralSettings({
               Novo
             </button>
           </header>
-          {entries.map((entry) => {
-            const rule = parseRule(entry.description);
-            return (
-              <article data-reminder-entity-id={entry.id} key={entry.id}>
-                <span>
-                  <strong>{entry.name}</strong>
-                  <small>
-                    {rule
-                      ? `${rule.department || "Todos os setores"} · ${rule.moduleName || "Todos os módulos"} · ${rule.type === "percentage" ? `${rule.percentage}%` : money(rule.fixedCents)}`
-                      : entry.description || "Sem descrição"}
-                  </small>
-                </span>
-                <button
-                  className="secondary-button"
-                  onClick={() => setEditing(entry)}
-                >
-                  Editar
-                </button>
-                <button
-                  className="secondary-button danger-action"
-                  onClick={() =>
-                    void operate(
-                      { action: "deleteCustomerCatalog", id: entry.id },
-                      "Configuração removida.",
-                    )
-                  }
-                >
-                  Excluir
-                </button>
-              </article>
-            );
-          })}
+          {
+            <PaginatedItems label="indicações">
+              {entries.map((entry) => {
+                const rule = parseRule(entry.description);
+                return (
+                  <article data-reminder-entity-id={entry.id} key={entry.id}>
+                    <span>
+                      <strong>{entry.name}</strong>
+                      <small>
+                        {rule
+                          ? `${rule.department || "Todos os setores"} · ${rule.moduleName || "Todos os módulos"} · ${rule.type === "percentage" ? `${rule.percentage}%` : money(rule.fixedCents)}`
+                          : entry.description || "Sem descrição"}
+                      </small>
+                    </span>
+                    <button
+                      className="secondary-button"
+                      onClick={() => setEditing(entry)}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="secondary-button danger-action"
+                      onClick={() =>
+                        void operate(
+                          { action: "deleteCustomerCatalog", id: entry.id },
+                          "Configuração removida.",
+                        )
+                      }
+                    >
+                      Excluir
+                    </button>
+                  </article>
+                );
+              })}
+            </PaginatedItems>
+          }
         </div>
         {editing !== undefined && (
           <form className="referral-settings-form" onSubmit={submit}>
@@ -1405,34 +1418,38 @@ export function ReferralSettingsPage({
             </button>
           </header>
           <div className="referral-settings-list">
-            {entries.map((entry) => (
-              <article data-reminder-entity-id={entry.id} key={entry.id}>
-                <span>
-                  <strong>{entry.name}</strong>
-                  <small>
-                    {entry.description || "Sem descrição"} ·{" "}
-                    {entry.active ? "Ativo" : "Inativo"}
-                  </small>
-                </span>
-                <button
-                  className="secondary-button"
-                  onClick={() => setEditing(entry)}
-                >
-                  Editar
-                </button>
-                <button
-                  className="secondary-button danger-action"
-                  onClick={() =>
-                    void operate(
-                      { action: "deleteCustomerCatalog", id: entry.id },
-                      "Cadastro removido.",
-                    )
-                  }
-                >
-                  <Trash2 size={13} /> Excluir
-                </button>
-              </article>
-            ))}
+            {
+              <PaginatedItems label="indicações">
+                {entries.map((entry) => (
+                  <article data-reminder-entity-id={entry.id} key={entry.id}>
+                    <span>
+                      <strong>{entry.name}</strong>
+                      <small>
+                        {entry.description || "Sem descrição"} ·{" "}
+                        {entry.active ? "Ativo" : "Inativo"}
+                      </small>
+                    </span>
+                    <button
+                      className="secondary-button"
+                      onClick={() => setEditing(entry)}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="secondary-button danger-action"
+                      onClick={() =>
+                        void operate(
+                          { action: "deleteCustomerCatalog", id: entry.id },
+                          "Cadastro removido.",
+                        )
+                      }
+                    >
+                      <Trash2 size={13} /> Excluir
+                    </button>
+                  </article>
+                ))}
+              </PaginatedItems>
+            }
           </div>
           {editing !== undefined && (
             <form className="referral-settings-form" onSubmit={saveCatalog}>

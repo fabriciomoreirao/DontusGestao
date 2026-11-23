@@ -447,6 +447,32 @@ public sealed class InternalChatServiceTests
         Assert.True(Notified(ownerSocket)); Assert.True(Notified(peerSocket)); Assert.False(Notified(outsiderSocket));
     }
 
+    [Fact]
+    public async Task Mentions_validate_participants_preserve_identities_and_follow_read_and_edit_state()
+    {
+        await using var db = CreateContext();
+        var sender = AddUser(db, "mention-sender@test", "Autor");
+        sender.IsCoordinator = true;
+        var reader = AddUser(db, "mention-reader@test", "Leitor");
+        var outsider = AddUser(db, "mention-outsider@test", "Externo"); await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new("Menções", null, true, [reader.Id]), Actor(sender));
+        const string body = "Olá @Leitor, tudo bem?";
+        var mention = new InternalChatMentionDto(reader.Id, "Leitor", 4, 7);
+        await Assert.ThrowsAsync<DomainException>(() => service.SendMessageAsync(new(room, body, "text", null, [mention with { UserId = outsider.Id }]), Actor(sender)));
+        await Assert.ThrowsAsync<DomainException>(() => service.SendMessageAsync(new(room, body, "text", null, [mention with { Start = 0 }]), Actor(sender)));
+        var id = await service.SendMessageAsync(new(room, body, "text", null, [mention]), Actor(sender));
+        var dto = Assert.Single(Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms).Messages);
+        Assert.Equal(mention, Assert.Single(dto.Mentions)); Assert.True(dto.IsUnread);
+        await service.EditMessageAsync(new(room, id, "Hoje: " + body, dto.Version), Actor(sender));
+        dto = Assert.Single(Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms).Messages);
+        Assert.Equal(10, Assert.Single(dto.Mentions).Start);
+        await service.MarkReadAsync(new(room, id), Actor(reader));
+        dto = Assert.Single(Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms).Messages); Assert.False(dto.IsUnread);
+        await service.EditMessageAsync(new(room, id, "Hoje: Olá @Externo", dto.Version), Actor(sender));
+        Assert.Empty(Assert.Single(Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms).Messages).Mentions);
+    }
+
     private static InternalChatService CreateService(OperationsDbContext db, RealtimeBroker? realtime = null)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

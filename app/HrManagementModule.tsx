@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import CommentHistory from "@/app/CommentHistory";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
 
@@ -353,14 +355,16 @@ export default function HrManagementModule({
             </p>
           </div>
         ) : (
-          visible.map(({ item, profile }) => (
-            <HrEmployeeCard
-              key={item.id}
-              item={item}
-              profile={profile}
-              onOpen={() => setSelected(item)}
-            />
-          ))
+          <PaginatedItems label="registros de RH">
+            {visible.map(({ item, profile }) => (
+              <HrEmployeeCard
+                key={item.id}
+                item={item}
+                profile={profile}
+                onOpen={() => setSelected(item)}
+              />
+            ))}
+          </PaginatedItems>
         )}
       </section>
       {selected && parse(selected.description) && (
@@ -1084,51 +1088,53 @@ function VacationSection({
         {profile.vacations.length === 0 ? (
           <p className="empty-copy">Nenhum período de férias cadastrado.</p>
         ) : (
-          profile.vacations
-            .slice()
-            .reverse()
-            .map((entry) => (
-              <article key={entry.id}>
-                <span>
-                  <b>
-                    {entry.entitlementYear}º ano · {entry.days} dia(s)
-                  </b>
-                  <small>
-                    {entry.manualCompletion
-                      ? "Conclusão manual · Datas não informadas"
-                      : formatDate(entry.startDate) +
-                        " até " +
-                        formatDate(entry.endDate)}
-                  </small>
-                  {entry.manualCompletion && (
+          <PaginatedItems label="registros de RH">
+            {profile.vacations
+              .slice()
+              .reverse()
+              .map((entry) => (
+                <article key={entry.id}>
+                  <span>
+                    <b>
+                      {entry.entitlementYear}º ano · {entry.days} dia(s)
+                    </b>
                     <small>
-                      {entry.author} · {formatDateTime(entry.createdAt)}
+                      {entry.manualCompletion
+                        ? "Conclusão manual · Datas não informadas"
+                        : formatDate(entry.startDate) +
+                          " até " +
+                          formatDate(entry.endDate)}
                     </small>
-                  )}
-                  {entry.observation && <small>{entry.observation}</small>}
-                </span>
-                <em className={entry.status.toLowerCase()}>{entry.status}</em>
-                {canEdit && entry.status === "Planejada" && (
-                  <span className="hr-row-actions">
-                    <button
-                      disabled={
-                        busy ||
-                        completedDays(entry.entitlementYear) + entry.days > 30
-                      }
-                      onClick={() => onUpdate(entry, "Concluída")}
-                    >
-                      <Check /> Concluída
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => onUpdate(entry, "Cancelada")}
-                    >
-                      <X /> Cancelar
-                    </button>
+                    {entry.manualCompletion && (
+                      <small>
+                        {entry.author} · {formatDateTime(entry.createdAt)}
+                      </small>
+                    )}
+                    {entry.observation && <small>{entry.observation}</small>}
                   </span>
-                )}
-              </article>
-            ))
+                  <em className={entry.status.toLowerCase()}>{entry.status}</em>
+                  {canEdit && entry.status === "Planejada" && (
+                    <span className="hr-row-actions">
+                      <button
+                        disabled={
+                          busy ||
+                          completedDays(entry.entitlementYear) + entry.days > 30
+                        }
+                        onClick={() => onUpdate(entry, "Concluída")}
+                      >
+                        <Check /> Concluída
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => onUpdate(entry, "Cancelada")}
+                      >
+                        <X /> Cancelar
+                      </button>
+                    </span>
+                  )}
+                </article>
+              ))}
+          </PaginatedItems>
         )}
       </div>
     </section>
@@ -1243,26 +1249,28 @@ function DocumentSection({
         {profile.documents.length === 0 ? (
           <p className="empty-copy">Nenhum documento registrado.</p>
         ) : (
-          profile.documents
-            .slice()
-            .reverse()
-            .map((entry) => (
-              <a
-                key={entry.id}
-                href={entry.dataUrl}
-                download={entry.name}
-                title="Abrir ou baixar documento"
-              >
-                <FileImage />
-                <span>
-                  <b>{entry.type}</b>
-                  <small>{entry.name}</small>
-                  <em>
-                    {formatDateTime(entry.uploadedAt)} · {entry.uploadedBy}
-                  </em>
-                </span>
-              </a>
-            ))
+          <PaginatedItems label="registros de RH">
+            {profile.documents
+              .slice()
+              .reverse()
+              .map((entry) => (
+                <a
+                  key={entry.id}
+                  href={entry.dataUrl}
+                  download={entry.name}
+                  title="Abrir ou baixar documento"
+                >
+                  <FileImage />
+                  <span>
+                    <b>{entry.type}</b>
+                    <small>{entry.name}</small>
+                    <em>
+                      {formatDateTime(entry.uploadedAt)} · {entry.uploadedBy}
+                    </em>
+                  </span>
+                </a>
+              ))}
+          </PaginatedItems>
         )}
       </div>
     </section>

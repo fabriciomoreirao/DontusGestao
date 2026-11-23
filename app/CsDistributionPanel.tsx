@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { ArrowRight, ListOrdered, RefreshCw, UsersRound } from "lucide-react";
 import { useState } from "react";
 import {
@@ -179,56 +181,64 @@ export default function CsDistributionPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {ordered.map((employee, index) => (
-                    <tr
-                      key={employee.userId}
-                      className={
-                        employee.userId === suggested?.userId ? "suggested" : ""
-                      }
-                    >
-                      <td>
-                        <b className="cs-distribution-position">{index + 1}</b>
-                      </td>
-                      <th scope="row">
-                        <span className="cs-distribution-person">
-                          {employee.photoDataUrl ? (
-                            <img src={employee.photoDataUrl} alt="" />
-                          ) : (
-                            <i>
-                              {employee.displayName
-                                .split(/\s+/)
-                                .slice(0, 2)
-                                .map((part) => part[0])
-                                .join("")}
-                            </i>
-                          )}
-                          <span>
-                            <strong>{employee.displayName}</strong>
-                            <small>{employee.department}</small>
-                          </span>
-                        </span>
-                        {employee.userId === suggested?.userId && (
-                          <em>Próximo sugerido</em>
-                        )}
-                        {employee.userId === queue?.lastRecipientUserId && (
-                          <em className="last">Último desta versão</em>
-                        )}
-                      </th>
-                      <td>{employee.totalClients}</td>
-                      <td>{employee.activeClients}</td>
-                      {versions.map((value) => (
-                        <td
-                          key={value}
+                  {
+                    <PaginatedItems label="colaboradores" table>
+                      {ordered.map((employee, index) => (
+                        <tr
+                          key={employee.userId}
                           className={
-                            value === selected ? "selected-version" : ""
+                            employee.userId === suggested?.userId
+                              ? "suggested"
+                              : ""
                           }
                         >
-                          {employee.clientsByVersion[value] ?? 0}
-                        </td>
+                          <td>
+                            <b className="cs-distribution-position">
+                              {index + 1}
+                            </b>
+                          </td>
+                          <th scope="row">
+                            <span className="cs-distribution-person">
+                              {employee.photoDataUrl ? (
+                                <img src={employee.photoDataUrl} alt="" />
+                              ) : (
+                                <i>
+                                  {employee.displayName
+                                    .split(/\s+/)
+                                    .slice(0, 2)
+                                    .map((part) => part[0])
+                                    .join("")}
+                                </i>
+                              )}
+                              <span>
+                                <strong>{employee.displayName}</strong>
+                                <small>{employee.department}</small>
+                              </span>
+                            </span>
+                            {employee.userId === suggested?.userId && (
+                              <em>Próximo sugerido</em>
+                            )}
+                            {employee.userId === queue?.lastRecipientUserId && (
+                              <em className="last">Último desta versão</em>
+                            )}
+                          </th>
+                          <td>{employee.totalClients}</td>
+                          <td>{employee.activeClients}</td>
+                          {versions.map((value) => (
+                            <td
+                              key={value}
+                              className={
+                                value === selected ? "selected-version" : ""
+                              }
+                            >
+                              {employee.clientsByVersion[value] ?? 0}
+                            </td>
+                          ))}
+                          <td>{date(employee.lastAssignedAt)}</td>
+                        </tr>
                       ))}
-                      <td>{date(employee.lastAssignedAt)}</td>
-                    </tr>
-                  ))}
+                    </PaginatedItems>
+                  }
                 </tbody>
               </table>
             </div>

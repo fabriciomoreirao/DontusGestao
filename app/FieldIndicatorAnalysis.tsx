@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import { useCallback, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { DistributionChart } from "./AnalyticsCharts";
@@ -178,27 +180,33 @@ export function useFieldIndicatorAnalysis(records: IndicatorRecord[]) {
                 </tr>
               </thead>
               <tbody>
-                {groups.map((group) => (
-                  <tr key={group.label}>
-                    <th scope="row">{group.label}</th>
-                    <td>{group.count}</td>
-                    <td>
-                      {scoped.length
-                        ? ((group.count / scoped.length) * 100).toLocaleString(
-                            "pt-BR",
-                            { maximumFractionDigits: 1 },
-                          )
-                        : 0}
-                      %
-                    </td>
-                    <td>
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(group.amountCents / 100)}
-                    </td>
-                  </tr>
-                ))}
+                {
+                  <PaginatedItems label="registros" table>
+                    {groups.map((group) => (
+                      <tr key={group.label}>
+                        <th scope="row">{group.label}</th>
+                        <td>{group.count}</td>
+                        <td>
+                          {scoped.length
+                            ? (
+                                (group.count / scoped.length) *
+                                100
+                              ).toLocaleString("pt-BR", {
+                                maximumFractionDigits: 1,
+                              })
+                            : 0}
+                          %
+                        </td>
+                        <td>
+                          {new Intl.NumberFormat("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          }).format(group.amountCents / 100)}
+                        </td>
+                      </tr>
+                    ))}
+                  </PaginatedItems>
+                }
               </tbody>
             </table>
             {!groups.length && (

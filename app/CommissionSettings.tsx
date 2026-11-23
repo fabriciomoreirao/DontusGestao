@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { Plus, Save, Settings, Trash2, UsersRound } from "lucide-react";
@@ -154,61 +156,67 @@ export default function CommissionSettings({
         </div>
       ) : (
         <section className="commission-rule-list">
-          {entries.map((product) => {
-            const existing =
-              rules.find(
-                (entry) =>
-                  entry.rule.scope === scope &&
-                  entry.rule.employeeId === employee.id &&
-                  entry.rule.product === product,
-              ) ??
-              rules.find(
-                (entry) =>
-                  entry.rule.scope === scope &&
-                  !entry.rule.employeeId &&
-                  normalizeCommissionName(entry.rule.employeeName) ===
-                    normalizeCommissionName(employee.displayName) &&
-                  entry.rule.product === product,
-              );
-            const key = `${scope}-${employee.id}-${product}-${existing?.entry.description ?? "new"}`;
-            return scope === "cs" ? (
-              <ScoreRuleForm
-                key={key}
-                existing={existing}
-                busy={busy}
-                onSave={(tiers) =>
-                  save(
-                    product,
-                    { type: "percentage", value: 0, scoreTiers: tiers },
-                    existing,
-                  )
-                }
-              />
-            ) : scope === "commercial" ? (
-              <SalesRuleForm
-                key={key}
-                existing={existing}
-                busy={busy}
-                onSave={(tiers) =>
-                  save(
-                    product,
-                    { type: "percentage", value: 0, salesTiers: tiers },
-                    existing,
-                  )
-                }
-              />
-            ) : (
-              <ProductRuleForm
-                key={key}
-                product={
-                  product === "*" ? "Regra geral · todos os produtos" : product
-                }
-                existing={existing}
-                busy={busy}
-                onSave={(values) => save(product, values, existing)}
-              />
-            );
-          })}
+          {
+            <PaginatedItems label="regras de comissão">
+              {entries.map((product) => {
+                const existing =
+                  rules.find(
+                    (entry) =>
+                      entry.rule.scope === scope &&
+                      entry.rule.employeeId === employee.id &&
+                      entry.rule.product === product,
+                  ) ??
+                  rules.find(
+                    (entry) =>
+                      entry.rule.scope === scope &&
+                      !entry.rule.employeeId &&
+                      normalizeCommissionName(entry.rule.employeeName) ===
+                        normalizeCommissionName(employee.displayName) &&
+                      entry.rule.product === product,
+                  );
+                const key = `${scope}-${employee.id}-${product}-${existing?.entry.description ?? "new"}`;
+                return scope === "cs" ? (
+                  <ScoreRuleForm
+                    key={key}
+                    existing={existing}
+                    busy={busy}
+                    onSave={(tiers) =>
+                      save(
+                        product,
+                        { type: "percentage", value: 0, scoreTiers: tiers },
+                        existing,
+                      )
+                    }
+                  />
+                ) : scope === "commercial" ? (
+                  <SalesRuleForm
+                    key={key}
+                    existing={existing}
+                    busy={busy}
+                    onSave={(tiers) =>
+                      save(
+                        product,
+                        { type: "percentage", value: 0, salesTiers: tiers },
+                        existing,
+                      )
+                    }
+                  />
+                ) : (
+                  <ProductRuleForm
+                    key={key}
+                    product={
+                      product === "*"
+                        ? "Regra geral · todos os produtos"
+                        : product
+                    }
+                    existing={existing}
+                    busy={busy}
+                    onSave={(values) => save(product, values, existing)}
+                  />
+                );
+              })}
+            </PaginatedItems>
+          }
         </section>
       )}
     </section>

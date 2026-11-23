@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
@@ -567,58 +569,60 @@ function DispatchStatusPage({
           {results.length === 0 ? (
             <p>Nenhum encaminhamento encontrado para este ID.</p>
           ) : (
-            results.map((entry) => (
-              <article key={entry.id}>
-                <div>
-                  <h2>{entry.clientName}</h2>
-                  <small>
-                    ID {entry.clientId} · {entry.departmentName}
-                  </small>
-                </div>
-                <strong
-                  className={
-                    entry.state === "contacted" ? "contacted" : "waiting"
-                  }
-                >
-                  {entry.state === "contacted" ? (
-                    <CheckCircle2 size={18} />
-                  ) : (
-                    <Clock3 size={18} />
-                  )}{" "}
-                  {entry.state === "contacted"
-                    ? "Contato realizado"
-                    : "Aguardando contato"}
-                </strong>
-                <dl>
+            <PaginatedItems label="encaminhamentos">
+              {results.map((entry) => (
+                <article key={entry.id}>
                   <div>
-                    <dt>Encaminhado em</dt>
-                    <dd>{dt(entry.sentAt)}</dd>
+                    <h2>{entry.clientName}</h2>
+                    <small>
+                      ID {entry.clientId} · {entry.departmentName}
+                    </small>
                   </div>
-                  <div>
-                    <dt>Responsável</dt>
-                    <dd>
-                      {entry.responsibleName || "Fila compartilhada do setor"}
-                    </dd>
-                  </div>
-                  {entry.state === "contacted" && (
-                    <>
-                      <div>
-                        <dt>Contato realizado em</dt>
-                        <dd>{dt(entry.contactedAt)}</dd>
-                      </div>
-                      <div>
-                        <dt>Contato realizado por</dt>
-                        <dd>
-                          {entry.contactedByName ||
-                            entry.responsibleName ||
-                            "Setor responsável"}
-                        </dd>
-                      </div>
-                    </>
-                  )}
-                </dl>
-              </article>
-            ))
+                  <strong
+                    className={
+                      entry.state === "contacted" ? "contacted" : "waiting"
+                    }
+                  >
+                    {entry.state === "contacted" ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <Clock3 size={18} />
+                    )}{" "}
+                    {entry.state === "contacted"
+                      ? "Contato realizado"
+                      : "Aguardando contato"}
+                  </strong>
+                  <dl>
+                    <div>
+                      <dt>Encaminhado em</dt>
+                      <dd>{dt(entry.sentAt)}</dd>
+                    </div>
+                    <div>
+                      <dt>Responsável</dt>
+                      <dd>
+                        {entry.responsibleName || "Fila compartilhada do setor"}
+                      </dd>
+                    </div>
+                    {entry.state === "contacted" && (
+                      <>
+                        <div>
+                          <dt>Contato realizado em</dt>
+                          <dd>{dt(entry.contactedAt)}</dd>
+                        </div>
+                        <div>
+                          <dt>Contato realizado por</dt>
+                          <dd>
+                            {entry.contactedByName ||
+                              entry.responsibleName ||
+                              "Setor responsável"}
+                          </dd>
+                        </div>
+                      </>
+                    )}
+                  </dl>
+                </article>
+              ))}
+            </PaginatedItems>
           )}
         </div>
       )}
@@ -1321,27 +1325,31 @@ function MeetingRoom({
               </button>
             </header>
             <div>
-              {expandedEntries.map((entry) => (
-                <button
-                  type="button"
-                  className={`${portalStatusTone(entry.statusName)} ${canEdit(entry) ? "editable" : ""}`}
-                  onClick={() => {
-                    setExpandedDay("");
-                    openReservation(entry);
-                  }}
-                  key={entry.id}
-                >
-                  <time>{formatHour(entry.startsAt)}</time>
-                  <span>
-                    <strong>🏢 {entry.title}</strong>
-                    <small>
-                      {portalRoomDepartment(entry.description)} ·{" "}
-                      {entry.responsibleName}
-                    </small>
-                  </span>
-                  <em>{entry.statusName}</em>
-                </button>
-              ))}
+              {
+                <PaginatedItems label="compromissos">
+                  {expandedEntries.map((entry) => (
+                    <button
+                      type="button"
+                      className={`${portalStatusTone(entry.statusName)} ${canEdit(entry) ? "editable" : ""}`}
+                      onClick={() => {
+                        setExpandedDay("");
+                        openReservation(entry);
+                      }}
+                      key={entry.id}
+                    >
+                      <time>{formatHour(entry.startsAt)}</time>
+                      <span>
+                        <strong>🏢 {entry.title}</strong>
+                        <small>
+                          {portalRoomDepartment(entry.description)} ·{" "}
+                          {entry.responsibleName}
+                        </small>
+                      </span>
+                      <em>{entry.statusName}</em>
+                    </button>
+                  ))}
+                </PaginatedItems>
+              }
             </div>
           </section>
         </div>
@@ -1809,39 +1817,43 @@ function Events({
       />
       {events.length ? (
         <div className="portal-events-grid">
-          {events.map((event) => (
-            <article key={event.id}>
-              {event.imageDataUrl ? (
-                <Image
-                  src={event.imageDataUrl}
-                  alt=""
-                  width={900}
-                  height={480}
-                  unoptimized
-                />
-              ) : (
-                <span>
-                  <CalendarDays size={27} />
-                </span>
-              )}
-              <div>
-                <small>{event.type.toUpperCase()}</small>
-                <h2>{event.title}</h2>
-                <p>
-                  <CommentContent
-                    text={event.body
-                      .replace(/\s*\[TASK_LINK:[^\]]+\]/g, "")
-                      .trim()}
-                  />
-                </p>
-                <strong>
-                  <CalendarDays size={15} />
-                  {dt(event.eventAt)}
-                </strong>
-                <footer>Publicado por {event.authorName}</footer>
-              </div>
-            </article>
-          ))}
+          {
+            <PaginatedItems label="registros">
+              {events.map((event) => (
+                <article key={event.id}>
+                  {event.imageDataUrl ? (
+                    <Image
+                      src={event.imageDataUrl}
+                      alt=""
+                      width={900}
+                      height={480}
+                      unoptimized
+                    />
+                  ) : (
+                    <span>
+                      <CalendarDays size={27} />
+                    </span>
+                  )}
+                  <div>
+                    <small>{event.type.toUpperCase()}</small>
+                    <h2>{event.title}</h2>
+                    <p>
+                      <CommentContent
+                        text={event.body
+                          .replace(/\s*\[TASK_LINK:[^\]]+\]/g, "")
+                          .trim()}
+                      />
+                    </p>
+                    <strong>
+                      <CalendarDays size={15} />
+                      {dt(event.eventAt)}
+                    </strong>
+                    <footer>Publicado por {event.authorName}</footer>
+                  </div>
+                </article>
+              ))}
+            </PaginatedItems>
+          }
         </div>
       ) : (
         <section className="portal-empty-panel">

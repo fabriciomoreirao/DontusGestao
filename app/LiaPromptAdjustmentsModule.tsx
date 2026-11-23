@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import {
@@ -344,23 +346,29 @@ export default function LiaPromptAdjustmentsModule({
         </section>
       ) : view === "cards" ? (
         <div className="lia-adjustments-grid">
-          {visible.map(({ item, detail }) => (
-            <AdjustmentCard
-              key={item.id}
-              item={item}
-              detail={detail}
-              canEdit={canEdit}
-              onOpen={() => setSelected(item)}
-              onEdit={() => setEditing(item)}
-              onDelete={() => {
-                if (window.confirm(`Excluir ajuste do ID ${detail.clientId}?`))
-                  void operate(
-                    { action: "deleteWorkItem", id: item.id },
-                    "Ajuste excluído.",
-                  );
-              }}
-            />
-          ))}
+          {
+            <PaginatedItems label="ajustes da LIA">
+              {visible.map(({ item, detail }) => (
+                <AdjustmentCard
+                  key={item.id}
+                  item={item}
+                  detail={detail}
+                  canEdit={canEdit}
+                  onOpen={() => setSelected(item)}
+                  onEdit={() => setEditing(item)}
+                  onDelete={() => {
+                    if (
+                      window.confirm(`Excluir ajuste do ID ${detail.clientId}?`)
+                    )
+                      void operate(
+                        { action: "deleteWorkItem", id: item.id },
+                        "Ajuste excluído.",
+                      );
+                  }}
+                />
+              ))}
+            </PaginatedItems>
+          }
         </div>
       ) : (
         <div className="lia-adjustments-list">
@@ -374,32 +382,36 @@ export default function LiaPromptAdjustmentsModule({
             <span>CONFERÊNCIA</span>
             <span>AÇÕES</span>
           </header>
-          {visible.map(({ item, detail }) => (
-            <button key={item.id} onClick={() => setSelected(item)}>
-              <span>{detail.clientId}</span>
-              <span>{formatDate(detail.date)}</span>
-              <span>
-                <strong>{detail.problem}</strong>
-                <small>{detail.affectedNode || "Node não informado"}</small>
-              </span>
-              <span>{detail.adjustmentType}</span>
-              <span className={detail.tested ? "tested" : "not-tested"}>
-                {detail.tested ? "SIM" : "NÃO"}
-              </span>
-              <span>{detail.responsible}</span>
-              <span>
-                <strong>{detail.reviewer || "Aguardando envio"}</strong>
-                <small>
-                  {detail.decisionBy
-                    ? `${detail.decisionBy} · ${formatDateTime(detail.decisionAt)}`
-                    : "Sem decisão"}
-                </small>
-              </span>
-              <span>
-                <ChevronRight size={15} />
-              </span>
-            </button>
-          ))}
+          {
+            <PaginatedItems label="ajustes da LIA">
+              {visible.map(({ item, detail }) => (
+                <button key={item.id} onClick={() => setSelected(item)}>
+                  <span>{detail.clientId}</span>
+                  <span>{formatDate(detail.date)}</span>
+                  <span>
+                    <strong>{detail.problem}</strong>
+                    <small>{detail.affectedNode || "Node não informado"}</small>
+                  </span>
+                  <span>{detail.adjustmentType}</span>
+                  <span className={detail.tested ? "tested" : "not-tested"}>
+                    {detail.tested ? "SIM" : "NÃO"}
+                  </span>
+                  <span>{detail.responsible}</span>
+                  <span>
+                    <strong>{detail.reviewer || "Aguardando envio"}</strong>
+                    <small>
+                      {detail.decisionBy
+                        ? `${detail.decisionBy} · ${formatDateTime(detail.decisionAt)}`
+                        : "Sem decisão"}
+                    </small>
+                  </span>
+                  <span>
+                    <ChevronRight size={15} />
+                  </span>
+                </button>
+              ))}
+            </PaginatedItems>
+          }
         </div>
       )}
       {creating && (

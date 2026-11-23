@@ -25,6 +25,9 @@ export const ADMIN_PAGES = [
   "background",
   "permissions",
   "links",
+  "whatsappTemplates",
+  "whatsappConnection",
+  "whatsappCampaigns",
 ] as const;
 export type AdminPage = (typeof ADMIN_PAGES)[number];
 export type WorkspaceRoute = {
@@ -105,6 +108,7 @@ export function workspaceRouteUrl(current: string, route: WorkspaceRoute): URL {
   const url = new URL(current);
   for (const key of [
     "mod",
+    "conversationId",
     "adminPage",
     "commercialFlow",
     "csFlow",

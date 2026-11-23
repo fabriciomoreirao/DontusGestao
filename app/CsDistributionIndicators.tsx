@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { BarChart3, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -116,35 +118,41 @@ export default function CsDistributionIndicators({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.userId}>
-                  <th scope="row">
-                    <span className="cs-distribution-person">
-                      {row.photoDataUrl ? (
-                        <img src={row.photoDataUrl} alt="" />
-                      ) : (
-                        <i>
-                          {row.displayName
-                            .split(/\s+/)
-                            .slice(0, 2)
-                            .map((part) => part[0])
-                            .join("")}
-                        </i>
-                      )}
-                      <span>
-                        <strong>{row.displayName}</strong>
-                        <small>{row.department}</small>
-                      </span>
-                    </span>
-                  </th>
-                  {versions.map((version) => (
-                    <td key={version}>{row.clientsByVersion[version] ?? 0}</td>
+              {
+                <PaginatedItems label="colaboradores" table>
+                  {rows.map((row) => (
+                    <tr key={row.userId}>
+                      <th scope="row">
+                        <span className="cs-distribution-person">
+                          {row.photoDataUrl ? (
+                            <img src={row.photoDataUrl} alt="" />
+                          ) : (
+                            <i>
+                              {row.displayName
+                                .split(/\s+/)
+                                .slice(0, 2)
+                                .map((part) => part[0])
+                                .join("")}
+                            </i>
+                          )}
+                          <span>
+                            <strong>{row.displayName}</strong>
+                            <small>{row.department}</small>
+                          </span>
+                        </span>
+                      </th>
+                      {versions.map((version) => (
+                        <td key={version}>
+                          {row.clientsByVersion[version] ?? 0}
+                        </td>
+                      ))}
+                      <td className="cs-distribution-current-total">
+                        {row.totalClients}
+                      </td>
+                    </tr>
                   ))}
-                  <td className="cs-distribution-current-total">
-                    {row.totalClients}
-                  </td>
-                </tr>
-              ))}
+                </PaginatedItems>
+              }
             </tbody>
             <tfoot>
               <tr>

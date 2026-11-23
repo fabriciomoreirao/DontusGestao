@@ -28,6 +28,40 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 ### Atualização em tempo real
 
+Listas de clientes, registros operacionais, cadastros e tabelas de relatórios usam
+páginas de dez registros, com **Anterior**, **Seguinte** e a posição no total.
+Pesquisa e filtros são aplicados antes da paginação; totais e indicadores mantêm
+o conjunto completo. A navegação também está disponível nos quadros por etapa.
+A tela de Clientes inclui a base autorizada completa, além do antigo limite de
+1.000 cadastros. Listas que já consultam páginas no servidor preservam sua navegação.
+
+Agendamentos feitos nos cards de Acompanhamentos usam **Reunião** na etapa de
+acompanhamento e **Treinamento** no onboarding. A migration `JourneyAgendaTypes`
+inclui esses tipos quando ainda não existem, preservando os cadastros atuais.
+Eles precisam continuar ativos nos cadastros da Agenda. Clicar em uma célula vazia do calendário
+abre o formulário com a data e, nas visões Semana e Dia, o horário selecionados.
+
+Na Fila de espera, **Contato feito** mostra dez registros por página, com
+**Anterior** e **Seguinte**. Pesquisa e filtros consideram todos os contatos.
+
+No Chat interno, digite **@** para selecionar um participante por mouse ou pelas
+setas e Enter. A mensagem destaca o nome e avisa o participante marcado, inclusive
+em conversas silenciadas. As marcações acompanham os rascunhos e são validadas
+pelo servidor; a migration `InternalChatMentions` guarda os vínculos na mensagem.
+
+Novas tarefas ficam atribuídas ao criador quando não há um responsável explícito.
+Salvar os dias de uma política de SLA recalcula os prazos das tarefas vinculadas
+desde a criação, conforme os dias e horários úteis cadastrados. O card e o topo
+do modal usam a nova data do SLA, inclusive quando existe um prazo antigo de entrega.
+
+Somente coordenadores com edição podem usar o botão amarelo **Gerar prioridade**,
+ao lado de Agendar. Ele envia um aviso ao
+responsável, aprovador e coordenadores do setor atual. O aviso oferece somente
+**Ver tarefa**, registra a leitura e abre a tarefa correspondente. A ação fica no
+histórico e respeita as permissões de edição e a versão da tarefa. O card mostra
+**Prioridade solicitada** em amarelo, e o modal identifica o solicitante junto à
+data de entrega, incluindo solicitações já registradas antes deste ajuste.
+
 Em **Atendimentos**, a lista exibe dez registros por página, com **Anterior** e
 **Seguinte**. A pesquisa e os filtros consideram os registros carregados e retornam
 à primeira página; a última página se ajusta após exclusões. Somente as dez linhas

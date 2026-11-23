@@ -1,4 +1,7 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
+import { findJourneyAgendaType } from "@/lib/agenda-context";
 import {
   LIA_FINAL_FOLLOWUP_DAYS,
   liaFinalFollowupDays,
@@ -738,52 +741,59 @@ export function LiaJourneyModule(props: CommonProps) {
               </tr>
             </thead>
             <tbody>
-              {visible.map((item) => {
-                const detail = parseDetail(item.description);
-                return (
-                  <tr key={item.id}>
-                    <td>
-                      <button type="button" onClick={() => setSelected(item)}>
-                        <strong>{item.customer_name || item.title}</strong>
-                        <small>
-                          ID{" "}
-                          {detail.clientId ||
-                            item.customer_id ||
-                            item.id.slice(0, 6)}
-                        </small>
-                      </button>
-                    </td>
-                    <td>{liaContractedPlan(detail) || "Não informado"}</td>
-                    <td>{item.owner || "Fila compartilhada"}</td>
-                    <td>
-                      {liaStageForStatus(item.status, liaStages).label.replace(
-                        /^\d+\. /,
-                        "",
-                      )}
-                    </td>
-                    <td>
-                      {(detail.startDate || item.created_at)
-                        .slice(0, 10)
-                        .split("-")
-                        .reverse()
-                        .join("/")}
-                    </td>
-                    <td>
-                      {(item.amount_cents / 100).toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      })}
-                    </td>
-                    <td>
-                      <LiaFormStatus
-                        requests={formRequests.filter(
-                          (entry) => entry.workItemId === item.id,
-                        )}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
+              {
+                <PaginatedItems label="clientes da LIA" table>
+                  {visible.map((item) => {
+                    const detail = parseDetail(item.description);
+                    return (
+                      <tr key={item.id}>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => setSelected(item)}
+                          >
+                            <strong>{item.customer_name || item.title}</strong>
+                            <small>
+                              ID{" "}
+                              {detail.clientId ||
+                                item.customer_id ||
+                                item.id.slice(0, 6)}
+                            </small>
+                          </button>
+                        </td>
+                        <td>{liaContractedPlan(detail) || "Não informado"}</td>
+                        <td>{item.owner || "Fila compartilhada"}</td>
+                        <td>
+                          {liaStageForStatus(
+                            item.status,
+                            liaStages,
+                          ).label.replace(/^\d+\. /, "")}
+                        </td>
+                        <td>
+                          {(detail.startDate || item.created_at)
+                            .slice(0, 10)
+                            .split("-")
+                            .reverse()
+                            .join("/")}
+                        </td>
+                        <td>
+                          {(item.amount_cents / 100).toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </td>
+                        <td>
+                          <LiaFormStatus
+                            requests={formRequests.filter(
+                              (entry) => entry.workItemId === item.id,
+                            )}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </PaginatedItems>
+              }
             </tbody>
           </table>
           {!visible.length && (
@@ -792,109 +802,117 @@ export function LiaJourneyModule(props: CommonProps) {
         </div>
       ) : (
         <div className="journey-board">
-          {visible.map((item) => {
-            const d = parseDetail(item.description);
-            const responsible = employees.find(
-              (employee) => employee.displayName === item.owner,
-            );
-            const lastInteraction =
-              (d.history ?? []).at(-1)?.at || d.startDate || item.created_at;
-            return (
-              <article
-                data-reminder-entity-id={item.id}
-                className="journey-card"
-                key={item.id}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    setSelected(item);
-                  }
-                }}
-                onClick={() => setSelected(item)}
-              >
-                <div className="journey-card-top">
-                  <span className="journey-avatar">
-                    {(item.customer_name || item.title)
-                      .slice(0, 2)
-                      .toUpperCase()}
-                  </span>
-                  <span className="status-pill">
-                    {liaStageForStatus(item.status, liaStages).label.replace(
-                      /^\d+\. /,
-                      "",
-                    )}
-                  </span>
-                </div>
-                <h3>{item.customer_name || item.title}</h3>
-                <small>
-                  ID {d.clientId || item.customer_id || item.id.slice(0, 6)}
-                </small>
-                <span className="lia-plan-chip">
-                  Plano LIA: {liaContractedPlan(d) || "Não informado"}
-                </span>
-                <div className="journey-meta">
-                  <span>
-                    <CalendarDays size={14} />
-                    {daysSince(d.startDate || item.created_at)} dias em
-                    acompanhamento
-                  </span>
-                  <span
-                    className={
-                      daysSince(lastInteraction) >= 5
-                        ? "journey-inactive-alert"
-                        : ""
-                    }
-                  >
-                    <Clock3 size={14} />
-                    {daysSince(lastInteraction)} dia(s) sem interação
-                  </span>
-                  <span
-                    className="journey-owner-chip"
-                    data-collaborator-name={item.owner}
-                  >
-                    <i
-                      style={
-                        responsible?.photoDataUrl
-                          ? {
-                              backgroundImage: `url("${responsible.photoDataUrl}")`,
-                            }
-                          : undefined
+          {
+            <PaginatedItems label="clientes da LIA">
+              {visible.map((item) => {
+                const d = parseDetail(item.description);
+                const responsible = employees.find(
+                  (employee) => employee.displayName === item.owner,
+                );
+                const lastInteraction =
+                  (d.history ?? []).at(-1)?.at ||
+                  d.startDate ||
+                  item.created_at;
+                return (
+                  <article
+                    data-reminder-entity-id={item.id}
+                    className="journey-card"
+                    key={item.id}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        setSelected(item);
                       }
-                    />
-                    {item.owner || "Fila compartilhada"}
-                  </span>
-                </div>
-                <div className="lia-card-form-state">
-                  <LiaFormStatus
-                    requests={formRequests.filter(
-                      (entry) => entry.workItemId === item.id,
-                    )}
-                  />
-                  {formRequests.some(
-                    (entry) =>
-                      entry.workItemId === item.id && entry.submittedAt,
-                  ) && (
-                    <a
-                      href={`/lia-form-responses/${item.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      Ver respostas ↗
-                    </a>
-                  )}
-                </div>
-                <footer>
-                  <span>
-                    <PhoneLink phone={d.whatsapp || "WhatsApp não informado"} />
-                  </span>
-                  <ChevronRight size={17} />
-                </footer>
-              </article>
-            );
-          })}
+                    }}
+                    onClick={() => setSelected(item)}
+                  >
+                    <div className="journey-card-top">
+                      <span className="journey-avatar">
+                        {(item.customer_name || item.title)
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </span>
+                      <span className="status-pill">
+                        {liaStageForStatus(
+                          item.status,
+                          liaStages,
+                        ).label.replace(/^\d+\. /, "")}
+                      </span>
+                    </div>
+                    <h3>{item.customer_name || item.title}</h3>
+                    <small>
+                      ID {d.clientId || item.customer_id || item.id.slice(0, 6)}
+                    </small>
+                    <span className="lia-plan-chip">
+                      Plano LIA: {liaContractedPlan(d) || "Não informado"}
+                    </span>
+                    <div className="journey-meta">
+                      <span>
+                        <CalendarDays size={14} />
+                        {daysSince(d.startDate || item.created_at)} dias em
+                        acompanhamento
+                      </span>
+                      <span
+                        className={
+                          daysSince(lastInteraction) >= 5
+                            ? "journey-inactive-alert"
+                            : ""
+                        }
+                      >
+                        <Clock3 size={14} />
+                        {daysSince(lastInteraction)} dia(s) sem interação
+                      </span>
+                      <span
+                        className="journey-owner-chip"
+                        data-collaborator-name={item.owner}
+                      >
+                        <i
+                          style={
+                            responsible?.photoDataUrl
+                              ? {
+                                  backgroundImage: `url("${responsible.photoDataUrl}")`,
+                                }
+                              : undefined
+                          }
+                        />
+                        {item.owner || "Fila compartilhada"}
+                      </span>
+                    </div>
+                    <div className="lia-card-form-state">
+                      <LiaFormStatus
+                        requests={formRequests.filter(
+                          (entry) => entry.workItemId === item.id,
+                        )}
+                      />
+                      {formRequests.some(
+                        (entry) =>
+                          entry.workItemId === item.id && entry.submittedAt,
+                      ) && (
+                        <a
+                          href={`/lia-form-responses/${item.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          Ver respostas ↗
+                        </a>
+                      )}
+                    </div>
+                    <footer>
+                      <span>
+                        <PhoneLink
+                          phone={d.whatsapp || "WhatsApp não informado"}
+                        />
+                      </span>
+                      <ChevronRight size={17} />
+                    </footer>
+                  </article>
+                );
+              })}
+            </PaginatedItems>
+          }
           {!visible.length && (
             <div className="empty-state">
               <ClipboardCheck />
@@ -1412,10 +1430,10 @@ function LiaKickoff({
           v.active &&
           /lia|ativacao/.test(normalize(`${v.name} ${v.departmentName}`)),
       ) ?? agendaModule?.calendars.find((v) => v.active);
-    const type =
-      agendaModule?.types.find(
-        (v) => v.active && /kick|reuniao|onboarding/.test(normalize(v.name)),
-      ) ?? agendaModule?.types.find((v) => v.active);
+    const type = findJourneyAgendaType(
+      agendaModule?.types ?? [],
+      "Treinamento",
+    );
     const statusValue =
       agendaModule?.statuses.find(
         (v) => v.active && /agend|pendente/.test(normalize(v.name)),

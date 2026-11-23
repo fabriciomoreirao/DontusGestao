@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import PhoneLink from "@/app/PhoneLink";
 
 import {
@@ -1135,154 +1137,156 @@ export default function CommissionsModule({
             </p>
           </div>
         ) : (
-          visible.map((row) => {
-            const detail = row.recordDetail;
-            const cancelled = /cancel/i.test(
-              `${row.customerStatus || ""} ${row.sourceStatus || ""}`,
-            );
-            return (
-              <article
-                data-reminder-entity-id={row.sourceKey}
-                className={`commission-row ${cancelled ? "cancelled" : ""}`}
-                key={row.sourceKey}
-              >
-                <span>
-                  <button
-                    className="commission-customer-link"
-                    onClick={() => setSelectedCustomer(row)}
-                  >
-                    {row.customerName}
-                  </button>
-                  <small>
-                    {row.product} · {money(row.saleValueCents)}
-                  </small>
-                  <small className="commission-source-meta">
-                    {row.customerStatus || "Cliente"} ·{" "}
-                    {row.sourceStatus || "Em acompanhamento"} ·{" "}
-                    {row.sector || scopeLabel(scope)}
-                  </small>
-                  {row.scope === "lia" && row.liaStages && (
-                    <small>
-                      Configuração Inicial:{" "}
-                      {stageValue(row.liaStages.configuration)} · Testes do
-                      Cliente: {stageValue(row.liaStages.tests)} · Liberação:{" "}
-                      {stageValue(row.liaStages.release)} · Status:{" "}
-                      {row.liaStages.current}
-                    </small>
-                  )}
-                  {cancelled && (
-                    <small className="commission-cancelled-note">
-                      Cancelado · disponível para reprovação
-                    </small>
-                  )}
-                </span>
-                <span
-                  className="commission-person"
-                  data-collaborator-name={row.employeeName}
+          <PaginatedItems label="comissões">
+            {visible.map((row) => {
+              const detail = row.recordDetail;
+              const cancelled = /cancel/i.test(
+                `${row.customerStatus || ""} ${row.sourceStatus || ""}`,
+              );
+              return (
+                <article
+                  data-reminder-entity-id={row.sourceKey}
+                  className={`commission-row ${cancelled ? "cancelled" : ""}`}
+                  key={row.sourceKey}
                 >
-                  {avatar(row.employeeName, row.employeePhoto)}
                   <span>
-                    <strong>{row.employeeName}</strong>
-                    <small>{row.responsible || scopeLabel(scope)}</small>
+                    <button
+                      className="commission-customer-link"
+                      onClick={() => setSelectedCustomer(row)}
+                    >
+                      {row.customerName}
+                    </button>
+                    <small>
+                      {row.product} · {money(row.saleValueCents)}
+                    </small>
+                    <small className="commission-source-meta">
+                      {row.customerStatus || "Cliente"} ·{" "}
+                      {row.sourceStatus || "Em acompanhamento"} ·{" "}
+                      {row.sector || scopeLabel(scope)}
+                    </small>
+                    {row.scope === "lia" && row.liaStages && (
+                      <small>
+                        Configuração Inicial:{" "}
+                        {stageValue(row.liaStages.configuration)} · Testes do
+                        Cliente: {stageValue(row.liaStages.tests)} · Liberação:{" "}
+                        {stageValue(row.liaStages.release)} · Status:{" "}
+                        {row.liaStages.current}
+                      </small>
+                    )}
+                    {cancelled && (
+                      <small className="commission-cancelled-note">
+                        Cancelado · disponível para reprovação
+                      </small>
+                    )}
                   </span>
-                </span>
-                <span>
-                  <strong>
-                    {scope !== "cs"
-                      ? money(row.saleValueCents)
-                      : row.score === null
-                        ? "—"
-                        : `${row.score}%`}
-                  </strong>
-                  <small>
-                    {scope !== "cs"
-                      ? row.competence
-                      : row.usageStatus || "score de utilização"}
-                  </small>
-                </span>
-                <span>
-                  <strong>
-                    {detail && detail.decision !== "pending"
-                      ? money(detail.commissionCents)
-                      : row.ruleFound
-                        ? money(row.proposedCents)
-                        : "Pendente"}
-                  </strong>
-                  <small className={!row.ruleFound ? "warning" : ""}>
-                    {row.ruleLabel}
-                  </small>
-                  {row.needsReview && (
-                    <small className="warning">
-                      Total mensal alterado. Revise a aprovação.
-                    </small>
-                  )}
-                  {!row.saleValueCents && row.ruleFound && !row.manual && (
-                    <small className="warning">
-                      Valor base não informado · revise ao aprovar
-                    </small>
-                  )}
-                </span>
-                <span>
-                  <b
-                    className={`commission-status ${detail?.decision || "pending"}`}
+                  <span
+                    className="commission-person"
+                    data-collaborator-name={row.employeeName}
                   >
-                    {detail?.decision === "approved"
-                      ? "Aprovada"
-                      : detail?.decision === "rejected"
-                        ? "Reprovada"
-                        : "Pendente"}
-                  </b>
-                  {detail?.reason && (
-                    <small title={detail.reason}>{detail.reason}</small>
-                  )}
-                </span>
-                <span className="commission-actions">
-                  {(canApprove || canManage) && (
-                    <>
-                      <button
-                        type="button"
-                        disabled={
-                          busy || (row.scope === "commercial" && !row.manual)
-                        }
-                        title={
-                          row.scope === "commercial" && !row.manual
-                            ? "O valor é obtido da venda no CRM Comercial"
-                            : "Editar valor do cliente"
-                        }
-                        aria-label={`Editar valor de ${row.customerName}`}
-                        onClick={() => setEditingValue(row)}
-                      >
-                        <Pencil />
-                      </button>
-                      <button
-                        disabled={!row.ruleFound || busy || cancelled}
-                        title={
-                          cancelled
-                            ? "Lançamento cancelado: utilize Reprovar"
-                            : "Aprovar"
-                        }
-                        onClick={() =>
-                          setDecision({ row, decision: "approved" })
-                        }
-                      >
-                        <BadgeCheck />
-                      </button>
-                      <button
-                        disabled={busy}
-                        className="danger"
-                        title="Reprovar"
-                        onClick={() =>
-                          setDecision({ row, decision: "rejected" })
-                        }
-                      >
-                        <XCircle />
-                      </button>
-                    </>
-                  )}
-                </span>
-              </article>
-            );
-          })
+                    {avatar(row.employeeName, row.employeePhoto)}
+                    <span>
+                      <strong>{row.employeeName}</strong>
+                      <small>{row.responsible || scopeLabel(scope)}</small>
+                    </span>
+                  </span>
+                  <span>
+                    <strong>
+                      {scope !== "cs"
+                        ? money(row.saleValueCents)
+                        : row.score === null
+                          ? "—"
+                          : `${row.score}%`}
+                    </strong>
+                    <small>
+                      {scope !== "cs"
+                        ? row.competence
+                        : row.usageStatus || "score de utilização"}
+                    </small>
+                  </span>
+                  <span>
+                    <strong>
+                      {detail && detail.decision !== "pending"
+                        ? money(detail.commissionCents)
+                        : row.ruleFound
+                          ? money(row.proposedCents)
+                          : "Pendente"}
+                    </strong>
+                    <small className={!row.ruleFound ? "warning" : ""}>
+                      {row.ruleLabel}
+                    </small>
+                    {row.needsReview && (
+                      <small className="warning">
+                        Total mensal alterado. Revise a aprovação.
+                      </small>
+                    )}
+                    {!row.saleValueCents && row.ruleFound && !row.manual && (
+                      <small className="warning">
+                        Valor base não informado · revise ao aprovar
+                      </small>
+                    )}
+                  </span>
+                  <span>
+                    <b
+                      className={`commission-status ${detail?.decision || "pending"}`}
+                    >
+                      {detail?.decision === "approved"
+                        ? "Aprovada"
+                        : detail?.decision === "rejected"
+                          ? "Reprovada"
+                          : "Pendente"}
+                    </b>
+                    {detail?.reason && (
+                      <small title={detail.reason}>{detail.reason}</small>
+                    )}
+                  </span>
+                  <span className="commission-actions">
+                    {(canApprove || canManage) && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={
+                            busy || (row.scope === "commercial" && !row.manual)
+                          }
+                          title={
+                            row.scope === "commercial" && !row.manual
+                              ? "O valor é obtido da venda no CRM Comercial"
+                              : "Editar valor do cliente"
+                          }
+                          aria-label={`Editar valor de ${row.customerName}`}
+                          onClick={() => setEditingValue(row)}
+                        >
+                          <Pencil />
+                        </button>
+                        <button
+                          disabled={!row.ruleFound || busy || cancelled}
+                          title={
+                            cancelled
+                              ? "Lançamento cancelado: utilize Reprovar"
+                              : "Aprovar"
+                          }
+                          onClick={() =>
+                            setDecision({ row, decision: "approved" })
+                          }
+                        >
+                          <BadgeCheck />
+                        </button>
+                        <button
+                          disabled={busy}
+                          className="danger"
+                          title="Reprovar"
+                          onClick={() =>
+                            setDecision({ row, decision: "rejected" })
+                          }
+                        >
+                          <XCircle />
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </article>
+              );
+            })}
+          </PaginatedItems>
         )}
       </section>
       {editingValue && (

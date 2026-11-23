@@ -1,6 +1,9 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import MessageText from "@/app/MessageText";
 import ChatMessageComposer from "@/app/ChatMessageComposer";
+import WhatsAppTemplateSender from "./WhatsAppTemplateSender";
 import { createChatDraftStore } from "@/lib/chat-drafts";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 
@@ -18,6 +21,7 @@ import {
   ChevronRight,
   CirclePlus,
   Clock3,
+  FileCheck2,
   Hash,
   Headphones,
   Inbox,
@@ -286,7 +290,7 @@ declare global {
   }
 }
 
-async function loadFacebookSdk(appId: string, apiVersion: string) {
+export async function loadFacebookSdk(appId: string, apiVersion: string) {
   if (!window.FB) {
     await new Promise<void>((resolve, reject) => {
       const initialize = () =>
@@ -354,7 +358,11 @@ export default function ChatWorkspace(props: WorkspaceProps) {
     status: "Todos",
     departmentId: "",
     isGroup: false,
-    conversationId: "",
+    conversationId:
+      typeof window === "undefined"
+        ? ""
+        : new URLSearchParams(window.location.search).get("conversationId") ||
+          "",
   }));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -366,6 +374,24 @@ export default function ChatWorkspace(props: WorkspaceProps) {
     latestProps.current = props;
   });
   const selectedId = module?.selectedConversationId;
+  useEffect(() => {
+    const open = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (id)
+        setFilters((current) => ({
+          ...current,
+          page: 1,
+          search: "",
+          status: "Todos",
+          departmentId: "",
+          isGroup: false,
+          conversationId: id,
+        }));
+    };
+    window.addEventListener("dontus:open-whatsapp-conversation", open);
+    return () =>
+      window.removeEventListener("dontus:open-whatsapp-conversation", open);
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     const version = ++requestVersion.current;
@@ -599,6 +625,7 @@ function ChatModule({
   const setStatus = (status: string) => onFilters({ status });
   const setDepartmentId = (departmentId: string) => onFilters({ departmentId });
   const [newConversation, setNewConversation] = useState(false);
+  const [templateSender, setTemplateSender] = useState(false);
   const [drafts] = useState(createChatDraftStore);
   const [selection, setSelectedConversationIds] = useState<string[]>([]);
   const conversationKind = filters.isGroup ? "groups" : "contacts";
@@ -1093,6 +1120,34 @@ function ChatModule({
                     </div>
                   ))}
                 </div>
+                {canEdit &&
+                  has("sendMessages") &&
+                  !selected.isGroup &&
+                  module.channels.some(
+                    (c) => c.id === selected.channelId && c.type === "WhatsApp",
+                  ) && (
+                    <div className="wa-chat-template-action">
+                      <button
+                        disabled={busy || selected.status === "Encerrada"}
+                        onClick={() => setTemplateSender(true)}
+                      >
+                        <FileCheck2 size={16} /> Enviar template oficial
+                      </button>
+                    </div>
+                  )}
+                {templateSender && (
+                  <WhatsAppTemplateSender
+                    key={selected.id}
+                    conversation={selected}
+                    onClose={() => setTemplateSender(false)}
+                    onSent={() =>
+                      onFilters({
+                        conversationId: selected.id,
+                        page: module.page.number,
+                      })
+                    }
+                  />
+                )}
                 {canEdit && (
                   <ChatMessageComposer
                     drafts={drafts}
@@ -2926,104 +2981,110 @@ function WhatsAppSettings({
         </form>
       )}
       <div className="whatsapp-number-grid">
-        {module.whatsAppNumbers.map((item) => (
-          <article
-            className={editingId === item.id ? "editing" : ""}
-            key={item.id}
-          >
-            <span className="whatsapp-icon">
-              <Phone size={19} />
-            </span>
-            <div>
-              <h3>{item.internalName}</h3>
-              <p>
-                {item.displayName} · <PhoneLink phone={item.phoneNumber} />
-              </p>
-              <small>
-                {item.departmentName} ·{" "}
-                {item.connectionMode === "Coexistence"
-                  ? "Coexistência"
-                  : "Cloud API"}{" "}
-                · API {item.apiVersion}
-              </small>
-            </div>
-            <em
-              className={
-                item.active && item.status === "Configurado"
-                  ? "active"
-                  : item.coexistenceStatus === "Erro"
-                    ? "error"
-                    : ""
-              }
-            >
-              {item.connectionMode === "Coexistence"
-                ? item.coexistenceStatus
-                : item.status}
-            </em>
-            <span className="credential-state">
-              {item.hasAccessToken ? (
-                <>
-                  <Check size={13} /> Credencial protegida
-                </>
-              ) : item.connectionMode === "Coexistence" ? (
-                "Aguardando Embedded Signup"
-              ) : (
-                "Sem token"
-              )}
-            </span>
-            {item.coexistenceError && (
-              <p className="coexistence-card-error">{item.coexistenceError}</p>
-            )}
-            {allowed && (
-              <div className="whatsapp-card-actions">
-                {item.connectionMode === "Coexistence" &&
-                  item.coexistenceStatus !== "Ativo" && (
-                    <button
-                      className="connect-meta"
-                      disabled={busy || connectingId === item.id}
-                      onClick={() => void startCoexistence(item)}
-                    >
-                      <Wifi size={14} />{" "}
-                      {connectingId === item.id
-                        ? "Abrindo Meta..."
-                        : item.hasAccessToken
-                          ? "Conectar novamente com Facebook"
-                          : "Conectar com Facebook"}
-                    </button>
-                  )}
-                {item.connectionMode === "Coexistence" &&
-                  item.coexistenceStatus === "Erro" &&
-                  item.hasAccessToken && (
-                    <button
-                      className="retry-coexistence"
-                      disabled={busy}
-                      onClick={() =>
-                        void operate(
-                          {
-                            action: "retryChatWhatsAppCoexistence",
-                            id: item.id,
-                          },
-                          "Sincronização da coexistência concluída.",
-                        )
-                      }
-                    >
-                      <RefreshCw size={14} /> Tentar novamente
-                    </button>
-                  )}
-                <button
-                  className="edit-whatsapp-number"
-                  onClick={() => {
-                    setEditingId(item.id);
-                    setConnectionMode(item.connectionMode);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
+        {
+          <PaginatedItems label="conexões">
+            {module.whatsAppNumbers.map((item) => (
+              <article
+                className={editingId === item.id ? "editing" : ""}
+                key={item.id}
+              >
+                <span className="whatsapp-icon">
+                  <Phone size={19} />
+                </span>
+                <div>
+                  <h3>{item.internalName}</h3>
+                  <p>
+                    {item.displayName} · <PhoneLink phone={item.phoneNumber} />
+                  </p>
+                  <small>
+                    {item.departmentName} ·{" "}
+                    {item.connectionMode === "Coexistence"
+                      ? "Coexistência"
+                      : "Cloud API"}{" "}
+                    · API {item.apiVersion}
+                  </small>
+                </div>
+                <em
+                  className={
+                    item.active && item.status === "Configurado"
+                      ? "active"
+                      : item.coexistenceStatus === "Erro"
+                        ? "error"
+                        : ""
+                  }
                 >
-                  <Pencil size={14} /> Editar
-                </button>
-              </div>
-            )}
-          </article>
-        ))}
+                  {item.connectionMode === "Coexistence"
+                    ? item.coexistenceStatus
+                    : item.status}
+                </em>
+                <span className="credential-state">
+                  {item.hasAccessToken ? (
+                    <>
+                      <Check size={13} /> Credencial protegida
+                    </>
+                  ) : item.connectionMode === "Coexistence" ? (
+                    "Aguardando Embedded Signup"
+                  ) : (
+                    "Sem token"
+                  )}
+                </span>
+                {item.coexistenceError && (
+                  <p className="coexistence-card-error">
+                    {item.coexistenceError}
+                  </p>
+                )}
+                {allowed && (
+                  <div className="whatsapp-card-actions">
+                    {item.connectionMode === "Coexistence" &&
+                      item.coexistenceStatus !== "Ativo" && (
+                        <button
+                          className="connect-meta"
+                          disabled={busy || connectingId === item.id}
+                          onClick={() => void startCoexistence(item)}
+                        >
+                          <Wifi size={14} />{" "}
+                          {connectingId === item.id
+                            ? "Abrindo Meta..."
+                            : item.hasAccessToken
+                              ? "Conectar novamente com Facebook"
+                              : "Conectar com Facebook"}
+                        </button>
+                      )}
+                    {item.connectionMode === "Coexistence" &&
+                      item.coexistenceStatus === "Erro" &&
+                      item.hasAccessToken && (
+                        <button
+                          className="retry-coexistence"
+                          disabled={busy}
+                          onClick={() =>
+                            void operate(
+                              {
+                                action: "retryChatWhatsAppCoexistence",
+                                id: item.id,
+                              },
+                              "Sincronização da coexistência concluída.",
+                            )
+                          }
+                        >
+                          <RefreshCw size={14} /> Tentar novamente
+                        </button>
+                      )}
+                    <button
+                      className="edit-whatsapp-number"
+                      onClick={() => {
+                        setEditingId(item.id);
+                        setConnectionMode(item.connectionMode);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                    >
+                      <Pencil size={14} /> Editar
+                    </button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </PaginatedItems>
+        }
       </div>
     </>
   );
@@ -3178,18 +3239,22 @@ function SettingsList({
 }) {
   return (
     <div className="chat-settings-list">
-      {items.map((item) => (
-        <article key={item.id}>
-          <i style={{ background: item.color }} />
-          <span>
-            <strong>{item.title}</strong>
-            <small>{item.subtitle}</small>
-          </span>
-          <em className={item.active ? "active" : ""}>
-            {item.active ? "Ativo" : "Inativo"}
-          </em>
-        </article>
-      ))}
+      {
+        <PaginatedItems label="cadastros do WhatsApp">
+          {items.map((item) => (
+            <article key={item.id}>
+              <i style={{ background: item.color }} />
+              <span>
+                <strong>{item.title}</strong>
+                <small>{item.subtitle}</small>
+              </span>
+              <em className={item.active ? "active" : ""}>
+                {item.active ? "Ativo" : "Inativo"}
+              </em>
+            </article>
+          ))}
+        </PaginatedItems>
+      }
     </div>
   );
 }

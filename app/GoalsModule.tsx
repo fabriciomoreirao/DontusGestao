@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import {
   goalPeriod,
   goalMetricLabels,
@@ -486,69 +488,71 @@ export default function GoalsModule({
             <p>Crie uma meta para começar a acompanhar o desempenho.</p>
           </div>
         ) : (
-          visible.map(({ item, goal }) => {
-            const actual = progress(item.id) ?? 0;
-            return (
-              <GoalProgressCard
-                pending={progress(item.id) === undefined}
-                key={item.id}
-                goal={{
-                  id: item.id,
-                  title: item.title,
-                  ...goal,
-                  actual,
-                  progress:
-                    goal.target > 0
-                      ? Math.round((actual / goal.target) * 100)
-                      : 0,
-                  achieved: actual >= goal.target,
-                  employee: goal.employeeName,
-                  department: goal.departmentName,
-                  funnelName: goalFunnelName(goal, catalogs),
-                  moduleName: goalModuleName(goal),
-                }}
-                onOpen={() => setSelectedGoal({ item, goal })}
-                actions={
-                  canEdit ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => void toggle(item, goal)}
-                      >
-                        {goal.active ? "Encerrar" : "Reativar"}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Editar meta ${item.title}`}
-                        title="Editar meta"
-                        onClick={() => {
-                          setSaveError("");
-                          setEditingGoal({ item, goal });
-                        }}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className="delete"
-                        aria-label={`Excluir meta ${item.title}`}
-                        title="Excluir meta"
-                        onClick={() => {
-                          if (window.confirm(`Excluir a meta ${item.title}?`))
-                            void operate(
-                              { action: "deleteWorkItem", id: item.id },
-                              "Meta excluída.",
-                            );
-                        }}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </>
-                  ) : undefined
-                }
-              />
-            );
-          })
+          <PaginatedItems label="metas">
+            {visible.map(({ item, goal }) => {
+              const actual = progress(item.id) ?? 0;
+              return (
+                <GoalProgressCard
+                  pending={progress(item.id) === undefined}
+                  key={item.id}
+                  goal={{
+                    id: item.id,
+                    title: item.title,
+                    ...goal,
+                    actual,
+                    progress:
+                      goal.target > 0
+                        ? Math.round((actual / goal.target) * 100)
+                        : 0,
+                    achieved: actual >= goal.target,
+                    employee: goal.employeeName,
+                    department: goal.departmentName,
+                    funnelName: goalFunnelName(goal, catalogs),
+                    moduleName: goalModuleName(goal),
+                  }}
+                  onOpen={() => setSelectedGoal({ item, goal })}
+                  actions={
+                    canEdit ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void toggle(item, goal)}
+                        >
+                          {goal.active ? "Encerrar" : "Reativar"}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Editar meta ${item.title}`}
+                          title="Editar meta"
+                          onClick={() => {
+                            setSaveError("");
+                            setEditingGoal({ item, goal });
+                          }}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="delete"
+                          aria-label={`Excluir meta ${item.title}`}
+                          title="Excluir meta"
+                          onClick={() => {
+                            if (window.confirm(`Excluir a meta ${item.title}?`))
+                              void operate(
+                                { action: "deleteWorkItem", id: item.id },
+                                "Meta excluída.",
+                              );
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    ) : undefined
+                  }
+                />
+              );
+            })}
+          </PaginatedItems>
         )}
       </section>
       {(creating || editingGoal) && (

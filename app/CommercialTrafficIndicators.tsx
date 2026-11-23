@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import PaginatedItems from "@/app/PaginatedItems";
+
 import {
   Activity,
   CheckCircle2,
@@ -50,8 +51,6 @@ export default function CommercialTrafficIndicators({
 }: {
   entries: Entry[];
 }) {
-  const [limit, setLimit] = useState(40);
-  useEffect(() => setLimit(40), [entries]);
   const converted = entries.filter((entry) => entry.converted),
     qualified = entries.filter((entry) => entry.qualified),
     disqualified = entries.filter((entry) => entry.disqualified);
@@ -229,19 +228,23 @@ export default function CommercialTrafficIndicators({
             </tr>
           </thead>
           <tbody>
-            {entries.slice(0, limit).map((entry) => (
-              <tr key={entry.id}>
-                <th scope="row">{entry.item.title}</th>
-                <td>{entry.originFunnel}</td>
-                <td>{campaign(entry)}</td>
-                <td>{String(entry.detail.region || "Não informada")}</td>
-                <td>{entry.seller}</td>
-                <td>{outcomeLabels[entry.outcome]}</td>
-                <td>{date(entry.date)}</td>
-                <td>{date(entry.closedAt)}</td>
-                <td>{entry.converted ? money(entry.revenueCents) : "—"}</td>
-              </tr>
-            ))}
+            {
+              <PaginatedItems label="leads de tráfego" table>
+                {entries.map((entry) => (
+                  <tr key={entry.id}>
+                    <th scope="row">{entry.item.title}</th>
+                    <td>{entry.originFunnel}</td>
+                    <td>{campaign(entry)}</td>
+                    <td>{String(entry.detail.region || "Não informada")}</td>
+                    <td>{entry.seller}</td>
+                    <td>{outcomeLabels[entry.outcome]}</td>
+                    <td>{date(entry.date)}</td>
+                    <td>{date(entry.closedAt)}</td>
+                    <td>{entry.converted ? money(entry.revenueCents) : "—"}</td>
+                  </tr>
+                ))}
+              </PaginatedItems>
+            }
             {!entries.length && (
               <tr>
                 <td colSpan={9}>
@@ -251,15 +254,6 @@ export default function CommercialTrafficIndicators({
             )}
           </tbody>
         </table>
-        {entries.length > limit && (
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setLimit((value) => value + 40)}
-          >
-            Ver mais leads ({entries.length - limit})
-          </button>
-        )}
       </div>
     </section>
   );

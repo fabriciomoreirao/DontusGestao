@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import CommentHistory from "@/app/CommentHistory";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 import { cancellationMonthlyCents } from "@/lib/cancellation-finance";
@@ -1176,37 +1178,39 @@ export default function CancellationsModule({
                   </p>
                 </div>
               ) : (
-                visible.map(({ item, detail }) => {
-                  const nextStage = NEXT_STAGE[item.status];
-                  return (
-                    <CancellationCard
-                      key={item.id}
-                      item={item}
-                      detail={detail}
-                      employee={employees.find(
-                        (entry) => entry.displayName === item.owner,
-                      )}
-                      canEdit={canEdit}
-                      canDelete={canDelete}
-                      nextStage={nextStage}
-                      onboarding={item.status === "Convertido"}
-                      onNext={() => setRouting(item)}
-                      onOpen={() => setSelected(item)}
-                      onEdit={() => setEditing(item)}
-                      onDelete={() =>
-                        void operate(
-                          { action: "deleteWorkItem", id: item.id },
-                          "Cancelamento excluído.",
-                        )
-                      }
-                      onDragStart={(event) => {
-                        setDragging(item);
-                        beginKanbanDrag(event, "text/plain", item.id);
-                      }}
-                      onDragEnd={() => setDragging(null)}
-                    />
-                  );
-                })
+                <PaginatedItems label="cancelamentos">
+                  {visible.map(({ item, detail }) => {
+                    const nextStage = NEXT_STAGE[item.status];
+                    return (
+                      <CancellationCard
+                        key={item.id}
+                        item={item}
+                        detail={detail}
+                        employee={employees.find(
+                          (entry) => entry.displayName === item.owner,
+                        )}
+                        canEdit={canEdit}
+                        canDelete={canDelete}
+                        nextStage={nextStage}
+                        onboarding={item.status === "Convertido"}
+                        onNext={() => setRouting(item)}
+                        onOpen={() => setSelected(item)}
+                        onEdit={() => setEditing(item)}
+                        onDelete={() =>
+                          void operate(
+                            { action: "deleteWorkItem", id: item.id },
+                            "Cancelamento excluído.",
+                          )
+                        }
+                        onDragStart={(event) => {
+                          setDragging(item);
+                          beginKanbanDrag(event, "text/plain", item.id);
+                        }}
+                        onDragEnd={() => setDragging(null)}
+                      />
+                    );
+                  })}
+                </PaginatedItems>
               )}
             </div>
           </div>

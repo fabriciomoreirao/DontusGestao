@@ -11,6 +11,7 @@ export type AppNotification = {
   targetUrl?: string;
   roomId?: string;
   count?: number;
+  messageId?: string;
 };
 type Item = {
   id: string;
@@ -87,6 +88,9 @@ export type NotificationData = {
         body: string;
         type: string;
         createdAt: string;
+        isUnread?: boolean;
+        deletedAt?: string | null;
+        mentions?: Array<{ userId: string }>;
       }>;
     }>;
   } | null;
@@ -441,6 +445,7 @@ export function buildNotifications(
       "client_contact_requested",
       "approval_requested",
       "task_completed",
+      "priority_requested",
     ].includes(notification.eventType);
     if (
       notification.read ||
@@ -451,6 +456,7 @@ export function buildNotifications(
         "client_contact_requested",
         "approval_requested",
         "task_completed",
+        "priority_requested",
       ].includes(notification.eventType) ||
       !task ||
       (!workflowNotice &&
@@ -477,16 +483,36 @@ export function buildNotifications(
       (message) => !isSelf(message.senderUserId),
     );
     const latest = incoming.at(-1);
-    if (room.isMuted || room.unreadCount <= 0) continue;
+    const mentioned = incoming
+      .filter(
+        (message) =>
+          message.isUnread &&
+          !message.deletedAt &&
+          message.mentions?.some(
+            (mention) =>
+              mention.userId === data.internalChatModule?.currentUserId,
+          ),
+      )
+      .at(-1);
+    if (room.unreadCount <= 0 || (room.isMuted && !mentioned)) continue;
+    const alertMessage = room.isMuted ? mentioned : latest;
+    const mentionNotice =
+      alertMessage?.isUnread &&
+      alertMessage.mentions?.some(
+        (mention) => mention.userId === data.internalChatModule?.currentUserId,
+      );
     add({
-      id: `chat-${room.id}-${latest?.id || `unread-${room.unreadCount}`}`,
+      id: `chat-${room.id}-${alertMessage?.id || `unread-${room.unreadCount}`}`,
       sourceId: room.id,
       category: "chat",
-      title: `${room.unreadCount} nova(s) mensagem(ns) em ${room.name}`,
-      meta: "Chat interno",
+      title: mentionNotice
+        ? `${alertMessage?.senderName} marcou você em ${room.name}`
+        : `${room.unreadCount} nova(s) mensagem(ns) em ${room.name}`,
+      meta: mentionNotice ? "Menção no chat interno" : "Chat interno",
       module: "internalChat",
-      at: latest?.createdAt || room.lastMessageAt,
+      at: alertMessage?.createdAt || room.lastMessageAt,
       roomId: room.id,
+      messageId: alertMessage?.id,
       count: room.unreadCount,
     });
   }

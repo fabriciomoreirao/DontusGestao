@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import { AlertTriangle, CircleHelp, ExternalLink } from "lucide-react";
 import { customerSuccessScore } from "@/lib/commission-rules";
 import {
@@ -209,33 +211,43 @@ export default function FollowupRiskIndicators({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  <strong>{row.name}</strong>
-                  <small>
-                    {row.clientId}
-                    {row.network && ` · ${row.network}`}
-                  </small>
-                </td>
-                <td>{row.version}</td>
-                <td>{row.owner || "Não atribuído"}</td>
-                <td>{row.phase}</td>
-                <td>
-                  <b className={row.score < 50 ? "followup-critical-text" : ""}>
-                    {row.score}%
-                  </b>
-                </td>
-                <td>
-                  {row.pending.length ? row.pending.join(" + ") : "Concluído"}
-                </td>
-                <td>
-                  <a href={row.href} aria-label={`Abrir ${row.name}`}>
-                    <ExternalLink size={16} />
-                  </a>
-                </td>
-              </tr>
-            ))}
+            {
+              <PaginatedItems label="acompanhamentos" table>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <strong>{row.name}</strong>
+                      <small>
+                        {row.clientId}
+                        {row.network && ` · ${row.network}`}
+                      </small>
+                    </td>
+                    <td>{row.version}</td>
+                    <td>{row.owner || "Não atribuído"}</td>
+                    <td>{row.phase}</td>
+                    <td>
+                      <b
+                        className={
+                          row.score < 50 ? "followup-critical-text" : ""
+                        }
+                      >
+                        {row.score}%
+                      </b>
+                    </td>
+                    <td>
+                      {row.pending.length
+                        ? row.pending.join(" + ")
+                        : "Concluído"}
+                    </td>
+                    <td>
+                      <a href={row.href} aria-label={`Abrir ${row.name}`}>
+                        <ExternalLink size={16} />
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </PaginatedItems>
+            }
             {!rows.length && (
               <tr>
                 <td colSpan={7}>Nenhum cliente neste recorte.</td>

@@ -127,6 +127,8 @@ public sealed class InternalChatService(
                         message.DeletedAt.HasValue ? "text" : message.Type, message.DeletedAt.HasValue ? "" : message.Body, message.DeletedAt.HasValue ? "" : message.FileName, message.DeletedAt.HasValue ? "" : message.ContentType,
                         !message.DeletedAt.HasValue && !string.IsNullOrWhiteSpace(message.StorageKey), !message.DeletedAt.HasValue && pinned.GetValueOrDefault(message.Id), receiptState, message.CreatedAt, message.EditedAt, message.DeletedAt, message.Version)
                     {
+                        Mentions = message.DeletedAt.HasValue ? [] : InternalChatMentions.Read(message.MentionsJson),
+                        IsUnread = !message.DeletedAt.HasValue && message.SenderUserId != actorUser.Id && (!actorMembership.LastReadAt.HasValue || message.CreatedAt > actorMembership.LastReadAt.Value),
                         ReplyTo = !message.DeletedAt.HasValue && original is not null && original.RoomId == room.Id && original.CreatedAt >= actorMembership.JoinedAt
                             ? new InternalChatReplyDto(original.Id, users.GetValueOrDefault(original.SenderUserId)?.DisplayName ?? "Colaborador removido",
                                 original.DeletedAt.HasValue ? "text" : original.Type, original.DeletedAt.HasValue ? "" : original.Body,
@@ -236,6 +238,12 @@ public sealed class InternalChatService(
         var maxLength = type == "sticker" ? 32 : 4000;
         if (body.Length == 0 || body.Length > maxLength)
             throw new DomainException(type == "sticker" ? "Selecione uma figurinha válida." : "Digite uma mensagem de até 4.000 caracteres.");
+        var participants = await (from member in db.InternalChatRoomMembers
+                                  join person in db.Users on member.UserId equals person.Id
+                                  where member.RoomId == room.Id && person.Active && person.BlockedAt == null
+                                  select new { person.Id, person.DisplayName }).ToDictionaryAsync(person => person.Id, person => person.DisplayName, cancellationToken);
+        var mentions = InternalChatMentions.Validate(body, command.Mentions, participants);
+        if (type != "text" && mentions.Count > 0) throw new DomainException("Marcações são permitidas apenas em mensagens de texto.");
         await ValidateReplyAsync(room.Id, actorUser.Id, command.ReplyToMessageId, cancellationToken);
         var message = new InternalChatMessage
         {
@@ -244,6 +252,7 @@ public sealed class InternalChatService(
             SenderUserId = actorUser.Id,
             Type = type,
             Body = body,
+            MentionsJson = JsonSerializer.Serialize(mentions),
         };
         room.LastMessageAt = message.CreatedAt;
         room.UpdatedAt = DateTimeOffset.UtcNow;
@@ -281,6 +290,7 @@ public sealed class InternalChatService(
         var body = command.Body.Trim();
         if (body.Length is 0 or > 4000) throw new DomainException("Digite uma mensagem de até 4.000 caracteres.");
         if (message.Body == body) return;
+        message.MentionsJson = JsonSerializer.Serialize(InternalChatMentions.Reconcile(message.Body, body, message.MentionsJson));
         message.Body = body; message.EditedAt = DateTimeOffset.UtcNow; message.UpdatedAt = message.EditedAt.Value; message.Version++;
         db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = "EditMessage", Resource = "internal_chat_message", ResourceId = message.Id.ToString(), Module = "internalChat", DetailsJson = JsonSerializer.Serialize(new { message.RoomId, message.EditedAt, message.SenderUserId }) });
         await db.SaveChangesAsync(cancellationToken);
@@ -691,7 +701,8 @@ public sealed class InternalChatService(
     private async Task<AppUser> GetActorUserAsync(ActorContext actor, CancellationToken cancellationToken) =>
         await db.Users.AsNoTracking().Where(user => user.Active && user.BlockedAt == null && user.Email == actor.Email)
             .Select(user => new AppUser { Id = user.Id, Email = user.Email, DisplayName = user.DisplayName, IsCoordinator = user.IsCoordinator, CreatedBy = "" })
-            .SingleOrDefaultAsync(cancellationToken) ?? throw new DomainException("Colaborador não encontrado ou inativo.", 404);
+            .SingleOrDefaultAsync(cancellationToken)
+        ?? throw new DomainException("Colaborador não encontrado ou inativo.", 404);
 
     private async Task<InternalChatRoom> GetMemberRoomAsync(Guid roomId, Guid userId, CancellationToken cancellationToken)
     {

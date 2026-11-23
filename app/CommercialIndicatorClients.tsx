@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -80,22 +82,31 @@ export default function CommercialIndicatorClients({
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((entry) => (
-                        <tr key={entry.item.id}>
-                          <td>
-                            {entry.item.customer_name || entry.item.title}
-                            <small>{String(entry.detail.clientId || "")}</small>
-                          </td>
-                          <td>{entry.seller}</td>
-                          <td>{entry.stage}</td>
-                          <td>
-                            {entry.saleDate
-                              ? entry.saleDate.split("-").reverse().join("/")
-                              : "—"}
-                          </td>
-                          <td>{money(entry.amount)}</td>
-                        </tr>
-                      ))}
+                      {
+                        <PaginatedItems label="clientes" table>
+                          {rows.map((entry) => (
+                            <tr key={entry.item.id}>
+                              <td>
+                                {entry.item.customer_name || entry.item.title}
+                                <small>
+                                  {String(entry.detail.clientId || "")}
+                                </small>
+                              </td>
+                              <td>{entry.seller}</td>
+                              <td>{entry.stage}</td>
+                              <td>
+                                {entry.saleDate
+                                  ? entry.saleDate
+                                      .split("-")
+                                      .reverse()
+                                      .join("/")
+                                  : "—"}
+                              </td>
+                              <td>{money(entry.amount)}</td>
+                            </tr>
+                          ))}
+                        </PaginatedItems>
+                      }
                     </tbody>
                   </table>
                 </div>

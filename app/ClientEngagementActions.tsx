@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import {
   AlertTriangle,
   Check,
@@ -784,98 +786,102 @@ export function ClientChecklistModal({
             </button>
           </header>
           <section className="linked-checklists">
-            {linked.map(({ item, detail }) => {
-              const completed = detail.items.filter(
-                (entry) => entry.checked,
-              ).length;
-              const percentage = detail.items.length
-                ? Math.round((completed / detail.items.length) * 100)
-                : 0;
-              const hideMarked = Boolean(hideCompleted[item.id]);
-              const complete = percentage === 100;
-              return (
-                <article className="linked-checklist-card" key={item.id}>
-                  <header className="linked-checklist-card-head">
-                    <span className="linked-checklist-title">
-                      <i className={complete ? "complete" : ""}>
-                        {complete ? (
-                          <Check size={13} />
-                        ) : (
-                          <ClipboardCheck size={14} />
+            {
+              <PaginatedItems label="checklists">
+                {linked.map(({ item, detail }) => {
+                  const completed = detail.items.filter(
+                    (entry) => entry.checked,
+                  ).length;
+                  const percentage = detail.items.length
+                    ? Math.round((completed / detail.items.length) * 100)
+                    : 0;
+                  const hideMarked = Boolean(hideCompleted[item.id]);
+                  const complete = percentage === 100;
+                  return (
+                    <article className="linked-checklist-card" key={item.id}>
+                      <header className="linked-checklist-card-head">
+                        <span className="linked-checklist-title">
+                          <i className={complete ? "complete" : ""}>
+                            {complete ? (
+                              <Check size={13} />
+                            ) : (
+                              <ClipboardCheck size={14} />
+                            )}
+                          </i>
+                          <span>
+                            <strong>{detail.templateName}</strong>
+                            <small>
+                              {complete
+                                ? `Concluído${detail.completedBy ? ` por ${detail.completedBy}` : ""}`
+                                : "Em andamento"}
+                            </small>
+                          </span>
+                        </span>
+                        <span className="linked-checklist-actions">
+                          <button
+                            type="button"
+                            className={hideMarked ? "active" : ""}
+                            onClick={() =>
+                              setHideCompleted((current) => ({
+                                ...current,
+                                [item.id]: !current[item.id],
+                              }))
+                            }
+                          >
+                            {hideMarked
+                              ? "Mostrar itens marcados"
+                              : "Ocultar itens marcados"}
+                          </button>
+                          <button
+                            type="button"
+                            className="delete"
+                            disabled={busy}
+                            onClick={() => void remove(item)}
+                            aria-label={`Excluir checklist ${detail.templateName}`}
+                          >
+                            <Trash2 size={14} /> Excluir
+                          </button>
+                        </span>
+                      </header>
+                      <section className="linked-checklist-progress">
+                        <b>{percentage}%</b>
+                        <span>
+                          <i style={{ width: `${percentage}%` }} />
+                        </span>
+                      </section>
+                      <div className="linked-checklist-items">
+                        {detail.items
+                          .map((entry, index) => ({ entry, index }))
+                          .filter(({ entry }) => !hideMarked || !entry.checked)
+                          .map(({ entry, index }) => (
+                            <button
+                              type="button"
+                              className={entry.checked ? "checked" : ""}
+                              disabled={busy}
+                              onClick={() => void update(item, detail, index)}
+                              key={entry.id}
+                            >
+                              <i>{entry.checked && <Check size={13} />}</i>
+                              <span>{entry.text}</span>
+                            </button>
+                          ))}
+                        {hideMarked && completed === detail.items.length && (
+                          <small className="linked-checklist-all-hidden">
+                            Todos os itens marcados estão ocultos.
+                          </small>
                         )}
-                      </i>
-                      <span>
-                        <strong>{detail.templateName}</strong>
-                        <small>
-                          {complete
-                            ? `Concluído${detail.completedBy ? ` por ${detail.completedBy}` : ""}`
-                            : "Em andamento"}
-                        </small>
-                      </span>
-                    </span>
-                    <span className="linked-checklist-actions">
-                      <button
-                        type="button"
-                        className={hideMarked ? "active" : ""}
-                        onClick={() =>
-                          setHideCompleted((current) => ({
-                            ...current,
-                            [item.id]: !current[item.id],
-                          }))
-                        }
-                      >
-                        {hideMarked
-                          ? "Mostrar itens marcados"
-                          : "Ocultar itens marcados"}
-                      </button>
-                      <button
-                        type="button"
-                        className="delete"
-                        disabled={busy}
-                        onClick={() => void remove(item)}
-                        aria-label={`Excluir checklist ${detail.templateName}`}
-                      >
-                        <Trash2 size={14} /> Excluir
-                      </button>
-                    </span>
-                  </header>
-                  <section className="linked-checklist-progress">
-                    <b>{percentage}%</b>
-                    <span>
-                      <i style={{ width: `${percentage}%` }} />
-                    </span>
-                  </section>
-                  <div className="linked-checklist-items">
-                    {detail.items
-                      .map((entry, index) => ({ entry, index }))
-                      .filter(({ entry }) => !hideMarked || !entry.checked)
-                      .map(({ entry, index }) => (
-                        <button
-                          type="button"
-                          className={entry.checked ? "checked" : ""}
-                          disabled={busy}
-                          onClick={() => void update(item, detail, index)}
-                          key={entry.id}
-                        >
-                          <i>{entry.checked && <Check size={13} />}</i>
-                          <span>{entry.text}</span>
-                        </button>
-                      ))}
-                    {hideMarked && completed === detail.items.length && (
-                      <small className="linked-checklist-all-hidden">
-                        Todos os itens marcados estão ocultos.
+                      </div>
+                      <footer>
+                        <span style={{ width: `${percentage}%` }} />
+                      </footer>
+                      <small className="linked-checklist-author">
+                        Criado por {detail.createdBy}
                       </small>
-                    )}
-                  </div>
-                  <footer>
-                    <span style={{ width: `${percentage}%` }} />
-                  </footer>
-                  <small className="linked-checklist-author">
-                    Criado por {detail.createdBy}
-                  </small>
-                </article>
-              );
-            })}
+                    </article>
+                  );
+                })}
+              </PaginatedItems>
+            }
           </section>
         </section>
       )}

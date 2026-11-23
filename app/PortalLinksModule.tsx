@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import {
   ExternalLink,
   Link2,
@@ -93,41 +95,43 @@ export function PortalLinksAdmin({
             <span>Adicione o primeiro atalho do portal.</span>
           </div>
         ) : (
-          links.map((entry) => {
-            const detail = parseUrl(entry.description);
-            return (
-              <article key={entry.id}>
-                <span>
-                  <Link2 />
-                </span>
-                <div>
-                  <strong>{entry.name}</strong>
-                  <small>{detail.description || detail.url}</small>
-                  <a href={detail.url} target="_blank" rel="noreferrer">
-                    {detail.url}
-                    <ExternalLink />
-                  </a>
-                </div>
-                <b className={entry.active ? "active" : "inactive"}>
-                  {entry.active ? "Ativo" : "Inativo"}
-                </b>
-                <button onClick={() => setEditing(entry)}>
-                  <Pencil />
-                </button>
-                <button
-                  className="delete"
-                  onClick={() =>
-                    void operate(
-                      { action: "deleteCustomerCatalog", id: entry.id },
-                      "Link excluído.",
-                    )
-                  }
-                >
-                  <Trash2 />
-                </button>
-              </article>
-            );
-          })
+          <PaginatedItems label="links do portal">
+            {links.map((entry) => {
+              const detail = parseUrl(entry.description);
+              return (
+                <article key={entry.id}>
+                  <span>
+                    <Link2 />
+                  </span>
+                  <div>
+                    <strong>{entry.name}</strong>
+                    <small>{detail.description || detail.url}</small>
+                    <a href={detail.url} target="_blank" rel="noreferrer">
+                      {detail.url}
+                      <ExternalLink />
+                    </a>
+                  </div>
+                  <b className={entry.active ? "active" : "inactive"}>
+                    {entry.active ? "Ativo" : "Inativo"}
+                  </b>
+                  <button onClick={() => setEditing(entry)}>
+                    <Pencil />
+                  </button>
+                  <button
+                    className="delete"
+                    onClick={() =>
+                      void operate(
+                        { action: "deleteCustomerCatalog", id: entry.id },
+                        "Link excluído.",
+                      )
+                    }
+                  >
+                    <Trash2 />
+                  </button>
+                </article>
+              );
+            })}
+          </PaginatedItems>
         )}
       </section>
       {editing !== undefined && (
@@ -236,26 +240,30 @@ export function PortalLinksPage({
             </p>
           </div>
         ) : (
-          links.map((entry) => {
-            const detail = parseUrl(entry.description);
-            return (
-              <a
-                href={detail.url}
-                target="_blank"
-                rel="noreferrer"
-                key={entry.id}
-              >
-                <span>
-                  <Link2 />
-                </span>
-                <div>
-                  <strong>{entry.name}</strong>
-                  <small>{detail.description || "Abrir recurso externo"}</small>
-                </div>
-                <ExternalLink />
-              </a>
-            );
-          })
+          <PaginatedItems label="links do portal">
+            {links.map((entry) => {
+              const detail = parseUrl(entry.description);
+              return (
+                <a
+                  href={detail.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  key={entry.id}
+                >
+                  <span>
+                    <Link2 />
+                  </span>
+                  <div>
+                    <strong>{entry.name}</strong>
+                    <small>
+                      {detail.description || "Abrir recurso externo"}
+                    </small>
+                  </div>
+                  <ExternalLink />
+                </a>
+              );
+            })}
+          </PaginatedItems>
         )}
       </div>
     </section>

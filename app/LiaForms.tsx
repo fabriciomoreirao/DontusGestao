@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import {
   ArrowDown,
   ArrowUp,
@@ -222,29 +224,33 @@ export function LiaFormsSettings() {
         </p>
       )}
       <div className="lia-form-definitions">
-        {forms.map((form) => (
-          <article key={form.id}>
-            <ClipboardList />
-            <div>
-              <strong>{form.name}</strong>
-              <small>
-                {form.questions.length} pergunta(s) ·{" "}
-                {form.active ? "Ativo" : "Inativo"}
-              </small>
-              <p>{form.description}</p>
-            </div>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => {
-                setError("");
-                setEditing(form);
-              }}
-            >
-              Editar formulário
-            </button>
-          </article>
-        ))}
+        {
+          <PaginatedItems label="formulários">
+            {forms.map((form) => (
+              <article key={form.id}>
+                <ClipboardList />
+                <div>
+                  <strong>{form.name}</strong>
+                  <small>
+                    {form.questions.length} pergunta(s) ·{" "}
+                    {form.active ? "Ativo" : "Inativo"}
+                  </small>
+                  <p>{form.description}</p>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    setError("");
+                    setEditing(form);
+                  }}
+                >
+                  Editar formulário
+                </button>
+              </article>
+            ))}
+          </PaginatedItems>
+        }
         {loaded && !forms.length && (
           <p className="empty-state">
             Nenhum formulário criado. Comece adicionando um modelo de perguntas.
@@ -620,60 +626,64 @@ export function LiaClientForms({
         </p>
       )}
       {!requests.length && <p>Nenhum formulário enviado para este cliente.</p>}
-      {requests.map((entry) => (
-        <article className="lia-form-request" key={entry.id}>
-          <div>
-            <a
-              href={liaFormUrl(entry.token)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <strong>{entry.formName}</strong>
-              <ExternalLink size={13} />
-            </a>
-            <span
-              className={`status-pill ${entry.submittedAt ? "positive" : "warning"}`}
-            >
-              {entry.submittedAt
-                ? "Formulário respondido"
-                : "Formulário não respondido"}
-            </span>
-            <small>Link gerado em {stamp(entry.createdAt)}</small>
-            {entry.submittedAt && (
-              <small>
-                Resposta enviada em {stamp(entry.submittedAt)} (Brasília)
-              </small>
-            )}
-          </div>
-          <div className="button-row">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => void copy(liaFormUrl(entry.token))}
-            >
-              <Copy size={14} /> Copiar link
-            </button>
-            <a
-              className="secondary-button"
-              href={liaFormUrl(entry.token)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Abrir formulário <ExternalLink size={14} />
-            </a>
-            {entry.submittedAt && (
-              <a
-                className="primary-button"
-                href={`/lia-form-responses/${workItemId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Ver respostas <ExternalLink size={14} />
-              </a>
-            )}
-          </div>
-        </article>
-      ))}
+      {
+        <PaginatedItems label="formulários">
+          {requests.map((entry) => (
+            <article className="lia-form-request" key={entry.id}>
+              <div>
+                <a
+                  href={liaFormUrl(entry.token)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <strong>{entry.formName}</strong>
+                  <ExternalLink size={13} />
+                </a>
+                <span
+                  className={`status-pill ${entry.submittedAt ? "positive" : "warning"}`}
+                >
+                  {entry.submittedAt
+                    ? "Formulário respondido"
+                    : "Formulário não respondido"}
+                </span>
+                <small>Link gerado em {stamp(entry.createdAt)}</small>
+                {entry.submittedAt && (
+                  <small>
+                    Resposta enviada em {stamp(entry.submittedAt)} (Brasília)
+                  </small>
+                )}
+              </div>
+              <div className="button-row">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void copy(liaFormUrl(entry.token))}
+                >
+                  <Copy size={14} /> Copiar link
+                </button>
+                <a
+                  className="secondary-button"
+                  href={liaFormUrl(entry.token)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Abrir formulário <ExternalLink size={14} />
+                </a>
+                {entry.submittedAt && (
+                  <a
+                    className="primary-button"
+                    href={`/lia-form-responses/${workItemId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Ver respostas <ExternalLink size={14} />
+                  </a>
+                )}
+              </div>
+            </article>
+          ))}
+        </PaginatedItems>
+      }
       {selecting && (
         <FormModal
           title="Gerar link de formulário"
@@ -1020,66 +1030,70 @@ export function LiaFormResponses({ workItemId }: { workItemId: string }) {
         )}
         {!entries && !error && <p>Carregando respostas...</p>}
         {entries?.length === 0 && <p>Nenhum formulário vinculado.</p>}
-        {entries?.map((entry) => (
-          <article className="lia-response-sheet" key={entry.id}>
-            <header>
-              <h2>{entry.formName}</h2>
-              <span
-                className={`status-pill ${entry.submittedAt ? "positive" : "warning"}`}
-              >
-                {entry.submittedAt ? "Respondido" : "Não respondido"}
-              </span>
-              <p>Link gerado em {stamp(entry.createdAt)}</p>
-              {entry.submittedAt && (
-                <p>Resposta enviada em {stamp(entry.submittedAt)}</p>
-              )}
-            </header>
-            {entry.submittedAt &&
-              entry.questions.map((q, index) => (
-                <div className="lia-response-answer" key={q.id}>
-                  <h3>
-                    {index + 1}. {q.text}
-                  </h3>
-                  {q.type === "file" ? (
-                    <div className="lia-response-files">
-                      {entry.attachments?.filter(
-                        (file) => file.questionId === q.id,
-                      ).length ? (
-                        entry.attachments
-                          .filter((file) => file.questionId === q.id)
-                          .map((file) => (
-                            <a
-                              className="lia-response-file"
-                              key={file.id}
-                              href={`/api/lia-forms/attachments/${encodeURIComponent(file.id)}`}
-                            >
-                              <Paperclip size={18} />
-                              <span>
-                                <strong>{file.fileName}</strong>
-                                <small>
-                                  {(
-                                    file.sizeBytes /
-                                    (1024 * 1024)
-                                  ).toLocaleString("pt-BR", {
-                                    maximumFractionDigits: 2,
-                                  })}{" "}
-                                  MB
-                                </small>
-                              </span>
-                              <Download size={17} />
-                            </a>
-                          ))
+        {
+          <PaginatedItems label="respostas de formulários">
+            {entries?.map((entry) => (
+              <article className="lia-response-sheet" key={entry.id}>
+                <header>
+                  <h2>{entry.formName}</h2>
+                  <span
+                    className={`status-pill ${entry.submittedAt ? "positive" : "warning"}`}
+                  >
+                    {entry.submittedAt ? "Respondido" : "Não respondido"}
+                  </span>
+                  <p>Link gerado em {stamp(entry.createdAt)}</p>
+                  {entry.submittedAt && (
+                    <p>Resposta enviada em {stamp(entry.submittedAt)}</p>
+                  )}
+                </header>
+                {entry.submittedAt &&
+                  entry.questions.map((q, index) => (
+                    <div className="lia-response-answer" key={q.id}>
+                      <h3>
+                        {index + 1}. {q.text}
+                      </h3>
+                      {q.type === "file" ? (
+                        <div className="lia-response-files">
+                          {entry.attachments?.filter(
+                            (file) => file.questionId === q.id,
+                          ).length ? (
+                            entry.attachments
+                              .filter((file) => file.questionId === q.id)
+                              .map((file) => (
+                                <a
+                                  className="lia-response-file"
+                                  key={file.id}
+                                  href={`/api/lia-forms/attachments/${encodeURIComponent(file.id)}`}
+                                >
+                                  <Paperclip size={18} />
+                                  <span>
+                                    <strong>{file.fileName}</strong>
+                                    <small>
+                                      {(
+                                        file.sizeBytes /
+                                        (1024 * 1024)
+                                      ).toLocaleString("pt-BR", {
+                                        maximumFractionDigits: 2,
+                                      })}{" "}
+                                      MB
+                                    </small>
+                                  </span>
+                                  <Download size={17} />
+                                </a>
+                              ))
+                          ) : (
+                            <p>Não informado</p>
+                          )}
+                        </div>
                       ) : (
-                        <p>Não informado</p>
+                        <p>{entry.answers[q.id] || "Não informado"}</p>
                       )}
                     </div>
-                  ) : (
-                    <p>{entry.answers[q.id] || "Não informado"}</p>
-                  )}
-                </div>
-              ))}
-          </article>
-        ))}
+                  ))}
+              </article>
+            ))}
+          </PaginatedItems>
+        }
       </section>
     </main>
   );

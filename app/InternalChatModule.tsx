@@ -1,4 +1,6 @@
 "use client";
+
+import type { ChatMention } from "@/lib/chat-mentions";
 import ChatTypingIndicator from "@/app/ChatTypingIndicator";
 import useChatTypingPublisher from "@/app/useChatTypingPublisher";
 import useVoiceRecorder from "@/app/useVoiceRecorder";
@@ -100,6 +102,8 @@ export type InternalChatMessage = {
   hasAttachment: boolean;
   isPinned: boolean;
   createdAt: string;
+  mentions?: ChatMention[];
+  isUnread?: boolean;
   replyTo?: ChatReplyMessage | null;
   seenAt?: string | null;
   seenByCount?: number;
@@ -715,6 +719,12 @@ export default function InternalChatModule({
     publishTyping(false);
     const message = drafts.get(effectiveSelectedKey);
     const body = message.trim();
+    const submittedMentions = drafts.getMentions(effectiveSelectedKey);
+    const leading = message.length - message.trimStart().length;
+    const mentions = submittedMentions.map((mention) => ({
+      ...mention,
+      start: mention.start - leading,
+    }));
     if (
       !canCreate ||
       busy ||
@@ -785,6 +795,7 @@ export default function InternalChatModule({
             action: "sendInternalChatMessage",
             roomId,
             body,
+            mentions,
             messageType: "text",
             replyToMessageId,
           },
@@ -800,7 +811,12 @@ export default function InternalChatModule({
     } catch {
       setSendError("Não foi possível enviar a mensagem. Tente novamente.");
     } finally {
-      if (!textSent) drafts.restore(roomId || conversationKey, submittedDraft);
+      if (!textSent)
+        drafts.restore(
+          roomId || conversationKey,
+          submittedDraft,
+          submittedMentions,
+        );
       sendingRef.current = false;
     }
   };
@@ -1827,6 +1843,12 @@ export default function InternalChatModule({
                   </button>
                 )}
                 <InternalChatDraftComposer
+                  participants={module.users.filter((person) =>
+                    selectedRoom
+                      ? selectedRoom.memberUserIds.includes(person.id)
+                      : person.id === selectedConversation.user?.id ||
+                        person.id === module.currentUserId,
+                  )}
                   drafts={drafts}
                   conversationKey={effectiveSelectedKey}
                   inputRef={composerInput}
@@ -2229,7 +2251,11 @@ const MessageBubble = memo(function MessageBubble({
           ) : (
             message.type === "text" && (
               <p>
-                <MessageText text={message.body} />
+                <MessageText
+                  text={message.body}
+                  mentions={message.mentions}
+                  currentUserId={currentUserId}
+                />
               </p>
             )
           )}

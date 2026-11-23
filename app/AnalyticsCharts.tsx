@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { useId, useState, type CSSProperties } from "react";
 import { BarChart3, ChevronDown, TrendingUp } from "lucide-react";
 import {
@@ -339,19 +341,23 @@ function ChartData({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
-              <tr key={index}>
-                {row.map((cell, column) =>
-                  column === 0 ? (
-                    <th key={column} scope="row">
-                      {cell}
-                    </th>
-                  ) : (
-                    <td key={column}>{cell}</td>
-                  ),
-                )}
-              </tr>
-            ))}
+            {
+              <PaginatedItems label="registros" table>
+                {rows.map((row, index) => (
+                  <tr key={index}>
+                    {row.map((cell, column) =>
+                      column === 0 ? (
+                        <th key={column} scope="row">
+                          {cell}
+                        </th>
+                      ) : (
+                        <td key={column}>{cell}</td>
+                      ),
+                    )}
+                  </tr>
+                ))}
+              </PaginatedItems>
+            }
           </tbody>
         </table>
       </div>

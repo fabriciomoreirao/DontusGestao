@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import SearchableSelect from "./SearchableSelect";
 import SupportAccessFilters from "./SupportAccessFilters";
 import SupportAccessIndicators from "./SupportAccessIndicators";
@@ -732,26 +734,28 @@ export function SupportAccessSettings({
                   Nenhum motivo cadastrado neste setor.
                 </p>
               ) : (
-                scoped.map((reason) => (
-                  <article key={reason.id}>
-                    <strong>{reason.name}</strong>
-                    <b
-                      className={`status-pill ${reason.active ? "positive" : "negative"}`}
-                    >
-                      {reason.active ? "Ativo" : "Inativo"}
-                    </b>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={busy || loading}
-                      aria-label={`Editar motivo ${reason.name}`}
-                      onClick={() => edit(reason)}
-                    >
-                      <Pencil size={15} />
-                      Editar
-                    </button>
-                  </article>
-                ))
+                <PaginatedItems label="motivos de acesso">
+                  {scoped.map((reason) => (
+                    <article key={reason.id}>
+                      <strong>{reason.name}</strong>
+                      <b
+                        className={`status-pill ${reason.active ? "positive" : "negative"}`}
+                      >
+                        {reason.active ? "Ativo" : "Inativo"}
+                      </b>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={busy || loading}
+                        aria-label={`Editar motivo ${reason.name}`}
+                        onClick={() => edit(reason)}
+                      >
+                        <Pencil size={15} />
+                        Editar
+                      </button>
+                    </article>
+                  ))}
+                </PaginatedItems>
               )}
             </div>
           </section>

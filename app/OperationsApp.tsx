@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import EnterpriseNetworkInsights from "@/app/EnterpriseNetworkInsights";
 import CommentHistory from "@/app/CommentHistory";
 import { sendSuggestionFiles } from "@/lib/suggestion-upload";
@@ -70,6 +72,7 @@ import { commercialIndicatorFlow } from "@/lib/commercial-indicators";
 import { recordSearchText } from "@/lib/record-search";
 import KanbanDragSupport from "@/app/KanbanDragSupport";
 import CommentEnterSupport from "@/app/CommentEnterSupport";
+import TaskPriorityNotice from "@/app/TaskPriorityNotice";
 import QueueArrivalNotice from "@/app/QueueArrivalNotice";
 import { queueArrivals, QUEUE_ARRIVAL_EVENT } from "@/lib/queue-arrival";
 import { chatTypingStore } from "@/lib/chat-typing";
@@ -188,6 +191,8 @@ import useActivityClock from "@/app/useActivityClock";
 import DesktopAppControls from "@/app/DesktopAppSupport";
 import { showDesktopNotification } from "@/lib/desktop-notifications";
 import ChatNotifications, { type ChatAlert } from "@/app/ChatNotifications";
+import WhatsAppIncomingNotifications from "@/app/WhatsAppIncomingNotifications";
+const WhatsAppAdmin = lazy(() => import("@/app/WhatsAppAdmin"));
 import {
   FormEvent,
   lazy,
@@ -218,6 +223,7 @@ import TasksModule, {
 } from "@/app/TasksModule";
 import type { ChatModuleData } from "@/app/ChatModule";
 const ChatModule = lazy(() => import("@/app/ChatModule"));
+import { journeyAgendaType, findJourneyAgendaType } from "@/lib/agenda-context";
 import AgendaModule, {
   AgendaCatalogsModule,
   QuickAgendaCommitmentModal,
@@ -803,6 +809,30 @@ const NAV_GROUPS: Array<{ label: string; items: NavigationItem[] }> = [
     label: "Administração",
     items: [
       {
+        label: "WhatsApp",
+        icon: MessageCircleMore,
+        children: [
+          {
+            label: "Templates",
+            icon: FileCheck2,
+            module: "admin",
+            adminSection: "whatsappTemplates",
+          },
+          {
+            label: "Conexão",
+            icon: MessageCircleMore,
+            module: "admin",
+            adminSection: "whatsappConnection",
+          },
+          {
+            label: "Campanhas",
+            icon: Send,
+            module: "admin",
+            adminSection: "whatsappCampaigns",
+          },
+        ],
+      },
+      {
         label: "Colaboradores",
         icon: UsersRound,
         module: "admin",
@@ -989,6 +1019,13 @@ function userCanNavigate(
   screen: string,
   section?: string | null,
 ) {
+  if (screen === "admin" && section?.startsWith("whatsapp"))
+    return (
+      userCan(user, "chat", "manage") &&
+      !!user.permissions
+        .find((p) => p.screen === "chat")
+        ?.capabilities?.includes("manageWhatsApp")
+    );
   return screen === "admin" && section === "liaCatalogs"
     ? userCan(user, "lia", "manage")
     : userCan(user, screen);
@@ -1145,7 +1182,7 @@ export default function OperationsApp() {
   );
   const [collapsedNavItems, setCollapsedNavItems] = useState<
     Record<string, boolean>
-  >({});
+  >({ "Administração:WhatsApp": true });
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [backgroundImage, setBackgroundImage] = useState("");
   const [backgroundModalOpen, setBackgroundModalOpen] = useState(false);
@@ -1359,13 +1396,26 @@ export default function OperationsApp() {
   }, [active, data?.user]);
 
   useEffect(() => {
-    const openAgenda = (event: Event) =>
-      setAgendaContext(
-        (event as CustomEvent<ReminderContext>).detail ?? { module: active },
+    const openAgenda = (event: Event) => {
+      const context = (event as CustomEvent<ReminderContext>).detail ?? {
+        module: active,
+      };
+      const source = data?.items.find(
+        (item) =>
+          item.module === context.module &&
+          (context.entityId
+            ? item.id === context.entityId
+            : item.title === context.title ||
+              item.customer_name === context.customerName),
       );
+      setAgendaContext({
+        ...context,
+        agendaTypeName: journeyAgendaType(context.module, source?.description),
+      });
+    };
     window.addEventListener(AGENDA_COMPOSER_EVENT, openAgenda);
     return () => window.removeEventListener(AGENDA_COMPOSER_EVENT, openAgenda);
-  }, [active]);
+  }, [active, data?.items]);
 
   const openClientHistoryPage = useCallback((value: string) => {
     const query = value.trim();
@@ -1763,7 +1813,10 @@ export default function OperationsApp() {
     cursor: () => realtimeCursor.current,
     operations: async () => {
       const ok = await load(true);
-      if (ok) setAttendanceRevision((value) => value + 1);
+      if (ok) {
+        setAttendanceRevision((value) => value + 1);
+        window.dispatchEvent(new Event("dontus:whatsapp-refresh"));
+      }
       return ok;
     },
     chat: refreshInternalChat,
@@ -1908,14 +1961,22 @@ export default function OperationsApp() {
         const room = data.internalChatModule?.rooms.find(
           (room) => room.id === entry.roomId,
         );
-        const message = room?.messages
-          .filter(
-            (message) =>
-              message.senderUserId !== data.internalChatModule?.currentUserId,
-          )
-          .at(-1);
+        const message =
+          room?.messages.find((message) => message.id === entry.messageId) ??
+          room?.messages
+            .filter(
+              (message) =>
+                message.senderUserId !== data.internalChatModule?.currentUserId,
+            )
+            .at(-1);
         if (!room || !message) return [];
-        const body = chatAlertText(message);
+        const mentioned = message.mentions?.some(
+          (mention) =>
+            mention.userId === data.internalChatModule?.currentUserId,
+        );
+        const body = mentioned
+          ? `Você foi marcado: ${message.body}`
+          : chatAlertText(message);
         return [
           {
             id: entry.id,
@@ -3293,6 +3354,8 @@ export default function OperationsApp() {
   const canSeeNavigationItem = (item: NavigationItem): boolean => {
     if (item.children?.length) return item.children.some(canSeeNavigationItem);
     if (!item.module) return false;
+    if (item.adminSection?.startsWith("whatsapp"))
+      return userCanNavigate(data.user, "admin", item.adminSection);
     return (
       userCan(data.user, item.module, "view") ||
       userCan(data.user, item.module, "edit")
@@ -3694,12 +3757,17 @@ export default function OperationsApp() {
                     <button
                       className="nav-group-toggle"
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
                         setCollapsedNavGroups((current) => ({
                           ...current,
                           [group.label]: !groupCollapsed,
-                        }))
-                      }
+                        }));
+                        if (group.label === "Administração")
+                          setCollapsedNavItems((current) => ({
+                            ...current,
+                            "Administração:WhatsApp": true,
+                          }));
+                      }}
                       aria-expanded={!groupCollapsed}
                     >
                       <span>{group.label}</span>
@@ -5131,6 +5199,7 @@ export default function OperationsApp() {
               currentEmail={data.user.email}
               canReserveMeetingRoom={data.user.isCoordinator}
               preset={{
+                typeName: agendaContext.agendaTypeName,
                 title: agendaContext.title
                   ? `Acompanhamento · ${agendaContext.title}`
                   : "Novo compromisso",
@@ -5442,6 +5511,38 @@ export default function OperationsApp() {
               onConfirm={() => void confirmOperation()}
             />
           )}
+          {userCan(data.user, "chat", "view") && (
+            <WhatsAppIncomingNotifications
+              key={data.user.email}
+              email={data.user.email}
+              onOpen={(id) => {
+                navigate("chat");
+                window.dispatchEvent(
+                  new CustomEvent("dontus:open-whatsapp-conversation", {
+                    detail: id,
+                  }),
+                );
+                const url = new URL(window.location.href);
+                url.searchParams.set("conversationId", id);
+                window.history.replaceState(window.history.state, "", url);
+              }}
+            />
+          )}
+          <TaskPriorityNotice
+            notifications={data.taskModule?.notifications ?? []}
+            busy={busy}
+            onOpen={async (notice) => {
+              const result = await operate(
+                {
+                  action: "markTaskNotificationRead",
+                  notificationId: notice.id,
+                },
+                "Aviso de prioridade visualizado.",
+              );
+              if (result)
+                window.location.href = `/?mod=tasks&task=${encodeURIComponent(notice.taskId)}`;
+            }}
+          />
           <ChatNotifications
             alerts={chatAlerts}
             onOpen={(roomId) => {
@@ -6675,30 +6776,34 @@ function ClientHistoryPage({
             </div>
           ) : (
             <div className="client-alert-list">
-              {alerts.map(({ item, detail }) => (
-                <article
-                  className={detail.severity
-                    .toLocaleLowerCase("pt-BR")
-                    .normalize("NFD")
-                    .replace(/[\u0300-\u036f]/g, "")}
-                  key={item.id}
-                >
-                  <AlertTriangle />
-                  <span>
-                    <header>
-                      <strong>{detail.subject}</strong>
-                      <b>{detail.severity}</b>
-                    </header>
-                    <p>{detail.text}</p>
-                    <small>
-                      {MODULES[detail.sourceModule as ModuleKey]?.label ||
-                        detail.sourceModule}{" "}
-                      · {detail.sourceTitle} · {detail.author} ·{" "}
-                      {dateTime(detail.createdAt)}
-                    </small>
-                  </span>
-                </article>
-              ))}
+              {
+                <PaginatedItems label="registros">
+                  {alerts.map(({ item, detail }) => (
+                    <article
+                      className={detail.severity
+                        .toLocaleLowerCase("pt-BR")
+                        .normalize("NFD")
+                        .replace(/[\u0300-\u036f]/g, "")}
+                      key={item.id}
+                    >
+                      <AlertTriangle />
+                      <span>
+                        <header>
+                          <strong>{detail.subject}</strong>
+                          <b>{detail.severity}</b>
+                        </header>
+                        <p>{detail.text}</p>
+                        <small>
+                          {MODULES[detail.sourceModule as ModuleKey]?.label ||
+                            detail.sourceModule}{" "}
+                          · {detail.sourceTitle} · {detail.author} ·{" "}
+                          {dateTime(detail.createdAt)}
+                        </small>
+                      </span>
+                    </article>
+                  ))}
+                </PaginatedItems>
+              }
             </div>
           )}
         </section>
@@ -6727,50 +6832,54 @@ function ClientHistoryPage({
             </div>
           ) : (
             <div className="client-checklist-list">
-              {linkedChecklists.map(({ item, detail }) => {
-                const completed = detail.items.filter(
-                  (entry) => entry.checked,
-                ).length;
-                return (
-                  <article data-reminder-entity-id={item.id} key={item.id}>
-                    <header>
-                      <span>
-                        <strong>{detail.templateName}</strong>
+              {
+                <PaginatedItems label="registros">
+                  {linkedChecklists.map(({ item, detail }) => {
+                    const completed = detail.items.filter(
+                      (entry) => entry.checked,
+                    ).length;
+                    return (
+                      <article data-reminder-entity-id={item.id} key={item.id}>
+                        <header>
+                          <span>
+                            <strong>{detail.templateName}</strong>
+                            <small>
+                              {MODULES[detail.sourceModule as ModuleKey]
+                                ?.label || detail.sourceModule}{" "}
+                              · {detail.sourceTitle}
+                            </small>
+                          </span>
+                          <b>
+                            {completed}/{detail.items.length}
+                          </b>
+                        </header>
+                        <div>
+                          {detail.items.map((entry) => (
+                            <span
+                              className={entry.checked ? "checked" : ""}
+                              key={entry.id}
+                            >
+                              <i>{entry.checked && <Check size={12} />}</i>
+                              <CommentContent text={entry.text} />
+                            </span>
+                          ))}
+                        </div>
+                        <footer>
+                          <span
+                            style={{
+                              width: `${detail.items.length ? (completed / detail.items.length) * 100 : 0}%`,
+                            }}
+                          />
+                        </footer>
                         <small>
-                          {MODULES[detail.sourceModule as ModuleKey]?.label ||
-                            detail.sourceModule}{" "}
-                          · {detail.sourceTitle}
+                          Vinculado por {detail.createdBy} em{" "}
+                          {dateTime(detail.createdAt)}
                         </small>
-                      </span>
-                      <b>
-                        {completed}/{detail.items.length}
-                      </b>
-                    </header>
-                    <div>
-                      {detail.items.map((entry) => (
-                        <span
-                          className={entry.checked ? "checked" : ""}
-                          key={entry.id}
-                        >
-                          <i>{entry.checked && <Check size={12} />}</i>
-                          <CommentContent text={entry.text} />
-                        </span>
-                      ))}
-                    </div>
-                    <footer>
-                      <span
-                        style={{
-                          width: `${detail.items.length ? (completed / detail.items.length) * 100 : 0}%`,
-                        }}
-                      />
-                    </footer>
-                    <small>
-                      Vinculado por {detail.createdBy} em{" "}
-                      {dateTime(detail.createdAt)}
-                    </small>
-                  </article>
-                );
-              })}
+                      </article>
+                    );
+                  })}
+                </PaginatedItems>
+              }
             </div>
           )}
         </section>
@@ -7164,7 +7273,7 @@ function ClientRecordsPanel({
       </header>
       <div>
         {hasChildren ? (
-          children
+          <PaginatedItems label={title}>{children}</PaginatedItems>
         ) : (
           <p className="client-records-empty">{empty}</p>
         )}
@@ -8963,7 +9072,7 @@ function AnalyticsWorkspace({
   );
 }
 
-function CustomersView({
+export function CustomersView({
   customers,
   catalogs,
   items,
@@ -9161,49 +9270,56 @@ function CustomersView({
             {filtered.length === 0 ? (
               <EmptyState text="Nenhum cliente encontrado." />
             ) : (
-              filtered.map((customer) => (
-                <button
-                  data-reminder-entity-id={customer.id}
-                  className="table-row"
-                  key={customer.id}
-                  onClick={() => onSelect(customer)}
-                >
-                  <span className="customer-cell">
-                    <i>{customer.trade_name.slice(0, 2).toUpperCase()}</i>
-                    <span>
-                      <strong>{customer.trade_name}</strong>
-                      {customer.document_masked && (
-                        <small className="customer-record-id">
-                          ID / documento: {customer.document_masked}
+              <PaginatedItems
+                label="clientes"
+                resetKey={JSON.stringify([filter, status, project, graceDays])}
+              >
+                {filtered.map((customer) => (
+                  <button
+                    data-reminder-entity-id={customer.id}
+                    className="table-row"
+                    key={customer.id}
+                    onClick={() => onSelect(customer)}
+                  >
+                    <span className="customer-cell">
+                      <i>{customer.trade_name.slice(0, 2).toUpperCase()}</i>
+                      <span>
+                        <strong>{customer.trade_name}</strong>
+                        {customer.document_masked && (
+                          <small className="customer-record-id">
+                            ID / documento: {customer.document_masked}
+                          </small>
+                        )}
+                        <small title={customer.legal_name}>
+                          {customer.legal_name}
                         </small>
+                      </span>
+                      {Boolean(customer.strategic) && (
+                        <em>
+                          <BadgeCheck size={14} /> Estratégico
+                        </em>
                       )}
-                      <small title={customer.legal_name}>
-                        {customer.legal_name}
-                      </small>
                     </span>
-                    {Boolean(customer.strategic) && (
-                      <em>
-                        <BadgeCheck size={14} /> Estratégico
-                      </em>
-                    )}
-                  </span>
-                  <span>{customer.project || "—"}</span>
-                  <span>{customer.product_version || "—"}</span>
-                  <span>
-                    <strong>
-                      <PhoneLink phone={customer.phone || "—"} />
-                    </strong>
-                    <small>{customer.email || customer.owner}</small>
-                  </span>
-                  <span>{customer.subscription || "—"}</span>
-                  <span>
-                    <b className={`status-pill ${statusTone(customer.status)}`}>
-                      {customer.status || "Não definido"}
-                    </b>
-                    <ChevronRight size={16} />
-                  </span>
-                </button>
-              ))
+                    <span>{customer.project || "—"}</span>
+                    <span>{customer.product_version || "—"}</span>
+                    <span>
+                      <strong>
+                        <PhoneLink phone={customer.phone || "—"} />
+                      </strong>
+                      <small>{customer.email || customer.owner}</small>
+                    </span>
+                    <span>{customer.subscription || "—"}</span>
+                    <span>
+                      <b
+                        className={`status-pill ${statusTone(customer.status)}`}
+                      >
+                        {customer.status || "Não definido"}
+                      </b>
+                      <ChevronRight size={16} />
+                    </span>
+                  </button>
+                ))}
+              </PaginatedItems>
             )}
           </div>
         </div>
@@ -9221,67 +9337,69 @@ function CustomersView({
             {filteredNetworks.length === 0 ? (
               <EmptyState text="Nenhuma rede ou franquia encontrada." />
             ) : (
-              filteredNetworks.map((networkItem) => {
-                const network = enterpriseNetworkFor(networkItem);
-                const total = network.units.length;
-                const finished = network.units.filter((unit) =>
-                  /finaliz|conclu/i.test(unit.status),
-                ).length;
-                const active = network.units.filter(
-                  (unit) => unit.active,
-                ).length;
-                const score = enterpriseHealthScore(network.units);
-                return (
-                  <article key={networkItem.id}>
-                    <header>
-                      <span className="customer-network-icon">
-                        <UsersRound size={19} />
-                      </span>
-                      <span>
-                        <small>REDE / FRANQUIA</small>
-                        <h3>{networkItem.title}</h3>
-                        <p>
-                          {network.contact ||
-                            networkItem.owner ||
-                            "Sem responsável informado"}
-                        </p>
-                      </span>
-                      <b
-                        className={`status-pill ${statusTone(network.status)}`}
-                      >
-                        {network.status}
-                      </b>
-                    </header>
-                    <div>
-                      <span>
-                        <small>Unidades</small>
-                        <strong>{total}</strong>
-                      </span>
-                      <span>
-                        <small>Ativas</small>
-                        <strong>{active}</strong>
-                      </span>
-                      <span>
-                        <small>Finalizadas</small>
-                        <strong>{finished}</strong>
-                      </span>
-                      <span>
-                        <small>Utilização</small>
-                        <strong>{score}%</strong>
-                      </span>
-                    </div>
-                    <footer>
-                      <button
-                        className="primary-button"
-                        type="button"
-                        onClick={() => setSelectedNetwork(networkItem)}
-                      >
-                        <FileCheck2 size={15} /> Abrir ficha
-                      </button>
-                    </footer>
-                  </article>
-                );
-              })
+              <PaginatedItems label="redes e franquias" resetKey={filter}>
+                {filteredNetworks.map((networkItem) => {
+                  const network = enterpriseNetworkFor(networkItem);
+                  const total = network.units.length;
+                  const finished = network.units.filter((unit) =>
+                    /finaliz|conclu/i.test(unit.status),
+                  ).length;
+                  const active = network.units.filter(
+                    (unit) => unit.active,
+                  ).length;
+                  const score = enterpriseHealthScore(network.units);
+                  return (
+                    <article key={networkItem.id}>
+                      <header>
+                        <span className="customer-network-icon">
+                          <UsersRound size={19} />
+                        </span>
+                        <span>
+                          <small>REDE / FRANQUIA</small>
+                          <h3>{networkItem.title}</h3>
+                          <p>
+                            {network.contact ||
+                              networkItem.owner ||
+                              "Sem responsável informado"}
+                          </p>
+                        </span>
+                        <b
+                          className={`status-pill ${statusTone(network.status)}`}
+                        >
+                          {network.status}
+                        </b>
+                      </header>
+                      <div>
+                        <span>
+                          <small>Unidades</small>
+                          <strong>{total}</strong>
+                        </span>
+                        <span>
+                          <small>Ativas</small>
+                          <strong>{active}</strong>
+                        </span>
+                        <span>
+                          <small>Finalizadas</small>
+                          <strong>{finished}</strong>
+                        </span>
+                        <span>
+                          <small>Utilização</small>
+                          <strong>{score}%</strong>
+                        </span>
+                      </div>
+                      <footer>
+                        <button
+                          className="primary-button"
+                          type="button"
+                          onClick={() => setSelectedNetwork(networkItem)}
+                        >
+                          <FileCheck2 size={15} /> Abrir ficha
+                        </button>
+                      </footer>
+                    </article>
+                  );
+                })}
+              </PaginatedItems>
             )}
           </div>
         </section>
@@ -9600,41 +9718,45 @@ function NetworkCustomerRecord({
                   text="Nenhuma unidade cadastrada nesta rede."
                 />
               ) : (
-                network.units.map((unit) => {
-                  const score = enterpriseUnitScore(unit);
-                  return (
-                    <article key={unit.id}>
-                      <span
-                        className={`network-unit-state ${enterpriseTone(score, unit.active)}`}
-                      />
-                      <span>
-                        <strong>{unit.name}</strong>
-                        <small>
-                          {[unit.city, unit.state]
-                            .filter(Boolean)
-                            .join(" · ") ||
-                            `ID ${unit.externalId || "não informado"}`}
-                        </small>
-                      </span>
-                      <span>
-                        <small>Status</small>
-                        <b className={`status-pill ${statusTone(unit.status)}`}>
-                          {unit.status}
-                        </b>
-                      </span>
-                      <span>
-                        <small>Utilização</small>
-                        <strong>
-                          {score}% · {unit.usageStatus}
-                        </strong>
-                      </span>
-                      <span>
-                        <small>Última análise</small>
-                        <time>{unit.lastAnalysis || "Não realizada"}</time>
-                      </span>
-                    </article>
-                  );
-                })
+                <PaginatedItems label="unidades">
+                  {network.units.map((unit) => {
+                    const score = enterpriseUnitScore(unit);
+                    return (
+                      <article key={unit.id}>
+                        <span
+                          className={`network-unit-state ${enterpriseTone(score, unit.active)}`}
+                        />
+                        <span>
+                          <strong>{unit.name}</strong>
+                          <small>
+                            {[unit.city, unit.state]
+                              .filter(Boolean)
+                              .join(" · ") ||
+                              `ID ${unit.externalId || "não informado"}`}
+                          </small>
+                        </span>
+                        <span>
+                          <small>Status</small>
+                          <b
+                            className={`status-pill ${statusTone(unit.status)}`}
+                          >
+                            {unit.status}
+                          </b>
+                        </span>
+                        <span>
+                          <small>Utilização</small>
+                          <strong>
+                            {score}% · {unit.usageStatus}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>Última análise</small>
+                          <time>{unit.lastAnalysis || "Não realizada"}</time>
+                        </span>
+                      </article>
+                    );
+                  })}
+                </PaginatedItems>
               )}
             </div>
           </section>
@@ -9716,41 +9838,45 @@ function NetworkCustomerRecord({
                   text="Nenhuma unidade cadastrada nesta rede."
                 />
               ) : (
-                network.units.map((unit) => {
-                  const score = enterpriseUnitScore(unit);
-                  return (
-                    <article key={unit.id}>
-                      <span
-                        className={`network-unit-state ${enterpriseTone(score, unit.active)}`}
-                      />
-                      <span>
-                        <strong>{unit.name}</strong>
-                        <small>
-                          {[unit.city, unit.state]
-                            .filter(Boolean)
-                            .join(" · ") ||
-                            `ID ${unit.externalId || "não informado"}`}
-                        </small>
-                      </span>
-                      <span>
-                        <small>Status</small>
-                        <b className={`status-pill ${statusTone(unit.status)}`}>
-                          {unit.status}
-                        </b>
-                      </span>
-                      <span>
-                        <small>Utilização</small>
-                        <strong>
-                          {score}% · {unit.usageStatus}
-                        </strong>
-                      </span>
-                      <span>
-                        <small>Última análise</small>
-                        <time>{unit.lastAnalysis || "Não realizada"}</time>
-                      </span>
-                    </article>
-                  );
-                })
+                <PaginatedItems label="unidades">
+                  {network.units.map((unit) => {
+                    const score = enterpriseUnitScore(unit);
+                    return (
+                      <article key={unit.id}>
+                        <span
+                          className={`network-unit-state ${enterpriseTone(score, unit.active)}`}
+                        />
+                        <span>
+                          <strong>{unit.name}</strong>
+                          <small>
+                            {[unit.city, unit.state]
+                              .filter(Boolean)
+                              .join(" · ") ||
+                              `ID ${unit.externalId || "não informado"}`}
+                          </small>
+                        </span>
+                        <span>
+                          <small>Status</small>
+                          <b
+                            className={`status-pill ${statusTone(unit.status)}`}
+                          >
+                            {unit.status}
+                          </b>
+                        </span>
+                        <span>
+                          <small>Utilização</small>
+                          <strong>
+                            {score}% · {unit.usageStatus}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>Última análise</small>
+                          <time>{unit.lastAnalysis || "Não realizada"}</time>
+                        </span>
+                      </article>
+                    );
+                  })}
+                </PaginatedItems>
               )}
             </div>
           </section>
@@ -9924,14 +10050,16 @@ function ModuleView({
                   {statusItems.length === 0 ? (
                     <p className="column-empty">Solte um card aqui</p>
                   ) : (
-                    statusItems.map((item) => (
-                      <WorkCard
-                        key={item.id}
-                        item={item}
-                        onOpen={onOpen}
-                        draggable={canEdit}
-                      />
-                    ))
+                    <PaginatedItems label="registros">
+                      {statusItems.map((item) => (
+                        <WorkCard
+                          key={item.id}
+                          item={item}
+                          onOpen={onOpen}
+                          draggable={canEdit}
+                        />
+                      ))}
+                    </PaginatedItems>
                   )}
                 </div>
               </section>
@@ -10026,35 +10154,39 @@ function WorkList({
         {items.length === 0 ? (
           <EmptyState text="Nenhum registro encontrado." />
         ) : (
-          items.map((item) => (
-            <button
-              data-reminder-entity-id={item.id}
-              className="table-row"
-              key={item.id}
-              onClick={() => onOpen(item)}
-            >
-              <span>
-                <b className={`priority-badge ${item.priority.toLowerCase()}`}>
-                  {item.priority}
-                </b>
+          <PaginatedItems label="registros comerciais">
+            {items.map((item) => (
+              <button
+                data-reminder-entity-id={item.id}
+                className="table-row"
+                key={item.id}
+                onClick={() => onOpen(item)}
+              >
                 <span>
-                  <strong>{item.title}</strong>
-                  <small>{item.record_type}</small>
+                  <b
+                    className={`priority-badge ${item.priority.toLowerCase()}`}
+                  >
+                    {item.priority}
+                  </b>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.record_type}</small>
+                  </span>
                 </span>
-              </span>
-              <span>{item.customer_name || "—"}</span>
-              <span>{item.owner}</span>
-              <span>
-                <b className={`status-pill ${statusTone(item.status)}`}>
-                  {statusLabel(item.status)}
-                </b>
-              </span>
-              <span>
-                {shortDate(item.due_at)}
-                <ChevronRight size={16} />
-              </span>
-            </button>
-          ))
+                <span>{item.customer_name || "—"}</span>
+                <span>{item.owner}</span>
+                <span>
+                  <b className={`status-pill ${statusTone(item.status)}`}>
+                    {statusLabel(item.status)}
+                  </b>
+                </span>
+                <span>
+                  {shortDate(item.due_at)}
+                  <ChevronRight size={16} />
+                </span>
+              </button>
+            ))}
+          </PaginatedItems>
         )}
       </div>
     </div>
@@ -10147,28 +10279,30 @@ function WorkView({
             {items.length === 0 ? (
               <EmptyState compact text="Nenhuma tarefa registrada." />
             ) : (
-              items.map((item) => (
-                <button
-                  data-reminder-entity-id={item.id}
-                  key={item.id}
-                  onClick={() => onOpen(item)}
-                >
-                  <span className={`check-status ${statusTone(item.status)}`}>
-                    <CheckCircle2 size={16} />
-                  </span>
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>
-                      {item.owner} · {shortDate(item.due_at)}
-                    </small>
-                  </span>
-                  <b
-                    className={`priority-badge ${item.priority.toLowerCase()}`}
+              <PaginatedItems label="registros">
+                {items.map((item) => (
+                  <button
+                    data-reminder-entity-id={item.id}
+                    key={item.id}
+                    onClick={() => onOpen(item)}
                   >
-                    {item.priority}
-                  </b>
-                </button>
-              ))
+                    <span className={`check-status ${statusTone(item.status)}`}>
+                      <CheckCircle2 size={16} />
+                    </span>
+                    <span>
+                      <strong>{item.title}</strong>
+                      <small>
+                        {item.owner} · {shortDate(item.due_at)}
+                      </small>
+                    </span>
+                    <b
+                      className={`priority-badge ${item.priority.toLowerCase()}`}
+                    >
+                      {item.priority}
+                    </b>
+                  </button>
+                ))}
+              </PaginatedItems>
             )}
           </div>
         </section>
@@ -10233,46 +10367,48 @@ function ApprovalsView({
             <EmptyState text="Nenhuma solicitação de aprovação." />
           </div>
         ) : (
-          approvals.map((approval) => (
-            <article data-reminder-entity-id={approval.id} key={approval.id}>
-              <div className="approval-icon">
-                <FileCheck2 size={20} />
-              </div>
-              <div className="approval-main">
-                <span className="eyebrow">{approval.kind}</span>
-                <h3>{approval.source_title}</h3>
-                <p>
-                  Solicitado por {approval.requester} · Alçada:{" "}
-                  {approval.approver_role}
-                </p>
-              </div>
-              <strong>
-                {approval.amount_cents
-                  ? formatMoney(approval.amount_cents)
-                  : "Sem valor"}
-              </strong>
-              <span className={`status-pill ${statusTone(approval.status)}`}>
-                {approval.status}
-              </span>
-              {approval.status === "Pendente" && canApprove && (
-                <div className="approval-actions">
-                  <button
-                    disabled={busy}
-                    onClick={() => onDecision(approval.id, "Reprovado")}
-                  >
-                    Reprovar
-                  </button>
-                  <button
-                    disabled={busy}
-                    className="approve"
-                    onClick={() => onDecision(approval.id, "Aprovado")}
-                  >
-                    Aprovar
-                  </button>
+          <PaginatedItems label="registros">
+            {approvals.map((approval) => (
+              <article data-reminder-entity-id={approval.id} key={approval.id}>
+                <div className="approval-icon">
+                  <FileCheck2 size={20} />
                 </div>
-              )}
-            </article>
-          ))
+                <div className="approval-main">
+                  <span className="eyebrow">{approval.kind}</span>
+                  <h3>{approval.source_title}</h3>
+                  <p>
+                    Solicitado por {approval.requester} · Alçada:{" "}
+                    {approval.approver_role}
+                  </p>
+                </div>
+                <strong>
+                  {approval.amount_cents
+                    ? formatMoney(approval.amount_cents)
+                    : "Sem valor"}
+                </strong>
+                <span className={`status-pill ${statusTone(approval.status)}`}>
+                  {approval.status}
+                </span>
+                {approval.status === "Pendente" && canApprove && (
+                  <div className="approval-actions">
+                    <button
+                      disabled={busy}
+                      onClick={() => onDecision(approval.id, "Reprovado")}
+                    >
+                      Reprovar
+                    </button>
+                    <button
+                      disabled={busy}
+                      className="approve"
+                      onClick={() => onDecision(approval.id, "Aprovado")}
+                    >
+                      Aprovar
+                    </button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </div>
     </>
@@ -10770,30 +10906,32 @@ function CommercialCatalogsView({
             {current.length === 0 ? (
               <EmptyState compact text="Nenhuma opção cadastrada." />
             ) : (
-              current.map((item) => (
-                <CommercialCatalogRow
-                  key={item.id}
-                  item={item}
-                  onEdit={() => setEditing(item)}
-                  onDelete={() =>
-                    void onOperate(
-                      catalog === "lossReason"
-                        ? {
-                            action: "saveCustomerCatalog",
-                            id: item.inherited ? undefined : item.id,
-                            catalog: scopedCatalog,
-                            name: item.name,
-                            catalogDescription: item.description,
-                            active: false,
-                          }
-                        : { action: "deleteCustomerCatalog", id: item.id },
-                      catalog === "lossReason"
-                        ? "Motivo desativado neste CRM."
-                        : "Cadastro excluído com sucesso.",
-                    )
-                  }
-                />
-              ))
+              <PaginatedItems label="registros">
+                {current.map((item) => (
+                  <CommercialCatalogRow
+                    key={item.id}
+                    item={item}
+                    onEdit={() => setEditing(item)}
+                    onDelete={() =>
+                      void onOperate(
+                        catalog === "lossReason"
+                          ? {
+                              action: "saveCustomerCatalog",
+                              id: item.inherited ? undefined : item.id,
+                              catalog: scopedCatalog,
+                              name: item.name,
+                              catalogDescription: item.description,
+                              active: false,
+                            }
+                          : { action: "deleteCustomerCatalog", id: item.id },
+                        catalog === "lossReason"
+                          ? "Motivo desativado neste CRM."
+                          : "Cadastro excluído com sucesso.",
+                      )
+                    }
+                  />
+                ))}
+              </PaginatedItems>
             )}
           </div>
         </section>
@@ -12686,87 +12824,89 @@ function CommercialLeadsModule({
                       Arraste um card para esta etapa.
                     </p>
                   ) : (
-                    visibleLeads.map((lead) =>
-                      flow === "retention" ? (
-                        <RetentionLeadCard
-                          item={lead}
-                          stages={boardStages}
-                          reminders={remindersByLead.get(lead.id) ?? []}
-                          now={now}
-                          key={lead.id}
-                          statuses={activeCatalogs.filter(
-                            (entry) => entry.catalog === "retentionStatus",
-                          )}
-                          canEdit={canEdit}
-                          canDelete={canDelete}
-                          onOpen={() => setSelected(lead)}
-                          onEdit={() => {
-                            setEditRequested(true);
-                            setSelected(lead);
-                          }}
-                          onDelete={() => {
-                            void operate(
-                              { action: "deleteWorkItem", id: lead.id },
-                              "Cliente excluído com sucesso.",
-                            );
-                          }}
-                          onStatusChange={(status) => {
-                            const detail = parseCommercialLead(
-                              lead.description,
-                            );
-                            if (detail)
+                    <PaginatedItems label="registros">
+                      {visibleLeads.map((lead) =>
+                        flow === "retention" ? (
+                          <RetentionLeadCard
+                            item={lead}
+                            stages={boardStages}
+                            reminders={remindersByLead.get(lead.id) ?? []}
+                            now={now}
+                            key={lead.id}
+                            statuses={activeCatalogs.filter(
+                              (entry) => entry.catalog === "retentionStatus",
+                            )}
+                            canEdit={canEdit}
+                            canDelete={canDelete}
+                            onOpen={() => setSelected(lead)}
+                            onEdit={() => {
+                              setEditRequested(true);
+                              setSelected(lead);
+                            }}
+                            onDelete={() => {
                               void operate(
-                                {
-                                  action: "updateWorkItem",
-                                  id: lead.id,
-                                  title: lead.title,
-                                  owner: lead.owner,
-                                  amountCents: lead.amount_cents,
-                                  version: lead.version,
-                                  description: JSON.stringify({
-                                    ...detail,
-                                    retentionStatus: status,
-                                  }),
-                                },
-                                "Status atualizado.",
+                                { action: "deleteWorkItem", id: lead.id },
+                                "Cliente excluído com sucesso.",
                               );
-                          }}
-                          onDragStart={(event) => {
-                            event.dataTransfer.effectAllowed = "move";
-                            beginKanbanDrag(event, "workItemId", lead.id);
-                            setDraggedLead(lead);
-                          }}
-                          onDragEnd={() => setDraggedLead(null)}
-                        />
-                      ) : (
-                        <CommercialLeadCard
-                          item={lead}
-                          stages={boardStages}
-                          reminders={remindersByLead.get(lead.id) ?? []}
-                          now={now}
-                          key={lead.id}
-                          canEdit={canEdit}
-                          canDelete={canDelete}
-                          onOpen={() => setSelected(lead)}
-                          onEdit={() => {
-                            setEditRequested(true);
-                            setSelected(lead);
-                          }}
-                          onDelete={() => {
-                            void operate(
-                              { action: "deleteWorkItem", id: lead.id },
-                              "Lead excluído com sucesso.",
-                            );
-                          }}
-                          onDragStart={(event) => {
-                            event.dataTransfer.effectAllowed = "move";
-                            beginKanbanDrag(event, "workItemId", lead.id);
-                            setDraggedLead(lead);
-                          }}
-                          onDragEnd={() => setDraggedLead(null)}
-                        />
-                      ),
-                    )
+                            }}
+                            onStatusChange={(status) => {
+                              const detail = parseCommercialLead(
+                                lead.description,
+                              );
+                              if (detail)
+                                void operate(
+                                  {
+                                    action: "updateWorkItem",
+                                    id: lead.id,
+                                    title: lead.title,
+                                    owner: lead.owner,
+                                    amountCents: lead.amount_cents,
+                                    version: lead.version,
+                                    description: JSON.stringify({
+                                      ...detail,
+                                      retentionStatus: status,
+                                    }),
+                                  },
+                                  "Status atualizado.",
+                                );
+                            }}
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "move";
+                              beginKanbanDrag(event, "workItemId", lead.id);
+                              setDraggedLead(lead);
+                            }}
+                            onDragEnd={() => setDraggedLead(null)}
+                          />
+                        ) : (
+                          <CommercialLeadCard
+                            item={lead}
+                            stages={boardStages}
+                            reminders={remindersByLead.get(lead.id) ?? []}
+                            now={now}
+                            key={lead.id}
+                            canEdit={canEdit}
+                            canDelete={canDelete}
+                            onOpen={() => setSelected(lead)}
+                            onEdit={() => {
+                              setEditRequested(true);
+                              setSelected(lead);
+                            }}
+                            onDelete={() => {
+                              void operate(
+                                { action: "deleteWorkItem", id: lead.id },
+                                "Lead excluído com sucesso.",
+                              );
+                            }}
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "move";
+                              beginKanbanDrag(event, "workItemId", lead.id);
+                              setDraggedLead(lead);
+                            }}
+                            onDragEnd={() => setDraggedLead(null)}
+                          />
+                        ),
+                      )}
+                    </PaginatedItems>
                   )}
                   {stageLeads.length > visibleLeads.length && (
                     <button
@@ -13336,83 +13476,85 @@ function DirectSalesView({
         {filtered.length === 0 ? (
           <EmptyState text="Nenhuma venda direta encontrada para os filtros selecionados." />
         ) : (
-          filtered.map(({ item, detail }) => (
-            <article
-              data-reminder-entity-id={item.id}
-              className="direct-sales-row"
-              key={item.id}
-            >
-              <span>
-                <strong>{detail.saleId}</strong>
-                <small>
-                  {detail.saleDate
-                    ? new Date(
-                        `${detail.saleDate}T12:00:00`,
-                      ).toLocaleDateString("pt-BR")
-                    : "—"}
-                </small>
-              </span>
-              <span>
-                <strong>{detail.name}</strong>
-                <small>{commercialFlowLabel(flow)}</small>
-              </span>
-              <span>
-                <strong>{detail.origin || "—"}</strong>
-                <small>ID do cliente: {directSaleClientId(detail)}</small>
-              </span>
-              <span>
-                <strong>{detail.products.length} produto(s)</strong>
-                <small>
-                  {detail.products
-                    .map(
-                      (entry) =>
-                        `${entry.product}${entry.plan ? ` · ${entry.plan}` : ""}`,
-                    )
-                    .join(", ")}
-                </small>
-              </span>
-              <span>{detail.version || "—"}</span>
-              <span>{detail.seller || item.owner}</span>
-              <span>
-                {detail.discountCents
-                  ? `− ${formatMoney(detail.discountCents)}`
-                  : "—"}
-              </span>
-              <span className="direct-sale-value">
-                <small>{formatMoney(detail.subtotalCents)}</small>
-                <strong>{formatMoney(detail.totalCents)}</strong>
-              </span>
-              <span className="direct-sales-actions">
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => setEditing({ item, detail })}
-                    title="Editar venda direta"
-                    aria-label={`Editar venda direta ${detail.saleId}`}
-                  >
-                    <Pencil size={14} />
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    type="button"
-                    className="delete"
-                    onClick={() =>
-                      void operate(
-                        { action: "deleteWorkItem", id: item.id },
-                        "Venda direta excluída com sucesso.",
+          <PaginatedItems label="registros">
+            {filtered.map(({ item, detail }) => (
+              <article
+                data-reminder-entity-id={item.id}
+                className="direct-sales-row"
+                key={item.id}
+              >
+                <span>
+                  <strong>{detail.saleId}</strong>
+                  <small>
+                    {detail.saleDate
+                      ? new Date(
+                          `${detail.saleDate}T12:00:00`,
+                        ).toLocaleDateString("pt-BR")
+                      : "—"}
+                  </small>
+                </span>
+                <span>
+                  <strong>{detail.name}</strong>
+                  <small>{commercialFlowLabel(flow)}</small>
+                </span>
+                <span>
+                  <strong>{detail.origin || "—"}</strong>
+                  <small>ID do cliente: {directSaleClientId(detail)}</small>
+                </span>
+                <span>
+                  <strong>{detail.products.length} produto(s)</strong>
+                  <small>
+                    {detail.products
+                      .map(
+                        (entry) =>
+                          `${entry.product}${entry.plan ? ` · ${entry.plan}` : ""}`,
                       )
-                    }
-                    title="Excluir venda direta"
-                    aria-label={`Excluir venda direta ${detail.saleId}`}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-                {!canEdit && !canDelete && <small>—</small>}
-              </span>
-            </article>
-          ))
+                      .join(", ")}
+                  </small>
+                </span>
+                <span>{detail.version || "—"}</span>
+                <span>{detail.seller || item.owner}</span>
+                <span>
+                  {detail.discountCents
+                    ? `− ${formatMoney(detail.discountCents)}`
+                    : "—"}
+                </span>
+                <span className="direct-sale-value">
+                  <small>{formatMoney(detail.subtotalCents)}</small>
+                  <strong>{formatMoney(detail.totalCents)}</strong>
+                </span>
+                <span className="direct-sales-actions">
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ item, detail })}
+                      title="Editar venda direta"
+                      aria-label={`Editar venda direta ${detail.saleId}`}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      className="delete"
+                      onClick={() =>
+                        void operate(
+                          { action: "deleteWorkItem", id: item.id },
+                          "Venda direta excluída com sucesso.",
+                        )
+                      }
+                      title="Excluir venda direta"
+                      aria-label={`Excluir venda direta ${detail.saleId}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                  {!canEdit && !canDelete && <small>—</small>}
+                </span>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </section>
       {creating && (
@@ -14329,88 +14471,90 @@ function CommercialLeadList({
         {leads.length === 0 ? (
           <EmptyState text="Nenhum lead encontrado." />
         ) : (
-          leads.map((item) => {
-            const lead = parseCommercialLead(item.description);
-            return (
-              <div
-                data-reminder-entity-id={item.id}
-                data-reminder-client-id={
-                  lead?.clientId || lead?.onboarding?.clientId
-                }
-                data-reminder-customer-name={
-                  lead?.customer || item.customer_name || item.title
-                }
-                className="commercial-list-row"
-                key={item.id}
-              >
-                <button className="table-row" onClick={() => onOpen(item)}>
-                  <span>
-                    <b className="commercial-list-avatar">
-                      {item.title
-                        .split(" ")
-                        .slice(0, 2)
-                        .map((part) => part[0])
-                        .join("")
-                        .toUpperCase()}
-                    </b>
+          <PaginatedItems label="registros comerciais">
+            {leads.map((item) => {
+              const lead = parseCommercialLead(item.description);
+              return (
+                <div
+                  data-reminder-entity-id={item.id}
+                  data-reminder-client-id={
+                    lead?.clientId || lead?.onboarding?.clientId
+                  }
+                  data-reminder-customer-name={
+                    lead?.customer || item.customer_name || item.title
+                  }
+                  className="commercial-list-row"
+                  key={item.id}
+                >
+                  <button className="table-row" onClick={() => onOpen(item)}>
                     <span>
-                      <strong>{item.title}</strong>
-                      <small>
-                        {lead?.customer ||
-                          item.customer_name ||
-                          "Sem cliente vinculado"}
-                      </small>
+                      <b className="commercial-list-avatar">
+                        {item.title
+                          .split(" ")
+                          .slice(0, 2)
+                          .map((part) => part[0])
+                          .join("")
+                          .toUpperCase()}
+                      </b>
+                      <span>
+                        <strong>{item.title}</strong>
+                        <small>
+                          {lead?.customer ||
+                            item.customer_name ||
+                            "Sem cliente vinculado"}
+                        </small>
+                      </span>
                     </span>
-                  </span>
-                  <span>
-                    <b className="status-pill neutral">
-                      {lead?.stage || "Sem etapa"}
-                    </b>
-                  </span>
-                  <span>{item.owner || "Não atribuído"}</span>
-                  <span>
-                    <small>
-                      {(lead?.follows.length ?? 0) +
-                        (lead?.comments.length ?? 0)}{" "}
-                      registro(s)
-                    </small>
-                    <CrmCardActivity
-                      item={item}
-                      lead={lead}
-                      stages={stages}
-                      reminders={remindersByLead.get(item.id) ?? []}
-                      now={now}
-                    />
-                  </span>
-                  <span>
-                    {commercialAmountCents(item)
-                      ? formatMoney(commercialAmountCents(item))
-                      : "—"}
-                    <ChevronRight size={16} />
-                  </span>
-                </button>
-                {canEdit && (
-                  <span className="card-inline-actions">
-                    <button
-                      type="button"
-                      title="Editar cliente"
-                      onClick={() => onEdit(item)}
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="delete"
-                      title="Excluir cliente"
-                      onClick={() => onDelete(item)}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </span>
-                )}
-              </div>
-            );
-          })
+                    <span>
+                      <b className="status-pill neutral">
+                        {lead?.stage || "Sem etapa"}
+                      </b>
+                    </span>
+                    <span>{item.owner || "Não atribuído"}</span>
+                    <span>
+                      <small>
+                        {(lead?.follows.length ?? 0) +
+                          (lead?.comments.length ?? 0)}{" "}
+                        registro(s)
+                      </small>
+                      <CrmCardActivity
+                        item={item}
+                        lead={lead}
+                        stages={stages}
+                        reminders={remindersByLead.get(item.id) ?? []}
+                        now={now}
+                      />
+                    </span>
+                    <span>
+                      {commercialAmountCents(item)
+                        ? formatMoney(commercialAmountCents(item))
+                        : "—"}
+                      <ChevronRight size={16} />
+                    </span>
+                  </button>
+                  {canEdit && (
+                    <span className="card-inline-actions">
+                      <button
+                        type="button"
+                        title="Editar cliente"
+                        onClick={() => onEdit(item)}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="delete"
+                        title="Excluir cliente"
+                        onClick={() => onDelete(item)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </PaginatedItems>
         )}
       </div>
     </div>
@@ -16064,7 +16208,10 @@ function CommercialLeadDrawer({
       setClientIdError("Informe o plano LIA contratado antes de agendar.");
       return false;
     }
-    const type = agendaModule?.types.find((entry) => entry.active);
+    const type = findJourneyAgendaType(
+      agendaModule?.types ?? [],
+      "Treinamento",
+    );
     const status = agendaModule?.statuses.find((entry) => entry.active);
     const responsible =
       agendaModule?.collaborators.find(
@@ -17758,42 +17905,44 @@ function RetentionCrmSettings({
               </div>
               <div className="retention-settings-list">
                 {currentEntries.length ? (
-                  currentEntries.map((entry) => {
-                    const color =
-                      commercialDetails(entry.description).color || "#3b82f6";
-                    return (
-                      <article
-                        data-reminder-entity-id={entry.id}
-                        key={entry.id}
-                      >
-                        {currentDefinition.color && (
-                          <i
-                            className="retention-config-swatch"
-                            style={{ background: color }}
-                          />
-                        )}
-                        <strong>{entry.name}</strong>
-                        <span
-                          className={
-                            entry.active
-                              ? "retention-active-label"
-                              : "retention-inactive-label"
-                          }
+                  <PaginatedItems label="registros">
+                    {currentEntries.map((entry) => {
+                      const color =
+                        commercialDetails(entry.description).color || "#3b82f6";
+                      return (
+                        <article
+                          data-reminder-entity-id={entry.id}
+                          key={entry.id}
                         >
-                          {entry.active ? "Ativo" : "Inativo"}
-                        </span>
-                        <button
-                          className="retention-settings-delete"
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void removeCatalogEntry(entry)}
-                          aria-label={`Excluir ${entry.name}`}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </article>
-                    );
-                  })
+                          {currentDefinition.color && (
+                            <i
+                              className="retention-config-swatch"
+                              style={{ background: color }}
+                            />
+                          )}
+                          <strong>{entry.name}</strong>
+                          <span
+                            className={
+                              entry.active
+                                ? "retention-active-label"
+                                : "retention-inactive-label"
+                            }
+                          >
+                            {entry.active ? "Ativo" : "Inativo"}
+                          </span>
+                          <button
+                            className="retention-settings-delete"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void removeCatalogEntry(entry)}
+                            aria-label={`Excluir ${entry.name}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </PaginatedItems>
                 ) : (
                   <EmptyState compact text="Nenhuma opção cadastrada." />
                 )}
@@ -19131,8 +19280,9 @@ function CommercialLeadDrawerLegacy({
                           className="primary-button"
                           disabled={busy || !canEdit}
                           onClick={() => {
-                            const type = agendaModule?.types.find(
-                              (entry) => entry.active,
+                            const type = findJourneyAgendaType(
+                              agendaModule?.types ?? [],
+                              "Treinamento",
                             );
                             const status = agendaModule?.statuses.find(
                               (entry) => entry.active,
@@ -20063,15 +20213,17 @@ function EnterpriseNetworksModule({
           {filtered.length === 0 ? (
             <EmptyState text="Nenhuma rede cadastrada." />
           ) : (
-            filtered.map((item) => (
-              <EnterpriseNetworkCard
-                key={item.id}
-                item={item}
-                network={enterpriseNetworkFor(item)}
-                featureOptions={featureOptions}
-                onOpen={() => setSelected(item)}
-              />
-            ))
+            <PaginatedItems label="redes e franquias">
+              {filtered.map((item) => (
+                <EnterpriseNetworkCard
+                  key={item.id}
+                  item={item}
+                  network={enterpriseNetworkFor(item)}
+                  featureOptions={featureOptions}
+                  onOpen={() => setSelected(item)}
+                />
+              ))}
+            </PaginatedItems>
           )}
         </section>
       ) : (
@@ -20703,26 +20855,30 @@ function EnterpriseNetworkDrawer({
                 )}
               </div>
               <div className="enterprise-unit-tabs enterprise-unit-card-grid">
-                {network.units.map((entry) => (
-                  <button
-                    key={entry.id}
-                    className={unit?.id === entry.id ? "active" : ""}
-                    onClick={() => setSelectedUnitId(entry.id)}
-                    aria-pressed={unit?.id === entry.id}
-                    title="Visualizar dados da unidade"
-                  >
-                    <Building2 size={20} />
-                    {entry.name}
-                    {entry.pendingFollowUp && (
-                      <span
-                        className="enterprise-new-units"
-                        aria-label="Nova unidade para acompanhamento"
+                {
+                  <PaginatedItems label="unidades">
+                    {network.units.map((entry) => (
+                      <button
+                        key={entry.id}
+                        className={unit?.id === entry.id ? "active" : ""}
+                        onClick={() => setSelectedUnitId(entry.id)}
+                        aria-pressed={unit?.id === entry.id}
+                        title="Visualizar dados da unidade"
                       >
-                        1
-                      </span>
-                    )}
-                  </button>
-                ))}
+                        <Building2 size={20} />
+                        {entry.name}
+                        {entry.pendingFollowUp && (
+                          <span
+                            className="enterprise-new-units"
+                            aria-label="Nova unidade para acompanhamento"
+                          >
+                            1
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </PaginatedItems>
+                }
               </div>
               {!unit ? (
                 <EmptyState
@@ -21886,34 +22042,36 @@ function CustomerSuccessModule({
             </p>
           </div>
         ) : (
-          filtered.map((item) => {
-            const journey = parseCsJourney(item.description);
-            return (
-              <CsJourneyCard
-                key={item.id}
-                item={item}
-                commercialSource={items.find(
-                  (entry) => entry.id === journey?.sourceLeadId,
-                )}
-                canEdit={canEdit}
-                canDelete={canDelete}
-                onOpen={() => setSelected(item)}
-                onRequestConference={
-                  flow === "evolution" && canEdit
-                    ? () => {
-                        void requestConference(item);
-                      }
-                    : undefined
-                }
-                onDelete={() => {
-                  void operate(
-                    { action: "deleteWorkItem", id: item.id },
-                    "Cliente excluído com sucesso.",
-                  );
-                }}
-              />
-            );
-          })
+          <PaginatedItems label="registros">
+            {filtered.map((item) => {
+              const journey = parseCsJourney(item.description);
+              return (
+                <CsJourneyCard
+                  key={item.id}
+                  item={item}
+                  commercialSource={items.find(
+                    (entry) => entry.id === journey?.sourceLeadId,
+                  )}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  onOpen={() => setSelected(item)}
+                  onRequestConference={
+                    flow === "evolution" && canEdit
+                      ? () => {
+                          void requestConference(item);
+                        }
+                      : undefined
+                  }
+                  onDelete={() => {
+                    void operate(
+                      { action: "deleteWorkItem", id: item.id },
+                      "Cliente excluído com sucesso.",
+                    );
+                  }}
+                />
+              );
+            })}
+          </PaginatedItems>
         )}
       </section>
       {selected && (
@@ -22268,7 +22426,10 @@ function CsJourneyDrawer({
   ) => {
     if (!agendaModule || !activationCalendar || !date) return false;
     if (journey[commitmentKey]) return false;
-    const type = agendaModule.types.find((entry) => entry.active);
+    const type = findJourneyAgendaType(
+      agendaModule.types,
+      journeyAgendaType("cs", item.description) ?? "Reunião",
+    );
     const status = agendaModule.statuses.find((entry) => entry.active);
     const responsible =
       agendaModule.collaborators.find((entry) => entry.name === item.owner) ??
@@ -23194,30 +23355,33 @@ function AuditLogView({
         {visible.length === 0 ? (
           <EmptyState text="Nenhum evento encontrado." />
         ) : (
-          visible.map((entry) => (
-            <article data-reminder-entity-id={entry.id} key={entry.id}>
-              <span className="audit-icon">
-                <Activity size={15} />
-              </span>
-              <span>
-                <strong>
-                  {actionLabel(entry.action)} · {resourceLabel(entry.resource)}
-                </strong>
-                <small>{formatDetails(entry.details)}</small>
-                <small>
-                  {entry.actor_email} · {moduleLabel(entry.module)}
-                </small>
-              </span>
-              <time>{dateTime(entry.created_at)}</time>
-              <b className={`status-pill ${statusTone(entry.result)}`}>
-                {entry.result === "Success"
-                  ? "Sucesso"
-                  : entry.result === "Failure"
-                    ? "Falha"
-                    : entry.result}
-              </b>
-            </article>
-          ))
+          <PaginatedItems label="registros de auditoria">
+            {visible.map((entry) => (
+              <article data-reminder-entity-id={entry.id} key={entry.id}>
+                <span className="audit-icon">
+                  <Activity size={15} />
+                </span>
+                <span>
+                  <strong>
+                    {actionLabel(entry.action)} ·{" "}
+                    {resourceLabel(entry.resource)}
+                  </strong>
+                  <small>{formatDetails(entry.details)}</small>
+                  <small>
+                    {entry.actor_email} · {moduleLabel(entry.module)}
+                  </small>
+                </span>
+                <time>{dateTime(entry.created_at)}</time>
+                <b className={`status-pill ${statusTone(entry.result)}`}>
+                  {entry.result === "Success"
+                    ? "Sucesso"
+                    : entry.result === "Failure"
+                      ? "Falha"
+                      : entry.result}
+                </b>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </section>
     </>
@@ -23337,16 +23501,20 @@ function RecruitmentView({
                 }
               </b>
             </header>
-            {candidates
-              .filter((candidate) => candidate.status === stage.name)
-              .map((candidate) => (
-                <RecruitmentCandidateCard
-                  candidate={candidate}
-                  busy={busy}
-                  key={candidate.id}
-                  onSelect={() => setSelected(candidate)}
-                />
-              ))}
+            {
+              <PaginatedItems label="registros do processo seletivo">
+                {candidates
+                  .filter((candidate) => candidate.status === stage.name)
+                  .map((candidate) => (
+                    <RecruitmentCandidateCard
+                      candidate={candidate}
+                      busy={busy}
+                      key={candidate.id}
+                      onSelect={() => setSelected(candidate)}
+                    />
+                  ))}
+              </PaginatedItems>
+            }
           </article>
         ))}
       </section>
@@ -23862,62 +24030,64 @@ function RecruitmentWorkflowView({
           {processes.length === 0 ? (
             <EmptyState text="Crie o primeiro processo seletivo para iniciar as candidaturas." />
           ) : (
-            processes.map((item) => {
-              const detail = info(item);
-              const count = data.items.filter(
-                (candidate) =>
-                  candidate.record_type === "Candidato" &&
-                  info(candidate).processId === item.id,
-              ).length;
-              const isOpen = item.status === "Ativo";
-              return (
-                <article data-reminder-entity-id={item.id} key={item.id}>
-                  <div>
-                    <span className="eyebrow">PROCESSO SELETIVO</span>
-                    <h2>{item.title}</h2>
-                    <p>
-                      {detail.vacancy || item.customer_name} ·{" "}
-                      {detail.sector || item.team}
-                    </p>
-                    <div className="recruitment-process-meta">
-                      <small>{count} candidato(s)</small>
-                      <label
-                        className={`recruitment-status-control ${isOpen ? "open" : "closed"}`}
-                      >
-                        Inscrições
-                        <select
-                          value={isOpen ? "Ativo" : "Finalizado"}
-                          disabled={busy}
-                          onChange={(event) =>
-                            setProcessStatus(
-                              item,
-                              event.target.value as "Ativo" | "Finalizado",
-                            )
-                          }
+            <PaginatedItems label="registros do processo seletivo">
+              {processes.map((item) => {
+                const detail = info(item);
+                const count = data.items.filter(
+                  (candidate) =>
+                    candidate.record_type === "Candidato" &&
+                    info(candidate).processId === item.id,
+                ).length;
+                const isOpen = item.status === "Ativo";
+                return (
+                  <article data-reminder-entity-id={item.id} key={item.id}>
+                    <div>
+                      <span className="eyebrow">PROCESSO SELETIVO</span>
+                      <h2>{item.title}</h2>
+                      <p>
+                        {detail.vacancy || item.customer_name} ·{" "}
+                        {detail.sector || item.team}
+                      </p>
+                      <div className="recruitment-process-meta">
+                        <small>{count} candidato(s)</small>
+                        <label
+                          className={`recruitment-status-control ${isOpen ? "open" : "closed"}`}
                         >
-                          <option>Ativo</option>
-                          <option>Finalizado</option>
-                        </select>
-                      </label>
+                          Inscrições
+                          <select
+                            value={isOpen ? "Ativo" : "Finalizado"}
+                            disabled={busy}
+                            onChange={(event) =>
+                              setProcessStatus(
+                                item,
+                                event.target.value as "Ativo" | "Finalizado",
+                              )
+                            }
+                          >
+                            <option>Ativo</option>
+                            <option>Finalizado</option>
+                          </select>
+                        </label>
+                      </div>
                     </div>
-                  </div>
-                  <div className="recruitment-process-actions">
-                    <button
-                      className="secondary-button"
-                      onClick={() => copyLink(item)}
-                    >
-                      <FileCheck2 size={14} /> Copiar link
-                    </button>
-                    <button
-                      className="primary-button"
-                      onClick={() => setProcess(item)}
-                    >
-                      Gerenciar <ChevronRight size={15} />
-                    </button>
-                  </div>
-                </article>
-              );
-            })
+                    <div className="recruitment-process-actions">
+                      <button
+                        className="secondary-button"
+                        onClick={() => copyLink(item)}
+                      >
+                        <FileCheck2 size={14} /> Copiar link
+                      </button>
+                      <button
+                        className="primary-button"
+                        onClick={() => setProcess(item)}
+                      >
+                        Gerenciar <ChevronRight size={15} />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </PaginatedItems>
           )}
         </section>
       ) : (
@@ -23976,16 +24146,20 @@ function RecruitmentWorkflowView({
                     }
                   </b>
                 </header>
-                {candidates
-                  .filter((candidate) => candidate.status === stage)
-                  .map((candidate) => (
-                    <RecruitmentCandidateCard
-                      candidate={candidate}
-                      busy={busy}
-                      key={candidate.id}
-                      onSelect={() => setSelected(candidate)}
-                    />
-                  ))}
+                {
+                  <PaginatedItems label="registros do processo seletivo">
+                    {candidates
+                      .filter((candidate) => candidate.status === stage)
+                      .map((candidate) => (
+                        <RecruitmentCandidateCard
+                          candidate={candidate}
+                          busy={busy}
+                          key={candidate.id}
+                          onSelect={() => setSelected(candidate)}
+                        />
+                      ))}
+                  </PaginatedItems>
+                }
               </article>
             ))}
           </section>
@@ -24180,6 +24354,12 @@ function AdminView({
       <EmptyState text="Não foi possível carregar os cadastros da LIA." />
     );
   }
+  if (section.startsWith("whatsapp"))
+    return userCanNavigate(data.user, "admin", section) ? (
+      <WhatsAppAdmin section={section} operate={onOperate} busy={busy} />
+    ) : (
+      <EmptyState text="Seu perfil não permite configurar o WhatsApp." />
+    );
   if (!data.access)
     return <EmptyState text="Seu perfil não possui acesso à administração." />;
   const configurationScreen: Partial<Record<AdminSection, string>> = {
@@ -24583,42 +24763,44 @@ function JobRolesAdmin({
       <PeopleAdminTabs section="roles" onSection={onSection} />
       <section className="catalog-list">
         {items.length ? (
-          items.map((item) => (
-            <article data-reminder-entity-id={item.id} key={item.id}>
-              <span className="group-icon">
-                <BriefcaseBusiness size={18} />
-              </span>
-              <span className="catalog-record-data">
-                <strong>{item.name}</strong>
-                <small>
-                  {item.description ||
-                    "Função disponível para os colaboradores"}
-                </small>
-              </span>
-              <b
-                className={`status-pill ${item.active ? "positive" : "negative"}`}
-              >
-                {item.active ? "Ativa" : "Inativa"}
-              </b>
-              <button
-                className="catalog-icon-button"
-                onClick={() => setEditing(item)}
-              >
-                <Pencil size={15} />
-              </button>
-              <button
-                className="catalog-icon-button delete"
-                onClick={() =>
-                  void onOperate(
-                    { action: "deleteCustomerCatalog", id: item.id },
-                    "Função excluída.",
-                  )
-                }
-              >
-                <Trash2 size={15} />
-              </button>
-            </article>
-          ))
+          <PaginatedItems label="registros">
+            {items.map((item) => (
+              <article data-reminder-entity-id={item.id} key={item.id}>
+                <span className="group-icon">
+                  <BriefcaseBusiness size={18} />
+                </span>
+                <span className="catalog-record-data">
+                  <strong>{item.name}</strong>
+                  <small>
+                    {item.description ||
+                      "Função disponível para os colaboradores"}
+                  </small>
+                </span>
+                <b
+                  className={`status-pill ${item.active ? "positive" : "negative"}`}
+                >
+                  {item.active ? "Ativa" : "Inativa"}
+                </b>
+                <button
+                  className="catalog-icon-button"
+                  onClick={() => setEditing(item)}
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  className="catalog-icon-button delete"
+                  onClick={() =>
+                    void onOperate(
+                      { action: "deleteCustomerCatalog", id: item.id },
+                      "Função excluída.",
+                    )
+                  }
+                >
+                  <Trash2 size={15} />
+                </button>
+              </article>
+            ))}
+          </PaginatedItems>
         ) : (
           <EmptyState text="Nenhuma função cadastrada." />
         )}
@@ -24711,64 +24893,66 @@ function EnterpriseNetworkList({
       {items.length === 0 ? (
         <EmptyState text="Nenhuma rede cadastrada." />
       ) : (
-        items.map((item) => {
-          const network = enterpriseNetworkFor(item);
-          const active = network.units.filter((unit) => unit.active).length;
-          const health = enterpriseHealthScore(network.units, featureOptions);
-          return (
-            <article
-              data-reminder-entity-id={item.id}
-              key={item.id}
-              onClick={() => onOpen(item)}
-            >
-              <span>
-                <strong>{item.title}</strong>
-                <small>{network.contact || "Sem contato principal"}</small>
-              </span>
-              <span>{item.owner || "Não atribuído"}</span>
-              <span>{network.units.length}</span>
-              <span className="good">{active}</span>
-              <span
-                className={
-                  health >= 70 ? "good" : health >= 40 ? "warn" : "bad"
-                }
+        <PaginatedItems label="redes e franquias">
+          {items.map((item) => {
+            const network = enterpriseNetworkFor(item);
+            const active = network.units.filter((unit) => unit.active).length;
+            const health = enterpriseHealthScore(network.units, featureOptions);
+            return (
+              <article
+                data-reminder-entity-id={item.id}
+                key={item.id}
+                onClick={() => onOpen(item)}
               >
-                {health}%
-              </span>
-              <span>
-                <b
-                  className={`status-pill ${enterpriseTone(health, active > 0)}`}
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>{network.contact || "Sem contato principal"}</small>
+                </span>
+                <span>{item.owner || "Não atribuído"}</span>
+                <span>{network.units.length}</span>
+                <span className="good">{active}</span>
+                <span
+                  className={
+                    health >= 70 ? "good" : health >= 40 ? "warn" : "bad"
+                  }
                 >
-                  {network.status}
-                </b>
-              </span>
-              <span className="enterprise-list-actions">
-                {canEdit && (
-                  <button
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onEdit(item);
-                    }}
+                  {health}%
+                </span>
+                <span>
+                  <b
+                    className={`status-pill ${enterpriseTone(health, active > 0)}`}
                   >
-                    <Pencil size={14} />
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    className="delete"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDelete(item);
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-                <ChevronRight size={15} />
-              </span>
-            </article>
-          );
-        })
+                    {network.status}
+                  </b>
+                </span>
+                <span className="enterprise-list-actions">
+                  {canEdit && (
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEdit(item);
+                      }}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      className="delete"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(item);
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                  <ChevronRight size={15} />
+                </span>
+              </article>
+            );
+          })}
+        </PaginatedItems>
       )}
     </section>
   );
@@ -24843,90 +25027,92 @@ function EmployeesAdmin({
         {access.employees.length === 0 ? (
           <EmptyState text="Nenhum colaborador cadastrado." />
         ) : (
-          access.employees.map((employee) => (
-            <article
-              data-reminder-entity-id={employee.id}
-              className="employee-card"
-              key={employee.id}
-            >
-              <span className="employee-photo-wrap">
-                <ProfileAvatar
-                  name={employee.displayName}
-                  photo={employee.photoDataUrl}
-                  coordinator={employee.isCoordinator}
-                  large
-                />
-              </span>
-              <div>
-                <strong>{employee.displayName}</strong>
-                <small>{employee.email}</small>
-                <p>
-                  {employee.jobTitle ||
-                    `${employee.departmentName || "Sem setor"} · ${employee.levelName || "Sem nível"}`}
-                </p>
-                {employee.jobTitle && (
-                  <small>
-                    {employee.departmentName || "Sem setor"} ·{" "}
-                    {employee.levelName || "Sem nível"}
-                  </small>
-                )}
-                {employee.blockedAt && (
-                  <small>
-                    Bloqueado em{" "}
-                    {new Intl.DateTimeFormat("pt-BR").format(
-                      new Date(employee.blockedAt),
-                    )}
-                  </small>
-                )}
-              </div>
-              <b
-                className={`status-pill ${employee.active ? "positive" : "negative"}`}
+          <PaginatedItems label="colaboradores">
+            {access.employees.map((employee) => (
+              <article
+                data-reminder-entity-id={employee.id}
+                className="employee-card"
+                key={employee.id}
               >
-                {employee.active ? "Ativo" : "Inativo"}
-              </b>
-              <span className="employee-actions">
-                <button
-                  className={`catalog-icon-button ${employee.active ? "lock" : "unlock"}`}
-                  onClick={() => {
-                    void toggleAccess(employee);
-                  }}
-                  aria-label={
-                    employee.active
-                      ? `Bloquear ${employee.displayName}`
-                      : `Reativar ${employee.displayName}`
-                  }
-                  title={
-                    employee.active ? "Bloquear acesso" : "Reativar acesso"
-                  }
-                >
-                  {employee.active ? (
-                    <LockKeyhole size={15} />
-                  ) : (
-                    <BadgeCheck size={15} />
+                <span className="employee-photo-wrap">
+                  <ProfileAvatar
+                    name={employee.displayName}
+                    photo={employee.photoDataUrl}
+                    coordinator={employee.isCoordinator}
+                    large
+                  />
+                </span>
+                <div>
+                  <strong>{employee.displayName}</strong>
+                  <small>{employee.email}</small>
+                  <p>
+                    {employee.jobTitle ||
+                      `${employee.departmentName || "Sem setor"} · ${employee.levelName || "Sem nível"}`}
+                  </p>
+                  {employee.jobTitle && (
+                    <small>
+                      {employee.departmentName || "Sem setor"} ·{" "}
+                      {employee.levelName || "Sem nível"}
+                    </small>
                   )}
-                </button>
-                <button
-                  className="catalog-icon-button"
-                  onClick={() => setEditing(employee)}
-                  aria-label={`Editar ${employee.displayName}`}
+                  {employee.blockedAt && (
+                    <small>
+                      Bloqueado em{" "}
+                      {new Intl.DateTimeFormat("pt-BR").format(
+                        new Date(employee.blockedAt),
+                      )}
+                    </small>
+                  )}
+                </div>
+                <b
+                  className={`status-pill ${employee.active ? "positive" : "negative"}`}
                 >
-                  <Pencil size={15} />
-                </button>
-                <button
-                  className="catalog-icon-button delete"
-                  onClick={() => {
-                    void onOperate(
-                      { action: "deleteEmployee", id: employee.id },
-                      "Colaborador excluído com sucesso.",
-                    );
-                  }}
-                  aria-label={`Excluir ${employee.displayName}`}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </span>
-            </article>
-          ))
+                  {employee.active ? "Ativo" : "Inativo"}
+                </b>
+                <span className="employee-actions">
+                  <button
+                    className={`catalog-icon-button ${employee.active ? "lock" : "unlock"}`}
+                    onClick={() => {
+                      void toggleAccess(employee);
+                    }}
+                    aria-label={
+                      employee.active
+                        ? `Bloquear ${employee.displayName}`
+                        : `Reativar ${employee.displayName}`
+                    }
+                    title={
+                      employee.active ? "Bloquear acesso" : "Reativar acesso"
+                    }
+                  >
+                    {employee.active ? (
+                      <LockKeyhole size={15} />
+                    ) : (
+                      <BadgeCheck size={15} />
+                    )}
+                  </button>
+                  <button
+                    className="catalog-icon-button"
+                    onClick={() => setEditing(employee)}
+                    aria-label={`Editar ${employee.displayName}`}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    className="catalog-icon-button delete"
+                    onClick={() => {
+                      void onOperate(
+                        { action: "deleteEmployee", id: employee.id },
+                        "Colaborador excluído com sucesso.",
+                      );
+                    }}
+                    aria-label={`Excluir ${employee.displayName}`}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </span>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </section>
       {creating && (
@@ -25505,72 +25691,76 @@ function EmployeeCatalog({
         {visibleItems.length === 0 ? (
           <EmptyState text={`Nenhum ${singular.toLowerCase()} cadastrado.`} />
         ) : (
-          visibleItems.map((item) => (
-            <article data-reminder-entity-id={item.id} key={item.id}>
-              <span className="group-icon">
-                <Database size={18} />
-              </span>
-              <span className="catalog-record-data">
-                <strong>{item.name}</strong>
-                <small>
-                  {cleanDepartmentDescription(item.description) ||
-                    "Sem descrição cadastrada"}
-                </small>
-                {action === "saveEmployeeDepartment" && (
-                  <em className="queue-mode-chip">
-                    Fila{" "}
-                    {departmentQueueMode(item.description) === "linked"
-                      ? "vinculada"
-                      : "convencional"}
-                  </em>
-                )}
-              </span>
-              <b
-                className={`status-pill ${item.active ? "positive" : "negative"}`}
-              >
-                {item.active ? "Ativo" : "Inativo"}
-              </b>
-              <button
-                className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`}
-                onClick={() => {
-                  void toggleItem(item);
-                }}
-                aria-label={
-                  item.active
-                    ? `Inativar ${item.name}`
-                    : `Reativar ${item.name}`
-                }
-                title={
-                  item.active ? "Inativar temporariamente" : "Reativar cadastro"
-                }
-              >
-                {item.active ? (
-                  <LockKeyhole size={15} />
-                ) : (
-                  <BadgeCheck size={15} />
-                )}
-              </button>
-              <button
-                className="catalog-icon-button"
-                onClick={() => setEditing(item)}
-                aria-label={`Editar ${item.name}`}
-              >
-                <Pencil size={15} />
-              </button>
-              <button
-                className="catalog-icon-button delete"
-                onClick={() => {
-                  void onOperate(
-                    { action: deleteAction, id: item.id },
-                    `${singular} excluído com sucesso.`,
-                  );
-                }}
-                aria-label={`Excluir ${item.name}`}
-              >
-                <Trash2 size={15} />
-              </button>
-            </article>
-          ))
+          <PaginatedItems label="registros">
+            {visibleItems.map((item) => (
+              <article data-reminder-entity-id={item.id} key={item.id}>
+                <span className="group-icon">
+                  <Database size={18} />
+                </span>
+                <span className="catalog-record-data">
+                  <strong>{item.name}</strong>
+                  <small>
+                    {cleanDepartmentDescription(item.description) ||
+                      "Sem descrição cadastrada"}
+                  </small>
+                  {action === "saveEmployeeDepartment" && (
+                    <em className="queue-mode-chip">
+                      Fila{" "}
+                      {departmentQueueMode(item.description) === "linked"
+                        ? "vinculada"
+                        : "convencional"}
+                    </em>
+                  )}
+                </span>
+                <b
+                  className={`status-pill ${item.active ? "positive" : "negative"}`}
+                >
+                  {item.active ? "Ativo" : "Inativo"}
+                </b>
+                <button
+                  className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`}
+                  onClick={() => {
+                    void toggleItem(item);
+                  }}
+                  aria-label={
+                    item.active
+                      ? `Inativar ${item.name}`
+                      : `Reativar ${item.name}`
+                  }
+                  title={
+                    item.active
+                      ? "Inativar temporariamente"
+                      : "Reativar cadastro"
+                  }
+                >
+                  {item.active ? (
+                    <LockKeyhole size={15} />
+                  ) : (
+                    <BadgeCheck size={15} />
+                  )}
+                </button>
+                <button
+                  className="catalog-icon-button"
+                  onClick={() => setEditing(item)}
+                  aria-label={`Editar ${item.name}`}
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  className="catalog-icon-button delete"
+                  onClick={() => {
+                    void onOperate(
+                      { action: deleteAction, id: item.id },
+                      `${singular} excluído com sucesso.`,
+                    );
+                  }}
+                  aria-label={`Excluir ${item.name}`}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </section>
       {editing !== undefined && (
@@ -26262,24 +26452,30 @@ function LegacyAdminView({
           <p>Regras críticas permanecem bloqueadas até decisão formal.</p>
         </div>
         <div className="decision-grid">
-          {data.decisions.map((decision) => (
-            <article key={decision.code}>
-              <div>
-                <b>{decision.code}</b>
-                <span className={`risk ${decision.risk.toLowerCase()}`}>
-                  {decision.risk}
-                </span>
-              </div>
-              <h3>{decision.title}</h3>
-              <p>{decision.default_behavior}</p>
-              <footer>
-                <span className={`status-pill ${statusTone(decision.status)}`}>
-                  {decision.status}
-                </span>
-                <small>{decision.owner}</small>
-              </footer>
-            </article>
-          ))}
+          {
+            <PaginatedItems label="registros">
+              {data.decisions.map((decision) => (
+                <article key={decision.code}>
+                  <div>
+                    <b>{decision.code}</b>
+                    <span className={`risk ${decision.risk.toLowerCase()}`}>
+                      {decision.risk}
+                    </span>
+                  </div>
+                  <h3>{decision.title}</h3>
+                  <p>{decision.default_behavior}</p>
+                  <footer>
+                    <span
+                      className={`status-pill ${statusTone(decision.status)}`}
+                    >
+                      {decision.status}
+                    </span>
+                    <small>{decision.owner}</small>
+                  </footer>
+                </article>
+              ))}
+            </PaginatedItems>
+          }
         </div>
       </section>
       <section className="admin-section">
@@ -26295,25 +26491,27 @@ function LegacyAdminView({
               <EmptyState text="A trilha será preenchida a partir da primeira ação." />
             </div>
           ) : (
-            data.audit.map((entry) => (
-              <div data-reminder-entity-id={entry.id} key={entry.id}>
-                <span className="audit-icon">
-                  <Activity size={15} />
-                </span>
-                <span>
-                  <strong>
-                    {entry.action} · {entry.resource}
-                  </strong>
-                  <small>
-                    {entry.actor_email} · {entry.module}
-                  </small>
-                </span>
-                <time>{dateTime(entry.created_at)}</time>
-                <b className={`status-pill ${statusTone(entry.result)}`}>
-                  {entry.result}
-                </b>
-              </div>
-            ))
+            <PaginatedItems label="registros de auditoria">
+              {data.audit.map((entry) => (
+                <div data-reminder-entity-id={entry.id} key={entry.id}>
+                  <span className="audit-icon">
+                    <Activity size={15} />
+                  </span>
+                  <span>
+                    <strong>
+                      {entry.action} · {entry.resource}
+                    </strong>
+                    <small>
+                      {entry.actor_email} · {entry.module}
+                    </small>
+                  </span>
+                  <time>{dateTime(entry.created_at)}</time>
+                  <b className={`status-pill ${statusTone(entry.result)}`}>
+                    {entry.result}
+                  </b>
+                </div>
+              ))}
+            </PaginatedItems>
           )}
         </div>
       </section>
@@ -26378,38 +26576,43 @@ function AccessAdmin({
           </div>
         </div>
         <div className="access-group-list">
-          {access.groups.map((group) => (
-            <button
-              data-reminder-entity-id={group.id}
-              key={group.id}
-              onClick={() => setEditingGroup(group)}
-            >
-              <span className="group-icon">
-                <ShieldCheck size={18} />
-              </span>
-              <span>
-                <strong>
-                  {group.name}
-                  {group.isSystem && <em>Sistema</em>}
-                </strong>
-                <small>{group.description || "Sem descrição"}</small>
-                <i>
-                  {group.userCount} colaborador(es) ·{" "}
-                  {
-                    group.permissions.filter((permission) => permission.canView)
-                      .length
-                  }{" "}
-                  tela(s)
-                </i>
-              </span>
-              <b
-                className={`status-pill ${group.active ? "positive" : "negative"}`}
-              >
-                {group.active ? "Ativo" : "Inativo"}
-              </b>
-              <ChevronRight size={16} />
-            </button>
-          ))}
+          {
+            <PaginatedItems label="registros">
+              {access.groups.map((group) => (
+                <button
+                  data-reminder-entity-id={group.id}
+                  key={group.id}
+                  onClick={() => setEditingGroup(group)}
+                >
+                  <span className="group-icon">
+                    <ShieldCheck size={18} />
+                  </span>
+                  <span>
+                    <strong>
+                      {group.name}
+                      {group.isSystem && <em>Sistema</em>}
+                    </strong>
+                    <small>{group.description || "Sem descrição"}</small>
+                    <i>
+                      {group.userCount} colaborador(es) ·{" "}
+                      {
+                        group.permissions.filter(
+                          (permission) => permission.canView,
+                        ).length
+                      }{" "}
+                      tela(s)
+                    </i>
+                  </span>
+                  <b
+                    className={`status-pill ${group.active ? "positive" : "negative"}`}
+                  >
+                    {group.active ? "Ativo" : "Inativo"}
+                  </b>
+                  <ChevronRight size={16} />
+                </button>
+              ))}
+            </PaginatedItems>
+          }
         </div>
       </div>
       {editingGroup && (
@@ -26514,30 +26717,34 @@ function LegacyAccessAdmin({
             </div>
           </div>
           <div className="access-user-list">
-            {access.users.map((user) => (
-              <button
-                data-reminder-entity-id={user.id}
-                key={user.id}
-                onClick={() => setEditingUser(user)}
-              >
-                <ProfileAvatar
-                  name={user.displayName}
-                  photo={user.photoDataUrl}
-                  coordinator={user.isCoordinator}
-                />
-                <span>
-                  <strong>{user.displayName}</strong>
-                  <small>{user.jobTitle || user.email}</small>
-                  <em>{user.groupNames.join(" · ") || "Sem grupo"}</em>
-                </span>
-                <b
-                  className={`status-pill ${user.active ? "positive" : "negative"}`}
-                >
-                  {user.active ? "Ativo" : "Inativo"}
-                </b>
-                <Pencil size={15} />
-              </button>
-            ))}
+            {
+              <PaginatedItems label="colaboradores">
+                {access.users.map((user) => (
+                  <button
+                    data-reminder-entity-id={user.id}
+                    key={user.id}
+                    onClick={() => setEditingUser(user)}
+                  >
+                    <ProfileAvatar
+                      name={user.displayName}
+                      photo={user.photoDataUrl}
+                      coordinator={user.isCoordinator}
+                    />
+                    <span>
+                      <strong>{user.displayName}</strong>
+                      <small>{user.jobTitle || user.email}</small>
+                      <em>{user.groupNames.join(" · ") || "Sem grupo"}</em>
+                    </span>
+                    <b
+                      className={`status-pill ${user.active ? "positive" : "negative"}`}
+                    >
+                      {user.active ? "Ativo" : "Inativo"}
+                    </b>
+                    <Pencil size={15} />
+                  </button>
+                ))}
+              </PaginatedItems>
+            }
           </div>
         </div>
         <div className="panel access-groups">
@@ -26548,39 +26755,43 @@ function LegacyAccessAdmin({
             </div>
           </div>
           <div className="access-group-list">
-            {access.groups.map((group) => (
-              <button
-                data-reminder-entity-id={group.id}
-                key={group.id}
-                onClick={() => setEditingGroup(group)}
-              >
-                <span className="group-icon">
-                  <ShieldCheck size={18} />
-                </span>
-                <span>
-                  <strong>
-                    {group.name}
-                    {group.isSystem && <em>Sistema</em>}
-                  </strong>
-                  <small>{group.description || "Sem descrição"}</small>
-                  <i>
-                    {group.userCount} usuário(s) ·{" "}
-                    {
-                      group.permissions.filter(
-                        (permission) => permission.canView,
-                      ).length
-                    }{" "}
-                    tela(s)
-                  </i>
-                </span>
-                <b
-                  className={`status-pill ${group.active ? "positive" : "negative"}`}
-                >
-                  {group.active ? "Ativo" : "Inativo"}
-                </b>
-                <ChevronRight size={16} />
-              </button>
-            ))}
+            {
+              <PaginatedItems label="registros">
+                {access.groups.map((group) => (
+                  <button
+                    data-reminder-entity-id={group.id}
+                    key={group.id}
+                    onClick={() => setEditingGroup(group)}
+                  >
+                    <span className="group-icon">
+                      <ShieldCheck size={18} />
+                    </span>
+                    <span>
+                      <strong>
+                        {group.name}
+                        {group.isSystem && <em>Sistema</em>}
+                      </strong>
+                      <small>{group.description || "Sem descrição"}</small>
+                      <i>
+                        {group.userCount} usuário(s) ·{" "}
+                        {
+                          group.permissions.filter(
+                            (permission) => permission.canView,
+                          ).length
+                        }{" "}
+                        tela(s)
+                      </i>
+                    </span>
+                    <b
+                      className={`status-pill ${group.active ? "positive" : "negative"}`}
+                    >
+                      {group.active ? "Ativo" : "Inativo"}
+                    </b>
+                    <ChevronRight size={16} />
+                  </button>
+                ))}
+              </PaginatedItems>
+            }
           </div>
         </div>
       </div>

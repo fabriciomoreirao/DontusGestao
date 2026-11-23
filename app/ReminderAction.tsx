@@ -7,6 +7,7 @@ import { useEffect, useRef } from "react";
 
 export type ReminderContext = {
   module: string;
+  agendaTypeName?: string;
   entityId?: string;
   clientId?: string;
   customerName?: string;

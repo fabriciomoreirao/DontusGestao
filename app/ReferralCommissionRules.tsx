@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { Copy, Save, Search, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -154,55 +156,59 @@ export default function ReferralCommissionRules({
         onSubmit={(event) => void saveAll(event)}
       >
         <div className="referral-commission-list">
-          {modules.map((module) => {
-            const rule = existingRule(catalogs, collaborator, module);
-            return (
-              <div className="referral-rule-row" key={module.id}>
-                <span>
-                  <strong>{module.name}</strong>
-                  <small>
-                    {rule ? "Regra configurada" : "Aguardando configuração"}
-                  </small>
-                </span>
-                <label>
-                  Tipo
-                  <select
-                    name={`${module.id}:type`}
-                    disabled={disabled}
-                    defaultValue={rule?.type || "percentage"}
-                  >
-                    <option value="percentage">Porcentagem</option>
-                    <option value="fixed">Valor fixo</option>
-                  </select>
-                </label>
-                <label>
-                  Percentual (%)
-                  <input
-                    name={`${module.id}:percentage`}
-                    disabled={disabled}
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    required
-                    defaultValue={rule?.percentage ?? 0}
-                  />
-                </label>
-                <label>
-                  Valor fixo (R$)
-                  <input
-                    name={`${module.id}:fixed`}
-                    disabled={disabled}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    defaultValue={(rule?.fixedCents ?? 0) / 100}
-                  />
-                </label>
-              </div>
-            );
-          })}
+          {
+            <PaginatedItems label="regras de indicação">
+              {modules.map((module) => {
+                const rule = existingRule(catalogs, collaborator, module);
+                return (
+                  <div className="referral-rule-row" key={module.id}>
+                    <span>
+                      <strong>{module.name}</strong>
+                      <small>
+                        {rule ? "Regra configurada" : "Aguardando configuração"}
+                      </small>
+                    </span>
+                    <label>
+                      Tipo
+                      <select
+                        name={`${module.id}:type`}
+                        disabled={disabled}
+                        defaultValue={rule?.type || "percentage"}
+                      >
+                        <option value="percentage">Porcentagem</option>
+                        <option value="fixed">Valor fixo</option>
+                      </select>
+                    </label>
+                    <label>
+                      Percentual (%)
+                      <input
+                        name={`${module.id}:percentage`}
+                        disabled={disabled}
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        required
+                        defaultValue={rule?.percentage ?? 0}
+                      />
+                    </label>
+                    <label>
+                      Valor fixo (R$)
+                      <input
+                        name={`${module.id}:fixed`}
+                        disabled={disabled}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        defaultValue={(rule?.fixedCents ?? 0) / 100}
+                      />
+                    </label>
+                  </div>
+                );
+              })}
+            </PaginatedItems>
+          }
         </div>
         <footer className="referral-rules-footer">
           <span>
@@ -294,26 +300,30 @@ export default function ReferralCommissionRules({
                 />
               </label>
               <div className="referral-copy-list">
-                {visible.map((person) => (
-                  <label key={person.id}>
-                    <input
-                      type="checkbox"
-                      disabled={disabled}
-                      checked={targets.includes(person.id)}
-                      onChange={(event) =>
-                        setTargets((current) =>
-                          event.target.checked
-                            ? [...current, person.id]
-                            : current.filter((id) => id !== person.id),
-                        )
-                      }
-                    />
-                    <span>
-                      <strong>{person.displayName}</strong>
-                      <small>{person.departmentName}</small>
-                    </span>
-                  </label>
-                ))}
+                {
+                  <PaginatedItems label="regras de indicação">
+                    {visible.map((person) => (
+                      <label key={person.id}>
+                        <input
+                          type="checkbox"
+                          disabled={disabled}
+                          checked={targets.includes(person.id)}
+                          onChange={(event) =>
+                            setTargets((current) =>
+                              event.target.checked
+                                ? [...current, person.id]
+                                : current.filter((id) => id !== person.id),
+                            )
+                          }
+                        />
+                        <span>
+                          <strong>{person.displayName}</strong>
+                          <small>{person.departmentName}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </PaginatedItems>
+                }
                 {!visible.length && <p>Nenhum colaborador encontrado.</p>}
               </div>
               <footer className="form-actions">

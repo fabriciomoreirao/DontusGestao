@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import {
   ArrowRight,
   Building2,
@@ -311,82 +313,89 @@ export function CommissionConfirmationControl({
               <RefreshCw size={14} />
               Atualizar status
             </button>
-            {visible.map((entry) => (
-              <article key={entry.id}>
-                <strong>{entry.employeeName}</strong>
-                <span>
-                  {money(entry.totalCents)} ·{" "}
-                  {entry.status === "agreed"
-                    ? "Concordado"
-                    : entry.status === "invalidated"
-                      ? "Substituído por alteração"
-                      : "Aguardando concordância"}
-                </span>
-                <small>
-                  Gerado em {confirmationDate(entry.createdAt)}
-                  {entry.agreedAt &&
-                    " · Confirmado em " +
-                      confirmationDate(entry.agreedAt) +
-                      " (Brasília)"}
-                </small>
-                {entry.signedByName && (
-                  <small>
-                    Assinado por {entry.signedByName} · {entry.signedByEmail}
-                  </small>
-                )}
-                {entry.status !== "invalidated" && (
-                  <>
-                    <input
-                      readOnly
-                      aria-label={"Link de " + entry.employeeName}
-                      value={
-                        typeof window === "undefined" ? "" : url(entry.token)
-                      }
-                      onFocus={(event) => event.target.select()}
-                    />
-                    <div className="form-actions">
-                      <a
-                        className="secondary-button"
-                        href={url(entry.token)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <ExternalLink size={14} />
-                        Ver relatório
-                      </a>
-                      {entry.pdfAvailable && (
-                        <a
-                          className="secondary-button"
-                          href={
-                            "/api/public-commission-confirmations/" +
-                            encodeURIComponent(entry.token) +
-                            "/pdf"
+            {
+              <PaginatedItems label="links de confirmação">
+                {visible.map((entry) => (
+                  <article key={entry.id}>
+                    <strong>{entry.employeeName}</strong>
+                    <span>
+                      {money(entry.totalCents)} ·{" "}
+                      {entry.status === "agreed"
+                        ? "Concordado"
+                        : entry.status === "invalidated"
+                          ? "Substituído por alteração"
+                          : "Aguardando concordância"}
+                    </span>
+                    <small>
+                      Gerado em {confirmationDate(entry.createdAt)}
+                      {entry.agreedAt &&
+                        " · Confirmado em " +
+                          confirmationDate(entry.agreedAt) +
+                          " (Brasília)"}
+                    </small>
+                    {entry.signedByName && (
+                      <small>
+                        Assinado por {entry.signedByName} ·{" "}
+                        {entry.signedByEmail}
+                      </small>
+                    )}
+                    {entry.status !== "invalidated" && (
+                      <>
+                        <input
+                          readOnly
+                          aria-label={"Link de " + entry.employeeName}
+                          value={
+                            typeof window === "undefined"
+                              ? ""
+                              : url(entry.token)
                           }
-                          download
-                        >
-                          <Download size={14} />
-                          Baixar PDF assinado
-                        </a>
-                      )}
-                      <button
-                        className="primary-button"
-                        onClick={() =>
-                          void navigator.clipboard
-                            .writeText(url(entry.token))
-                            .then(() => setNotice("Link copiado."))
-                            .catch(() =>
-                              setNotice("Selecione e copie o link acima."),
-                            )
-                        }
-                      >
-                        <Copy size={14} />
-                        Copiar link
-                      </button>
-                    </div>
-                  </>
-                )}
-              </article>
-            ))}
+                          onFocus={(event) => event.target.select()}
+                        />
+                        <div className="form-actions">
+                          <a
+                            className="secondary-button"
+                            href={url(entry.token)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <ExternalLink size={14} />
+                            Ver relatório
+                          </a>
+                          {entry.pdfAvailable && (
+                            <a
+                              className="secondary-button"
+                              href={
+                                "/api/public-commission-confirmations/" +
+                                encodeURIComponent(entry.token) +
+                                "/pdf"
+                              }
+                              download
+                            >
+                              <Download size={14} />
+                              Baixar PDF assinado
+                            </a>
+                          )}
+                          <button
+                            className="primary-button"
+                            onClick={() =>
+                              void navigator.clipboard
+                                .writeText(url(entry.token))
+                                .then(() => setNotice("Link copiado."))
+                                .catch(() =>
+                                  setNotice("Selecione e copie o link acima."),
+                                )
+                            }
+                          >
+                            <Copy size={14} />
+                            Copiar link
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </article>
+                ))}
+              </PaginatedItems>
+            }
             {notice && <p role="status">{notice}</p>}
           </section>
         </div>
@@ -637,120 +646,131 @@ export function PublicCommissionConfirmation({ token }: { token: string }) {
         </span>
         <small>{report.rows.length} lançamento(s)</small>
       </div>
-      {report.rows.map((row) => (
-        <article
-          className="external-experience-card confirmation-report-customer"
-          key={row.id}
-        >
-          <header>
-            <span className="confirmation-report-client-icon">
-              <Building2 />
-            </span>
-            <div>
-              <small>
-                {row.product}
-                {row.manual ? " · Lançamento manual" : ""}
-                {row.customerCode ? " · ID " + row.customerCode : ""}
-              </small>
-              <h2>{row.customerName}</h2>
-            </div>
-            <b className={`confirmation-report-badge ${row.decision}`}>
-              {row.decision === "approved" ? <CheckCircle2 /> : <XCircle />}
-              {row.decision === "approved" ? "Aprovado" : "Reprovado"}
-            </b>
-          </header>
-          {row.liaStages && (
-            <dl className="confirmation-report-client-data">
-              {Object.entries(row.liaStages).map(([key, value]) => (
-                <div key={key}>
-                  <dt>
-                    {(
-                      {
-                        configuration: "Configuração Inicial",
-                        tests: "Testes do Cliente",
-                        release: "Liberação",
-                        current: "Status atual",
-                      } as Record<string, string>
-                    )[key] || key}
-                  </dt>
-                  <dd>
-                    {/^\d{4}-\d{2}-\d{2}/.test(value)
-                      ? confirmationDate(value)
-                      : value}
+      {
+        <PaginatedItems label="clientes do relatório">
+          {report.rows.map((row) => (
+            <article
+              className="external-experience-card confirmation-report-customer"
+              key={row.id}
+            >
+              <header>
+                <span className="confirmation-report-client-icon">
+                  <Building2 />
+                </span>
+                <div>
+                  <small>
+                    {row.product}
+                    {row.manual ? " · Lançamento manual" : ""}
+                    {row.customerCode ? " · ID " + row.customerCode : ""}
+                  </small>
+                  <h2>{row.customerName}</h2>
+                </div>
+                <b className={`confirmation-report-badge ${row.decision}`}>
+                  {row.decision === "approved" ? <CheckCircle2 /> : <XCircle />}
+                  {row.decision === "approved" ? "Aprovado" : "Reprovado"}
+                </b>
+              </header>
+              {row.liaStages && (
+                <dl className="confirmation-report-client-data">
+                  {Object.entries(row.liaStages).map(([key, value]) => (
+                    <div key={key}>
+                      <dt>
+                        {(
+                          {
+                            configuration: "Configuração Inicial",
+                            tests: "Testes do Cliente",
+                            release: "Liberação",
+                            current: "Status atual",
+                          } as Record<string, string>
+                        )[key] || key}
+                      </dt>
+                      <dd>
+                        {/^\d{4}-\d{2}-\d{2}/.test(value)
+                          ? confirmationDate(value)
+                          : value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              <dl className="confirmation-report-client-data">
+                <div>
+                  <dt>Status do cliente</dt>
+                  <dd>{row.customerStatus || "Não informado"}</dd>
+                  <dd className="confirmation-report-secondary">
+                    {row.sourceStatus || "Não informado"}
                   </dd>
                 </div>
-              ))}
-            </dl>
-          )}
-          <dl className="confirmation-report-client-data">
-            <div>
-              <dt>Status do cliente</dt>
-              <dd>{row.customerStatus || "Não informado"}</dd>
-              <dd className="confirmation-report-secondary">
-                {row.sourceStatus || "Não informado"}
-              </dd>
-            </div>
-            <div>
-              <dt>Score de utilização</dt>
-              <dd>{row.score === null ? "Não informado" : row.score + "%"}</dd>
-              <dd className="confirmation-report-secondary">
-                {row.usageStatus || "Não informado"}
-              </dd>
-            </div>
-            <div>
-              <dt>Valor deste cliente no relatório</dt>
-              <dd>
-                {money(
-                  report.rows
-                    .filter((entry) => entry.customerName === row.customerName)
-                    .reduce((total, entry) => total + entry.saleValueCents, 0),
-                )}
-              </dd>
-              <dd className="confirmation-report-secondary">
-                Base do lançamento: {money(row.saleValueCents)}
-              </dd>
-            </div>
-            <div>
-              <dt>Kick off</dt>
-              <dd>{confirmationDate(row.kickOffAt)}</dd>
-            </div>
-            <div>
-              <dt>Treinamento</dt>
-              <dd>{confirmationDate(row.trainingAt)}</dd>
-            </div>
-            <div>
-              <dt>Alinhamento único</dt>
-              <dd>{confirmationDate(row.singleAlignmentAt)}</dd>
-            </div>
-          </dl>
-          <section className="confirmation-report-calculation">
-            <div>
-              <span>
-                <CircleDollarSign />
-                Regra aplicada e cálculo
-              </span>
-              <p>{row.ruleLabel || "Sem regra configurada"}</p>
-            </div>
-            <div>
-              <small>Valor a pagar</small>
-              <strong>{money(row.commissionCents)}</strong>
-              {row.decision === "rejected" && (
-                <small>Lançamento reprovado, sem pagamento.</small>
-              )}
-            </div>
-          </section>
-          <footer className="confirmation-report-reason">
-            <strong>
-              Motivo da{" "}
-              {row.decision === "approved" ? "aprovação" : "reprovação"}
-            </strong>
-            <p>{row.reason}</p>
-            <small>
-              {row.decidedBy} · {confirmationDate(row.decidedAt)}
-            </small>
-          </footer>
-        </article>
-      ))}
+                <div>
+                  <dt>Score de utilização</dt>
+                  <dd>
+                    {row.score === null ? "Não informado" : row.score + "%"}
+                  </dd>
+                  <dd className="confirmation-report-secondary">
+                    {row.usageStatus || "Não informado"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Valor deste cliente no relatório</dt>
+                  <dd>
+                    {money(
+                      report.rows
+                        .filter(
+                          (entry) => entry.customerName === row.customerName,
+                        )
+                        .reduce(
+                          (total, entry) => total + entry.saleValueCents,
+                          0,
+                        ),
+                    )}
+                  </dd>
+                  <dd className="confirmation-report-secondary">
+                    Base do lançamento: {money(row.saleValueCents)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Kick off</dt>
+                  <dd>{confirmationDate(row.kickOffAt)}</dd>
+                </div>
+                <div>
+                  <dt>Treinamento</dt>
+                  <dd>{confirmationDate(row.trainingAt)}</dd>
+                </div>
+                <div>
+                  <dt>Alinhamento único</dt>
+                  <dd>{confirmationDate(row.singleAlignmentAt)}</dd>
+                </div>
+              </dl>
+              <section className="confirmation-report-calculation">
+                <div>
+                  <span>
+                    <CircleDollarSign />
+                    Regra aplicada e cálculo
+                  </span>
+                  <p>{row.ruleLabel || "Sem regra configurada"}</p>
+                </div>
+                <div>
+                  <small>Valor a pagar</small>
+                  <strong>{money(row.commissionCents)}</strong>
+                  {row.decision === "rejected" && (
+                    <small>Lançamento reprovado, sem pagamento.</small>
+                  )}
+                </div>
+              </section>
+              <footer className="confirmation-report-reason">
+                <strong>
+                  Motivo da{" "}
+                  {row.decision === "approved" ? "aprovação" : "reprovação"}
+                </strong>
+                <p>{row.reason}</p>
+                <small>
+                  {row.decidedBy} · {confirmationDate(row.decidedAt)}
+                </small>
+              </footer>
+            </article>
+          ))}
+        </PaginatedItems>
+      }
       <section
         className={`external-experience-card confirmation-report-agreement ${data.agreedAt ? "is-agreed" : ""}`}
       >
