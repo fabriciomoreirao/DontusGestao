@@ -73,6 +73,7 @@ import CommentEnterSupport from "@/app/CommentEnterSupport";
 import QueueArrivalNotice from "@/app/QueueArrivalNotice";
 import { queueArrivals, QUEUE_ARRIVAL_EVENT } from "@/lib/queue-arrival";
 import { chatTypingStore } from "@/lib/chat-typing";
+import { chatAlertText } from "@/lib/chat-message-preview";
 import {
   waitingQueueNeedsContact,
   waitingQueuePendingInUserSector,
@@ -1914,14 +1915,7 @@ export default function OperationsApp() {
           )
           .at(-1);
         if (!room || !message) return [];
-        const body =
-          message.type === "file"
-            ? `Documento: ${message.fileName || "Arquivo recebido"}`
-            : message.type === "image"
-              ? "Imagem recebida"
-              : message.type === "video"
-                ? "Vídeo recebido"
-                : message.body || "Nova mensagem recebida";
+        const body = chatAlertText(message);
         return [
           {
             id: entry.id,

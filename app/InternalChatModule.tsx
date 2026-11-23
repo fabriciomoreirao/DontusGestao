@@ -8,6 +8,7 @@ import InternalChatDraftComposer from "@/app/InternalChatDraftComposer";
 
 import { chatDayKey, chatDayLabel } from "@/lib/chat-days";
 import { chatUnreadTotals } from "@/lib/internal-chat-state";
+import { messagePreview, parsePoll } from "@/lib/chat-message-preview";
 
 import {
   Bell,
@@ -2934,50 +2935,6 @@ function initials(name: string) {
       .toUpperCase() || "?"
   );
 }
-function messagePreview(message: InternalChatMessage) {
-  if (message.deletedAt) return "Mensagem excluída";
-  if (message.type === "sticker") return `${message.body} Figurinha`;
-  if (message.type === "image") return "Imagem";
-  if (message.type === "video") return "Vídeo";
-  if (message.type === "audio") return "Áudio";
-  if (message.type === "file") return message.fileName || "Arquivo";
-  if (message.type === "poll")
-    return `Enquete: ${parsePoll(message.body)?.question ?? "pergunta"}`;
-  return message.body;
-}
-
-function parsePoll(
-  raw: string,
-): {
-  question: string;
-  options: { text: string; voterUserIds: string[] }[];
-} | null {
-  try {
-    const value = JSON.parse(raw) as { question?: unknown; options?: unknown };
-    if (typeof value.question !== "string" || !Array.isArray(value.options))
-      return null;
-    const options = value.options.flatMap((entry) => {
-      if (!entry || typeof entry !== "object") return [];
-      const option = entry as { text?: unknown; voterUserIds?: unknown };
-      return typeof option.text === "string"
-        ? [
-            {
-              text: option.text,
-              voterUserIds: Array.isArray(option.voterUserIds)
-                ? option.voterUserIds.filter(
-                    (id): id is string => typeof id === "string",
-                  )
-                : [],
-            },
-          ]
-        : [];
-    });
-    return options.length >= 2 ? { question: value.question, options } : null;
-  } catch {
-    return null;
-  }
-}
-
 // Keep history rows stable when presence or room controls update during typing.
 function useLatestChatCallback<Args extends unknown[], Result>(
   callback: (...args: Args) => Result,
