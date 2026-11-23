@@ -24,6 +24,7 @@ import {
   waDate,
   type WaCampaign,
   type WaRecipient,
+  type WaReloadOptions,
   type WaState,
 } from "@/lib/whatsapp-admin";
 import WhatsAppDialog from "./WhatsAppDialog";
@@ -47,7 +48,7 @@ export default function WhatsAppCampaigns({
   reload,
 }: {
   state: WaState;
-  reload: () => Promise<void>;
+  reload: (options?: WaReloadOptions) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("Todos");
@@ -392,9 +393,23 @@ function CampaignForm({
 }: {
   state: WaState;
   edit: Detail | null;
-  reload: () => Promise<void>;
+  reload: (options?: WaReloadOptions) => Promise<void>;
   onSaved: () => void;
 }) {
+  const [refreshingRecipients, setRefreshingRecipients] = useState(false);
+  async function refreshRecipients() {
+    setRefreshingRecipients(true);
+    try {
+      await reload({ recipients: true });
+      setError("");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Não foi possível atualizar a lista.",
+      );
+    } finally {
+      setRefreshingRecipients(false);
+    }
+  }
   const [name, setName] = useState(edit?.campaign.name || "");
   const [numberId, setNumberId] = useState(edit?.campaign.numberId || "");
   const [category, setCategory] = useState(
@@ -763,6 +778,16 @@ function CampaignForm({
                       onChange={(e) => setRecipientSearch(e.target.value)}
                     />
                   </label>
+                  <button
+                    type="button"
+                    onClick={() => void refreshRecipients()}
+                    disabled={refreshingRecipients}
+                  >
+                    <RefreshCw size={16} />{" "}
+                    {refreshingRecipients
+                      ? "Atualizando..."
+                      : "Atualizar lista"}
+                  </button>
                   {source === "Pacientes" && (
                     <small>
                       Clientes disponíveis na central Dontus. A seleção adiciona

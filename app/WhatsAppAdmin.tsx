@@ -1,6 +1,10 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import { waApi, type WaState } from "@/lib/whatsapp-admin";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  waApi,
+  type WaReloadOptions,
+  type WaState,
+} from "@/lib/whatsapp-admin";
 import WhatsAppTemplates from "./WhatsAppTemplates";
 import WhatsAppConnections from "./WhatsAppConnections";
 import WhatsAppCampaigns from "./WhatsAppCampaigns";
@@ -18,15 +22,34 @@ export default function WhatsAppAdmin({
 }) {
   const [state, setState] = useState<WaState | null>(null);
   const [error, setError] = useState("");
-  const reload = useCallback(async () => {
-    const next = await waApi<WaState>("state");
-    setState(next);
+  // Contatos e clientes (seletor de destinatários) vêm só na primeira carga; as atualizações
+  // seguintes reaproveitam essas listas para não reenviar tudo a cada 30 s.
+  // O botão "Atualizar lista" do seletor pede { recipients: true } para recarregá-las.
+  const recipientsLoaded = useRef(false);
+  const reload = useCallback(async (options?: WaReloadOptions) => {
+    const full = options?.recipients === true || !recipientsLoaded.current;
+    const next = await waApi<WaState>(
+      full ? "state" : "state?recipients=false",
+    );
+    recipientsLoaded.current = true;
+    setState((previous) =>
+      full || !previous
+        ? next
+        : {
+            ...next,
+            contacts: previous.contacts,
+            customers: previous.customers,
+          },
+    );
     setError("");
   }, []);
   useEffect(() => {
     const controller = new AbortController();
     void waApi<WaState>("state", undefined, controller.signal)
-      .then(setState)
+      .then((next) => {
+        recipientsLoaded.current = true;
+        setState(next);
+      })
       .catch((e) => {
         if (!controller.signal.aborted) setError(e.message);
       });

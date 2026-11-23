@@ -29,7 +29,8 @@ public sealed partial class ChatService
         actor.RequireCapability("chat", "manageWhatsApp");
     }
 
-    public async Task<object> GetWhatsAppAdminAsync(ActorContext actor, CancellationToken ct)
+    // includeRecipients = false é usado pela atualização periódica da tela: contatos e clientes só vêm na abertura.
+    public async Task<object> GetWhatsAppAdminAsync(ActorContext actor, CancellationToken ct, bool includeRecipients = true)
     {
         actor.RequirePermission("chat", "view");
         var module = await GetModuleAsync(actor, ct);
@@ -37,9 +38,20 @@ public sealed partial class ChatService
         var templates = await db.WhatsAppTemplates.AsNoTracking().Where(x => numberIds.Contains(x.NumberId)).OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
         var admin = actor.HasPermission("chat", "manage") && actor.HasCapability("chat", "manageWhatsApp");
         var campaigns = admin ? await db.WhatsAppCampaigns.AsNoTracking().OrderByDescending(x => x.CreatedAt).ToListAsync(ct) : [];
-        var campaignIds = campaigns.Select(x => x.Id).ToArray();
-        var stats = await db.WhatsAppCampaignDeliveries.AsNoTracking().Where(x => campaignIds.Contains(x.CampaignId))
-            .Select(x => new { x.CampaignId, x.TemplateId, x.Phone, x.Status }).ToListAsync(ct);
+        // Contagens feitas no banco, uma linha por campanha, em vez de trazer todos os envios para a memória.
+        var stats = admin
+            ? await db.WhatsAppCampaignDeliveries.AsNoTracking()
+                .GroupBy(x => x.CampaignId)
+                .Select(g => new CampaignStats(
+                    g.Key,
+                    g.Select(d => d.TemplateId).Distinct().Count(),
+                    g.Select(d => d.Phone).Distinct().Count(),
+                    g.Count(d => d.Status != "Pendente" && d.Status != "Cancelada"),
+                    g.Count(d => d.Status == "Aceita pela Meta" || d.Status == "Entregue" || d.Status == "Lida"),
+                    g.Count(d => d.Status == "Erro" || d.Status == "Incerta")))
+                .ToDictionaryAsync(x => x.CampaignId, ct)
+            : [];
+        var empty = new CampaignStats(Guid.Empty, 0, 0, 0, 0, 0);
         return new
         {
             module,
@@ -69,18 +81,20 @@ public sealed partial class ChatService
                 x.Status,
                 x.ScheduledAt,
                 x.FinishedAt,
-                templateCount = stats.Where(d => d.CampaignId == x.Id).Select(d => d.TemplateId).Distinct().Count(),
-                recipientCount = stats.Where(d => d.CampaignId == x.Id).Select(d => d.Phone).Distinct().Count(),
-                total = stats.Count(d => d.CampaignId == x.Id && d.Status != "Pendente" && d.Status != "Cancelada"),
-                successful = stats.Count(d => d.CampaignId == x.Id && (d.Status == "Aceita pela Meta" || d.Status == "Entregue" || d.Status == "Lida")),
-                errors = stats.Count(d => d.CampaignId == x.Id && (d.Status == "Erro" || d.Status == "Incerta"))
+                templateCount = stats.GetValueOrDefault(x.Id, empty).TemplateCount,
+                recipientCount = stats.GetValueOrDefault(x.Id, empty).RecipientCount,
+                total = stats.GetValueOrDefault(x.Id, empty).Total,
+                successful = stats.GetValueOrDefault(x.Id, empty).Successful,
+                errors = stats.GetValueOrDefault(x.Id, empty).Errors
             }),
             numbers = await db.ChatWhatsAppNumbers.AsNoTracking().Where(x => numberIds.Contains(x.Id)).Select(x => new { x.Id, x.SuiteStatus, x.SuiteClinicId, x.SuiteDontusId, x.SuiteBase }).ToListAsync(ct),
             suiteConfigured = !string.IsNullOrWhiteSpace(Suite.ChatwootApiKey) && !string.IsNullOrWhiteSpace(Suite.SecurityId) && !string.IsNullOrWhiteSpace(Suite.ChatwootBaseUrl) && !string.IsNullOrWhiteSpace(Suite.MeowBaseUrl),
-            contacts = admin ? await db.ChatContacts.AsNoTracking().Select(x => new { x.Id, x.Name, x.Phone }).ToArrayAsync(ct) : [],
-            customers = admin && actor.HasPermission("customers", "view") ? await db.Customers.AsNoTracking().Select(x => new { x.Id, Name = x.TradeName == "" ? x.LegalName : x.TradeName, x.Phone }).ToArrayAsync(ct) : [],
+            contacts = admin && includeRecipients ? await db.ChatContacts.AsNoTracking().Select(x => new { x.Id, x.Name, x.Phone }).ToArrayAsync(ct) : [],
+            customers = admin && includeRecipients && actor.HasPermission("customers", "view") ? await db.Customers.AsNoTracking().Select(x => new { x.Id, Name = x.TradeName == "" ? x.LegalName : x.TradeName, x.Phone }).ToArrayAsync(ct) : [],
         };
     }
+
+    private sealed record CampaignStats(Guid CampaignId, int TemplateCount, int RecipientCount, int Total, int Successful, int Errors);
 
     public static void ValidateTemplate(SaveWhatsAppTemplateCommand c)
     {

@@ -42,6 +42,8 @@ export type WaRecipient = {
   phone: string;
   values?: Record<string, string>;
 };
+// recipients: true recarrega também contatos e clientes do seletor de destinatários.
+export type WaReloadOptions = { recipients?: boolean };
 export type WaState = {
   module: ChatModuleData;
   templates: WaTemplate[];

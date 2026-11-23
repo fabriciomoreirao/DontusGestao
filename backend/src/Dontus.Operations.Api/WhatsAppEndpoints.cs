@@ -9,8 +9,8 @@ public static class WhatsAppEndpoints
     {
         var group = app.MapGroup("/api/whatsapp").RequireAuthorization().RequireRateLimiting("operations");
         group.AddEndpointFilter(async (context, next) => { context.HttpContext.Response.Headers.CacheControl = "no-store"; return await next(context); });
-        group.MapGet("/state", async (ClaimsPrincipal principal, IAccessControlService access, IWhatsAppAdminService service, CancellationToken ct) =>
-            Results.Ok(await service.GetWhatsAppAdminAsync(await access.ResolveActorAsync(principal.ToIdentity(), ct), ct)));
+        group.MapGet("/state", async (bool? recipients, ClaimsPrincipal principal, IAccessControlService access, IWhatsAppAdminService service, CancellationToken ct) =>
+            Results.Ok(await service.GetWhatsAppAdminAsync(await access.ResolveActorAsync(principal.ToIdentity(), ct), ct, recipients ?? true)));
         group.MapGet("/notifications", async (DateTimeOffset? since, Guid? afterId, ClaimsPrincipal principal, IAccessControlService access, OperationsDbContext db, CancellationToken ct) =>
         {
             var actor = await access.ResolveActorAsync(principal.ToIdentity(), ct); actor.RequirePermission("chat", "view");

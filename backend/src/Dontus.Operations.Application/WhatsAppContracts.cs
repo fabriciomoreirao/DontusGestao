@@ -16,7 +16,7 @@ public sealed record RegisterWhatsAppSuiteCommand(Guid NumberId, string ClinicId
 
 public interface IWhatsAppAdminService
 {
-    Task<object> GetWhatsAppAdminAsync(ActorContext actor, CancellationToken ct);
+    Task<object> GetWhatsAppAdminAsync(ActorContext actor, CancellationToken ct, bool includeRecipients = true);
     Task<Guid> SubmitTemplateAsync(SaveWhatsAppTemplateCommand command, ActorContext actor, CancellationToken ct);
     Task RefreshTemplatesAsync(Guid numberId, ActorContext actor, CancellationToken ct);
     Task<string> UploadTemplateSampleAsync(Guid numberId, string name, string contentType, byte[] bytes, ActorContext actor, CancellationToken ct);
