@@ -674,6 +674,8 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             entity.Property(x => x.Status).HasMaxLength(30);
             entity.Property(x => x.MediaStorageKey).HasMaxLength(700);
             entity.HasIndex(x => new { x.ConversationId, x.CreatedAt });
+            // Avisos de WhatsApp (/api/whatsapp/notifications) buscam por UpdatedAt a cada 15 s por usuário.
+            entity.HasIndex(x => new { x.UpdatedAt, x.Id });
             entity.HasIndex(x => x.ExternalId).IsUnique().HasFilter("\"ExternalId\" <> ''");
             entity.HasOne<ChatConversation>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<AppUser>().WithMany().HasForeignKey(x => x.SenderUserId).OnDelete(DeleteBehavior.Restrict);
