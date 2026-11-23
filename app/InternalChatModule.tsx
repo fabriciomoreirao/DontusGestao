@@ -1,6 +1,5 @@
 "use client";
 
-import PaginatedItems from "@/app/PaginatedItems";
 import type { ChatMention } from "@/lib/chat-mentions";
 import ChatTypingIndicator from "@/app/ChatTypingIndicator";
 import useChatTypingPublisher from "@/app/useChatTypingPublisher";
@@ -419,14 +418,14 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
         <span className="sr-only" role="status" aria-atomic="true">{unreadTotals.conversations} mensagens não lidas em conversas, {unreadTotals.groups} em grupos e {unreadTotals.archived} em arquivadas.</span>
         <div className="internal-chat-room-list">
           {filteredConversations.length === 0 && <div className="internal-chat-empty-list"><Archive size={24} /><span>{archivedView ? "Nenhuma conversa arquivada." : "Nenhum colaborador encontrado."}</span></div>}
-          {<PaginatedItems label="conversas">{filteredConversations.map((entry) => {
+          {filteredConversations.map((entry) => {
             const last = entry.room?.messages.at(-1);
             return <button className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`} onClick={() => setSelectedKey(entry.key)} key={entry.key}>
               <Avatar name={entry.name} photo={entry.photoDataUrl} group={entry.isGroup} />
               <span className="internal-chat-room-copy"><strong>{userHasBirthdayToday(entry.user) && <BirthdayGift name={entry.name} />}{pinnedConversationKeys.includes(entry.key)&&<Pin size={12}/>}<span>{entry.name}</span>{entry.user&&<PresenceBadge user={entry.user} now={presenceNow}/>}</strong><small>{last ? messagePreview(last) : entry.isGroup ? "Grupo privado" : entry.user?.jobTitle || entry.user?.departmentName || "Inicie uma conversa"}</small></span>
               <span className="internal-chat-room-meta">{entry.room && <time>{chatListDateLabel(entry.room.lastMessageAt,presenceNow)}</time>}{!!entry.room?.unreadCount && <b>{entry.room.unreadCount}</b>}</span>
             </button>;
-          })}</PaginatedItems>}
+          })}
         </div>
         <div className="internal-chat-privacy"><LockKeyhole size={14} /><span>Conversas visíveis somente para os participantes.</span></div>
       </aside>
