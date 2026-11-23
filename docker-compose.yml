@@ -49,6 +49,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       Database__CommandTimeoutSeconds: ${DATABASE_COMMAND_TIMEOUT_SECONDS:-90}
+      Redis__ConnectionString: ${REDIS_CONNECTION_STRING:-}
       TZ: America/Sao_Paulo
       Authentication__DevelopmentBypass: ${DEVELOPMENT_AUTH_BYPASS:-false}
       Authentication__LocalPasswordEnabled: ${LOCAL_AUTH_ENABLED:-true}

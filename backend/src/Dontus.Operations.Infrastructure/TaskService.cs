@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Dontus.Operations.Application;
+using Dontus.Operations.Infrastructure.Redis;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -7,7 +8,8 @@ using TaskStatusEntity = Dontus.Operations.Domain.TaskStatus;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileStorage = null, ILogger<TaskService>? logger = null) : ITaskService
+public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileStorage = null, ILogger<TaskService>? logger = null,
+    ILocalSessionCache? sessionCache = null) : ITaskService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const long MaximumAttachmentSizeBytes = 25 * 1024 * 1024;
@@ -1073,6 +1075,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 IsPrimary = departmentId == command.DepartmentIds.FirstOrDefault(),
             });
         await db.SaveChangesAsync(cancellationToken);
+        if (sessionCache is not null) await sessionCache.RemoveUserAsync(user.Id);
     }
 
     public async Task DeleteCatalogEntryAsync(string catalog, Guid id, ActorContext actor, CancellationToken cancellationToken = default)
@@ -1124,6 +1127,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 throw new DomainException("Cadastro não suportado.");
         }
         await db.SaveChangesAsync(cancellationToken);
+        if (normalized == "people" && sessionCache is not null) await sessionCache.RemoveUserAsync(id);
     }
 
     public async Task<Guid> CreateCollaboratorAsync(

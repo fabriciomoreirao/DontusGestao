@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Dontus.Operations.Application;
+using Dontus.Operations.Infrastructure.Redis;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -9,7 +10,8 @@ namespace Dontus.Operations.Infrastructure;
 public sealed class AccessControlService(
     OperationsDbContext db,
     IConfiguration configuration,
-    IPasswordRecoveryEmailSender passwordEmailSender, TimeProvider? clock = null) : IAccessControlService
+    IPasswordRecoveryEmailSender passwordEmailSender, TimeProvider? clock = null,
+    ILocalSessionCache? sessionCache = null) : IAccessControlService
 {
     private const string AdministratorsGroup = "Administradores";
     private const string CollaboratorsGroup = "Colaboradores";
@@ -442,6 +444,7 @@ public sealed class AccessControlService(
 
         AddAudit(actor, "Update", "user", user.Id.ToString(), new { user.Email, user.Active, Groups = groupIds });
         await db.SaveChangesAsync(cancellationToken);
+        if (sessionCache is not null) await sessionCache.RemoveUserAsync(user.Id);
     }
 
     private sealed record HrStoredProfile(JsonElement Comments, JsonElement Vacations, JsonElement Documents, JsonElement Termination, JsonElement Readmissions);
@@ -655,6 +658,7 @@ public sealed class AccessControlService(
         }
         AddAudit(actor, "Update", "employee", user.Id.ToString(), new { user.Email, Departments = departments.Select(item => item.Name), AgendaCalendarIds = agendaCalendarIds, Level = level.Name, AccessSchedule = EmployeeAccessPolicy.Read(user.AccessScheduleJson) });
         await db.SaveChangesAsync(cancellationToken);
+        if (sessionCache is not null) await sessionCache.RemoveUserAsync(user.Id);
     }
 
     public async Task DeleteEmployeeAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
@@ -672,6 +676,7 @@ public sealed class AccessControlService(
         foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
         AddAudit(actor, "Delete", "employee", user.Id.ToString(), new { user.Email, Mode = "access_revoked" });
         await db.SaveChangesAsync(cancellationToken);
+        if (sessionCache is not null) await sessionCache.RemoveUserAsync(user.Id);
     }
 
     public async Task DeleteEmployeeDepartmentAsync(Guid id, ActorContext actor, CancellationToken cancellationToken = default)
