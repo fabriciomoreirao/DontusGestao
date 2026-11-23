@@ -118,7 +118,6 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         var customerEntities = canViewCustomers
             ? await db.Customers.AsNoTracking()
             .OrderByDescending(x => x.UpdatedAt)
-            .Take(1000)
             .ToListAsync(cancellationToken)
             : [];
         var customerIds = customerEntities.Select(x => x.Id).ToList();

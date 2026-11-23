@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { Plus, Save, Settings, Trash2, UsersRound } from "lucide-react";
@@ -35,14 +37,14 @@ export default function CommissionSettings({ catalogs, employees, busy, operate,
     <header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Settings /></span><span className="module-page-copy"><span className="eyebrow">COMISSÕES · CONFIGURAÇÕES</span><h1>Regras por colaborador</h1><p>Configure as comissões de cada área e a remuneração por faixa de score em CS.</p></span></div><button className="secondary-button" onClick={onBack}>← Voltar às comissões</button></header>
     <nav className="commission-tabs">{(["commercial", "cs", "lia"] as const).map(value => <button key={value} className={scope === value ? "active" : ""} onClick={() => setScope(value)}>{scopeLabel(value)}</button>)}</nav>
     <section className="commission-rule-picker panel"><label>Colaborador<SearchablePeopleSelect searchLabel="Colaborador" value={employeeId} onChange={event => setEmployeeId(event.target.value)}><option value="">Selecionar colaborador</option>{employees.map(entry => <option key={entry.id} value={entry.id}>{entry.displayName} · {entry.departmentName}</option>)}</SearchablePeopleSelect></label><p>{scope === "cs" ? "O score do cliente determina o percentual da comissão. Configure os limites e os percentuais abaixo." : scope === "commercial" ? "O total vendido no mês, pela data do ganho no CRM Comercial, define o percentual aplicado a todas as vendas do colaborador." : "Um percentual individual aplicado sobre o valor de cada cliente. Exemplo: R$ 500,00 × 50% = R$ 250,00."}</p></section>
-    {!employee ? <div className="commission-empty"><UsersRound /><h2>Selecione um colaborador</h2><p>As regras serão abertas após a seleção.</p></div> : <section className="commission-rule-list">{entries.map(product => {
+    {!employee ? <div className="commission-empty"><UsersRound /><h2>Selecione um colaborador</h2><p>As regras serão abertas após a seleção.</p></div> : <section className="commission-rule-list">{<PaginatedItems label="regras de comissão">{entries.map(product => {
       const existing = rules.find(entry => entry.rule.scope === scope && entry.rule.employeeId === employee.id && entry.rule.product === product)
         ?? rules.find(entry => entry.rule.scope === scope && !entry.rule.employeeId && normalizeCommissionName(entry.rule.employeeName) === normalizeCommissionName(employee.displayName) && entry.rule.product === product);
       const key = `${scope}-${employee.id}-${product}-${existing?.entry.description ?? "new"}`;
       return scope === "cs" ? <ScoreRuleForm key={key} existing={existing} busy={busy} onSave={tiers => save(product, { type: "percentage", value: 0, scoreTiers: tiers }, existing)} /> :
         scope === "commercial" ? <SalesRuleForm key={key} existing={existing} busy={busy} onSave={tiers => save(product, { type: "percentage", value: 0, salesTiers: tiers }, existing)} /> :
         <ProductRuleForm key={key} product={product === "*" ? "Regra geral · todos os produtos" : product} existing={existing} busy={busy} onSave={values => save(product, values, existing)} />;
-    })}</section>}
+    })}</PaginatedItems>}</section>}
   </section>;
 }
 

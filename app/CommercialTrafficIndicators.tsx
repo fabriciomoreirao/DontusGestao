@@ -1,6 +1,8 @@
 "use client";
 
-import {useEffect,useState} from "react";
+import PaginatedItems from "@/app/PaginatedItems";
+
+
 import {Activity,CheckCircle2,Clock3,Gauge,Target,TrendingUp,UsersRound,WalletCards} from "lucide-react";
 import {DistributionChart,TrendChart} from "@/app/AnalyticsCharts";
 import {paidTrafficCohort} from "@/lib/paid-traffic-indicators";
@@ -16,8 +18,6 @@ function counts(entries:Entry[],label:(entry:Entry)=>string){
 }
 
 export default function CommercialTrafficIndicators({entries}:{entries:Entry[]}){
-  const [limit,setLimit]=useState(40);
-  useEffect(()=>setLimit(40),[entries]);
   const converted=entries.filter(entry=>entry.converted),qualified=entries.filter(entry=>entry.qualified),disqualified=entries.filter(entry=>entry.disqualified);
   const revenue=converted.reduce((sum,entry)=>sum+entry.revenueCents,0);
   const closingDays=converted.flatMap(entry=>entry.daysToClose===null?[]:[entry.daysToClose]);
@@ -47,6 +47,6 @@ export default function CommercialTrafficIndicators({entries}:{entries:Entry[]})
       <article><header>Receita por campanha</header><TrendChart title="Receita atribuída às campanhas" entries={[...campaignRevenue].map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value)} currency/></article>
       <article><header>Leads por responsável</header><DistributionChart title="Leads por responsável" entries={counts(entries,entry=>entry.seller)} unit="leads"/></article>
     </section>
-    <div className="commercial-totals-table traffic-leads-table"><table><caption>Detalhamento dos leads de tráfego</caption><thead><tr><th>Lead</th><th>CRM de origem</th><th>Campanha</th><th>Região</th><th>Responsável</th><th>Situação</th><th>Entrada</th><th>Fechamento</th><th>Receita</th></tr></thead><tbody>{entries.slice(0,limit).map(entry=><tr key={entry.id}><th scope="row">{entry.item.title}</th><td>{entry.originFunnel}</td><td>{campaign(entry)}</td><td>{String(entry.detail.region||"Não informada")}</td><td>{entry.seller}</td><td>{outcomeLabels[entry.outcome]}</td><td>{date(entry.date)}</td><td>{date(entry.closedAt)}</td><td>{entry.converted?money(entry.revenueCents):"—"}</td></tr>)}{!entries.length&&<tr><td colSpan={9}>Nenhum lead de tráfego no período e filtros selecionados.</td></tr>}</tbody></table>{entries.length>limit&&<button type="button" className="secondary-button" onClick={()=>setLimit(value=>value+40)}>Ver mais leads ({entries.length-limit})</button>}</div>
+    <div className="commercial-totals-table traffic-leads-table"><table><caption>Detalhamento dos leads de tráfego</caption><thead><tr><th>Lead</th><th>CRM de origem</th><th>Campanha</th><th>Região</th><th>Responsável</th><th>Situação</th><th>Entrada</th><th>Fechamento</th><th>Receita</th></tr></thead><tbody>{<PaginatedItems label="leads de tráfego" table>{entries.map(entry=><tr key={entry.id}><th scope="row">{entry.item.title}</th><td>{entry.originFunnel}</td><td>{campaign(entry)}</td><td>{String(entry.detail.region||"Não informada")}</td><td>{entry.seller}</td><td>{outcomeLabels[entry.outcome]}</td><td>{date(entry.date)}</td><td>{date(entry.closedAt)}</td><td>{entry.converted?money(entry.revenueCents):"—"}</td></tr>)}</PaginatedItems>}{!entries.length&&<tr><td colSpan={9}>Nenhum lead de tráfego no período e filtros selecionados.</td></tr>}</tbody></table></div>
   </section>;
 }

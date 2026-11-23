@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { Copy, GripVertical, Pencil, Plus, Save, Search, StickyNote, Trash2, X } from "lucide-react";
 import { FormEvent, useMemo, useState, type CSSProperties, type DragEvent } from "react";
 
@@ -82,7 +84,7 @@ export default function NotesModule({ module, busy, operate, canCreate = true }:
     </div>
 
     {visibleNotes.length === 0 ? <div className="notes-empty"><StickyNote size={30} /><strong>{query ? "Nenhuma anotação encontrada" : "Comece sua coleção de anotações"}</strong><p>{query ? "Tente outra palavra na busca." : "Registre informações, modelos e lembretes importantes para o seu dia."}</p>{!query && canCreate && <button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={16} /> Criar primeira anotação</button>}</div> : <section className="notes-grid">
-      {visibleNotes.map((note) => <NoteCard key={note.id} note={note} busy={busy} dragging={draggedId === note.id} copied={copiedId === note.id}
+      {<PaginatedItems label="notas">{visibleNotes.map((note) => <NoteCard key={note.id} note={note} busy={busy} dragging={draggedId === note.id} copied={copiedId === note.id}
         onEdit={() => note.canEdit ? setEditor({ id: note.id, title: note.title, content: note.content, color: note.color, visibility: note.visibility, departmentId: note.departmentId, customerId: note.customerId, customerCode: note.customerCode }) : setViewing(note)}
     onCopy={() => void copyNote(note)}
         onDuplicate={() => void operate({ action: "duplicateNote", id: note.id }, "Anotação duplicada com sucesso.")}
@@ -90,7 +92,7 @@ export default function NotesModule({ module, busy, operate, canCreate = true }:
         onDragStart={(event) => { if (busy) return; event.dataTransfer.effectAllowed = "move"; setDraggedId(note.id); }}
         onDragEnd={() => setDraggedId(null)}
         onDrop={() => void reorder(note.id)}
-      />)}
+      />)}</PaginatedItems>}
     </section>}
 
     {viewing && <div className="modal-backdrop" onMouseDown={event => event.currentTarget === event.target && setViewing(null)}><section className="modal note-editor" role="dialog" aria-modal="true" aria-label="Visualizar anotação pública"><header className="modal-head"><div><span className="eyebrow">ANOTAÇÃO PÚBLICA · {viewing.author}</span><h2>{viewing.title}</h2></div><button className="icon-button" aria-label="Fechar" onClick={() => setViewing(null)}><X size={20} /></button></header><div className="note-view-content">{viewing.content || "Sem conteúdo."}</div><div className="form-actions"><button className="secondary-button" onClick={() => void copyNote(viewing)}><Copy size={15} />{copiedId === viewing.id ? "Copiado" : "Copiar conteúdo"}</button><button className="primary-button" onClick={() => setViewing(null)}>Fechar</button></div></section></div>}

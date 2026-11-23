@@ -28,6 +28,9 @@ import "./public-goal-charts.css";
 import "./november-adjustments.css";
 import "./followup-analytics-refinement.css";
 import "./enterprise-network-reference.css";
+import "./whatsapp-admin.css";
+import "./nov23-workflows.css";
+import "./followup-header.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

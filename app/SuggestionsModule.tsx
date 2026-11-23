@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import {validateSuggestionFiles} from "@/lib/suggestion-upload";
 import FilePreview from "@/app/FilePreview";
 import CommentHistory from "@/app/CommentHistory";
@@ -177,7 +179,7 @@ function SuggestionCreatedModal({ protocol, onClose }: { protocol: string; onClo
 function SuggestionList({ suggestions, canEdit, canDelete, canDeleteOthers, currentUserEmail, onOpen, onEdit, onDelete }: { suggestions: Suggestion[]; canEdit: boolean; canDelete: boolean; canDeleteOthers: boolean; currentUserEmail: string; onOpen: (id: string) => void; onEdit: (suggestion: Suggestion) => void; onDelete: (suggestion: Suggestion) => void }) {
   if (!suggestions.length) return <div className="suggestion-empty panel"><Sparkles size={27} /><strong>Nenhuma sugestão encontrada</strong><p>Quando uma sugestão for cadastrada, ela aparecerá aqui e no Kanban.</p></div>;
   return <div className="suggestion-table-wrap panel"><table className="suggestion-table"><thead><tr><th>Protocolo</th><th>Sugestão</th><th>Sinalizadores</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Atualização</th><th>Ações</th></tr></thead><tbody>
-    {suggestions.map((entry) => <tr data-reminder-entity-id={entry.id} key={entry.id} tabIndex={0} onClick={() => onOpen(entry.id)} onKeyDown={(event) => event.key === "Enter" && onOpen(entry.id)}>
+    {<PaginatedItems label="sugestões" table>{suggestions.map((entry) => <tr data-reminder-entity-id={entry.id} key={entry.id} tabIndex={0} onClick={() => onOpen(entry.id)} onKeyDown={(event) => event.key === "Enter" && onOpen(entry.id)}>
       <td><strong className="suggestion-protocol"><Hash size={13} />{entry.protocol}</strong></td>
       <td><span className="suggestion-title-cell"><strong>{entry.name}</strong><small>{entry.customerName}</small></span></td>
       <td><FlagBadges suggestion={entry} compact /></td>
@@ -186,7 +188,7 @@ function SuggestionList({ suggestions, canEdit, canDelete, canDeleteOthers, curr
       <td><span className="suggestion-owner"><Avatar name={entry.responsibleName} photo={entry.responsiblePhotoDataUrl} small /><span>{entry.responsibleName}</span></span></td>
       <td><time>{dateTime(entry.updatedAt)}</time></td>
       <td>{canEdit && <button type="button" className="icon-button" aria-label={`Editar ${entry.name}`} onClick={(event) => { event.stopPropagation(); onEdit(entry); }}><Pencil size={15} /></button>}{canDelete && (entry.responsibleEmail === currentUserEmail || canDeleteOthers) && <button type="button" className="icon-button danger-action" aria-label={`Excluir ${entry.name}`} onClick={(event) => { event.stopPropagation(); onDelete(entry); }}><Trash2 size={15} /></button>}</td>
-    </tr>)}
+    </tr>)}</PaginatedItems>}
   </tbody></table></div>;
 }
 
@@ -204,11 +206,11 @@ function SuggestionKanban({ suggestions, statuses, canEdit, canDelete, canDelete
       }}>
         <header style={{ "--column-color": status.color } as CSSProperties}><span><i />{status.kanbanColumn || status.name}</span><b>{cards.length}</b></header>
         <div className="suggestion-kanban-cards">
-          {cards.map((entry) => <article key={entry.id} className={entry.cancellationRisk ? "risk-card" : ""} data-reminder-entity-id={entry.id} data-reminder-client-id={entry.customerId} data-reminder-customer-name={entry.customerName} draggable={canEdit} onDragStart={(event) => beginKanbanDrag(event, "text/suggestion-id", entry.id)} onClick={() => onOpen(entry.id)}>
+          {<PaginatedItems label="sugestões">{cards.map((entry) => <article key={entry.id} className={entry.cancellationRisk ? "risk-card" : ""} data-reminder-entity-id={entry.id} data-reminder-client-id={entry.customerId} data-reminder-customer-name={entry.customerName} draggable={canEdit} onDragStart={(event) => beginKanbanDrag(event, "text/suggestion-id", entry.id)} onClick={() => onOpen(entry.id)}>
             <div className="suggestion-card-top"><span>{entry.protocol}</span><span className="suggestion-color-badge" style={{ "--badge-color": entry.priorityColor } as CSSProperties}>{entry.priorityName}</span></div>
             <h3>{entry.name}</h3><p>{entry.description || "Sem descrição informada."}</p><FlagBadges suggestion={entry} />
             <footer><span className="suggestion-owner"><Avatar name={entry.responsibleName} photo={entry.responsiblePhotoDataUrl} small /><span>{entry.responsibleName}</span></span><span className="suggestion-card-actions">{entry.comments.length > 0 && <span><MessageSquareText size={13} />{entry.comments.length}</span>}{canEdit && <button type="button" className="icon-button" aria-label={`Editar ${entry.name}`} onClick={(event) => { event.stopPropagation(); onEdit(entry); }}><Pencil size={14} /></button>}{canDelete && (entry.responsibleEmail === currentUserEmail || canDeleteOthers) && <button type="button" className="icon-button danger-action" aria-label={`Excluir ${entry.name}`} onClick={(event) => { event.stopPropagation(); onDelete(entry); }}><Trash2 size={14} /></button>}</span></footer>
-          </article>)}
+          </article>)}</PaginatedItems>}
           {cards.length === 0 && <div className="suggestion-column-empty">Nenhuma sugestão nesta etapa</div>}
         </div>
       </section>;
@@ -301,12 +303,12 @@ export function SuggestionCatalogsModule({ module, busy, operate }: { module: Su
     <div className="suggestion-catalog-tabs"><button className={section === "priorities" ? "active" : ""} onClick={() => setSection("priorities")}><Flag size={16} /> Prioridades</button><button className={section === "statuses" ? "active" : ""} onClick={() => setSection("statuses")}><Columns3 size={16} /> Status e Kanban</button></div>
     <div className="suggestion-catalog-list panel">
       <header><span>{items.length} cadastro{items.length === 1 ? "" : "s"}</span><small>As alterações são refletidas automaticamente no módulo Sugestões.</small></header>
-      {items.map((item) => <article data-reminder-entity-id={item.id} key={item.id}>
+      {<PaginatedItems label="sugestões">{items.map((item) => <article data-reminder-entity-id={item.id} key={item.id}>
         <i style={{ background: item.color }} /><div className="suggestion-catalog-data"><strong>{item.name}</strong><small>{item.description || (isSuggestionStatus(item) ? `Coluna: ${item.kanbanColumn}` : `Ordem ${item.displayOrder}`)}</small></div>
         {isSuggestionStatus(item) && item.isInitial && <span className="suggestion-initial-badge">Etapa inicial</span>}<span className={`status-pill ${item.active ? "positive" : "negative"}`}>{item.active ? "Ativo" : "Inativo"}</span>
         <button className="catalog-icon-button" onClick={() => isSuggestionStatus(item) ? setEditingStatus(item) : setEditingPriority(item)} aria-label={`Editar ${item.name}`}><Pencil size={15} /></button>
         <button className="catalog-icon-button delete" onClick={() => void operate({ action: isSuggestionStatus(item) ? "deleteSuggestionStatus" : "deleteSuggestionPriority", id: item.id }, `${isSuggestionStatus(item) ? "Status" : "Prioridade"} excluído com sucesso.`)} aria-label={`Excluir ${item.name}`}><Trash2 size={15} /></button>
-      </article>)}
+      </article>)}</PaginatedItems>}
     </div>
     {editingPriority !== undefined && <SuggestionPriorityModal item={editingPriority} busy={busy} onClose={() => setEditingPriority(undefined)} onSave={async (payload) => {
       const result = await operate({ action: "saveSuggestionPriority", id: editingPriority?.id, ...payload }, editingPriority ? "Prioridade atualizada com sucesso." : "Prioridade cadastrada com sucesso.");

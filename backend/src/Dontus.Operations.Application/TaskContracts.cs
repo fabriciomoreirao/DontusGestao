@@ -165,6 +165,7 @@ public interface ITaskService
     Task<CreatedCorporateTaskDto> CreateAsync(CreateCorporateTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangeStatusAsync(ChangeTaskStatusCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangePriorityAsync(ChangeTaskPriorityCommand command, ActorContext actor, CancellationToken cancellationToken = default);
+    Task GeneratePriorityAlertAsync(Guid taskId, long version, ActorContext actor, CancellationToken cancellationToken = default);
     Task ChangeSlaAsync(ChangeTaskSlaCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task TransferAsync(TransferTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task AssignAsync(AssignTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default);

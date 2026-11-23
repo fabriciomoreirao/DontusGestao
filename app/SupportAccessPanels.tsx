@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import SearchableSelect from "./SearchableSelect";
 import SupportAccessFilters from "./SupportAccessFilters";
 import SupportAccessIndicators from "./SupportAccessIndicators";
@@ -128,7 +130,7 @@ export function SupportAccessSettings({ onUpdated, onBack }: { onUpdated: (reaso
       {selectedDepartment && <section role="tabpanel" id="support-sector-reasons" aria-labelledby={`support-sector-${selectedDepartment}`}>
       {selectedDepartment === "unassigned" && <p className="dontus-access-meta">Vincule os motivos antigos a um setor para disponibilizá-los aos colaboradores.</p>}
       {(selectedDepartment !== "unassigned" || editing) && <form className="support-access-reason-editor" onSubmit={submit}><label>{editing ? "Editar motivo" : `Novo motivo · ${department?.name ?? ""}`}<input required maxLength={120} value={name} disabled={busy || loading} onChange={event => setName(event.target.value)} placeholder="Nome do motivo de acesso" /></label>{editing && <label>Setor do motivo<select required value={targetDepartment} disabled={busy || loading} onChange={event => setTargetDepartment(event.target.value)}><option value="">Selecione um setor</option>{departments.filter(entry => entry.active || entry.id === editing.departmentId).map(entry => <option value={entry.id} key={entry.id}>{entry.name}{entry.active ? "" : " · Inativo"}</option>)}</select></label>}<label className="checkbox-label"><input type="checkbox" checked={active} disabled={busy || loading} onChange={event => setActive(event.target.checked)} />Ativo</label><button className="primary-button" disabled={busy || loading || !name.trim() || !departmentId} type="submit"><Save size={16} />{busy ? "Salvando…" : "Salvar motivo"}</button>{editing && <button className="secondary-button" type="button" disabled={busy} onClick={() => edit(null)}>Cancelar edição</button>}</form>}
-      <div className="support-access-reason-list">{scoped.length === 0 ? <p className="support-access-empty">Nenhum motivo cadastrado neste setor.</p> : scoped.map(reason => <article key={reason.id}><strong>{reason.name}</strong><b className={`status-pill ${reason.active ? "positive" : "negative"}`}>{reason.active ? "Ativo" : "Inativo"}</b><button className="secondary-button" type="button" disabled={busy || loading} aria-label={`Editar motivo ${reason.name}`} onClick={() => edit(reason)}><Pencil size={15} />Editar</button></article>)}</div>
+      <div className="support-access-reason-list">{scoped.length === 0 ? <p className="support-access-empty">Nenhum motivo cadastrado neste setor.</p> : <PaginatedItems label="motivos de acesso">{scoped.map(reason => <article key={reason.id}><strong>{reason.name}</strong><b className={`status-pill ${reason.active ? "positive" : "negative"}`}>{reason.active ? "Ativo" : "Inativo"}</b><button className="secondary-button" type="button" disabled={busy || loading} aria-label={`Editar motivo ${reason.name}`} onClick={() => edit(reason)}><Pencil size={15} />Editar</button></article>)}</PaginatedItems>}</div>
       </section>}
       {error && <p className="dontus-integration-error" role="alert">{error}</p>}{notice && <p className="dontus-access-meta" role="status">{notice}</p>}
     </section>

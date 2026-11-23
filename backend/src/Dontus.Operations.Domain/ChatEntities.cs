@@ -28,6 +28,10 @@ public sealed class ChatChannel : Entity
 
 public sealed class ChatWhatsAppNumber : Entity
 {
+    public string SuiteStatus { get; set; } = "Não vinculado";
+    public string SuiteClinicId { get; set; } = "";
+    public string SuiteDontusId { get; set; } = "";
+    public string SuiteBase { get; set; } = "";
     public Guid ChannelId { get; set; }
     public Guid DepartmentId { get; set; }
     public required string InternalName { get; set; }

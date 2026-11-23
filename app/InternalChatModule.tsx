@@ -1,4 +1,7 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
+import type { ChatMention } from "@/lib/chat-mentions";
 import ChatTypingIndicator from "@/app/ChatTypingIndicator";
 import useChatTypingPublisher from "@/app/useChatTypingPublisher";
 import useVoiceRecorder from "@/app/useVoiceRecorder";
@@ -33,6 +36,7 @@ export type InternalChatMessage = {
   senderIsCoordinator: boolean;
   type: "text" | "sticker" | "image" | "video" | "audio" | "file" | "poll"; body: string; fileName: string;
   contentType: string; hasAttachment: boolean; isPinned: boolean; createdAt: string;
+  mentions?: ChatMention[]; isUnread?: boolean;
   replyTo?: ChatReplyMessage | null;
   seenAt?: string | null; seenByCount?: number; recipientCount?: number;
   reactions?: Array<{emoji:string;count:number;userIds:string[];userNames:string[]}>;
@@ -271,6 +275,9 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     publishTyping(false);
     const message = drafts.get(effectiveSelectedKey);
     const body = message.trim();
+    const submittedMentions = drafts.getMentions(effectiveSelectedKey);
+    const leading = message.length - message.trimStart().length;
+    const mentions = submittedMentions.map(mention=>({...mention,start:mention.start-leading}));
     if (!canCreate || busy || !selectedConversation || (!body && !pastedImages.length) || sendingRef.current) return;
     const conversationKey = effectiveSelectedKey;
     const submittedDraft = message;
@@ -303,7 +310,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
       }));
     }
     if (body) {
-      const result = await operate({ action: "sendInternalChatMessage", roomId, body, messageType: "text", replyToMessageId }, "Mensagem enviada.");
+      const result = await operate({ action: "sendInternalChatMessage", roomId, body, mentions, messageType: "text", replyToMessageId }, "Mensagem enviada.");
       textSent = Boolean(result);
       if (result) clearReply(conversationKey, replyToMessageId);
       if (!result) setSendError("Não foi possível enviar a mensagem. O texto foi mantido para tentar novamente.");
@@ -311,7 +318,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     } catch {
       setSendError("Não foi possível enviar a mensagem. Tente novamente.");
     } finally {
-      if (!textSent) drafts.restore(roomId || conversationKey, submittedDraft);
+      if (!textSent) drafts.restore(roomId || conversationKey, submittedDraft, submittedMentions);
       sendingRef.current = false;
     }
   };
@@ -412,14 +419,14 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
         <span className="sr-only" role="status" aria-atomic="true">{unreadTotals.conversations} mensagens não lidas em conversas, {unreadTotals.groups} em grupos e {unreadTotals.archived} em arquivadas.</span>
         <div className="internal-chat-room-list">
           {filteredConversations.length === 0 && <div className="internal-chat-empty-list"><Archive size={24} /><span>{archivedView ? "Nenhuma conversa arquivada." : "Nenhum colaborador encontrado."}</span></div>}
-          {filteredConversations.map((entry) => {
+          {<PaginatedItems label="conversas">{filteredConversations.map((entry) => {
             const last = entry.room?.messages.at(-1);
             return <button className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`} onClick={() => setSelectedKey(entry.key)} key={entry.key}>
               <Avatar name={entry.name} photo={entry.photoDataUrl} group={entry.isGroup} />
               <span className="internal-chat-room-copy"><strong>{userHasBirthdayToday(entry.user) && <BirthdayGift name={entry.name} />}{pinnedConversationKeys.includes(entry.key)&&<Pin size={12}/>}<span>{entry.name}</span>{entry.user&&<PresenceBadge user={entry.user} now={presenceNow}/>}</strong><small>{last ? messagePreview(last) : entry.isGroup ? "Grupo privado" : entry.user?.jobTitle || entry.user?.departmentName || "Inicie uma conversa"}</small></span>
               <span className="internal-chat-room-meta">{entry.room && <time>{chatListDateLabel(entry.room.lastMessageAt,presenceNow)}</time>}{!!entry.room?.unreadCount && <b>{entry.room.unreadCount}</b>}</span>
             </button>;
-          })}
+          })}</PaginatedItems>}
         </div>
         <div className="internal-chat-privacy"><LockKeyhole size={14} /><span>Conversas visíveis somente para os participantes.</span></div>
       </aside>
@@ -459,7 +466,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
             <button type="button" className="internal-chat-tool gif" disabled={busy||!canCreate} onClick={()=>gifInput.current?.click()} aria-label="Enviar GIF" title="Enviar GIF">GIF</button>
             <button type="button" className="internal-chat-tool voice" disabled={busy||!canCreate||voice.state!=="idle"} onClick={()=>void voice.start()} aria-label="Gravar áudio" title="Gravar áudio"><Mic size={19}/></button>
             {selectedRoom?.isGroup && <button type="button" className="internal-chat-tool poll" onClick={() => setPollOpen(true)} disabled={busy || !canCreate} aria-label="Criar enquete" title="Criar enquete"><BarChart3 size={19} /></button>}
-            <InternalChatDraftComposer drafts={drafts} conversationKey={effectiveSelectedKey} inputRef={composerInput} busy={busy} canCreate={canCreate} recording={voice.state === "recording" || voice.state === "requesting"} hasAttachments={pastedImages.length > 0} onPaste={pasteImages} onTyping={publishTyping} />
+            <InternalChatDraftComposer participants={module.users.filter(person=>selectedRoom?selectedRoom.memberUserIds.includes(person.id):person.id===selectedConversation.user?.id||person.id===module.currentUserId)} drafts={drafts} conversationKey={effectiveSelectedKey} inputRef={composerInput} busy={busy} canCreate={canCreate} recording={voice.state === "recording" || voice.state === "requesting"} hasAttachments={pastedImages.length > 0} onPaste={pasteImages} onTyping={publishTyping} />
           </form>
         </>}
       </main>
@@ -520,7 +527,7 @@ const MessageBubble = memo(function MessageBubble({ message, onReply, showSeenRe
     {!own && message.type!=="audio" && <Avatar name={message.senderName} photo={message.senderPhotoDataUrl} coordinator={message.senderIsCoordinator} />}
     <div className="internal-chat-bubble-wrap">{!own && <strong>{birthday && <BirthdayGift name={message.senderName} />}{message.senderName}</strong>}{!message.deletedAt && (canCreate || group && canEdit) && <div className="internal-chat-message-toolbar">{group && canEdit && <button type="button" className={message.isPinned ? "active" : ""} disabled={busy} onClick={() => onPin(message)} aria-label={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"} title={message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"}>{message.isPinned ? <PinOff size={11}/> : <Pin size={11}/>}</button>}{canCreate && <button type="button" disabled={busy} onClick={() => onReply(message)} aria-label="Responder mensagem" title="Responder mensagem"><Reply size={12}/></button>}</div>}<div className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}>
       {!message.deletedAt && message.replyTo && <div className="internal-chat-quoted-message"><strong>{message.replyTo.senderName}</strong><span>{chatReplyPreview(message.replyTo)}</span></div>}
-      {message.deletedAt ? <p className="internal-chat-deleted-message">Mensagem excluída</p> : editing ? <form className="internal-chat-message-editor" onSubmit={async event=>{event.preventDefault();if(editBody.trim()&&await onEdit(message,editBody.trim()))setEditing(false);}}><textarea aria-label="Editar mensagem" autoFocus rows={3} maxLength={4000} value={editBody} onChange={event=>setEditBody(event.target.value)} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setEditing(false)}}}/><div><button type="button" disabled={busy} onClick={()=>setEditing(false)}>Cancelar</button><button type="submit" disabled={busy||!editBody.trim()}>Salvar</button></div></form> : message.type === "text" && <p><MessageText text={message.body}/></p>}
+      {message.deletedAt ? <p className="internal-chat-deleted-message">Mensagem excluída</p> : editing ? <form className="internal-chat-message-editor" onSubmit={async event=>{event.preventDefault();if(editBody.trim()&&await onEdit(message,editBody.trim()))setEditing(false);}}><textarea aria-label="Editar mensagem" autoFocus rows={3} maxLength={4000} value={editBody} onChange={event=>setEditBody(event.target.value)} onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();setEditing(false)}}}/><div><button type="button" disabled={busy} onClick={()=>setEditing(false)}>Cancelar</button><button type="submit" disabled={busy||!editBody.trim()}>Salvar</button></div></form> : message.type === "text" && <p><MessageText text={message.body} mentions={message.mentions} currentUserId={currentUserId}/></p>}
       {!message.deletedAt && message.type === "sticker" && <span className="internal-chat-sticker-message">{message.body}</span>}
       {!message.deletedAt && message.type === "image" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Imagem enviada",video:false})}><img src={fileUrl} alt={message.fileName || "Imagem enviada"} loading="lazy" /></button>}
       {!message.deletedAt && message.type === "video" && <button type="button" className="internal-chat-media-message" onClick={() => onPreview({url:fileUrl,name:message.fileName||"Vídeo enviado",video:true})}><video muted preload="metadata"><source src={fileUrl} type={message.contentType} />Seu navegador não suporta vídeo.</video></button>}

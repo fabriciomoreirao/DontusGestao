@@ -1,6 +1,9 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import MessageText from "@/app/MessageText";
 import ChatMessageComposer from "@/app/ChatMessageComposer";
+import WhatsAppTemplateSender from "./WhatsAppTemplateSender";
 import { createChatDraftStore } from "@/lib/chat-drafts";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 
@@ -8,7 +11,7 @@ import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import {
   Archive, ArrowLeft, ArrowRightLeft, BarChart3, CalendarRange, Check, CheckCheck, ChevronLeft, ChevronRight, CirclePlus, Clock3,
-  Hash, Headphones, Inbox, MessageCircleMore, MessageSquareText, MoreHorizontal,
+  FileCheck2, Hash, Headphones, Inbox, MessageCircleMore, MessageSquareText, MoreHorizontal,
   Paperclip, Pencil, Phone, Plus, RefreshCw, Save, Search, Send, Settings2, ShieldCheck, Smile, Star, Tag, UserCheck, Users,
   Wifi, X,
 } from "lucide-react";
@@ -100,7 +103,7 @@ declare global {
   }
 }
 
-async function loadFacebookSdk(appId: string, apiVersion: string) {
+export async function loadFacebookSdk(appId: string, apiVersion: string) {
   if (!window.FB) {
     await new Promise<void>((resolve, reject) => {
       const initialize = () => window.FB ? resolve() : reject(new Error("O SDK da Meta não foi carregado."));
@@ -131,7 +134,7 @@ const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2)
 
 export default function ChatWorkspace(props: WorkspaceProps) {
   const [module, setModule] = useState<ChatModuleData | null>(null);
-  const [filters, setFilters] = useState<InboxFilters>(() => ({ page: 1, search: typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("phone") ?? "", status: "Todos", departmentId: "", isGroup: false, conversationId: "" }));
+  const [filters, setFilters] = useState<InboxFilters>(() => ({ page: 1, search: typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("phone") ?? "", status: "Todos", departmentId: "", isGroup: false, conversationId: typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("conversationId") || "" }));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -140,6 +143,7 @@ export default function ChatWorkspace(props: WorkspaceProps) {
   const latestProps = useRef(props);
   useEffect(() => { latestProps.current = props; });
   const selectedId = module?.selectedConversationId;
+  useEffect(() => { const open = (event: Event) => { const id = (event as CustomEvent<string>).detail; if (id) setFilters(current => ({ ...current, page: 1, search: "", status: "Todos", departmentId: "", isGroup: false, conversationId: id })); }; window.addEventListener("dontus:open-whatsapp-conversation", open); return () => window.removeEventListener("dontus:open-whatsapp-conversation", open); }, []);
   useEffect(() => {
     const controller = new AbortController();
     const version = ++requestVersion.current;
@@ -222,6 +226,7 @@ function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities,
   const setStatus = (status: string) => onFilters({ status });
   const setDepartmentId = (departmentId: string) => onFilters({ departmentId });
   const [newConversation, setNewConversation] = useState(false);
+  const [templateSender, setTemplateSender] = useState(false);
   const [drafts] = useState(createChatDraftStore);
   const [selection, setSelectedConversationIds] = useState<string[]>([]);
   const conversationKind = filters.isGroup ? "groups" : "contacts";
@@ -322,6 +327,8 @@ function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities,
             </article>)}
             {selected.transfers.map((transfer) => <div className="transfer-event" key={transfer.id}><ArrowRightLeft size={15} /><span><b>Transferência de setor</b>{transfer.reason} · por {transfer.actorName}</span><time>{formatDate(transfer.createdAt)}</time></div>)}
           </div>
+          {canEdit && has("sendMessages") && !selected.isGroup && module.channels.some(c => c.id === selected.channelId && c.type === "WhatsApp") && <div className="wa-chat-template-action"><button disabled={busy || selected.status === "Encerrada"} onClick={() => setTemplateSender(true)}><FileCheck2 size={16}/> Enviar template oficial</button></div>}
+          {templateSender && <WhatsAppTemplateSender key={selected.id} conversation={selected} onClose={() => setTemplateSender(false)} onSent={() => onFilters({ conversationId: selected.id, page: module.page.number })}/>}
           {canEdit && <ChatMessageComposer drafts={drafts} conversationId={selected.id} departmentId={selected.departmentId} quickReplies={module.quickReplies} busy={busy}
             canSendMessages={has("sendMessages")} canInternalNotes={has("internalNotes")}
             onSend={(body, internal) => operate({ action: "sendChatMessage", conversationId: selected.id, body, internal }, internal ? "Nota interna registrada." : "Mensagem enviada.")}
@@ -712,7 +719,7 @@ function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModu
         <button disabled={busy}>{editing ? <Save size={16} /> : <Plus size={16} />} {editing ? "Salvar alterações" : "Adicionar número"}</button>
       </div>
     </form>}
-    <div className="whatsapp-number-grid">{module.whatsAppNumbers.map((item) => <article className={editingId === item.id ? "editing" : ""} key={item.id}>
+    <div className="whatsapp-number-grid">{<PaginatedItems label="conexões">{module.whatsAppNumbers.map((item) => <article className={editingId === item.id ? "editing" : ""} key={item.id}>
       <span className="whatsapp-icon"><Phone size={19} /></span>
       <div><h3>{item.internalName}</h3><p>{item.displayName} · <PhoneLink phone={item.phoneNumber}/></p><small>{item.departmentName} · {item.connectionMode === "Coexistence" ? "Coexistência" : "Cloud API"} · API {item.apiVersion}</small></div>
       <em className={item.active && item.status === "Configurado" ? "active" : item.coexistenceStatus === "Erro" ? "error" : ""}>{item.connectionMode === "Coexistence" ? item.coexistenceStatus : item.status}</em>
@@ -723,7 +730,7 @@ function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModu
         {item.connectionMode === "Coexistence" && item.coexistenceStatus === "Erro" && item.hasAccessToken && <button className="retry-coexistence" disabled={busy} onClick={() => void operate({ action: "retryChatWhatsAppCoexistence", id: item.id }, "Sincronização da coexistência concluída.")}><RefreshCw size={14} /> Tentar novamente</button>}
         <button className="edit-whatsapp-number" onClick={() => { setEditingId(item.id); setConnectionMode(item.connectionMode); window.scrollTo({ top: 0, behavior: "smooth" }); }}><Pencil size={14} /> Editar</button>
       </div>}
-    </article>)}</div>
+    </article>)}</PaginatedItems>}</div>
   </>;
 }
 function TagSettings({ module, busy, allowed, operate }: { module: ChatModuleData; busy: boolean; allowed: boolean; operate: Props["operate"] }) {
@@ -744,7 +751,7 @@ function submitSettings(operate: Props["operate"], action: string, success: stri
   };
 }
 function SettingsList({ items }: { items: Array<{ id: string; title: string; subtitle: string; active: boolean; color?: string }> }) {
-  return <div className="chat-settings-list">{items.map((item) => <article key={item.id}><i style={{ background: item.color }} /><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><em className={item.active ? "active" : ""}>{item.active ? "Ativo" : "Inativo"}</em></article>)}</div>;
+  return <div className="chat-settings-list">{<PaginatedItems label="cadastros do WhatsApp">{items.map((item) => <article key={item.id}><i style={{ background: item.color }} /><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><em className={item.active ? "active" : ""}>{item.active ? "Ativo" : "Inativo"}</em></article>)}</PaginatedItems>}</div>;
 }
 
 function NewConversationModal({ module, busy, initialPhone = "", initialSubject = "", onClose, onSubmit }: { module: ChatModuleData; busy: boolean; initialPhone?: string; initialSubject?: string; onClose: () => void; onSubmit: (payload: Record<string, unknown>) => void }) {

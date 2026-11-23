@@ -54,7 +54,11 @@ public static class DependencyInjection
         services.AddDataProtection()
             .SetApplicationName("Dontus.Operations")
             .PersistKeysToFileSystem(new DirectoryInfo(keyPath));
-        services.AddHttpClient<IChatService, ChatService>();
+        services.Configure<WhatsAppSuiteOptions>(configuration.GetSection("WhatsAppSuite"));
+        services.AddHttpClient<IChatService, ChatService>(client => client.Timeout = TimeSpan.FromSeconds(35))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddScoped<IWhatsAppAdminService>(provider => (IWhatsAppAdminService)provider.GetRequiredService<IChatService>());
+        services.AddHostedService<WhatsAppCampaignWorker>();
         return services;
     }
 }

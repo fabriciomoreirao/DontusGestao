@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { useId, useState, type CSSProperties } from "react";
 import { BarChart3, ChevronDown, TrendingUp } from "lucide-react";
 import { analyticsColor, chartScale, distributionEntries } from "@/lib/analytics-charts";
@@ -71,5 +73,5 @@ export function DistributionChart({ entries, title, unit = "registros", donut = 
 }
 
 function ChartData({ title, headers, rows }: { title: string; headers: string[]; rows: string[][] }) {
-  return <details className="bi-chart-data"><summary>Ver dados do gráfico<ChevronDown size={14} /></summary><div><table><caption>{title}</caption><thead><tr>{headers.map(header => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, column) => column === 0 ? <th key={column} scope="row">{cell}</th> : <td key={column}>{cell}</td>)}</tr>)}</tbody></table></div></details>;
+  return <details className="bi-chart-data"><summary>Ver dados do gráfico<ChevronDown size={14} /></summary><div><table><caption>{title}</caption><thead><tr>{headers.map(header => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody>{<PaginatedItems label="registros" table>{rows.map((row, index) => <tr key={index}>{row.map((cell, column) => column === 0 ? <th key={column} scope="row">{cell}</th> : <td key={column}>{cell}</td>)}</tr>)}</PaginatedItems>}</tbody></table></div></details>;
 }
