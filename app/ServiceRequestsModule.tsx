@@ -10,10 +10,48 @@ import { beginKanbanDrag, readKanbanDrop } from "@/lib/kanban-drag";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
-
-import { AlertTriangle, ArrowRight, Bot, BriefcaseBusiness, Bug, Building2, CheckCircle2, CircleHelp, CirclePlus, CircleX, ClipboardList, Code2, ExternalLink, Eye, EyeOff, FileText, FileUp, Headphones, Lightbulb, ListChecks, MessageSquareText, Paperclip, Phone, PlugZap, Save, Send, Settings, ShieldCheck, Sparkles, Store, TriangleAlert, Trash2, X, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Bot,
+  BriefcaseBusiness,
+  Bug,
+  Building2,
+  CheckCircle2,
+  CircleHelp,
+  CirclePlus,
+  CircleX,
+  ClipboardList,
+  Code2,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FileText,
+  FileUp,
+  Headphones,
+  Lightbulb,
+  ListChecks,
+  MessageSquareText,
+  Paperclip,
+  Phone,
+  PlugZap,
+  Save,
+  Send,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  Store,
+  TriangleAlert,
+  Trash2,
+  X,
+  XCircle,
+} from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, type DragEvent } from "react";
-import { CreateTaskModal, type CustomerOption, type TaskModuleData } from "@/app/TasksModule";
+import {
+  CreateTaskModal,
+  type CustomerOption,
+  type TaskModuleData,
+} from "@/app/TasksModule";
 import type { SuggestionModuleData } from "@/app/SuggestionsModule";
 
 const SERVICE_REQUEST_TYPE_OPTIONS = [
@@ -25,114 +63,1429 @@ const SERVICE_REQUEST_TYPE_OPTIONS = [
   { value: "Cancelamento", icon: CircleX, tone: "cancellation" },
   { value: "Nova contratação", icon: CirclePlus, tone: "contract" },
 ] as const;
-export const SERVICE_REQUEST_TYPES = SERVICE_REQUEST_TYPE_OPTIONS.map(option=>option.value);
-const TRIAGE_STAGES = ["Triagem", "Desenvolvimento", "Tarefa", "Reclamação", "Sugestão", "Elogio", "Cancelamento", "Nova contratação"];
+export const SERVICE_REQUEST_TYPES = SERVICE_REQUEST_TYPE_OPTIONS.map(
+  (option) => option.value,
+);
+const TRIAGE_STAGES = [
+  "Triagem",
+  "Desenvolvimento",
+  "Tarefa",
+  "Reclamação",
+  "Sugestão",
+  "Elogio",
+  "Cancelamento",
+  "Nova contratação",
+];
 const FOLLOWUP_STAGES = ["Em espera", "Em processo", "Concluído", "Descartado"];
 
-type WorkItem = { id:string; module:string; record_type:string; title:string; customer_id:string|null; customer_name:string; owner:string; team:string; status:string; priority:string; amount_cents:number; description:string; version:number; created_at:string; updated_at:string };
+type WorkItem = {
+  id: string;
+  module: string;
+  record_type: string;
+  title: string;
+  customer_id: string | null;
+  customer_name: string;
+  owner: string;
+  team: string;
+  status: string;
+  priority: string;
+  amount_cents: number;
+  description: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
 type Customer = CustomerOption & { phone?: string; status?: string };
-type Attachment = { id:string; name:string; contentType:string; sizeBytes:number };
-type History = { text:string; at:string; by:string };
-type Comment = { id:string; text:string; at:string; by:string };
+type Attachment = {
+  id: string;
+  name: string;
+  contentType: string;
+  sizeBytes: number;
+};
+type History = { text: string; at: string; by: string };
+type Comment = { id: string; text: string; at: string; by: string };
 export type ServiceRequestDetail = {
-  kind:"serviceRequest"|"serviceRequestFollowup"; protocol:string; clientId:string; fullName:string; whatsapp:string; selectedType:string; summary:string;
-  aiClassification:string; aiReason:string; aiConfidence:number; aiSource?:"external"|"local"|"local-fallback"; attachments:Attachment[]; comments:Comment[]; history:History[]; submittedAt:string;
-  sourceRequestId?:string; followupId?:string; classification?:string; sector?:string; routedTo?:string; routedId?:string; routedAt?:string; routedBy?:string;
+  kind: "serviceRequest" | "serviceRequestFollowup";
+  protocol: string;
+  clientId: string;
+  fullName: string;
+  whatsapp: string;
+  selectedType: string;
+  summary: string;
+  aiClassification: string;
+  aiReason: string;
+  aiConfidence: number;
+  aiSource?: "external" | "local" | "local-fallback";
+  attachments: Attachment[];
+  comments: Comment[];
+  history: History[];
+  submittedAt: string;
+  sourceRequestId?: string;
+  followupId?: string;
+  classification?: string;
+  sector?: string;
+  routedTo?: string;
+  routedId?: string;
+  routedAt?: string;
+  routedBy?: string;
 };
-type OperationResult = { id?:string; createdProtocol?:string }|false;
-type AiIntegrationSettings = { enabled:boolean; provider:string; endpoint:string; model:string; systemPrompt:string; timeoutSeconds:number; hasApiKey:boolean; apiKeyMasked:string; updatedAt?:string; updatedBy?:string };
+type OperationResult = { id?: string; createdProtocol?: string } | false;
+type AiIntegrationSettings = {
+  enabled: boolean;
+  provider: string;
+  endpoint: string;
+  model: string;
+  systemPrompt: string;
+  timeoutSeconds: number;
+  hasApiKey: boolean;
+  apiKeyMasked: string;
+  updatedAt?: string;
+  updatedBy?: string;
+};
 type Props = {
-  onForward?:(detail:ServiceRequestDetail, sourceId:string)=>void;
-  mode:"triage"|"followup"; items:WorkItem[]; customers:Customer[]; canCreateTargets:string[];
-  currentUser:{email:string;displayName:string;role:string;department:string;isCoordinator:boolean}; taskModule:TaskModuleData|null; suggestionModule:SuggestionModuleData|null;
-  canEdit:boolean; busy:boolean; operate:(payload:Record<string,unknown>,success:string)=>Promise<OperationResult>;
-  uploadTaskAttachments:(taskId:string,files:File[])=>Promise<boolean>;
+  onForward?: (detail: ServiceRequestDetail, sourceId: string) => void;
+  mode: "triage" | "followup";
+  items: WorkItem[];
+  customers: Customer[];
+  canCreateTargets: string[];
+  currentUser: {
+    email: string;
+    displayName: string;
+    role: string;
+    department: string;
+    isCoordinator: boolean;
+  };
+  taskModule: TaskModuleData | null;
+  suggestionModule: SuggestionModuleData | null;
+  canEdit: boolean;
+  busy: boolean;
+  operate: (
+    payload: Record<string, unknown>,
+    success: string,
+  ) => Promise<OperationResult>;
+  uploadTaskAttachments: (taskId: string, files: File[]) => Promise<boolean>;
 };
 
-const parse = (value:string):ServiceRequestDetail|null => { try { const detail=JSON.parse(value) as Partial<ServiceRequestDetail>; if(detail.kind!=="serviceRequest"&&detail.kind!=="serviceRequestFollowup")return null; return {...detail,attachments:Array.isArray(detail.attachments)?detail.attachments:[],comments:Array.isArray(detail.comments)?detail.comments:[],history:Array.isArray(detail.history)?detail.history:[]} as ServiceRequestDetail; } catch { return null; } };
-const dt=(value:string)=>new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short",timeZone:"America/Sao_Paulo"}).format(new Date(value));
-const stageIcon=(stage:string)=>/Desenvolvimento/.test(stage)?Code2:/Tarefa/.test(stage)?ClipboardList:/Sugest/.test(stage)?Sparkles:/Nova contrata/.test(stage)?BriefcaseBusiness:/Reclama|Elog/.test(stage)?Headphones:/Cancel/.test(stage)?AlertTriangle:Bot;
+const parse = (value: string): ServiceRequestDetail | null => {
+  try {
+    const detail = JSON.parse(value) as Partial<ServiceRequestDetail>;
+    if (
+      detail.kind !== "serviceRequest" &&
+      detail.kind !== "serviceRequestFollowup"
+    )
+      return null;
+    return {
+      ...detail,
+      attachments: Array.isArray(detail.attachments) ? detail.attachments : [],
+      comments: Array.isArray(detail.comments) ? detail.comments : [],
+      history: Array.isArray(detail.history) ? detail.history : [],
+    } as ServiceRequestDetail;
+  } catch {
+    return null;
+  }
+};
+const dt = (value: string) =>
+  new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date(value));
+const stageIcon = (stage: string) =>
+  /Desenvolvimento/.test(stage)
+    ? Code2
+    : /Tarefa/.test(stage)
+      ? ClipboardList
+      : /Sugest/.test(stage)
+        ? Sparkles
+        : /Nova contrata/.test(stage)
+          ? BriefcaseBusiness
+          : /Reclama|Elog/.test(stage)
+            ? Headphones
+            : /Cancel/.test(stage)
+              ? AlertTriangle
+              : Bot;
 
-export default function ServiceRequestsModule({mode,items,customers,currentUser,taskModule,canEdit,busy,operate,uploadTaskAttachments,onForward,canCreateTargets}:Props){
-  const moduleName=mode==="triage"?"serviceRequests":"serviceFollowup";
+export default function ServiceRequestsModule({
+  mode,
+  items,
+  customers,
+  currentUser,
+  taskModule,
+  canEdit,
+  busy,
+  operate,
+  uploadTaskAttachments,
+  onForward,
+  canCreateTargets,
+}: Props) {
+  const moduleName = mode === "triage" ? "serviceRequests" : "serviceFollowup";
   const reminderFilter = useReminderFilter(moduleName);
-  const stages=mode==="triage"?TRIAGE_STAGES:FOLLOWUP_STAGES;
-  const records=useMemo(()=>items.filter(item=>item.module===moduleName&&parse(item.description)),[items,moduleName]);
-  const [selected,setSelected]=useState<WorkItem|null>(() => typeof window === "undefined" ? null : items.find(item => item.id === new URLSearchParams(window.location.search).get("card") && parse(item.description)?.kind === (mode === "triage" ? "serviceRequest" : "serviceRequestFollowup")) || null);
-  const [taskRequest,setTaskRequest]=useState<{item:WorkItem;detail:ServiceRequestDetail}|null>(null);
-  const [query,setQuery]=useState("");
-  const [sector,setSector]=useState("all");
-  const [dragging,setDragging]=useState("");
-  const [aiSettingsOpen,setAiSettingsOpen]=useState(false);
-  const visible=records.filter(item=>{const detail=parse(item.description)!;return (sector==="all"||(detail.sector||item.team)===sector)&&reminderFilter.matches({entityId:item.id,clientId:detail.clientId,title:detail.fullName})&&(!query.trim()||`${detail.protocol} ${detail.clientId} ${detail.fullName} ${detail.summary} ${detail.selectedType}`.toLocaleLowerCase("pt-BR").includes(query.trim().toLocaleLowerCase("pt-BR")))});
-  const move=async(item:WorkItem,status:string)=>{if(!canEdit||item.status===status)return;await operate({action:"transitionWorkItem",id:item.id,nextStatus:status,version:item.version,confirmed:true,boardMove:true},`Chamado movido para ${status}.`);setSelected(null)};
-  const remove = async (item:WorkItem) => { const result = await operate({ action:"deleteWorkItem", id:item.id }, "Chamado excluído com sucesso."); if (result) setSelected(null); };
-  const update=async(item:WorkItem,detail:ServiceRequestDetail,success:string)=>operate({action:"updateWorkItem",id:item.id,title:item.title,owner:item.owner,customerName:item.customer_name,amountCents:item.amount_cents,version:item.version,description:JSON.stringify(detail)},success);
-  const route=async(item:WorkItem,detail:ServiceRequestDetail,target:string)=>{
-    if(target==="Tarefa"){setTaskRequest({item,detail});return;}
-    const result=await operate({action:"routeServiceRequest",id:item.id,version:item.version,routeTarget:target},`Chamado encaminhado para ${target}.`);
-    if(result)setSelected(null);
+  const stages = mode === "triage" ? TRIAGE_STAGES : FOLLOWUP_STAGES;
+  const records = useMemo(
+    () =>
+      items.filter(
+        (item) => item.module === moduleName && parse(item.description),
+      ),
+    [items, moduleName],
+  );
+  const [selected, setSelected] = useState<WorkItem | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : items.find(
+          (item) =>
+            item.id ===
+              new URLSearchParams(window.location.search).get("card") &&
+            parse(item.description)?.kind ===
+              (mode === "triage" ? "serviceRequest" : "serviceRequestFollowup"),
+        ) || null,
+  );
+  const [taskRequest, setTaskRequest] = useState<{
+    item: WorkItem;
+    detail: ServiceRequestDetail;
+  } | null>(null);
+  const [query, setQuery] = useState("");
+  const [sector, setSector] = useState("all");
+  const [dragging, setDragging] = useState("");
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const visible = records.filter((item) => {
+    const detail = parse(item.description)!;
+    return (
+      (sector === "all" || (detail.sector || item.team) === sector) &&
+      reminderFilter.matches({
+        entityId: item.id,
+        clientId: detail.clientId,
+        title: detail.fullName,
+      }) &&
+      (!query.trim() ||
+        `${detail.protocol} ${detail.clientId} ${detail.fullName} ${detail.summary} ${detail.selectedType}`
+          .toLocaleLowerCase("pt-BR")
+          .includes(query.trim().toLocaleLowerCase("pt-BR")))
+    );
+  });
+  const move = async (item: WorkItem, status: string) => {
+    if (!canEdit || item.status === status) return;
+    await operate(
+      {
+        action: "transitionWorkItem",
+        id: item.id,
+        nextStatus: status,
+        version: item.version,
+        confirmed: true,
+        boardMove: true,
+      },
+      `Chamado movido para ${status}.`,
+    );
+    setSelected(null);
   };
-  return <section className="service-request-module">
-    <header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Headphones size={21}/></span><span className="module-page-copy"><span className="eyebrow">{mode==="triage"?"MÓDULO · CENTRAL DE CHAMADOS":"OPERAÇÃO · EXPERIÊNCIA DO CLIENTE"}</span><h1>{mode==="triage"?"Chamados":"Acompanhamento de chamados"}</h1><p>{mode==="triage"?"Triagem inteligente e encaminhamento para a ferramenta responsável.":"Chamados de todos os tipos, organizados por setor até a conclusão."}</p></span></div>{mode==="triage"&&<div className="module-page-actions service-request-head-actions"><button type="button" className="secondary-button" onClick={()=>setAiSettingsOpen(true)}><Settings size={16}/> Configurar IA</button><a className="primary-button" href="/?public=chamados" target="_blank" rel="noreferrer"><ExternalLink size={16}/> Abrir formulário público</a></div>}</header>
-    <section className="service-request-toolbar reminder-filter-toolbar compact-operational-filters service-compact-filters"><label><span>Buscar chamado</span><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Protocolo, ID, cliente ou resumo"/></label><label><span>Setor responsável</span><select aria-label="Filtrar chamados por setor" value={sector} onChange={event=>setSector(event.target.value)}><option value="all">Todos os setores</option>{["Suporte","Sucesso do Cliente","Comercial"].map(name=><option key={name}>{name}</option>)}</select></label>{reminderFilter.control}<b>{visible.length} chamado(s)</b></section>
-    <section className={`service-request-board ${mode}`}>{stages.map(stage=><div className="service-request-column" key={stage} onDragOver={event=>canEdit&&event.preventDefault()} onDrop={event=>{event.preventDefault();const item=records.find(entry=>entry.id===(readKanbanDrop(event, "text/plain")||dragging));if(item)void move(item,stage)}}><header><span>{stage}</span><b>{visible.filter(item=>item.status===stage).length}</b></header><div>{<PaginatedItems label="chamados">{visible.filter(item=>item.status===stage).map(item=>{const detail=parse(item.description)!;const Icon=stageIcon(stage);return <article data-reminder-entity-id={item.id} draggable={canEdit} onDragStart={(event:DragEvent<HTMLElement>)=>{setDragging(item.id);beginKanbanDrag(event, "text/plain", item.id)}} onDragEnd={()=>setDragging("")} onClick={()=>setSelected(item)} key={item.id}><span className="service-request-card-icon"><Icon size={16}/></span><strong>{detail.fullName}</strong><small>{detail.protocol} · ID {detail.clientId}</small><p>{detail.summary}</p>{canEdit&&<button className="service-request-delete" type="button" disabled={busy} title="Excluir chamado" aria-label={`Excluir chamado ${detail.protocol}`} onClick={event=>{event.stopPropagation();void remove(item)}}><Trash2 size={15}/></button>}<footer><span>{detail.sector||item.team} · {detail.classification||detail.aiClassification}</span><time>{dt(item.updated_at)}</time></footer>{detail.routedTo&&<em><CheckCircle2 size={12}/> Enviado para {detail.routedTo}</em>}</article>})}</PaginatedItems>}</div></div>)}</section>
-    {selected&&<ServiceRequestDrawer key={selected.id} onDelete={() => void remove(selected)} onForward={() => onForward?.(parse(selected.description)!, selected.id)} item={selected} detail={parse(selected.description)!} mode={mode} canEdit={canEdit} busy={busy} onClose={()=>setSelected(null)} onMove={status=>move(selected,status)} canCreateTargets={canCreateTargets} onRoute={target=>route(selected,parse(selected.description)!,target)} onComment={async text=>{const detail=parse(selected.description)!;const at=new Date().toISOString();const next={...detail,comments:[...detail.comments,{id:crypto.randomUUID(),text,at,by:currentUser.displayName}],history:[...detail.history,{text:`Comentário registrado: ${text}`,at,by:currentUser.displayName}]};const result=await update(selected,next,"Comentário registrado no chamado.");if(result)setSelected({...selected,description:JSON.stringify(next),version:selected.version+1,updated_at:at})}}/>}
-    {taskRequest&&taskModule&&<CreateTaskModal
-      module={taskModule}
-      customers={customers}
-      user={currentUser}
-      departmentIds={taskModule.departments.filter(entry=>entry.active).map(entry=>entry.id)}
-      busy={busy}
-      initialDepartmentId={taskModule.departments.find(entry=>entry.active&&entry.name===taskRequest.item.team)?.id}
-      initial={{title:`${taskRequest.detail.protocol} · ${taskRequest.detail.fullName}`,description:taskRequest.detail.summary,customerId:taskRequest.item.customer_id||undefined,customerCode:taskRequest.detail.clientId,clientWhatsApp:taskRequest.detail.whatsapp}}
-      onClose={()=>setTaskRequest(null)}
-      onSubmit={async(payload,files)=>{const result=await operate({action:"routeServiceRequest",id:taskRequest.item.id,version:taskRequest.item.version,routeTarget:"Tarefa",taskDraft:payload},"Tarefa criada a partir do chamado.");if(result && result.id && files.length)await uploadTaskAttachments(result.id,files);if(result){setTaskRequest(null);setSelected(null)}}}
-    />}
-    {aiSettingsOpen&&<ServiceRequestAiSettingsModal canEdit={canEdit} onClose={()=>setAiSettingsOpen(false)}/>}
-  </section>;
+  const remove = async (item: WorkItem) => {
+    const result = await operate(
+      { action: "deleteWorkItem", id: item.id },
+      "Chamado excluído com sucesso.",
+    );
+    if (result) setSelected(null);
+  };
+  const update = async (
+    item: WorkItem,
+    detail: ServiceRequestDetail,
+    success: string,
+  ) =>
+    operate(
+      {
+        action: "updateWorkItem",
+        id: item.id,
+        title: item.title,
+        owner: item.owner,
+        customerName: item.customer_name,
+        amountCents: item.amount_cents,
+        version: item.version,
+        description: JSON.stringify(detail),
+      },
+      success,
+    );
+  const route = async (
+    item: WorkItem,
+    detail: ServiceRequestDetail,
+    target: string,
+  ) => {
+    if (target === "Tarefa") {
+      setTaskRequest({ item, detail });
+      return;
+    }
+    const result = await operate(
+      {
+        action: "routeServiceRequest",
+        id: item.id,
+        version: item.version,
+        routeTarget: target,
+      },
+      `Chamado encaminhado para ${target}.`,
+    );
+    if (result) setSelected(null);
+  };
+  return (
+    <section className="service-request-module">
+      <header className="module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <Headphones size={21} />
+          </span>
+          <span className="module-page-copy">
+            <span className="eyebrow">
+              {mode === "triage"
+                ? "MÓDULO · CENTRAL DE CHAMADOS"
+                : "OPERAÇÃO · EXPERIÊNCIA DO CLIENTE"}
+            </span>
+            <h1>
+              {mode === "triage" ? "Chamados" : "Acompanhamento de chamados"}
+            </h1>
+            <p>
+              {mode === "triage"
+                ? "Triagem inteligente e encaminhamento para a ferramenta responsável."
+                : "Chamados de todos os tipos, organizados por setor até a conclusão."}
+            </p>
+          </span>
+        </div>
+        {mode === "triage" && (
+          <div className="module-page-actions service-request-head-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setAiSettingsOpen(true)}
+            >
+              <Settings size={16} /> Configurar IA
+            </button>
+            <a
+              className="primary-button"
+              href="/?public=chamados"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink size={16} /> Abrir formulário público
+            </a>
+          </div>
+        )}
+      </header>
+      <section className="service-request-toolbar reminder-filter-toolbar compact-operational-filters service-compact-filters">
+        <label>
+          <span>Buscar chamado</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Protocolo, ID, cliente ou resumo"
+          />
+        </label>
+        <label>
+          <span>Setor responsável</span>
+          <select
+            aria-label="Filtrar chamados por setor"
+            value={sector}
+            onChange={(event) => setSector(event.target.value)}
+          >
+            <option value="all">Todos os setores</option>
+            {["Suporte", "Sucesso do Cliente", "Comercial"].map((name) => (
+              <option key={name}>{name}</option>
+            ))}
+          </select>
+        </label>
+        {reminderFilter.control}
+        <b>{visible.length} chamado(s)</b>
+      </section>
+      <section className={`service-request-board ${mode}`}>
+        {stages.map((stage) => (
+          <div
+            className="service-request-column"
+            key={stage}
+            onDragOver={(event) => canEdit && event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const item = records.find(
+                (entry) =>
+                  entry.id ===
+                  (readKanbanDrop(event, "text/plain") || dragging),
+              );
+              if (item) void move(item, stage);
+            }}
+          >
+            <header>
+              <span>{stage}</span>
+              <b>{visible.filter((item) => item.status === stage).length}</b>
+            </header>
+            <div>
+              {
+                <PaginatedItems label="chamados">
+                  {visible
+                    .filter((item) => item.status === stage)
+                    .map((item) => {
+                      const detail = parse(item.description)!;
+                      const Icon = stageIcon(stage);
+                      return (
+                        <article
+                          data-reminder-entity-id={item.id}
+                          draggable={canEdit}
+                          onDragStart={(event: DragEvent<HTMLElement>) => {
+                            setDragging(item.id);
+                            beginKanbanDrag(event, "text/plain", item.id);
+                          }}
+                          onDragEnd={() => setDragging("")}
+                          onClick={() => setSelected(item)}
+                          key={item.id}
+                        >
+                          <span className="service-request-card-icon">
+                            <Icon size={16} />
+                          </span>
+                          <strong>{detail.fullName}</strong>
+                          <small>
+                            {detail.protocol} · ID {detail.clientId}
+                          </small>
+                          <p>{detail.summary}</p>
+                          {canEdit && (
+                            <button
+                              className="service-request-delete"
+                              type="button"
+                              disabled={busy}
+                              title="Excluir chamado"
+                              aria-label={`Excluir chamado ${detail.protocol}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void remove(item);
+                              }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                          <footer>
+                            <span>
+                              {detail.sector || item.team} ·{" "}
+                              {detail.classification || detail.aiClassification}
+                            </span>
+                            <time>{dt(item.updated_at)}</time>
+                          </footer>
+                          {detail.routedTo && (
+                            <em>
+                              <CheckCircle2 size={12} /> Enviado para{" "}
+                              {detail.routedTo}
+                            </em>
+                          )}
+                        </article>
+                      );
+                    })}
+                </PaginatedItems>
+              }
+            </div>
+          </div>
+        ))}
+      </section>
+      {selected && (
+        <ServiceRequestDrawer
+          key={selected.id}
+          onDelete={() => void remove(selected)}
+          onForward={() =>
+            onForward?.(parse(selected.description)!, selected.id)
+          }
+          item={selected}
+          detail={parse(selected.description)!}
+          mode={mode}
+          canEdit={canEdit}
+          busy={busy}
+          onClose={() => setSelected(null)}
+          onMove={(status) => move(selected, status)}
+          canCreateTargets={canCreateTargets}
+          onRoute={(target) =>
+            route(selected, parse(selected.description)!, target)
+          }
+          onComment={async (text) => {
+            const detail = parse(selected.description)!;
+            const at = new Date().toISOString();
+            const next = {
+              ...detail,
+              comments: [
+                ...detail.comments,
+                {
+                  id: crypto.randomUUID(),
+                  text,
+                  at,
+                  by: currentUser.displayName,
+                },
+              ],
+              history: [
+                ...detail.history,
+                {
+                  text: `Comentário registrado: ${text}`,
+                  at,
+                  by: currentUser.displayName,
+                },
+              ],
+            };
+            const result = await update(
+              selected,
+              next,
+              "Comentário registrado no chamado.",
+            );
+            if (result)
+              setSelected({
+                ...selected,
+                description: JSON.stringify(next),
+                version: selected.version + 1,
+                updated_at: at,
+              });
+          }}
+        />
+      )}
+      {taskRequest && taskModule && (
+        <CreateTaskModal
+          module={taskModule}
+          customers={customers}
+          user={currentUser}
+          departmentIds={taskModule.departments
+            .filter((entry) => entry.active)
+            .map((entry) => entry.id)}
+          busy={busy}
+          initialDepartmentId={
+            taskModule.departments.find(
+              (entry) => entry.active && entry.name === taskRequest.item.team,
+            )?.id
+          }
+          initial={{
+            title: `${taskRequest.detail.protocol} · ${taskRequest.detail.fullName}`,
+            description: taskRequest.detail.summary,
+            customerId: taskRequest.item.customer_id || undefined,
+            customerCode: taskRequest.detail.clientId,
+            clientWhatsApp: taskRequest.detail.whatsapp,
+          }}
+          onClose={() => setTaskRequest(null)}
+          onSubmit={async (payload, files) => {
+            const result = await operate(
+              {
+                action: "routeServiceRequest",
+                id: taskRequest.item.id,
+                version: taskRequest.item.version,
+                routeTarget: "Tarefa",
+                taskDraft: payload,
+              },
+              "Tarefa criada a partir do chamado.",
+            );
+            if (result && result.id && files.length)
+              await uploadTaskAttachments(result.id, files);
+            if (result) {
+              setTaskRequest(null);
+              setSelected(null);
+            }
+          }}
+        />
+      )}
+      {aiSettingsOpen && (
+        <ServiceRequestAiSettingsModal
+          canEdit={canEdit}
+          onClose={() => setAiSettingsOpen(false)}
+        />
+      )}
+    </section>
+  );
 }
 
-function ServiceRequestAiSettingsModal({canEdit,onClose}:{canEdit:boolean;onClose:()=>void}){
-  const [settings,setSettings]=useState<AiIntegrationSettings|null>(null);const [apiKey,setApiKey]=useState("");const [showKey,setShowKey]=useState(false);const [loading,setLoading]=useState(true);const [saving,setSaving]=useState(false);const [testing,setTesting]=useState(false);const [message,setMessage]=useState<{tone:"ok"|"error";text:string}|null>(null);
-  useEffect(()=>{let active=true;void fetch("/api/service-request-ai-settings",{cache:"no-store"}).then(async response=>{const result=await response.json() as AiIntegrationSettings&{detail?:string};if(!response.ok)throw new Error(result.detail||"Não foi possível carregar a configuração.");if(active)setSettings(result)}).catch(error=>{if(active)setMessage({tone:"error",text:error instanceof Error?error.message:"Não foi possível carregar a configuração."})}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[]);
-  const update=<K extends keyof AiIntegrationSettings>(key:K,value:AiIntegrationSettings[K])=>setSettings(current=>current?{...current,[key]:value}:current);
-  const save=async(event:FormEvent)=>{event.preventDefault();if(!settings||!canEdit)return;setSaving(true);setMessage(null);try{const response=await fetch("/api/service-request-ai-settings",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({...settings,apiKey})});const result=await response.json() as {detail?:string;hasApiKey?:boolean};if(!response.ok)throw new Error(result.detail||"Não foi possível salvar a integração.");setApiKey("");setSettings(current=>current?{...current,hasApiKey:Boolean(result.hasApiKey),apiKeyMasked:apiKey?`••••••••${apiKey.slice(-4)}`:current.apiKeyMasked}:current);setMessage({tone:"ok",text:"Integração de IA salva com segurança."})}catch(error){setMessage({tone:"error",text:error instanceof Error?error.message:"Não foi possível salvar a integração."})}finally{setSaving(false)}};
-  const test=async()=>{setTesting(true);setMessage(null);try{const response=await fetch("/api/service-request-ai-settings/test",{method:"POST"});const result=await response.json() as {detail?:string;classification?:string;confidence?:number};if(!response.ok)throw new Error(result.detail||"A integração não respondeu.");setMessage({tone:"ok",text:`Conexão validada. Exemplo classificado como ${result.classification} (${Math.round((result.confidence||0)*100)}%).`})}catch(error){setMessage({tone:"error",text:error instanceof Error?error.message:"A integração não respondeu."})}finally{setTesting(false)}};
-  return <div className="modal-backdrop service-request-ai-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><section className="modal service-request-ai-modal" role="dialog" aria-modal="true" aria-label="Configurar integração de IA"><header className="modal-head"><div><span className="eyebrow">CENTRAL DE CHAMADOS · IA</span><h2>Integração da triagem inteligente</h2><p>Configure o serviço que analisará e classificará os chamados recebidos.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><X size={19}/></button></header>{loading?<div className="service-request-ai-loading"><Bot/><span>Carregando configuração segura...</span></div>:settings?<form className="form-grid service-request-ai-form" onSubmit={save}><label>Status da integração<select disabled={!canEdit} value={settings.enabled?"enabled":"disabled"} onChange={event=>update("enabled",event.target.value==="enabled")}><option value="disabled">Desativada · usar análise local</option><option value="enabled">Ativada · usar IA externa</option></select></label><label>Provedor<select disabled={!canEdit} value={settings.provider} onChange={event=>update("provider",event.target.value)}><option value="openai">OpenAI</option><option value="azure-openai">Azure OpenAI</option><option value="compatible">API compatível com OpenAI</option></select></label><label className="wide">Endpoint da API *<input disabled={!canEdit} type="url" required value={settings.endpoint} onChange={event=>update("endpoint",event.target.value)} placeholder="https://api.openai.com/v1/chat/completions"/><small>Informe o endereço completo do endpoint de chat/completions.</small></label><label>Modelo *<input list="service-request-ai-models" disabled={!canEdit} required value={settings.model} onChange={event=>update("model",event.target.value)} placeholder="Selecione ou informe o modelo"/><datalist id="service-request-ai-models"><option value="gpt-6-luna"/><option value="gpt-4.1-mini"/></datalist></label><label>Tempo limite (segundos)<input disabled={!canEdit} type="number" min="5" max="90" value={settings.timeoutSeconds} onChange={event=>update("timeoutSeconds",Number(event.target.value)||20)}/></label><label className="wide">Chave da API<div className="service-request-secret-field"><input disabled={!canEdit} type={showKey?"text":"password"} value={apiKey} onChange={event=>setApiKey(event.target.value)} placeholder={settings.hasApiKey?`${settings.apiKeyMasked} · deixe vazio para manter`:"Cole a chave de integração"}/><button type="button" onClick={()=>setShowKey(current=>!current)} aria-label={showKey?"Ocultar chave":"Mostrar chave"}>{showKey?<EyeOff size={16}/>:<Eye size={16}/>}</button></div><small>{settings.hasApiKey?"Já existe uma chave criptografada. Digite outra somente para substituí-la.":"A chave será criptografada antes de ser armazenada."}</small></label><label className="wide">Prompt de classificação<textarea disabled={!canEdit} rows={6} maxLength={6000} value={settings.systemPrompt} onChange={event=>update("systemPrompt",event.target.value)}/><small>Oriente a IA a retornar etapa, prioridade, justificativa e confiança em JSON.</small></label><div className="service-request-ai-security wide"><ShieldCheck size={19}/><span><strong>Operação protegida</strong><small>Em caso de erro, lentidão ou indisponibilidade da IA, a classificação local assume automaticamente.</small></span></div>{message&&<p className={`service-request-ai-message ${message.tone}`}>{message.tone==="ok"?<CheckCircle2 size={15}/>:<AlertTriangle size={15}/>} {message.text}</p>}<div className="form-actions wide"><button type="button" className="secondary-button" onClick={onClose}>Fechar</button>{canEdit&&<><button type="button" className="secondary-button" disabled={saving||testing||!settings.hasApiKey} onClick={()=>void test()}><PlugZap size={16}/> {testing?"Testando...":"Testar integração"}</button><button className="primary-button" disabled={saving}><Save size={16}/> {saving?"Salvando...":"Salvar configuração"}</button></>}</div></form>:<div className="service-request-ai-loading error"><AlertTriangle/><span>{message?.text||"Configuração indisponível."}</span></div>}</section></div>;
+function ServiceRequestAiSettingsModal({
+  canEdit,
+  onClose,
+}: {
+  canEdit: boolean;
+  onClose: () => void;
+}) {
+  const [settings, setSettings] = useState<AiIntegrationSettings | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [message, setMessage] = useState<{
+    tone: "ok" | "error";
+    text: string;
+  } | null>(null);
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/service-request-ai-settings", { cache: "no-store" })
+      .then(async (response) => {
+        const result = (await response.json()) as AiIntegrationSettings & {
+          detail?: string;
+        };
+        if (!response.ok)
+          throw new Error(
+            result.detail || "Não foi possível carregar a configuração.",
+          );
+        if (active) setSettings(result);
+      })
+      .catch((error) => {
+        if (active)
+          setMessage({
+            tone: "error",
+            text:
+              error instanceof Error
+                ? error.message
+                : "Não foi possível carregar a configuração.",
+          });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const update = <K extends keyof AiIntegrationSettings>(
+    key: K,
+    value: AiIntegrationSettings[K],
+  ) =>
+    setSettings((current) =>
+      current ? { ...current, [key]: value } : current,
+    );
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!settings || !canEdit) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/service-request-ai-settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...settings, apiKey }),
+      });
+      const result = (await response.json()) as {
+        detail?: string;
+        hasApiKey?: boolean;
+      };
+      if (!response.ok)
+        throw new Error(
+          result.detail || "Não foi possível salvar a integração.",
+        );
+      setApiKey("");
+      setSettings((current) =>
+        current
+          ? {
+              ...current,
+              hasApiKey: Boolean(result.hasApiKey),
+              apiKeyMasked: apiKey
+                ? `••••••••${apiKey.slice(-4)}`
+                : current.apiKeyMasked,
+            }
+          : current,
+      );
+      setMessage({ tone: "ok", text: "Integração de IA salva com segurança." });
+    } catch (error) {
+      setMessage({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Não foi possível salvar a integração.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const test = async () => {
+    setTesting(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/service-request-ai-settings/test", {
+        method: "POST",
+      });
+      const result = (await response.json()) as {
+        detail?: string;
+        classification?: string;
+        confidence?: number;
+      };
+      if (!response.ok)
+        throw new Error(result.detail || "A integração não respondeu.");
+      setMessage({
+        tone: "ok",
+        text: `Conexão validada. Exemplo classificado como ${result.classification} (${Math.round((result.confidence || 0) * 100)}%).`,
+      });
+    } catch (error) {
+      setMessage({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "A integração não respondeu.",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+  return (
+    <div
+      className="modal-backdrop service-request-ai-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <section
+        className="modal service-request-ai-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Configurar integração de IA"
+      >
+        <header className="modal-head">
+          <div>
+            <span className="eyebrow">CENTRAL DE CHAMADOS · IA</span>
+            <h2>Integração da triagem inteligente</h2>
+            <p>
+              Configure o serviço que analisará e classificará os chamados
+              recebidos.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Fechar"
+          >
+            <X size={19} />
+          </button>
+        </header>
+        {loading ? (
+          <div className="service-request-ai-loading">
+            <Bot />
+            <span>Carregando configuração segura...</span>
+          </div>
+        ) : settings ? (
+          <form className="form-grid service-request-ai-form" onSubmit={save}>
+            <label>
+              Status da integração
+              <select
+                disabled={!canEdit}
+                value={settings.enabled ? "enabled" : "disabled"}
+                onChange={(event) =>
+                  update("enabled", event.target.value === "enabled")
+                }
+              >
+                <option value="disabled">
+                  Desativada · usar análise local
+                </option>
+                <option value="enabled">Ativada · usar IA externa</option>
+              </select>
+            </label>
+            <label>
+              Provedor
+              <select
+                disabled={!canEdit}
+                value={settings.provider}
+                onChange={(event) => update("provider", event.target.value)}
+              >
+                <option value="openai">OpenAI</option>
+                <option value="azure-openai">Azure OpenAI</option>
+                <option value="compatible">API compatível com OpenAI</option>
+              </select>
+            </label>
+            <label className="wide">
+              Endpoint da API *
+              <input
+                disabled={!canEdit}
+                type="url"
+                required
+                value={settings.endpoint}
+                onChange={(event) => update("endpoint", event.target.value)}
+                placeholder="https://api.openai.com/v1/chat/completions"
+              />
+              <small>
+                Informe o endereço completo do endpoint de chat/completions.
+              </small>
+            </label>
+            <label>
+              Modelo *
+              <input
+                list="service-request-ai-models"
+                disabled={!canEdit}
+                required
+                value={settings.model}
+                onChange={(event) => update("model", event.target.value)}
+                placeholder="Selecione ou informe o modelo"
+              />
+              <datalist id="service-request-ai-models">
+                <option value="gpt-6-luna" />
+                <option value="gpt-4.1-mini" />
+              </datalist>
+            </label>
+            <label>
+              Tempo limite (segundos)
+              <input
+                disabled={!canEdit}
+                type="number"
+                min="5"
+                max="90"
+                value={settings.timeoutSeconds}
+                onChange={(event) =>
+                  update("timeoutSeconds", Number(event.target.value) || 20)
+                }
+              />
+            </label>
+            <label className="wide">
+              Chave da API
+              <div className="service-request-secret-field">
+                <input
+                  disabled={!canEdit}
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  placeholder={
+                    settings.hasApiKey
+                      ? `${settings.apiKeyMasked} · deixe vazio para manter`
+                      : "Cole a chave de integração"
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((current) => !current)}
+                  aria-label={showKey ? "Ocultar chave" : "Mostrar chave"}
+                >
+                  {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <small>
+                {settings.hasApiKey
+                  ? "Já existe uma chave criptografada. Digite outra somente para substituí-la."
+                  : "A chave será criptografada antes de ser armazenada."}
+              </small>
+            </label>
+            <label className="wide">
+              Prompt de classificação
+              <textarea
+                disabled={!canEdit}
+                rows={6}
+                maxLength={6000}
+                value={settings.systemPrompt}
+                onChange={(event) => update("systemPrompt", event.target.value)}
+              />
+              <small>
+                Oriente a IA a retornar etapa, prioridade, justificativa e
+                confiança em JSON.
+              </small>
+            </label>
+            <div className="service-request-ai-security wide">
+              <ShieldCheck size={19} />
+              <span>
+                <strong>Operação protegida</strong>
+                <small>
+                  Em caso de erro, lentidão ou indisponibilidade da IA, a
+                  classificação local assume automaticamente.
+                </small>
+              </span>
+            </div>
+            {message && (
+              <p className={`service-request-ai-message ${message.tone}`}>
+                {message.tone === "ok" ? (
+                  <CheckCircle2 size={15} />
+                ) : (
+                  <AlertTriangle size={15} />
+                )}{" "}
+                {message.text}
+              </p>
+            )}
+            <div className="form-actions wide">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={onClose}
+              >
+                Fechar
+              </button>
+              {canEdit && (
+                <>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={saving || testing || !settings.hasApiKey}
+                    onClick={() => void test()}
+                  >
+                    <PlugZap size={16} />{" "}
+                    {testing ? "Testando..." : "Testar integração"}
+                  </button>
+                  <button className="primary-button" disabled={saving}>
+                    <Save size={16} />{" "}
+                    {saving ? "Salvando..." : "Salvar configuração"}
+                  </button>
+                </>
+              )}
+            </div>
+          </form>
+        ) : (
+          <div className="service-request-ai-loading error">
+            <AlertTriangle />
+            <span>{message?.text || "Configuração indisponível."}</span>
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }
 
-function ServiceRequestDrawer({canCreateTargets,onDelete,onForward,item,detail,mode,canEdit,busy,onClose,onMove,onRoute,onComment}:{onForward:()=>void;onDelete:()=>void;item:WorkItem;detail:ServiceRequestDetail;mode:"triage"|"followup";canEdit:boolean;busy:boolean;onClose:()=>void;onMove:(status:string)=>Promise<void>;canCreateTargets:string[];onRoute:(target:string)=>Promise<void>;onComment:(text:string)=>Promise<void>}){
-  const [comment,setComment]=useState("");const stages=mode==="triage"?TRIAGE_STAGES:FOLLOWUP_STAGES;const destinations=[{label:"Tarefa",module:"tasks"},{label:"Desenvolvimento",module:"ti"},{label:"Sugestão",module:"suggestions"},{label:"Cancelamento",module:"cancellations"},{label:"Nova contratação",module:"commercial"},{label:"Acompanhamento",module:"cs"}].filter(entry=>canCreateTargets.includes(entry.module));
-  const [target,setTarget]=useState(()=>destinations.find(entry=>entry.label===(detail.classification||detail.aiClassification))?.label||destinations[0]?.label||"");
-  const attachmentRequestId=detail.sourceRequestId||item.id;
-  return <div className="drawer-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><aside className="drawer service-request-drawer"><header className="drawer-head"><div><span className="eyebrow">{detail.protocol} · {item.status.toUpperCase()}</span><h2>{detail.fullName}</h2><p>ID {detail.clientId} · <PhoneLink phone={detail.whatsapp}/></p></div><button className="icon-button" onClick={onClose}><X size={19}/></button></header><div className="service-request-drawer-body">{canEdit&&<button type="button" className="secondary-button danger-action" disabled={busy} onClick={onDelete}><Trash2 size={15}/> Excluir chamado</button>}<section className="service-request-ai"><Bot/><span><small>TRIAGEM INTELIGENTE · {Math.round(detail.aiConfidence*100)}% DE CONFIANÇA</small><strong>{detail.aiClassification}</strong><p>{detail.aiReason}</p></span>{mode==="triage"&&item.status==="Triagem"&&canEdit&&<button className="primary-button" disabled={busy} onClick={()=>void onMove(detail.aiClassification)}><ArrowRight size={15}/> Aplicar classificação</button>}</section><section className="service-request-summary"><h3>Resumo da solicitação</h3><p>{detail.summary}</p><dl><div><dt>Tipo informado</dt><dd>{detail.selectedType}</dd></div><div><dt>Data de abertura</dt><dd>{dt(detail.submittedAt)}</dd></div><div><dt>Cliente vinculado</dt><dd>{item.customer_name||"Cadastro não localizado"}</dd></div><div><dt>Setor responsável</dt><dd>{detail.sector||item.team}</dd></div><div><dt>Responsável</dt><dd>{item.owner}</dd></div></dl></section>{detail.attachments.length>0&&<section className="service-request-files"><h3><Paperclip size={15}/> Arquivos</h3>{detail.attachments.map(file=><a key={file.id} href={`/api/service-request-files/${attachmentRequestId}/${file.id}`} target="_blank" rel="noreferrer"><FileText size={15}/><span><b>{file.name}</b><small>{Math.max(1,Math.round(file.sizeBytes/1024))} KB</small></span><ExternalLink size={13}/></a>)}</section>}{canEdit&&<section className="service-request-actions">{mode === "followup" && <button className="primary-button" onClick={onForward}><Send size={15}/> Encaminhar cliente</button>}<label>Etapa<select value={item.status} onChange={event=>void onMove(event.target.value)}>{stages.map(stage=><option key={stage}>{stage}</option>)}</select></label>{mode==="triage"&&detail.followupId&&<a className="primary-button" href={`/?mod=serviceFollowup&card=${detail.followupId}`}><ArrowRight size={15}/> Abrir acompanhamento do setor</a>}{mode==="followup"&&(detail.routedAt?<div className="service-request-route-result"><CheckCircle2 size={18}/><span><strong>Encaminhado para {detail.routedTo}</strong><small>{dt(detail.routedAt)}{detail.routedBy?` · ${detail.routedBy}`:""}</small></span></div>:destinations.length>0?<div className="service-request-route-form"><label>Direcionar para a funcionalidade<select aria-label="Funcionalidade de destino" value={target} onChange={event=>setTarget(event.target.value)}>{destinations.map(entry=><option key={entry.module}>{entry.label}</option>)}</select></label><button className="primary-button" disabled={busy||!target} onClick={()=>void onRoute(target)}><Send size={15}/> Criar card e encaminhar</button></div>:<p>Seu acesso não permite criar registros nas funcionalidades de destino.</p>)}</section>}<section className="service-request-comments"><h3><MessageSquareText size={15}/> Comentários e histórico</h3>{canEdit&&<form data-comment-composer="true" onSubmit={(event:FormEvent)=>{event.preventDefault();if(!comment.trim())return;void onComment(comment).then(()=>setComment(""))}}><CommentInput disabled={busy} data-comment-input="true" rows={3} value={comment} onChange={event=>setComment(event.target.value)} placeholder="Registrar evolução do chamado..."/><button className="primary-button" disabled={busy||!comment.trim()}>Comentar</button></form>}<div><CommentHistory>{[...detail.comments].reverse().map(entry=><article data-reminder-entity-id={entry.id} key={entry.id}><strong>{entry.by}</strong><time>{dt(entry.at)}</time><p><CommentContent text={entry.text}/></p></article>)}</CommentHistory></div></section></div></aside></div>;
+function ServiceRequestDrawer({
+  canCreateTargets,
+  onDelete,
+  onForward,
+  item,
+  detail,
+  mode,
+  canEdit,
+  busy,
+  onClose,
+  onMove,
+  onRoute,
+  onComment,
+}: {
+  onForward: () => void;
+  onDelete: () => void;
+  item: WorkItem;
+  detail: ServiceRequestDetail;
+  mode: "triage" | "followup";
+  canEdit: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onMove: (status: string) => Promise<void>;
+  canCreateTargets: string[];
+  onRoute: (target: string) => Promise<void>;
+  onComment: (text: string) => Promise<void>;
+}) {
+  const [comment, setComment] = useState("");
+  const stages = mode === "triage" ? TRIAGE_STAGES : FOLLOWUP_STAGES;
+  const destinations = [
+    { label: "Tarefa", module: "tasks" },
+    { label: "Desenvolvimento", module: "ti" },
+    { label: "Sugestão", module: "suggestions" },
+    { label: "Cancelamento", module: "cancellations" },
+    { label: "Nova contratação", module: "commercial" },
+    { label: "Acompanhamento", module: "cs" },
+  ].filter((entry) => canCreateTargets.includes(entry.module));
+  const [target, setTarget] = useState(
+    () =>
+      destinations.find(
+        (entry) =>
+          entry.label === (detail.classification || detail.aiClassification),
+      )?.label ||
+      destinations[0]?.label ||
+      "",
+  );
+  const attachmentRequestId = detail.sourceRequestId || item.id;
+  return (
+    <div
+      className="drawer-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <aside className="drawer service-request-drawer">
+        <header className="drawer-head">
+          <div>
+            <span className="eyebrow">
+              {detail.protocol} · {item.status.toUpperCase()}
+            </span>
+            <h2>{detail.fullName}</h2>
+            <p>
+              ID {detail.clientId} · <PhoneLink phone={detail.whatsapp} />
+            </p>
+          </div>
+          <button className="icon-button" onClick={onClose}>
+            <X size={19} />
+          </button>
+        </header>
+        <div className="service-request-drawer-body">
+          {canEdit && (
+            <button
+              type="button"
+              className="secondary-button danger-action"
+              disabled={busy}
+              onClick={onDelete}
+            >
+              <Trash2 size={15} /> Excluir chamado
+            </button>
+          )}
+          <section className="service-request-ai">
+            <Bot />
+            <span>
+              <small>
+                TRIAGEM INTELIGENTE · {Math.round(detail.aiConfidence * 100)}%
+                DE CONFIANÇA
+              </small>
+              <strong>{detail.aiClassification}</strong>
+              <p>{detail.aiReason}</p>
+            </span>
+            {mode === "triage" && item.status === "Triagem" && canEdit && (
+              <button
+                className="primary-button"
+                disabled={busy}
+                onClick={() => void onMove(detail.aiClassification)}
+              >
+                <ArrowRight size={15} /> Aplicar classificação
+              </button>
+            )}
+          </section>
+          <section className="service-request-summary">
+            <h3>Resumo da solicitação</h3>
+            <p>{detail.summary}</p>
+            <dl>
+              <div>
+                <dt>Tipo informado</dt>
+                <dd>{detail.selectedType}</dd>
+              </div>
+              <div>
+                <dt>Data de abertura</dt>
+                <dd>{dt(detail.submittedAt)}</dd>
+              </div>
+              <div>
+                <dt>Cliente vinculado</dt>
+                <dd>{item.customer_name || "Cadastro não localizado"}</dd>
+              </div>
+              <div>
+                <dt>Setor responsável</dt>
+                <dd>{detail.sector || item.team}</dd>
+              </div>
+              <div>
+                <dt>Responsável</dt>
+                <dd>{item.owner}</dd>
+              </div>
+            </dl>
+          </section>
+          {detail.attachments.length > 0 && (
+            <section className="service-request-files">
+              <h3>
+                <Paperclip size={15} /> Arquivos
+              </h3>
+              {detail.attachments.map((file) => (
+                <a
+                  key={file.id}
+                  href={`/api/service-request-files/${attachmentRequestId}/${file.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <FileText size={15} />
+                  <span>
+                    <b>{file.name}</b>
+                    <small>
+                      {Math.max(1, Math.round(file.sizeBytes / 1024))} KB
+                    </small>
+                  </span>
+                  <ExternalLink size={13} />
+                </a>
+              ))}
+            </section>
+          )}
+          {canEdit && (
+            <section className="service-request-actions">
+              {mode === "followup" && (
+                <button className="primary-button" onClick={onForward}>
+                  <Send size={15} /> Encaminhar cliente
+                </button>
+              )}
+              <label>
+                Etapa
+                <select
+                  value={item.status}
+                  onChange={(event) => void onMove(event.target.value)}
+                >
+                  {stages.map((stage) => (
+                    <option key={stage}>{stage}</option>
+                  ))}
+                </select>
+              </label>
+              {mode === "triage" && detail.followupId && (
+                <a
+                  className="primary-button"
+                  href={`/?mod=serviceFollowup&card=${detail.followupId}`}
+                >
+                  <ArrowRight size={15} /> Abrir acompanhamento do setor
+                </a>
+              )}
+              {mode === "followup" &&
+                (detail.routedAt ? (
+                  <div className="service-request-route-result">
+                    <CheckCircle2 size={18} />
+                    <span>
+                      <strong>Encaminhado para {detail.routedTo}</strong>
+                      <small>
+                        {dt(detail.routedAt)}
+                        {detail.routedBy ? ` · ${detail.routedBy}` : ""}
+                      </small>
+                    </span>
+                  </div>
+                ) : destinations.length > 0 ? (
+                  <div className="service-request-route-form">
+                    <label>
+                      Direcionar para a funcionalidade
+                      <select
+                        aria-label="Funcionalidade de destino"
+                        value={target}
+                        onChange={(event) => setTarget(event.target.value)}
+                      >
+                        {destinations.map((entry) => (
+                          <option key={entry.module}>{entry.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={busy || !target}
+                      onClick={() => void onRoute(target)}
+                    >
+                      <Send size={15} /> Criar card e encaminhar
+                    </button>
+                  </div>
+                ) : (
+                  <p>
+                    Seu acesso não permite criar registros nas funcionalidades
+                    de destino.
+                  </p>
+                ))}
+            </section>
+          )}
+          <section className="service-request-comments">
+            <h3>
+              <MessageSquareText size={15} /> Comentários e histórico
+            </h3>
+            {canEdit && (
+              <form
+                data-comment-composer="true"
+                onSubmit={(event: FormEvent) => {
+                  event.preventDefault();
+                  if (!comment.trim()) return;
+                  void onComment(comment).then(() => setComment(""));
+                }}
+              >
+                <CommentInput
+                  disabled={busy}
+                  data-comment-input="true"
+                  rows={3}
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  placeholder="Registrar evolução do chamado..."
+                />
+                <button
+                  className="primary-button"
+                  disabled={busy || !comment.trim()}
+                >
+                  Comentar
+                </button>
+              </form>
+            )}
+            <div>
+              <CommentHistory>
+                {[...detail.comments].reverse().map((entry) => (
+                  <article data-reminder-entity-id={entry.id} key={entry.id}>
+                    <strong>{entry.by}</strong>
+                    <time>{dt(entry.at)}</time>
+                    <p>
+                      <CommentContent text={entry.text} />
+                    </p>
+                  </article>
+                ))}
+              </CommentHistory>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  );
 }
 
-export function PublicServiceRequestPage(){
-  const [files,setFiles]=useState<File[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [protocol,setProtocol]=useState("");const [summaryLength,setSummaryLength]=useState(0);
-  const [clientId,setClientId]=useState("");
-  const [companyName,setCompanyName]=useState("");
-  const [whatsapp,setWhatsapp]=useState("");
-  const [lookup,setLookup]=useState("");
-  useEffect(()=>{
-    if(clientId.length!==6)return;
-    const controller=new AbortController();
-    const timer=window.setTimeout(async()=>{
+export function PublicServiceRequestPage() {
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [protocol, setProtocol] = useState("");
+  const [summaryLength, setSummaryLength] = useState(0);
+  const [clientId, setClientId] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [lookup, setLookup] = useState("");
+  useEffect(() => {
+    if (clientId.length !== 6) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
       setLookup("Buscando cadastro...");
       try {
-        const response=await fetch(`/api/public-service-requests?clientId=${encodeURIComponent(clientId)}`,{signal:controller.signal,cache:"no-store"});
-        const result=await response.json() as { matched?:boolean;companyName?:string;whatsapp?:string };
-        if(!response.ok)throw new Error("lookup");
-        if(controller.signal.aborted)return;
-        if(result.matched){setCompanyName(result.companyName??"");setWhatsapp(result.whatsapp??"");setLookup("Cadastro localizado. Confira os dados de contato.");}
-        else setLookup("Cadastro não localizado. Preencha os dados abaixo.");
-      }catch{if(!controller.signal.aborted)setLookup("Não foi possível consultar. Preencha os dados abaixo para continuar.");}
-    },300);
-    return()=>{controller.abort();window.clearTimeout(timer);};
-  },[clientId]);
-  const submit=async(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();setBusy(true);setError("");try{const form=new FormData(event.currentTarget);files.forEach(file=>form.append("files",file));const response=await fetch("/api/public-service-requests",{method:"POST",body:form});const result=await response.json() as {protocol?:string;detail?:string};if(!response.ok)throw new Error(result.detail||"Não foi possível abrir o chamado.");setProtocol(result.protocol||"");}catch(caught){setError(caught instanceof Error?caught.message:"Não foi possível abrir o chamado.")}finally{setBusy(false)}};
-  const addFiles=(incoming:File[])=>setFiles(current=>[...current,...incoming.filter(file=>!current.some(entry=>entry.name===file.name&&entry.size===file.size&&entry.lastModified===file.lastModified))].slice(0,5));
-  const openFile=(file:File)=>{const url=URL.createObjectURL(file);window.open(url,"_blank","noopener,noreferrer");window.setTimeout(()=>URL.revokeObjectURL(url),60_000)};
-  return <main className="external-experience-page public-service-request-page"><section className="external-experience-card public-service-request-card"><header className="external-experience-header"><span className="external-experience-icon"><Headphones size={31}/></span><div><small>CENTRAL DE CHAMADOS <i/> DONTUS</small><h1>Como podemos ajudar?</h1><p>Preencha as informações abaixo para que possamos direcionar sua solicitação da melhor forma.</p></div></header>{protocol?<div className="public-service-request-success"><CheckCircle2 size={42}/><h2>Chamado aberto com sucesso</h2><p>Guarde o protocolo para acompanhamento.</p><strong>{protocol}</strong><button onClick={()=>{setProtocol("");setFiles([]);setSummaryLength(0);setClientId("");setCompanyName("");setWhatsapp("");setLookup("")}}>Abrir outro chamado</button></div>:<form onSubmit={submit}><label><span className="public-field-label">ID do cliente <b>*</b><CircleHelp size={14}/></span><span className="public-input-shell"><Building2/><input name="clientId" required inputMode="numeric" pattern="\d{6}" maxLength={6} placeholder="000000" value={clientId} onChange={event=>{setClientId(event.currentTarget.value.replace(/\D/g,"").slice(0,6));setCompanyName("");setWhatsapp("");setLookup("")}}/></span><small role="status">{lookup||"Digite o ID da clínica conforme informado no sistema."}</small></label><label><span className="public-field-label">Nome da empresa <b>*</b></span><span className="public-input-shell"><Store/><input name="companyName" required minLength={3} maxLength={180} placeholder="Digite o nome da empresa" value={companyName} onChange={event=>setCompanyName(event.target.value)}/></span></label><label><span className="public-field-label">Contato (WhatsApp) <b>*</b></span><span className="public-input-shell"><Phone/><PhoneInput name="whatsapp" required type="tel" minLength={10} maxLength={20} placeholder="(00) 00000-0000" value={whatsapp} onChange={event=>setWhatsapp(event.target.value)}/></span><small>Informe um número de WhatsApp para contato.</small></label><fieldset><legend>Tipo de solicitação <b>*</b><CircleHelp size={14}/></legend><div>{SERVICE_REQUEST_TYPE_OPTIONS.map(({value,icon:Icon,tone})=><label className={`public-request-type ${tone}`} key={value}><input type="radio" name="type" value={value} required/><i/><Icon/><span>{value}</span></label>)}</div></fieldset><label className="wide public-summary-field"><span className="public-field-label">Descrição <b>*</b></span><span className="public-textarea-shell"><FileText/><textarea name="summary" required minLength={10} maxLength={1000} rows={4} placeholder="Descreva sua solicitação com o máximo de detalhes possível..." onChange={event=>setSummaryLength(event.currentTarget.value.length)}/><small>{summaryLength}/1000</small></span></label><div className="wide public-request-upload"><span className="public-field-label">Imagens ou arquivos <small>(opcional)</small></span><label><span><FileUp/><span><strong>{files.length?`${files.length} arquivo(s) selecionado(s)`:"Selecione os arquivos"}</strong><small>Você pode enviar imagens, vídeos ou documentos (PDF, JPG, PNG, etc).</small></span></span><b><FileUp/>Escolher arquivo</b><input type="file" multiple  onChange={event=>addFiles(Array.from(event.currentTarget.files??[]))}/></label><small>Anexo opcional: até 5 arquivos, com no máximo 25 MB cada.</small>{files.length>0&&<div className="public-request-file-list">{files.map(file=><button type="button" key={`${file.name}-${file.lastModified}`} onClick={()=>openFile(file)}><FileText/><span>{file.name}</span><small>{Math.max(1,Math.round(file.size/1024))} KB</small><ExternalLink/></button>)}</div>}</div>{error&&<p className="form-error wide"><XCircle size={14}/>{error}</p>}<button className="public-gradient-button wide" disabled={busy}><Send size={19}/>{busy?"Enviando chamado...":"Enviar solicitação"}</button></form>}</section></main>;
+        const response = await fetch(
+          `/api/public-service-requests?clientId=${encodeURIComponent(clientId)}`,
+          { signal: controller.signal, cache: "no-store" },
+        );
+        const result = (await response.json()) as {
+          matched?: boolean;
+          companyName?: string;
+          whatsapp?: string;
+        };
+        if (!response.ok) throw new Error("lookup");
+        if (controller.signal.aborted) return;
+        if (result.matched) {
+          setCompanyName(result.companyName ?? "");
+          setWhatsapp(result.whatsapp ?? "");
+          setLookup("Cadastro localizado. Confira os dados de contato.");
+        } else setLookup("Cadastro não localizado. Preencha os dados abaixo.");
+      } catch {
+        if (!controller.signal.aborted)
+          setLookup(
+            "Não foi possível consultar. Preencha os dados abaixo para continuar.",
+          );
+      }
+    }, 300);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [clientId]);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const form = new FormData(event.currentTarget);
+      files.forEach((file) => form.append("files", file));
+      const response = await fetch("/api/public-service-requests", {
+        method: "POST",
+        body: form,
+      });
+      const result = (await response.json()) as {
+        protocol?: string;
+        detail?: string;
+      };
+      if (!response.ok)
+        throw new Error(result.detail || "Não foi possível abrir o chamado.");
+      setProtocol(result.protocol || "");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Não foi possível abrir o chamado.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const addFiles = (incoming: File[]) =>
+    setFiles((current) =>
+      [
+        ...current,
+        ...incoming.filter(
+          (file) =>
+            !current.some(
+              (entry) =>
+                entry.name === file.name &&
+                entry.size === file.size &&
+                entry.lastModified === file.lastModified,
+            ),
+        ),
+      ].slice(0, 5),
+    );
+  const openFile = (file: File) => {
+    const url = URL.createObjectURL(file);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+  return (
+    <main className="external-experience-page public-service-request-page">
+      <section className="external-experience-card public-service-request-card">
+        <header className="external-experience-header">
+          <span className="external-experience-icon">
+            <Headphones size={31} />
+          </span>
+          <div>
+            <small>
+              CENTRAL DE CHAMADOS <i /> DONTUS
+            </small>
+            <h1>Como podemos ajudar?</h1>
+            <p>
+              Preencha as informações abaixo para que possamos direcionar sua
+              solicitação da melhor forma.
+            </p>
+          </div>
+        </header>
+        {protocol ? (
+          <div className="public-service-request-success">
+            <CheckCircle2 size={42} />
+            <h2>Chamado aberto com sucesso</h2>
+            <p>Guarde o protocolo para acompanhamento.</p>
+            <strong>{protocol}</strong>
+            <button
+              onClick={() => {
+                setProtocol("");
+                setFiles([]);
+                setSummaryLength(0);
+                setClientId("");
+                setCompanyName("");
+                setWhatsapp("");
+                setLookup("");
+              }}
+            >
+              Abrir outro chamado
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <label>
+              <span className="public-field-label">
+                ID do cliente <b>*</b>
+                <CircleHelp size={14} />
+              </span>
+              <span className="public-input-shell">
+                <Building2 />
+                <input
+                  name="clientId"
+                  required
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={clientId}
+                  onChange={(event) => {
+                    setClientId(
+                      event.currentTarget.value.replace(/\D/g, "").slice(0, 6),
+                    );
+                    setCompanyName("");
+                    setWhatsapp("");
+                    setLookup("");
+                  }}
+                />
+              </span>
+              <small role="status">
+                {lookup ||
+                  "Digite o ID da clínica conforme informado no sistema."}
+              </small>
+            </label>
+            <label>
+              <span className="public-field-label">
+                Nome da empresa <b>*</b>
+              </span>
+              <span className="public-input-shell">
+                <Store />
+                <input
+                  name="companyName"
+                  required
+                  minLength={3}
+                  maxLength={180}
+                  placeholder="Digite o nome da empresa"
+                  value={companyName}
+                  onChange={(event) => setCompanyName(event.target.value)}
+                />
+              </span>
+            </label>
+            <label>
+              <span className="public-field-label">
+                Contato (WhatsApp) <b>*</b>
+              </span>
+              <span className="public-input-shell">
+                <Phone />
+                <PhoneInput
+                  name="whatsapp"
+                  required
+                  type="tel"
+                  minLength={10}
+                  maxLength={20}
+                  placeholder="(00) 00000-0000"
+                  value={whatsapp}
+                  onChange={(event) => setWhatsapp(event.target.value)}
+                />
+              </span>
+              <small>Informe um número de WhatsApp para contato.</small>
+            </label>
+            <fieldset>
+              <legend>
+                Tipo de solicitação <b>*</b>
+                <CircleHelp size={14} />
+              </legend>
+              <div>
+                {SERVICE_REQUEST_TYPE_OPTIONS.map(
+                  ({ value, icon: Icon, tone }) => (
+                    <label
+                      className={`public-request-type ${tone}`}
+                      key={value}
+                    >
+                      <input type="radio" name="type" value={value} required />
+                      <i />
+                      <Icon />
+                      <span>{value}</span>
+                    </label>
+                  ),
+                )}
+              </div>
+            </fieldset>
+            <label className="wide public-summary-field">
+              <span className="public-field-label">
+                Descrição <b>*</b>
+              </span>
+              <span className="public-textarea-shell">
+                <FileText />
+                <textarea
+                  name="summary"
+                  required
+                  minLength={10}
+                  maxLength={1000}
+                  rows={4}
+                  placeholder="Descreva sua solicitação com o máximo de detalhes possível..."
+                  onChange={(event) =>
+                    setSummaryLength(event.currentTarget.value.length)
+                  }
+                />
+                <small>{summaryLength}/1000</small>
+              </span>
+            </label>
+            <div className="wide public-request-upload">
+              <span className="public-field-label">
+                Imagens ou arquivos <small>(opcional)</small>
+              </span>
+              <label>
+                <span>
+                  <FileUp />
+                  <span>
+                    <strong>
+                      {files.length
+                        ? `${files.length} arquivo(s) selecionado(s)`
+                        : "Selecione os arquivos"}
+                    </strong>
+                    <small>
+                      Você pode enviar imagens, vídeos ou documentos (PDF, JPG,
+                      PNG, etc).
+                    </small>
+                  </span>
+                </span>
+                <b>
+                  <FileUp />
+                  Escolher arquivo
+                </b>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(event) =>
+                    addFiles(Array.from(event.currentTarget.files ?? []))
+                  }
+                />
+              </label>
+              <small>
+                Anexo opcional: até 5 arquivos, com no máximo 25 MB cada.
+              </small>
+              {files.length > 0 && (
+                <div className="public-request-file-list">
+                  {files.map((file) => (
+                    <button
+                      type="button"
+                      key={`${file.name}-${file.lastModified}`}
+                      onClick={() => openFile(file)}
+                    >
+                      <FileText />
+                      <span>{file.name}</span>
+                      <small>
+                        {Math.max(1, Math.round(file.size / 1024))} KB
+                      </small>
+                      <ExternalLink />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {error && (
+              <p className="form-error wide">
+                <XCircle size={14} />
+                {error}
+              </p>
+            )}
+            <button className="public-gradient-button wide" disabled={busy}>
+              <Send size={19} />
+              {busy ? "Enviando chamado..." : "Enviar solicitação"}
+            </button>
+          </form>
+        )}
+      </section>
+    </main>
+  );
 }

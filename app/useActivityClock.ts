@@ -8,7 +8,10 @@ export default function useActivityClock() {
     const refresh = () => setNow(Date.now());
     const timer = window.setInterval(refresh, 60_000);
     window.addEventListener("focus", refresh);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
   }, []);
   return now;
 }

@@ -130,7 +130,8 @@ public sealed class WhatsAppAdministrationTests
         public required FakeMeta Handler { get; init; }
         public required ChatWhatsAppNumber Number { get; init; }
         public async Task<WhatsAppTemplate> AddTemplate() { var t = new WhatsAppTemplate { NumberId = Number.Id, MetaId = "template-123", Name = "retorno", Category = "MARKETING", Body = "Olá {{1}}, temos novidades.", Status = "APPROVED", VariablesJson = """[{"key":"destinatario","example":"Maria"}]""" }; Db.WhatsAppTemplates.Add(t); await Db.SaveChangesAsync(); return t; }
-        public static async Task<Fixture> Create() {
+        public static async Task<Fixture> Create()
+        {
             var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
             var protection = new EphemeralDataProtectionProvider();
             var handler = new FakeMeta();
@@ -149,7 +150,8 @@ public sealed class WhatsAppAdministrationTests
     {
         public string TemplateStatus { get; set; } = "APPROVED";
         public List<(string Url, string Body, string Key)> Requests { get; } = [];
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
             var path = request.RequestUri!.ToString();
             var key = request.Headers.TryGetValues("X-Security-ID", out var security) ? security.Single() : request.Headers.TryGetValues("chatwoot-api-key", out var suite) ? suite.Single() : "";
             Requests.Add((path, request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct), key));

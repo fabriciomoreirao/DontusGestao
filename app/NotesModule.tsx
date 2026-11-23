@@ -2,8 +2,24 @@
 
 import PaginatedItems from "@/app/PaginatedItems";
 
-import { Copy, GripVertical, Pencil, Plus, Save, Search, StickyNote, Trash2, X } from "lucide-react";
-import { FormEvent, useMemo, useState, type CSSProperties, type DragEvent } from "react";
+import {
+  Copy,
+  GripVertical,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  StickyNote,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  FormEvent,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type DragEvent,
+} from "react";
 
 export type Note = {
   id: string;
@@ -20,25 +36,69 @@ export type Note = {
   customerCode?: string;
 };
 
-export type NotesModuleData = { notes: Note[]; departments?: {id: string; name: string}[] };
+export type NotesModuleData = {
+  notes: Note[];
+  departments?: { id: string; name: string }[];
+};
 type OperationResult = { id?: string } | false;
-type Operate = (payload: Record<string, unknown>, success: string) => Promise<OperationResult>;
-export type EditorState = { id: string | null; title: string; content: string; color: string; visibility: "public" | "private"; departmentId?: string | null; customerId?: string | null; customerCode?: string };
+type Operate = (
+  payload: Record<string, unknown>,
+  success: string,
+) => Promise<OperationResult>;
+export type EditorState = {
+  id: string | null;
+  title: string;
+  content: string;
+  color: string;
+  visibility: "public" | "private";
+  departmentId?: string | null;
+  customerId?: string | null;
+  customerCode?: string;
+};
 
 const DEFAULT_COLOR = "#7c3aed";
-const emptyEditor = (): EditorState => ({ id: null, title: "", content: "", color: DEFAULT_COLOR, visibility: "private" });
-const noteDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+const emptyEditor = (): EditorState => ({
+  id: null,
+  title: "",
+  content: "",
+  color: DEFAULT_COLOR,
+  visibility: "private",
+});
+const noteDate = (value: string) =>
+  new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 
-export default function NotesModule({ module, busy, operate, canCreate = true }: { canCreate?: boolean; module: NotesModuleData; busy: boolean; operate: Operate }) {
+export default function NotesModule({
+  module,
+  busy,
+  operate,
+  canCreate = true,
+}: {
+  canCreate?: boolean;
+  module: NotesModuleData;
+  busy: boolean;
+  operate: Operate;
+}) {
   const [query, setQuery] = useState("");
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [viewing, setViewing] = useState<Note | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [scope, setScope] = useState<"all"|"private"|"public">("all");
+  const [scope, setScope] = useState<"all" | "private" | "public">("all");
   const visibleNotes = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("pt-BR");
-    return module.notes.filter((note) => (scope === "all" || note.visibility === scope) && (!term || (note.title + " " + note.content + " " + note.author).toLocaleLowerCase("pt-BR").includes(term)));
+    return module.notes.filter(
+      (note) =>
+        (scope === "all" || note.visibility === scope) &&
+        (!term ||
+          (note.title + " " + note.content + " " + note.author)
+            .toLocaleLowerCase("pt-BR")
+            .includes(term)),
+    );
   }, [module.notes, query, scope]);
 
   const copyNote = async (note: Note) => {
@@ -59,65 +119,485 @@ export default function NotesModule({ module, busy, operate, canCreate = true }:
     if (from < 0 || to < 0) return;
     const [moved] = ordered.splice(from, 1);
     ordered.splice(to, 0, moved);
-    const result = await operate({ action: "reorderNotes", noteIds: ordered.filter(note => note.canEdit).map(note => note.id) }, "Anotações reorganizadas com sucesso.");
+    const result = await operate(
+      {
+        action: "reorderNotes",
+        noteIds: ordered.filter((note) => note.canEdit).map((note) => note.id),
+      },
+      "Anotações reorganizadas com sucesso.",
+    );
     if (result) setDraggedId(null);
   };
 
   const saveNote = async (payload: EditorState) => {
     const result = await operate(
-      { action: "saveNote", id: payload.id, title: payload.title, description: payload.content, color: payload.color, status: payload.visibility, departmentId: payload.departmentId || null, customerId: payload.customerId || null, customerCode: payload.customerCode || "" },
-      payload.id ? "Anotação atualizada com sucesso." : "Anotação criada com sucesso.",
+      {
+        action: "saveNote",
+        id: payload.id,
+        title: payload.title,
+        description: payload.content,
+        color: payload.color,
+        status: payload.visibility,
+        departmentId: payload.departmentId || null,
+        customerId: payload.customerId || null,
+        customerCode: payload.customerCode || "",
+      },
+      payload.id
+        ? "Anotação atualizada com sucesso."
+        : "Anotação criada com sucesso.",
     );
     if (result) setEditor(null);
   };
 
-  return <>
-    <header className="page-header notes-header module-page-header">
-      <div className="module-page-title"><span className="module-page-title-icon"><StickyNote size={21} /></span><span className="module-page-copy"><span className="eyebrow">MÓDULO PESSOAL</span><h1>Anotações</h1><p>{module.notes.length} {module.notes.length === 1 ? "anotação" : "anotações"} · arraste os cartões para reorganizar.</p></span></div>
-      <div className="module-page-actions">{canCreate && <button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={17} /> Nova anotação</button>}</div>
-    </header>
+  return (
+    <>
+      <header className="page-header notes-header module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <StickyNote size={21} />
+          </span>
+          <span className="module-page-copy">
+            <span className="eyebrow">MÓDULO PESSOAL</span>
+            <h1>Anotações</h1>
+            <p>
+              {module.notes.length}{" "}
+              {module.notes.length === 1 ? "anotação" : "anotações"} · arraste
+              os cartões para reorganizar.
+            </p>
+          </span>
+        </div>
+        <div className="module-page-actions">
+          {canCreate && (
+            <button
+              className="primary-button"
+              onClick={() => setEditor(emptyEditor())}
+            >
+              <Plus size={17} /> Nova anotação
+            </button>
+          )}
+        </div>
+      </header>
 
-    <div className="notes-toolbar">
-      <label className="notes-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar anotações..." /></label>
-      <nav className="notes-scope-tabs"><button className={scope==="all"?"active":""} onClick={()=>setScope("all")}>Todas</button><button className={scope==="private"?"active":""} onClick={()=>setScope("private")}>Privadas</button><button className={scope==="public"?"active":""} onClick={()=>setScope("public")}>Públicas</button></nav>
-      {module.notes.length > 1 && <span>Arraste pelo ícone para organizar</span>}
-    </div>
+      <div className="notes-toolbar">
+        <label className="notes-search">
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar anotações..."
+          />
+        </label>
+        <nav className="notes-scope-tabs">
+          <button
+            className={scope === "all" ? "active" : ""}
+            onClick={() => setScope("all")}
+          >
+            Todas
+          </button>
+          <button
+            className={scope === "private" ? "active" : ""}
+            onClick={() => setScope("private")}
+          >
+            Privadas
+          </button>
+          <button
+            className={scope === "public" ? "active" : ""}
+            onClick={() => setScope("public")}
+          >
+            Públicas
+          </button>
+        </nav>
+        {module.notes.length > 1 && (
+          <span>Arraste pelo ícone para organizar</span>
+        )}
+      </div>
 
-    {visibleNotes.length === 0 ? <div className="notes-empty"><StickyNote size={30} /><strong>{query ? "Nenhuma anotação encontrada" : "Comece sua coleção de anotações"}</strong><p>{query ? "Tente outra palavra na busca." : "Registre informações, modelos e lembretes importantes para o seu dia."}</p>{!query && canCreate && <button className="primary-button" onClick={() => setEditor(emptyEditor())}><Plus size={16} /> Criar primeira anotação</button>}</div> : <section className="notes-grid">
-      {<PaginatedItems label="notas">{visibleNotes.map((note) => <NoteCard key={note.id} note={note} busy={busy} dragging={draggedId === note.id} copied={copiedId === note.id}
-        onEdit={() => note.canEdit ? setEditor({ id: note.id, title: note.title, content: note.content, color: note.color, visibility: note.visibility, departmentId: note.departmentId, customerId: note.customerId, customerCode: note.customerCode }) : setViewing(note)}
-    onCopy={() => void copyNote(note)}
-        onDuplicate={() => void operate({ action: "duplicateNote", id: note.id }, "Anotação duplicada com sucesso.")}
-        onDelete={() => void operate({ action: "deleteNote", id: note.id }, "Anotação excluída com sucesso.")}
-        onDragStart={(event) => { if (busy) return; event.dataTransfer.effectAllowed = "move"; setDraggedId(note.id); }}
-        onDragEnd={() => setDraggedId(null)}
-        onDrop={() => void reorder(note.id)}
-      />)}</PaginatedItems>}
-    </section>}
+      {visibleNotes.length === 0 ? (
+        <div className="notes-empty">
+          <StickyNote size={30} />
+          <strong>
+            {query
+              ? "Nenhuma anotação encontrada"
+              : "Comece sua coleção de anotações"}
+          </strong>
+          <p>
+            {query
+              ? "Tente outra palavra na busca."
+              : "Registre informações, modelos e lembretes importantes para o seu dia."}
+          </p>
+          {!query && canCreate && (
+            <button
+              className="primary-button"
+              onClick={() => setEditor(emptyEditor())}
+            >
+              <Plus size={16} /> Criar primeira anotação
+            </button>
+          )}
+        </div>
+      ) : (
+        <section className="notes-grid">
+          {
+            <PaginatedItems label="notas">
+              {visibleNotes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  busy={busy}
+                  dragging={draggedId === note.id}
+                  copied={copiedId === note.id}
+                  onEdit={() =>
+                    note.canEdit
+                      ? setEditor({
+                          id: note.id,
+                          title: note.title,
+                          content: note.content,
+                          color: note.color,
+                          visibility: note.visibility,
+                          departmentId: note.departmentId,
+                          customerId: note.customerId,
+                          customerCode: note.customerCode,
+                        })
+                      : setViewing(note)
+                  }
+                  onCopy={() => void copyNote(note)}
+                  onDuplicate={() =>
+                    void operate(
+                      { action: "duplicateNote", id: note.id },
+                      "Anotação duplicada com sucesso.",
+                    )
+                  }
+                  onDelete={() =>
+                    void operate(
+                      { action: "deleteNote", id: note.id },
+                      "Anotação excluída com sucesso.",
+                    )
+                  }
+                  onDragStart={(event) => {
+                    if (busy) return;
+                    event.dataTransfer.effectAllowed = "move";
+                    setDraggedId(note.id);
+                  }}
+                  onDragEnd={() => setDraggedId(null)}
+                  onDrop={() => void reorder(note.id)}
+                />
+              ))}
+            </PaginatedItems>
+          }
+        </section>
+      )}
 
-    {viewing && <div className="modal-backdrop" onMouseDown={event => event.currentTarget === event.target && setViewing(null)}><section className="modal note-editor" role="dialog" aria-modal="true" aria-label="Visualizar anotação pública"><header className="modal-head"><div><span className="eyebrow">ANOTAÇÃO PÚBLICA · {viewing.author}</span><h2>{viewing.title}</h2></div><button className="icon-button" aria-label="Fechar" onClick={() => setViewing(null)}><X size={20} /></button></header><div className="note-view-content">{viewing.content || "Sem conteúdo."}</div><div className="form-actions"><button className="secondary-button" onClick={() => void copyNote(viewing)}><Copy size={15} />{copiedId === viewing.id ? "Copiado" : "Copiar conteúdo"}</button><button className="primary-button" onClick={() => setViewing(null)}>Fechar</button></div></section></div>}
-    {editor && <NoteEditor departments={module.departments} editor={editor} busy={busy} onClose={() => setEditor(null)} onSave={saveNote} />}
-  </>;
+      {viewing && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) =>
+            event.currentTarget === event.target && setViewing(null)
+          }
+        >
+          <section
+            className="modal note-editor"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Visualizar anotação pública"
+          >
+            <header className="modal-head">
+              <div>
+                <span className="eyebrow">
+                  ANOTAÇÃO PÚBLICA · {viewing.author}
+                </span>
+                <h2>{viewing.title}</h2>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="Fechar"
+                onClick={() => setViewing(null)}
+              >
+                <X size={20} />
+              </button>
+            </header>
+            <div className="note-view-content">
+              {viewing.content || "Sem conteúdo."}
+            </div>
+            <div className="form-actions">
+              <button
+                className="secondary-button"
+                onClick={() => void copyNote(viewing)}
+              >
+                <Copy size={15} />
+                {copiedId === viewing.id ? "Copiado" : "Copiar conteúdo"}
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => setViewing(null)}
+              >
+                Fechar
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {editor && (
+        <NoteEditor
+          departments={module.departments}
+          editor={editor}
+          busy={busy}
+          onClose={() => setEditor(null)}
+          onSave={saveNote}
+        />
+      )}
+    </>
+  );
 }
 
-function NoteCard({ note, busy, dragging, copied, onEdit, onCopy, onDuplicate, onDelete, onDragStart, onDragEnd, onDrop }: {
-  note: Note; busy: boolean; dragging: boolean; copied: boolean; onEdit: () => void; onCopy: () => void; onDuplicate: () => void; onDelete: () => void;
-  onDragStart: (event: DragEvent<HTMLElement>) => void; onDragEnd: () => void; onDrop: () => void;
+function NoteCard({
+  note,
+  busy,
+  dragging,
+  copied,
+  onEdit,
+  onCopy,
+  onDuplicate,
+  onDelete,
+  onDragStart,
+  onDragEnd,
+  onDrop,
+}: {
+  note: Note;
+  busy: boolean;
+  dragging: boolean;
+  copied: boolean;
+  onEdit: () => void;
+  onCopy: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onDragStart: (event: DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
 }) {
   const prevent = (event: DragEvent<HTMLElement>) => event.preventDefault();
-  return <article className={["note-card", dragging ? "dragging" : "",note.visibility].filter(Boolean).join(" ")} style={{ "--note-color": note.color } as CSSProperties} draggable={!busy&&note.canEdit} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragOver={prevent} onDrop={onDrop} onDoubleClick={onEdit}>
-    <div className="note-card-head">{note.canEdit?<button className="note-drag-handle" aria-label="Arrastar anotação" title="Arraste para reorganizar" onClick={(event) => event.stopPropagation()}><GripVertical size={17} /></button>:<span/>}<div className="note-card-actions"><button onClick={(event) => { event.stopPropagation(); onCopy(); }} title="Copiar conteúdo"><Copy size={15} /><span>{copied ? "Copiado" : "Copiar"}</span></button>{note.canEdit&&<><button onClick={(event) => { event.stopPropagation(); onDuplicate(); }} disabled={busy} title="Duplicar anotação"><Copy size={15} /></button><button onClick={(event) => { event.stopPropagation(); onEdit(); }} title="Editar anotação"><Pencil size={15} /></button><button className="delete" onClick={(event) => { event.stopPropagation(); onDelete(); }} disabled={busy} title="Excluir anotação"><Trash2 size={15} /></button></>}</div></div>
-    <button className="note-card-body" onClick={onEdit}><strong>{note.title}</strong><span className="note-color-label"><i />{note.visibility==="public"?"PÚBLICA":"PRIVADA"}</span><p>{note.content || "Sem conteúdo."}</p></button>
-    <footer>{note.visibility==="public"?`Publicada por ${note.author}`:`Atualizada ${noteDate(note.updatedAt)}`}{note.canEdit&&<button onClick={onEdit}>Editar</button>}</footer>
-  </article>;
+  return (
+    <article
+      className={["note-card", dragging ? "dragging" : "", note.visibility]
+        .filter(Boolean)
+        .join(" ")}
+      style={{ "--note-color": note.color } as CSSProperties}
+      draggable={!busy && note.canEdit}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={prevent}
+      onDrop={onDrop}
+      onDoubleClick={onEdit}
+    >
+      <div className="note-card-head">
+        {note.canEdit ? (
+          <button
+            className="note-drag-handle"
+            aria-label="Arrastar anotação"
+            title="Arraste para reorganizar"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <GripVertical size={17} />
+          </button>
+        ) : (
+          <span />
+        )}
+        <div className="note-card-actions">
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onCopy();
+            }}
+            title="Copiar conteúdo"
+          >
+            <Copy size={15} />
+            <span>{copied ? "Copiado" : "Copiar"}</span>
+          </button>
+          {note.canEdit && (
+            <>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDuplicate();
+                }}
+                disabled={busy}
+                title="Duplicar anotação"
+              >
+                <Copy size={15} />
+              </button>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit();
+                }}
+                title="Editar anotação"
+              >
+                <Pencil size={15} />
+              </button>
+              <button
+                className="delete"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete();
+                }}
+                disabled={busy}
+                title="Excluir anotação"
+              >
+                <Trash2 size={15} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      <button className="note-card-body" onClick={onEdit}>
+        <strong>{note.title}</strong>
+        <span className="note-color-label">
+          <i />
+          {note.visibility === "public" ? "PÚBLICA" : "PRIVADA"}
+        </span>
+        <p>{note.content || "Sem conteúdo."}</p>
+      </button>
+      <footer>
+        {note.visibility === "public"
+          ? `Publicada por ${note.author}`
+          : `Atualizada ${noteDate(note.updatedAt)}`}
+        {note.canEdit && <button onClick={onEdit}>Editar</button>}
+      </footer>
+    </article>
+  );
 }
 
-export function NoteEditor({ editor, busy, onClose, onSave, departments = [] }: { departments?: {id: string; name: string}[]; editor: EditorState; busy: boolean; onClose: () => void; onSave: (payload: EditorState) => void }) {
+export function NoteEditor({
+  editor,
+  busy,
+  onClose,
+  onSave,
+  departments = [],
+}: {
+  departments?: { id: string; name: string }[];
+  editor: EditorState;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (payload: EditorState) => void;
+}) {
   const [visibility, setVisibility] = useState(editor.visibility);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    onSave({ ...editor, departmentId: String(form.get("departmentId") || "") || null, id: editor.id, title: String(form.get("title") ?? ""), content: String(form.get("content") ?? ""), color: String(form.get("color") ?? DEFAULT_COLOR), visibility: String(form.get("visibility")??"private") as "public"|"private" });
+    onSave({
+      ...editor,
+      departmentId: String(form.get("departmentId") || "") || null,
+      id: editor.id,
+      title: String(form.get("title") ?? ""),
+      content: String(form.get("content") ?? ""),
+      color: String(form.get("color") ?? DEFAULT_COLOR),
+      visibility: String(form.get("visibility") ?? "private") as
+        "public" | "private",
+    });
   };
-  return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}><div className="modal note-editor" role="dialog" aria-modal="true" aria-label={editor.id ? "Editar anotação" : "Nova anotação"}><div className="modal-head"><div><span className="eyebrow">ANOTAÇÕES</span><h2>{editor.id ? "Editar anotação" : "Nova anotação"}</h2><p>Defina se o conteúdo será privado ou compartilhado com a equipe.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={20} /></button></div><form className="form-grid" onSubmit={submit}><label className="wide">Título *<input name="title" defaultValue={editor.title} required maxLength={240} autoFocus placeholder="Título da anotação" /></label><label>Visibilidade<select name="visibility" value={visibility} onChange={event => setVisibility(event.target.value as "public"|"private")}><option value="private">Privada · somente eu</option><option value="public">Pública · equipe</option></select></label>{visibility === "public" && <label>Compartilhar com<select name="departmentId" defaultValue={editor.departmentId || ""}><option value="">Todos os setores</option>{departments.map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>}<label className="wide">Conteúdo<textarea name="content" defaultValue={editor.content} rows={7} placeholder="Escreva sua anotação..." /></label><label className="wide note-color-field">Cor<div><input name="color" type="color" defaultValue={editor.color} aria-label="Selecionar cor da anotação" /><span><strong>Selecionar cor do cartão</strong><small>Escolha qualquer cor para identificar esta anotação.</small></span></div></label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={busy}><Save size={16} /> {busy ? "Salvando..." : editor.id ? "Salvar alterações" : "Criar anotação"}</button></div></form></div></div>;
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <div
+        className="modal note-editor"
+        role="dialog"
+        aria-modal="true"
+        aria-label={editor.id ? "Editar anotação" : "Nova anotação"}
+      >
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">ANOTAÇÕES</span>
+            <h2>{editor.id ? "Editar anotação" : "Nova anotação"}</h2>
+            <p>
+              Defina se o conteúdo será privado ou compartilhado com a equipe.
+            </p>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Fechar">
+            <X size={20} />
+          </button>
+        </div>
+        <form className="form-grid" onSubmit={submit}>
+          <label className="wide">
+            Título *
+            <input
+              name="title"
+              defaultValue={editor.title}
+              required
+              maxLength={240}
+              autoFocus
+              placeholder="Título da anotação"
+            />
+          </label>
+          <label>
+            Visibilidade
+            <select
+              name="visibility"
+              value={visibility}
+              onChange={(event) =>
+                setVisibility(event.target.value as "public" | "private")
+              }
+            >
+              <option value="private">Privada · somente eu</option>
+              <option value="public">Pública · equipe</option>
+            </select>
+          </label>
+          {visibility === "public" && (
+            <label>
+              Compartilhar com
+              <select
+                name="departmentId"
+                defaultValue={editor.departmentId || ""}
+              >
+                <option value="">Todos os setores</option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="wide">
+            Conteúdo
+            <textarea
+              name="content"
+              defaultValue={editor.content}
+              rows={7}
+              placeholder="Escreva sua anotação..."
+            />
+          </label>
+          <label className="wide note-color-field">
+            Cor
+            <div>
+              <input
+                name="color"
+                type="color"
+                defaultValue={editor.color}
+                aria-label="Selecionar cor da anotação"
+              />
+              <span>
+                <strong>Selecionar cor do cartão</strong>
+                <small>
+                  Escolha qualquer cor para identificar esta anotação.
+                </small>
+              </span>
+            </div>
+          </label>
+          <div className="form-actions wide">
+            <button type="button" onClick={onClose}>
+              Cancelar
+            </button>
+            <button className="primary-button" type="submit" disabled={busy}>
+              <Save size={16} />{" "}
+              {busy
+                ? "Salvando..."
+                : editor.id
+                  ? "Salvar alterações"
+                  : "Criar anotação"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }

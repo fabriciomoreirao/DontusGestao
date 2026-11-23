@@ -98,8 +98,17 @@ public sealed class CsJourneyAssignmentTests
         var customer = new Customer { LegalName = "Cliente", TradeName = "Cliente", CsOwner = source.DisplayName, CreatedBy = "tests" };
         var first = new AgendaCommitment { AgendaId = calendar.Id, Title = "Kick off · Cliente", StartsAt = DateTimeOffset.Parse("2026-10-27T14:00:00Z"), EndsAt = DateTimeOffset.Parse("2026-10-27T15:00:00Z"), ResponsibleUserId = source.Id, CreatedBy = source.Email };
         var second = new AgendaCommitment { AgendaId = calendar.Id, Title = "Treinamento · Cliente", StartsAt = first.StartsAt.AddDays(1), EndsAt = first.EndsAt.AddDays(1), ResponsibleUserId = source.Id, CreatedBy = source.Email };
-        var journey = new WorkItem { Module = "cs", RecordType = "Acompanhamento", Title = "Cliente", Owner = source.DisplayName, CustomerId = customer.Id, Status = "Pendente", CreatedBy = source.Email,
-            Description = JsonSerializer.Serialize(new { kind = "csJourney", track = "activation", phase = "validation", checkedAt = "2026-10-26T12:00:00Z", firstMeetingCommitmentId = first.Id, trainingCommitmentId = second.Id, follows = Array.Empty<object>() }) };
+        var journey = new WorkItem
+        {
+            Module = "cs",
+            RecordType = "Acompanhamento",
+            Title = "Cliente",
+            Owner = source.DisplayName,
+            CustomerId = customer.Id,
+            Status = "Pendente",
+            CreatedBy = source.Email,
+            Description = JsonSerializer.Serialize(new { kind = "csJourney", track = "activation", phase = "validation", checkedAt = "2026-10-26T12:00:00Z", firstMeetingCommitmentId = first.Id, trainingCommitmentId = second.Id, follows = Array.Empty<object>() })
+        };
         db.AddRange(sourceDepartment, department, source, target, calendar, customer, first, second, journey);
         db.UserDepartments.AddRange(new UserDepartment { UserId = source.Id, DepartmentId = sourceDepartment.Id, IsPrimary = true }, new UserDepartment { UserId = target.Id, DepartmentId = department.Id, IsPrimary = true });
         db.AgendaCommitmentParticipants.AddRange(new AgendaCommitmentParticipant { CommitmentId = first.Id, UserId = source.Id }, new AgendaCommitmentParticipant { CommitmentId = second.Id, UserId = source.Id });

@@ -76,9 +76,15 @@ public sealed class OperationsWorkspaceCache(IServiceScopeFactory scopes, Realti
         await Task.WhenAll(snapshot, diary, notes, agenda, suggestions, tasks, chat, notices, customers, access);
         return (await snapshot)! with
         {
-            DiaryModule = await diary, NotesModule = await notes, AgendaModule = await agenda,
-            SuggestionModule = await suggestions, TaskModule = await tasks, InternalChatModule = await chat,
-            NoticesModule = await notices, CustomerModule = await customers, Access = await access,
+            DiaryModule = await diary,
+            NotesModule = await notes,
+            AgendaModule = await agenda,
+            SuggestionModule = await suggestions,
+            TaskModule = await tasks,
+            InternalChatModule = await chat,
+            NoticesModule = await notices,
+            CustomerModule = await customers,
+            Access = await access,
         };
     }
 

@@ -13,7 +13,11 @@ services:
     volumes:
       - dontus_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dontus} -d ${POSTGRES_DB:-dontus}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-dontus} -d ${POSTGRES_DB:-dontus}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 12

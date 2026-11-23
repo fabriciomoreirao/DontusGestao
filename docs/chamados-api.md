@@ -29,14 +29,14 @@ Content-Type: multipart/form-data
 
 Campos:
 
-| Campo | Formato | Regra |
-| --- | --- | --- |
-| `clientId` | texto | exatamente 6 números do ID do cliente |
-| `companyName` | texto | nome da empresa (`fullName` continua aceito como alias de compatibilidade) |
-| `whatsapp` | texto | contato com DDD |
-| `type` | texto | Dúvida sobre o sistema, Tarefa, Reclamação, Sugestão, Bug, Cancelamento ou Nova contratação |
-| `summary` | texto | descrição da solicitação, de 10 a 1.000 caracteres |
-| `files` | arquivo, repetível | obrigatório; de 1 a 5 arquivos, com no máximo 25 MB cada |
+| Campo         | Formato            | Regra                                                                                       |
+| ------------- | ------------------ | ------------------------------------------------------------------------------------------- |
+| `clientId`    | texto              | exatamente 6 números do ID do cliente                                                       |
+| `companyName` | texto              | nome da empresa (`fullName` continua aceito como alias de compatibilidade)                  |
+| `whatsapp`    | texto              | contato com DDD                                                                             |
+| `type`        | texto              | Dúvida sobre o sistema, Tarefa, Reclamação, Sugestão, Bug, Cancelamento ou Nova contratação |
+| `summary`     | texto              | descrição da solicitação, de 10 a 1.000 caracteres                                          |
+| `files`       | arquivo, repetível | obrigatório; de 1 a 5 arquivos, com no máximo 25 MB cada                                    |
 
 Exemplo com `curl`:
 

@@ -21,7 +21,10 @@ export const MODULES = {
   work: { label: "Agenda", short: "Agenda" },
   tasks: { label: "Tarefas", short: "Tarefas" },
   serviceRequests: { label: "Chamados", short: "Chamados" },
-  serviceFollowup: { label: "Acompanhamento de chamados", short: "Acomp. chamados" },
+  serviceFollowup: {
+    label: "Acompanhamento de chamados",
+    short: "Acomp. chamados",
+  },
   chat: { label: "Atendimento", short: "Chat" },
   waitingQueue: { label: "Fila de Espera", short: "Fila" },
   referrals: { label: "Indicações", short: "Indicações" },
@@ -38,52 +41,139 @@ export type ModuleKey = keyof typeof MODULES;
 
 export const STATE_MACHINES: Record<string, readonly string[]> = {
   commercial: [
-    "NovoLead", "EmContato", "Qualificado", "Diagnostico", "Apresentacao",
-    "Negociacao", "Ganho", "Perdido", "Cancelado",
+    "NovoLead",
+    "EmContato",
+    "Qualificado",
+    "Diagnostico",
+    "Apresentacao",
+    "Negociacao",
+    "Ganho",
+    "Perdido",
+    "Cancelado",
   ],
   cs: [
-    "PendenteAgendamento", "Agendado", "TreinamentoRealizado", "EmAcompanhamento",
-    "AguardandoCliente", "Pausado", "EmValidacaoFinal", "Finalizado",
-    "TransferidoSuporte", "Cancelado",
+    "PendenteAgendamento",
+    "Agendado",
+    "TreinamentoRealizado",
+    "EmAcompanhamento",
+    "AguardandoCliente",
+    "Pausado",
+    "EmValidacaoFinal",
+    "Finalizado",
+    "TransferidoSuporte",
+    "Cancelado",
   ],
-  cancellations: ["Fila de espera", "Em processo", "Follow up", "Convertido", "Não convertido"],
+  cancellations: [
+    "Fila de espera",
+    "Em processo",
+    "Follow up",
+    "Convertido",
+    "Não convertido",
+  ],
   lia: [
-    "Validacao", "AguardandoKickoff", "KickoffAgendado", "ConfiguracaoInicial", "EmTesteCliente",
-    "EmAjustes", "AguardandoAprovacao", "GoLiveAgendado", "EmProducaoAssistida",
-    "ImplantacaoPrincipalConcluida", "ConfigurandoCRC", "AcompanhamentoFinal", "ConferenciaFinal", "Concluida",
-    "BloqueadaPeloCliente", "Pausada", "Cancelada",
+    "Validacao",
+    "AguardandoKickoff",
+    "KickoffAgendado",
+    "ConfiguracaoInicial",
+    "EmTesteCliente",
+    "EmAjustes",
+    "AguardandoAprovacao",
+    "GoLiveAgendado",
+    "EmProducaoAssistida",
+    "ImplantacaoPrincipalConcluida",
+    "ConfigurandoCRC",
+    "AcompanhamentoFinal",
+    "ConferenciaFinal",
+    "Concluida",
+    "BloqueadaPeloCliente",
+    "Pausada",
+    "Cancelada",
   ],
   hr: ["Experiência", "Ativos", "Desligados"],
-  marketing: ["Recebida", "Em planejamento", "Em produção", "Em revisão", "Concluída"],
+  marketing: [
+    "Recebida",
+    "Em planejamento",
+    "Em produção",
+    "Em revisão",
+    "Concluída",
+  ],
   support: [
-    "Novo", "EmAtendimento", "AguardandoCliente", "AguardandoSetor",
-    "AguardandoTI", "Resolvido", "Encerrado", "Reaberto",
+    "Novo",
+    "EmAtendimento",
+    "AguardandoCliente",
+    "AguardandoSetor",
+    "AguardandoTI",
+    "Resolvido",
+    "Encerrado",
+    "Reaberto",
   ],
   ti: [
-    "Nova", "EmTriagem", "AguardandoInformacoes", "Classificada",
-    "EmAnaliseTecnica", "Priorizada", "EmDesenvolvimento", "EmCorrecao",
-    "EmTeste", "AguardandoHomologacao", "AguardandoTerceiro",
-    "AguardandoDeploy", "Concluida", "Cancelada", "Reprovada", "Reaberta",
+    "Nova",
+    "EmTriagem",
+    "AguardandoInformacoes",
+    "Classificada",
+    "EmAnaliseTecnica",
+    "Priorizada",
+    "EmDesenvolvimento",
+    "EmCorrecao",
+    "EmTeste",
+    "AguardandoHomologacao",
+    "AguardandoTerceiro",
+    "AguardandoDeploy",
+    "Concluida",
+    "Cancelada",
+    "Reprovada",
+    "Reaberta",
   ],
   finance: [
-    "Rascunho", "PendenteAprovacao", "Aprovada", "Agendada", "Paga",
-    "Vencida", "Cancelada", "Estornada",
+    "Rascunho",
+    "PendenteAprovacao",
+    "Aprovada",
+    "Agendada",
+    "Paga",
+    "Vencida",
+    "Cancelada",
+    "Estornada",
   ],
   procurement: [
-    "Solicitada", "EmCotacao", "PendenteAprovacao", "Aprovada",
-    "Comprada", "Recebida", "Patrimoniada", "Cancelada",
+    "Solicitada",
+    "EmCotacao",
+    "PendenteAprovacao",
+    "Aprovada",
+    "Comprada",
+    "Recebida",
+    "Patrimoniada",
+    "Cancelada",
   ],
   work: ["A fazer", "Em andamento", "Bloqueada", "Concluída", "Cancelada"],
   commissions: ["Pendente", "Aprovada", "Reprovada"],
   goals: ["Ativa", "Encerrada"],
   surveys: ["Ativa", "Inativa"],
-  serviceRequests: ["Triagem", "Desenvolvimento", "Tarefa", "Reclamação", "Sugestão", "Elogio", "Cancelamento", "Nova contratação"],
+  serviceRequests: [
+    "Triagem",
+    "Desenvolvimento",
+    "Tarefa",
+    "Reclamação",
+    "Sugestão",
+    "Elogio",
+    "Cancelamento",
+    "Nova contratação",
+  ],
   serviceFollowup: ["Em espera", "Em processo", "Concluído", "Descartado"],
 };
 
 const TERMINAL = new Set([
-  "Ganho", "Perdido", "Cancelado", "Finalizado", "TransferidoSuporte",
-  "Concluida", "Encerrado", "Paga", "Estornada", "Recebida", "Patrimoniada",
+  "Ganho",
+  "Perdido",
+  "Cancelado",
+  "Finalizado",
+  "TransferidoSuporte",
+  "Concluida",
+  "Encerrado",
+  "Paga",
+  "Estornada",
+  "Recebida",
+  "Patrimoniada",
   "Concluída",
 ]);
 
@@ -95,24 +185,54 @@ export function allowedNextStatuses(module: string, current: string): string[] {
   const states = STATE_MACHINES[module] ?? [];
   if (module === "marketing" && current === "Novo") return [...states];
   const index = states.indexOf(current);
-  if (index < 0 || (TERMINAL.has(current) && !(module === "marketing" && current === "Recebida"))) return [];
+  if (
+    index < 0 ||
+    (TERMINAL.has(current) &&
+      !(module === "marketing" && current === "Recebida"))
+  )
+    return [];
   const next = states[index + 1];
   const options = next ? [next] : [];
-  if (module === "lia" && current === "EmTesteCliente") options.push("AguardandoAprovacao");
-  if (module === "lia" && current === "AguardandoAprovacao") options.push("EmAjustes", "ConfigurandoCRC");
-  if (module === "lia" && current === "EmAjustes") options.push("AguardandoAprovacao");
-  if (module === "lia" && ["EmProducaoAssistida", "ImplantacaoPrincipalConcluida", "ConfigurandoCRC"].includes(current)) options.push("AcompanhamentoFinal");
-  if (module === "lia" && current === "ConferenciaFinal") options.push("AcompanhamentoFinal");
+  if (module === "lia" && current === "EmTesteCliente")
+    options.push("AguardandoAprovacao");
+  if (module === "lia" && current === "AguardandoAprovacao")
+    options.push("EmAjustes", "ConfigurandoCRC");
+  if (module === "lia" && current === "EmAjustes")
+    options.push("AguardandoAprovacao");
+  if (
+    module === "lia" &&
+    [
+      "EmProducaoAssistida",
+      "ImplantacaoPrincipalConcluida",
+      "ConfigurandoCRC",
+    ].includes(current)
+  )
+    options.push("AcompanhamentoFinal");
+  if (module === "lia" && current === "ConferenciaFinal")
+    options.push("AcompanhamentoFinal");
   if (module === "commercial") options.push("Perdido", "Cancelado");
-  if (module === "cs") options.push("AguardandoCliente", "Pausado", "Cancelado");
-  if (module === "lia") options.push("BloqueadaPeloCliente", "Pausada", "Cancelada");
-  if (module === "support") options.push("AguardandoCliente", "AguardandoSetor", "AguardandoTI");
-  if (module === "ti") options.push("AguardandoInformacoes", "AguardandoTerceiro", "Cancelada", "Reprovada");
+  if (module === "cs")
+    options.push("AguardandoCliente", "Pausado", "Cancelado");
+  if (module === "lia")
+    options.push("BloqueadaPeloCliente", "Pausada", "Cancelada");
+  if (module === "support")
+    options.push("AguardandoCliente", "AguardandoSetor", "AguardandoTI");
+  if (module === "ti")
+    options.push(
+      "AguardandoInformacoes",
+      "AguardandoTerceiro",
+      "Cancelada",
+      "Reprovada",
+    );
   if (module === "finance") options.push("Cancelada");
   return [...new Set(options)].filter((status) => status !== current);
 }
 
-export function canTransition(module: string, current: string, next: string): boolean {
+export function canTransition(
+  module: string,
+  current: string,
+  next: string,
+): boolean {
   if (current === next) return true;
   return allowedNextStatuses(module, current).includes(next);
 }
@@ -125,8 +245,21 @@ export const RECORD_TYPES: Record<string, string[]> = {
   hr: ["Colaborador"],
   marketing: ["Solicitação", "Campanha", "Criativo", "Conteúdo"],
   support: ["Ticket", "Configuração", "Sugestão", "Treinamento extra"],
-  ti: ["Bug", "Incidente crítico", "Validação técnica", "Melhoria", "Novo desenvolvimento"],
-  finance: ["Estorno", "Conta a pagar", "Boleto", "Cobrança", "DRE", "Nota de parceiro"],
+  ti: [
+    "Bug",
+    "Incidente crítico",
+    "Validação técnica",
+    "Melhoria",
+    "Novo desenvolvimento",
+  ],
+  finance: [
+    "Estorno",
+    "Conta a pagar",
+    "Boleto",
+    "Cobrança",
+    "DRE",
+    "Nota de parceiro",
+  ],
   procurement: ["Compra", "Suprimento", "Ativo", "Manutenção"],
   work: ["Tarefa", "Compromisso", "Lembrete"],
   reminders: ["Lembrete"],

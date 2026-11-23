@@ -25,104 +25,333 @@ export const CLIENT_CHECKLIST_EVENT = "dontus:manage-client-checklists";
 export const CLIENT_RECORD_EVENT = "dontus:open-client-record";
 
 export function openReminderComposer(context: ReminderContext) {
-  window.dispatchEvent(new CustomEvent<ReminderContext>(REMINDER_COMPOSER_EVENT, { detail: context }));
+  window.dispatchEvent(
+    new CustomEvent<ReminderContext>(REMINDER_COMPOSER_EVENT, {
+      detail: context,
+    }),
+  );
 }
 
 export function openAgendaComposer(context: ReminderContext) {
-  window.dispatchEvent(new CustomEvent<ReminderContext>(AGENDA_COMPOSER_EVENT, { detail: context }));
+  window.dispatchEvent(
+    new CustomEvent<ReminderContext>(AGENDA_COMPOSER_EVENT, {
+      detail: context,
+    }),
+  );
 }
 
 export function openClientAlert(context: ReminderContext) {
-  window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_ALERT_EVENT, { detail: context }));
+  window.dispatchEvent(
+    new CustomEvent<ReminderContext>(CLIENT_ALERT_EVENT, { detail: context }),
+  );
 }
 
 export function openClientChecklist(context: ReminderContext) {
-  window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_CHECKLIST_EVENT, { detail: context }));
+  window.dispatchEvent(
+    new CustomEvent<ReminderContext>(CLIENT_CHECKLIST_EVENT, {
+      detail: context,
+    }),
+  );
 }
 
 export function openClientRecord(context: ReminderContext) {
-  window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_RECORD_EVENT, { detail: context }));
+  window.dispatchEvent(
+    new CustomEvent<ReminderContext>(CLIENT_RECORD_EVENT, { detail: context }),
+  );
 }
 
-export default function ReminderAction({ context, compact = true, className = "" }: { context: ReminderContext; compact?: boolean; className?: string }) {
-  return <button
-    type="button"
-    className={`reminder-action-button ${compact ? "compact" : ""} ${className}`.trim()}
-    title="Adicionar lembrete"
-    aria-label={`Adicionar lembrete para ${context.title || "este registro"}`}
-    onClick={(event) => { event.preventDefault(); event.stopPropagation(); openReminderComposer(context); }}
-  ><BellRing size={14}/>{!compact && <span>Adicionar lembrete</span>}</button>;
+export default function ReminderAction({
+  context,
+  compact = true,
+  className = "",
+}: {
+  context: ReminderContext;
+  compact?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`reminder-action-button ${compact ? "compact" : ""} ${className}`.trim()}
+      title="Adicionar lembrete"
+      aria-label={`Adicionar lembrete para ${context.title || "este registro"}`}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openReminderComposer(context);
+      }}
+    >
+      <BellRing size={14} />
+      {!compact && <span>Adicionar lembrete</span>}
+    </button>
+  );
 }
 
 const CARD_SELECTORS = [
-  ".task-card", ".task-table-row:not(.head)", ".suggestion-kanban-cards > article", ".commercial-lead-card", ".retention-lead-card",
-  ".cs-client-card", ".enterprise-card", ".enterprise-list > article", ".cancellation-card", ".marketing-card", ".service-list > article",
-  ".service-request-column>div>article", ".waiting-queue-row", ".development-card-shell", ".journey-card", ".hr-employee-card", ".recruitment-candidate",
-  "article.commission-row", ".goal-card", ".referral-card-shell", ".development-list-row", ".version-row-shell",
+  ".task-card",
+  ".task-table-row:not(.head)",
+  ".suggestion-kanban-cards > article",
+  ".commercial-lead-card",
+  ".retention-lead-card",
+  ".cs-client-card",
+  ".enterprise-card",
+  ".enterprise-list > article",
+  ".cancellation-card",
+  ".marketing-card",
+  ".service-list > article",
+  ".service-request-column>div>article",
+  ".waiting-queue-row",
+  ".development-card-shell",
+  ".journey-card",
+  ".hr-employee-card",
+  ".recruitment-candidate",
+  "article.commission-row",
+  ".goal-card",
+  ".referral-card-shell",
+  ".development-list-row",
+  ".version-row-shell",
 ];
-const ENABLED_MODULES = new Set(["serviceRequests","serviceFollowup","waitingQueue","internalChat","tasks","suggestions","support","commercial","cs","cancellations","marketing","ti","lia","hr","admin","commissions","goals","referrals"]);
-const DETAIL_SURFACES = ".task-modal,.suggestion-detail-modal,.drawer-backdrop>aside,.goal-detail-modal,.commission-decision-modal,.retention-detail-page,.enterprise-detail-page,.service-entry-modal";
-const CLIENT_ACTION_MODULES = new Set(["support", "commercial", "cs", "cancellations", "lia"]);
+const ENABLED_MODULES = new Set([
+  "serviceRequests",
+  "serviceFollowup",
+  "waitingQueue",
+  "internalChat",
+  "tasks",
+  "suggestions",
+  "support",
+  "commercial",
+  "cs",
+  "cancellations",
+  "marketing",
+  "ti",
+  "lia",
+  "hr",
+  "admin",
+  "commissions",
+  "goals",
+  "referrals",
+]);
+const DETAIL_SURFACES =
+  ".task-modal,.suggestion-detail-modal,.drawer-backdrop>aside,.goal-detail-modal,.commission-decision-modal,.retention-detail-page,.enterprise-detail-page,.service-entry-modal";
+const CLIENT_ACTION_MODULES = new Set([
+  "support",
+  "commercial",
+  "cs",
+  "cancellations",
+  "lia",
+]);
 
 function cardContext(candidate: HTMLElement, module: string): ReminderContext {
-  const title = candidate.querySelector<HTMLElement>("h2,h3,.task-card-title,:scope>span:first-child>b,.retention-card-company,strong")?.innerText?.trim() || "Registro do sistema";
-  const summary = candidate.querySelector<HTMLElement>("p,.task-card-description")?.innerText?.trim() || "";
+  const title =
+    candidate
+      .querySelector<HTMLElement>(
+        "h2,h3,.task-card-title,:scope>span:first-child>b,.retention-card-company,strong",
+      )
+      ?.innerText?.trim() || "Registro do sistema";
+  const summary =
+    candidate
+      .querySelector<HTMLElement>("p,.task-card-description")
+      ?.innerText?.trim() || "";
   const visibleText = candidate.innerText.replace(/\s+/g, " ").trim();
-  const clientId = candidate.dataset.reminderClientId
-    || visibleText.match(/\bID(?:\s+DONTUS)?\s*[#:]?\s*([A-Z0-9.-]{3,})/i)?.[1]
-    || visibleText.match(/(?:^|\s)#(\d{4,})(?:\s|$)/)?.[1];
-  const customerName = candidate.dataset.reminderCustomerName
-    || candidate.querySelector<HTMLElement>(".task-card-customer b,.retention-card-company,.cancellation-card h3,.journey-card h3,.cs-client-card h3")?.innerText?.trim()
-    || title;
-  const recipientName = candidate.dataset.reminderRecipientName
-    || candidate.querySelector<HTMLElement>("[data-collaborator-name]")?.dataset.collaboratorName
-    || candidate.querySelector<HTMLElement>(".task-card-owner,.lead-owner,.journey-responsible,.commission-person strong")?.innerText?.trim();
-  return { module, entityId: candidate.dataset.reminderEntityId, clientId, customerName, title, summary, recipientName };
+  const clientId =
+    candidate.dataset.reminderClientId ||
+    visibleText.match(/\bID(?:\s+DONTUS)?\s*[#:]?\s*([A-Z0-9.-]{3,})/i)?.[1] ||
+    visibleText.match(/(?:^|\s)#(\d{4,})(?:\s|$)/)?.[1];
+  const customerName =
+    candidate.dataset.reminderCustomerName ||
+    candidate
+      .querySelector<HTMLElement>(
+        ".task-card-customer b,.retention-card-company,.cancellation-card h3,.journey-card h3,.cs-client-card h3",
+      )
+      ?.innerText?.trim() ||
+    title;
+  const recipientName =
+    candidate.dataset.reminderRecipientName ||
+    candidate.querySelector<HTMLElement>("[data-collaborator-name]")?.dataset
+      .collaboratorName ||
+    candidate
+      .querySelector<HTMLElement>(
+        ".task-card-owner,.lead-owner,.journey-responsible,.commission-person strong",
+      )
+      ?.innerText?.trim();
+  return {
+    module,
+    entityId: candidate.dataset.reminderEntityId,
+    clientId,
+    customerName,
+    title,
+    summary,
+    recipientName,
+  };
 }
 
 function isManagementAction(target: HTMLElement) {
   const control = target.closest<HTMLElement>("button,a");
   if (!control) return false;
   const label = `${control.getAttribute("aria-label") ?? ""} ${control.getAttribute("title") ?? ""} ${control.innerText ?? ""}`;
-  return /editar|excluir|encaminhar|copiar|aprovar|reprovar|reativar/i.test(label) || Boolean(control.closest(".task-card-actions,.commercial-card-actions,.cancellation-card-controls,.marketing-card-actions,.goal-card-actions,.referral-card-actions,.commission-actions"));
+  return (
+    /editar|excluir|encaminhar|copiar|aprovar|reprovar|reativar/i.test(label) ||
+    Boolean(
+      control.closest(
+        ".task-card-actions,.commercial-card-actions,.cancellation-card-controls,.marketing-card-actions,.goal-card-actions,.referral-card-actions,.commission-actions",
+      ),
+    )
+  );
 }
 
 /** Leva o contexto do card para o painel de detalhes, sem poluir visualmente o próprio card. */
-type ReminderSourceRecord = { id:string; description:string; created_at:string; updated_at:string };
-type ChecklistSourceRecord = { id:string; description:string; record_type?:string };
-type LinkedReminder = { title?:string; urgency?:string; recipientName?:string; remindAt?:string; seenAt?:string; sourceModule?:string; sourceEntityId?:string; sourceClientId?:string; sourceTitle?:string };
-const normalized=(value?:string)=>String(value??"").trim().toLocaleLowerCase("pt-BR");
-function reminderDetail(record:ReminderSourceRecord):LinkedReminder|null { try { const detail=JSON.parse(record.description) as LinkedReminder & {kind?:string}; return detail.kind==="systemReminder"?detail:null; } catch { return null; } }
-function updateLinkedHistory(surface:HTMLElement, records:ReminderSourceRecord[]){
-  const entityId=surface.dataset.reminderSourceEntityId;
-  const clientId=surface.dataset.reminderSourceClientId;
-  const sourceTitle=surface.dataset.reminderSourceTitle;
-  const module=surface.dataset.reminderSourceModule;
-  const linked=records.map(record=>({record,detail:reminderDetail(record)})).filter((entry):entry is {record:ReminderSourceRecord;detail:LinkedReminder}=>Boolean(entry.detail)).filter(({detail})=>
-    (entityId&&detail.sourceEntityId===entityId)
-    || (clientId&&normalized(detail.sourceClientId)===normalized(clientId)&&detail.sourceModule===module)
-    || (sourceTitle&&normalized(detail.sourceTitle)===normalized(sourceTitle)&&detail.sourceModule===module)
-  ).sort((a,b)=>new Date(b.detail.remindAt??b.record.created_at).getTime()-new Date(a.detail.remindAt??a.record.created_at).getTime());
-  const signature=JSON.stringify([module,entityId,clientId,sourceTitle,linked.map(({record})=>[record.id,record.description])]);
-  if(surface.dataset.reminderHistorySignature===signature&&(!linked.length||surface.querySelector(".reminder-linked-history")))return;
-  surface.dataset.reminderHistorySignature=signature;
+type ReminderSourceRecord = {
+  id: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+};
+type ChecklistSourceRecord = {
+  id: string;
+  description: string;
+  record_type?: string;
+};
+type LinkedReminder = {
+  title?: string;
+  urgency?: string;
+  recipientName?: string;
+  remindAt?: string;
+  seenAt?: string;
+  sourceModule?: string;
+  sourceEntityId?: string;
+  sourceClientId?: string;
+  sourceTitle?: string;
+};
+const normalized = (value?: string) =>
+  String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
+function reminderDetail(record: ReminderSourceRecord): LinkedReminder | null {
+  try {
+    const detail = JSON.parse(record.description) as LinkedReminder & {
+      kind?: string;
+    };
+    return detail.kind === "systemReminder" ? detail : null;
+  } catch {
+    return null;
+  }
+}
+function updateLinkedHistory(
+  surface: HTMLElement,
+  records: ReminderSourceRecord[],
+) {
+  const entityId = surface.dataset.reminderSourceEntityId;
+  const clientId = surface.dataset.reminderSourceClientId;
+  const sourceTitle = surface.dataset.reminderSourceTitle;
+  const module = surface.dataset.reminderSourceModule;
+  const linked = records
+    .map((record) => ({ record, detail: reminderDetail(record) }))
+    .filter(
+      (
+        entry,
+      ): entry is { record: ReminderSourceRecord; detail: LinkedReminder } =>
+        Boolean(entry.detail),
+    )
+    .filter(
+      ({ detail }) =>
+        (entityId && detail.sourceEntityId === entityId) ||
+        (clientId &&
+          normalized(detail.sourceClientId) === normalized(clientId) &&
+          detail.sourceModule === module) ||
+        (sourceTitle &&
+          normalized(detail.sourceTitle) === normalized(sourceTitle) &&
+          detail.sourceModule === module),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.detail.remindAt ?? b.record.created_at).getTime() -
+        new Date(a.detail.remindAt ?? a.record.created_at).getTime(),
+    );
+  const signature = JSON.stringify([
+    module,
+    entityId,
+    clientId,
+    sourceTitle,
+    linked.map(({ record }) => [record.id, record.description]),
+  ]);
+  if (
+    surface.dataset.reminderHistorySignature === signature &&
+    (!linked.length || surface.querySelector(".reminder-linked-history"))
+  )
+    return;
+  surface.dataset.reminderHistorySignature = signature;
   surface.querySelector(".reminder-linked-history")?.remove();
   surface.querySelector(".reminder-linked-open")?.remove();
-  if(!linked.length)return;
-  const panel=document.createElement("section");panel.className="reminder-linked-history";
-  const heading=document.createElement("header");const label=document.createElement("strong");label.textContent=`Lembretes vinculados (${linked.length})`;heading.appendChild(label);panel.appendChild(heading);
-  linked.forEach(({detail})=>{const article=document.createElement("article");const copy=document.createElement("span");const title=document.createElement("b");const meta=document.createElement("small");const state=document.createElement("em");title.textContent=detail.title||"Lembrete";meta.textContent=`${detail.urgency||"Aviso"} · ${detail.recipientName||"Sem responsável"} · ${detail.remindAt?new Date(detail.remindAt).toLocaleString("pt-BR"):"Sem data"}`;state.textContent=detail.seenAt?"Visto":"Aberto";copy.append(title,meta);article.append(copy,state);panel.appendChild(article)});
-  const host=surface.querySelector<HTMLElement>(".task-history,.retention-history-list,.lead-comments-history,.lead-follow-history,.enterprise-timeline,.cs-history,.journey-comments,.hr-timeline,.referral-comments>section,.marketing-comments,.development-history,.detail-section:last-of-type") || surface.querySelector<HTMLElement>(".task-modal-body,.drawer-body,main,aside") || surface;
+  if (!linked.length) return;
+  const panel = document.createElement("section");
+  panel.className = "reminder-linked-history";
+  const heading = document.createElement("header");
+  const label = document.createElement("strong");
+  label.textContent = `Lembretes vinculados (${linked.length})`;
+  heading.appendChild(label);
+  panel.appendChild(heading);
+  linked.forEach(({ detail }) => {
+    const article = document.createElement("article");
+    const copy = document.createElement("span");
+    const title = document.createElement("b");
+    const meta = document.createElement("small");
+    const state = document.createElement("em");
+    title.textContent = detail.title || "Lembrete";
+    meta.textContent = `${detail.urgency || "Aviso"} · ${detail.recipientName || "Sem responsável"} · ${detail.remindAt ? new Date(detail.remindAt).toLocaleString("pt-BR") : "Sem data"}`;
+    state.textContent = detail.seenAt ? "Visto" : "Aberto";
+    copy.append(title, meta);
+    article.append(copy, state);
+    panel.appendChild(article);
+  });
+  const host =
+    surface.querySelector<HTMLElement>(
+      ".task-history,.retention-history-list,.lead-comments-history,.lead-follow-history,.enterprise-timeline,.cs-history,.journey-comments,.hr-timeline,.referral-comments>section,.marketing-comments,.development-history,.detail-section:last-of-type",
+    ) ||
+    surface.querySelector<HTMLElement>(
+      ".task-modal-body,.drawer-body,main,aside",
+    ) ||
+    surface;
   host.appendChild(panel);
-  const openButton=document.createElement("button");openButton.type="button";openButton.className="reminder-linked-open";openButton.title="Ver lembretes vinculados";openButton.setAttribute("aria-label",`Ver ${linked.length} lembrete(s) vinculado(s)`);openButton.innerHTML=`<span aria-hidden="true">☷</span><b>${linked.length}</b>`;openButton.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();panel.scrollIntoView({behavior:"smooth",block:"center"});panel.classList.add("highlight");window.setTimeout(()=>panel.classList.remove("highlight"),1400)});
-  const header=surface.querySelector<HTMLElement>(".drawer-head,.modal-head,.modal-header,header");
-  const reminderButton=header?.querySelector<HTMLElement>(".reminder-detail-action,.reminder-action-button");
-  if(reminderButton)reminderButton.insertAdjacentElement("afterend",openButton);else header?.appendChild(openButton);
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "reminder-linked-open";
+  openButton.title = "Ver lembretes vinculados";
+  openButton.setAttribute(
+    "aria-label",
+    `Ver ${linked.length} lembrete(s) vinculado(s)`,
+  );
+  openButton.innerHTML = `<span aria-hidden="true">☷</span><b>${linked.length}</b>`;
+  openButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    panel.scrollIntoView({ behavior: "smooth", block: "center" });
+    panel.classList.add("highlight");
+    window.setTimeout(() => panel.classList.remove("highlight"), 1400);
+  });
+  const header = surface.querySelector<HTMLElement>(
+    ".drawer-head,.modal-head,.modal-header,header",
+  );
+  const reminderButton = header?.querySelector<HTMLElement>(
+    ".reminder-detail-action,.reminder-action-button",
+  );
+  if (reminderButton)
+    reminderButton.insertAdjacentElement("afterend", openButton);
+  else header?.appendChild(openButton);
 }
 
-export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }: { module: string; reminders?: ReminderSourceRecord[]; checklists?: ChecklistSourceRecord[] }) {
-  const remindersRef=useRef(reminders);remindersRef.current=reminders;
-  const checklistsRef=useRef(checklists);checklistsRef.current=checklists;
+export function ReminderCardEnhancer({
+  module,
+  reminders = [],
+  checklists = [],
+}: {
+  module: string;
+  reminders?: ReminderSourceRecord[];
+  checklists?: ChecklistSourceRecord[];
+}) {
+  const remindersRef = useRef(reminders);
+  remindersRef.current = reminders;
+  const checklistsRef = useRef(checklists);
+  checklistsRef.current = checklists;
   useEffect(() => {
     if (!ENABLED_MODULES.has(module)) return;
     const root = document.querySelector(".content");
@@ -132,127 +361,291 @@ export function ReminderCardEnhancer({ module, reminders = [], checklists = [] }
       const target = event.target as HTMLElement | null;
       if (!target) return;
       const candidate = target.closest<HTMLElement>(CARD_SELECTORS.join(","));
-      if (candidate && root.contains(candidate)) pendingContext = cardContext(candidate, module);
+      if (candidate && root.contains(candidate))
+        pendingContext = cardContext(candidate, module);
       if (isManagementAction(target)) return;
     };
     const enhance = () => {
-      if (module === "internalChat") root.querySelectorAll<HTMLElement>(".internal-chat-conversation-head").forEach((header) => {
-        if (header.dataset.reminderEnhanced === "true") return;
-        header.dataset.reminderEnhanced = "true";
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "reminder-detail-action conversation";
-        button.title = "Lembrar de enviar uma mensagem";
-        button.setAttribute("aria-label", button.title);
-        button.innerHTML = `<span aria-hidden="true">◷</span><b>Lembrar</b>`;
-        button.addEventListener("click", (event) => {
-          event.preventDefault(); event.stopPropagation();
-          const title = header.querySelector<HTMLElement>("h2,h3,strong")?.innerText?.trim() || "Conversa interna";
-          openReminderComposer({ module, entityId: header.dataset.reminderEntityId, title: `Enviar mensagem: ${title}` });
-        });
-        header.appendChild(button);
-      });
-      const surfaces = Array.from(document.querySelectorAll<HTMLElement>(DETAIL_SURFACES)).filter(surface => !surface.dataset.reminderEnhanced && !surface.closest(".reminder-modal-backdrop"));
+      if (module === "internalChat")
+        root
+          .querySelectorAll<HTMLElement>(".internal-chat-conversation-head")
+          .forEach((header) => {
+            if (header.dataset.reminderEnhanced === "true") return;
+            header.dataset.reminderEnhanced = "true";
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "reminder-detail-action conversation";
+            button.title = "Lembrar de enviar uma mensagem";
+            button.setAttribute("aria-label", button.title);
+            button.innerHTML = `<span aria-hidden="true">◷</span><b>Lembrar</b>`;
+            button.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const title =
+                header
+                  .querySelector<HTMLElement>("h2,h3,strong")
+                  ?.innerText?.trim() || "Conversa interna";
+              openReminderComposer({
+                module,
+                entityId: header.dataset.reminderEntityId,
+                title: `Enviar mensagem: ${title}`,
+              });
+            });
+            header.appendChild(button);
+          });
+      const surfaces = Array.from(
+        document.querySelectorAll<HTMLElement>(DETAIL_SURFACES),
+      ).filter(
+        (surface) =>
+          !surface.dataset.reminderEnhanced &&
+          !surface.closest(".reminder-modal-backdrop"),
+      );
       const surface = surfaces.at(-1);
       if (!surface) return;
-      const header = surface.querySelector<HTMLElement>(".drawer-head,.modal-head,.modal-header,header");
+      const header = surface.querySelector<HTMLElement>(
+        ".drawer-head,.modal-head,.modal-header,header",
+      );
       if (!header) return;
-      const context: ReminderContext | null = surface.dataset.reminderSourceEntityId ? {
-        module: surface.dataset.reminderSourceModule || module,
-        entityId: surface.dataset.reminderSourceEntityId,
-        clientId: surface.dataset.reminderSourceClientId,
-        customerName: surface.dataset.reminderSourceCustomerName,
-        title: surface.dataset.reminderSourceTitle,
-      } : pendingContext;
+      const context: ReminderContext | null = surface.dataset
+        .reminderSourceEntityId
+        ? {
+            module: surface.dataset.reminderSourceModule || module,
+            entityId: surface.dataset.reminderSourceEntityId,
+            clientId: surface.dataset.reminderSourceClientId,
+            customerName: surface.dataset.reminderSourceCustomerName,
+            title: surface.dataset.reminderSourceTitle,
+          }
+        : pendingContext;
       if (!context) return;
       pendingContext = null;
       surface.dataset.reminderEnhanced = "true";
-      surface.dataset.reminderSourceModule=context.module;
-      if(context.entityId)surface.dataset.reminderSourceEntityId=context.entityId;
-      if(context.clientId)surface.dataset.reminderSourceClientId=context.clientId;
-      if(context.customerName)surface.dataset.reminderSourceCustomerName=context.customerName;
-      if(context.title)surface.dataset.reminderSourceTitle=context.title;
-      const actionHost = header.querySelector<HTMLElement>(".lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions,.cs-drawer-head-actions")
-        || (surface.matches(".retention-detail-page") ? header.lastElementChild as HTMLElement : header);
-      const closeButton = actionHost?.querySelector<HTMLElement>('button[aria-label="Fechar"]');
+      surface.dataset.reminderSourceModule = context.module;
+      if (context.entityId)
+        surface.dataset.reminderSourceEntityId = context.entityId;
+      if (context.clientId)
+        surface.dataset.reminderSourceClientId = context.clientId;
+      if (context.customerName)
+        surface.dataset.reminderSourceCustomerName = context.customerName;
+      if (context.title) surface.dataset.reminderSourceTitle = context.title;
+      const actionHost =
+        header.querySelector<HTMLElement>(
+          ".lead-header-actions,.development-drawer-head-actions,.task-overlay-header-actions,.suggestion-detail-actions,.cs-drawer-head-actions",
+        ) ||
+        (surface.matches(".retention-detail-page")
+          ? (header.lastElementChild as HTMLElement)
+          : header);
+      const closeButton = actionHost?.querySelector<HTMLElement>(
+        'button[aria-label="Fechar"]',
+      );
       const insertAction = (button: HTMLElement) => {
-        if (closeButton?.parentElement === actionHost) actionHost.insertBefore(button, closeButton);
+        if (closeButton?.parentElement === actionHost)
+          actionHost.insertBefore(button, closeButton);
         else actionHost.appendChild(button);
       };
-      if (module !== "tasks" && context.entityId && !header.querySelector(COPY_LINK_SELECTOR)) {
-        const copy = document.createElement("button"); copy.type = "button"; copy.className = "card-copy-link";
-        copy.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><b>Copiar link</b>';
-        copy.addEventListener("click", async event => { event.preventDefault(); event.stopPropagation(); const label = copy.querySelector("b"); try { await navigator.clipboard.writeText(cardShareUrl(context.module, context.entityId!)); if (label) label.textContent = "Link copiado"; } catch { if (label) label.textContent = "Não foi possível copiar"; } });
+      if (
+        module !== "tasks" &&
+        context.entityId &&
+        !header.querySelector(COPY_LINK_SELECTOR)
+      ) {
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "card-copy-link";
+        copy.innerHTML =
+          '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><b>Copiar link</b>';
+        copy.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const label = copy.querySelector("b");
+          try {
+            await navigator.clipboard.writeText(
+              cardShareUrl(context.module, context.entityId!),
+            );
+            if (label) label.textContent = "Link copiado";
+          } catch {
+            if (label) label.textContent = "Não foi possível copiar";
+          }
+        });
         insertAction(copy);
       }
-      if (!header.querySelector<HTMLElement>(".reminder-action-button,.reminder-detail-action")) {
+      if (
+        !header.querySelector<HTMLElement>(
+          ".reminder-action-button,.reminder-detail-action",
+        )
+      ) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "reminder-detail-action";
         button.title = "Adicionar lembrete";
-        button.setAttribute("aria-label", `Adicionar lembrete para ${context.title || "este registro"}`);
+        button.setAttribute(
+          "aria-label",
+          `Adicionar lembrete para ${context.title || "este registro"}`,
+        );
         button.innerHTML = `<span aria-hidden="true">◷</span><b>Adicionar lembrete</b>`;
-        button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openReminderComposer(context); });
-        const copyLink = actionHost?.querySelector<HTMLElement>(".copy-task-link");
-        if (copyLink) copyLink.insertAdjacentElement("afterend", button); else insertAction(button);
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openReminderComposer(context);
+        });
+        const copyLink =
+          actionHost?.querySelector<HTMLElement>(".copy-task-link");
+        if (copyLink) copyLink.insertAdjacentElement("afterend", button);
+        else insertAction(button);
       }
       if (!header.querySelector<HTMLElement>(".agenda-detail-action")) {
         const scheduleButton = document.createElement("button");
         scheduleButton.type = "button";
         scheduleButton.className = "agenda-detail-action";
         scheduleButton.title = "Agendar compromisso";
-        scheduleButton.setAttribute("aria-label", `Agendar compromisso para ${context.title || "este registro"}`);
+        scheduleButton.setAttribute(
+          "aria-label",
+          `Agendar compromisso para ${context.title || "este registro"}`,
+        );
         scheduleButton.innerHTML = `<span aria-hidden="true">▣</span><b>Agendar</b>`;
-        scheduleButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openAgendaComposer(context); });
+        scheduleButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openAgendaComposer(context);
+        });
         insertAction(scheduleButton);
       }
-      if (CLIENT_ACTION_MODULES.has(module) && !header.querySelector<HTMLElement>(".client-alert-detail-action")) {
+      if (
+        CLIENT_ACTION_MODULES.has(module) &&
+        !header.querySelector<HTMLElement>(".client-alert-detail-action")
+      ) {
         const alertButton = document.createElement("button");
         alertButton.type = "button";
         alertButton.className = "client-alert-detail-action";
         alertButton.title = "Registrar alerta do cliente";
-        alertButton.setAttribute("aria-label", `Registrar alerta para ${context.title || "este cliente"}`);
+        alertButton.setAttribute(
+          "aria-label",
+          `Registrar alerta para ${context.title || "este cliente"}`,
+        );
         alertButton.innerHTML = `<span aria-hidden="true">!</span><b>Alerta</b>`;
-        alertButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openClientAlert(context); });
-        const reminderAction = header.querySelector<HTMLElement>(".reminder-detail-action,.reminder-action-button");
-        if (reminderAction) reminderAction.insertAdjacentElement("afterend", alertButton); else insertAction(alertButton);
+        alertButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openClientAlert(context);
+        });
+        const reminderAction = header.querySelector<HTMLElement>(
+          ".reminder-detail-action,.reminder-action-button",
+        );
+        if (reminderAction)
+          reminderAction.insertAdjacentElement("afterend", alertButton);
+        else insertAction(alertButton);
       }
-      if (CLIENT_ACTION_MODULES.has(module) && !header.querySelector<HTMLElement>(".client-checklist-detail-action")) {
+      if (
+        CLIENT_ACTION_MODULES.has(module) &&
+        !header.querySelector<HTMLElement>(".client-checklist-detail-action")
+      ) {
         const checklistButton = document.createElement("button");
         checklistButton.type = "button";
         checklistButton.className = "client-checklist-detail-action";
         checklistButton.title = "Vincular checklist";
-        checklistButton.setAttribute("aria-label", `Gerenciar checklists de ${context.title || "este cliente"}`);
+        checklistButton.setAttribute(
+          "aria-label",
+          `Gerenciar checklists de ${context.title || "este cliente"}`,
+        );
         checklistButton.innerHTML = `<span aria-hidden="true">☑</span><b>Checklist</b>`;
-        checklistButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openClientChecklist(context); });
-        const alertAction = header.querySelector<HTMLElement>(".client-alert-detail-action");
-        if (alertAction) alertAction.insertAdjacentElement("afterend", checklistButton); else insertAction(checklistButton);
+        checklistButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openClientChecklist(context);
+        });
+        const alertAction = header.querySelector<HTMLElement>(
+          ".client-alert-detail-action",
+        );
+        if (alertAction)
+          alertAction.insertAdjacentElement("afterend", checklistButton);
+        else insertAction(checklistButton);
       }
-      if (CLIENT_ACTION_MODULES.has(module) && !header.querySelector<HTMLElement>(".client-record-detail-action")) {
-        const isNetworkRecord = module === "cs" && surface.matches(".enterprise-detail-page");
+      if (
+        CLIENT_ACTION_MODULES.has(module) &&
+        !header.querySelector<HTMLElement>(".client-record-detail-action")
+      ) {
+        const isNetworkRecord =
+          module === "cs" && surface.matches(".enterprise-detail-page");
         const recordButton = document.createElement("button");
         recordButton.type = "button";
         recordButton.className = "client-record-detail-action";
-        recordButton.title = isNetworkRecord ? "Acessar ficha da rede" : "Acessar ficha do cliente";
-        recordButton.setAttribute("aria-label", `Acessar ficha ${isNetworkRecord ? "da rede" : "do cliente"} ${context.customerName || context.title || ""}`.trim());
+        recordButton.title = isNetworkRecord
+          ? "Acessar ficha da rede"
+          : "Acessar ficha do cliente";
+        recordButton.setAttribute(
+          "aria-label",
+          `Acessar ficha ${isNetworkRecord ? "da rede" : "do cliente"} ${context.customerName || context.title || ""}`.trim(),
+        );
         recordButton.innerHTML = `<span aria-hidden="true">↗</span><b>${isNetworkRecord ? "Ficha da rede" : "Ficha do cliente"}</b>`;
-        recordButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openClientRecord(context); });
-        const checklistAction = header.querySelector<HTMLElement>(".client-checklist-detail-action");
-        if (checklistAction) checklistAction.insertAdjacentElement("afterend", recordButton); else insertAction(recordButton);
+        recordButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openClientRecord(context);
+        });
+        const checklistAction = header.querySelector<HTMLElement>(
+          ".client-checklist-detail-action",
+        );
+        if (checklistAction)
+          checklistAction.insertAdjacentElement("afterend", recordButton);
+        else insertAction(recordButton);
       }
-      const hasLinkedChecklist=checklistsRef.current.some(item=>{try{const detail=JSON.parse(item.description) as {kind?:string;sourceModule?:string;sourceEntityId?:string;sourceTitle?:string};return detail.kind==="linkedChecklist"&&detail.sourceModule===context.module&&((context.entityId&&detail.sourceEntityId===context.entityId)||(!context.entityId&&normalized(detail.sourceTitle)===normalized(context.title)))}catch{return false}});
-      if(hasLinkedChecklist)window.dispatchEvent(new CustomEvent<ReminderContext>(CLIENT_CHECKLIST_EVENT,{detail:{...context,checklistDisplayOnly:true}}));
-      updateLinkedHistory(surface,remindersRef.current);
+      const hasLinkedChecklist = checklistsRef.current.some((item) => {
+        try {
+          const detail = JSON.parse(item.description) as {
+            kind?: string;
+            sourceModule?: string;
+            sourceEntityId?: string;
+            sourceTitle?: string;
+          };
+          return (
+            detail.kind === "linkedChecklist" &&
+            detail.sourceModule === context.module &&
+            ((context.entityId && detail.sourceEntityId === context.entityId) ||
+              (!context.entityId &&
+                normalized(detail.sourceTitle) === normalized(context.title)))
+          );
+        } catch {
+          return false;
+        }
+      });
+      if (hasLinkedChecklist)
+        window.dispatchEvent(
+          new CustomEvent<ReminderContext>(CLIENT_CHECKLIST_EVENT, {
+            detail: { ...context, checklistDisplayOnly: true },
+          }),
+        );
+      updateLinkedHistory(surface, remindersRef.current);
     };
     root.addEventListener("click", rememberCard, true);
     enhance();
     let enhanceFrame = 0;
     const observer = new MutationObserver(() => {
-      if (!enhanceFrame) enhanceFrame = window.requestAnimationFrame(() => { enhanceFrame = 0; enhance(); });
+      if (!enhanceFrame)
+        enhanceFrame = window.requestAnimationFrame(() => {
+          enhanceFrame = 0;
+          enhance();
+        });
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); window.cancelAnimationFrame(enhanceFrame); root.removeEventListener("click", rememberCard, true); document.querySelectorAll(".reminder-detail-action,.agenda-detail-action,.client-alert-detail-action,.client-checklist-detail-action,.client-record-detail-action,.reminder-linked-open,.drawer-head .card-copy-link,.modal-head .card-copy-link").forEach(entry => entry.remove()); document.querySelectorAll<HTMLElement>("[data-reminder-enhanced]").forEach(entry => delete entry.dataset.reminderEnhanced); };
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(enhanceFrame);
+      root.removeEventListener("click", rememberCard, true);
+      document
+        .querySelectorAll(
+          ".reminder-detail-action,.agenda-detail-action,.client-alert-detail-action,.client-checklist-detail-action,.client-record-detail-action,.reminder-linked-open,.drawer-head .card-copy-link,.modal-head .card-copy-link",
+        )
+        .forEach((entry) => entry.remove());
+      document
+        .querySelectorAll<HTMLElement>("[data-reminder-enhanced]")
+        .forEach((entry) => delete entry.dataset.reminderEnhanced);
+    };
   }, [module]);
-  useEffect(()=>{document.querySelectorAll<HTMLElement>(DETAIL_SURFACES).forEach(surface=>{if(surface.dataset.reminderSourceModule)updateLinkedHistory(surface,reminders)})},[reminders]);
+  useEffect(() => {
+    document
+      .querySelectorAll<HTMLElement>(DETAIL_SURFACES)
+      .forEach((surface) => {
+        if (surface.dataset.reminderSourceModule)
+          updateLinkedHistory(surface, reminders);
+      });
+  }, [reminders]);
   return null;
 }

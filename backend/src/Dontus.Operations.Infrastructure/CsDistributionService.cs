@@ -80,9 +80,15 @@ internal sealed class CsDistributionService(OperationsDbContext db)
         var assignments = new List<Assignment>();
         foreach (var entry in audit)
         {
-            try { if (JsonSerializer.Deserialize<Assignment>(entry.DetailsJson) is { } assigned) assignments.Add(assigned with { Version = Canonical(assigned.Version),
-                CustomerKey = customers.FirstOrDefault(customer => customer.Id.ToString() == assigned.CustomerKey ||
-                    assigned.CustomerKey.Length > 0 && customer.DocumentMasked == assigned.CustomerKey)?.Id.ToString() ?? assigned.CustomerKey }); }
+            try
+            {
+                if (JsonSerializer.Deserialize<Assignment>(entry.DetailsJson) is { } assigned) assignments.Add(assigned with
+                {
+                    Version = Canonical(assigned.Version),
+                    CustomerKey = customers.FirstOrDefault(customer => customer.Id.ToString() == assigned.CustomerKey ||
+                        assigned.CustomerKey.Length > 0 && customer.DocumentMasked == assigned.CustomerKey)?.Id.ToString() ?? assigned.CustomerKey
+                });
+            }
             catch (JsonException) { }
         }
         var events = await db.Activities.AsNoTracking().Where(entry => entry.Module == "cs" && entry.Kind == "Responsável alterado")
@@ -125,7 +131,8 @@ internal sealed class CsDistributionService(OperationsDbContext db)
                 return new CsDistributionCollaboratorDto(user.Id, user.DisplayName, user.Department, ProfilePhotoUrls.For(user.Id, user.UpdatedAt, user.HasPhoto),
                     clients.Count(entry => entry.RecipientUserId == user.Id), counts.Sum(entry => entry.Quantity),
                     clients.Where(entry => entry.RecipientUserId == user.Id).GroupBy(entry => entry.Version).ToDictionary(group => group.Key, group => group.Count()),
-                    history.Where(entry => entry.RecipientUserId == user.Id).Select(entry => (DateTimeOffset?)entry.AssignedAt).Max()) { CurrentPortfolio = counts };
+                    history.Where(entry => entry.RecipientUserId == user.Id).Select(entry => (DateTimeOffset?)entry.AssignedAt).Max())
+                { CurrentPortfolio = counts };
             }).ToArray();
             var queues = canonical.Values.Distinct().OrderBy(version => version == UnknownVersion).ThenBy(version => version).Select(version =>
             {
@@ -172,8 +179,12 @@ internal sealed class CsDistributionService(OperationsDbContext db)
     {
         if (Read(after) is not { } detail) return after ?? "";
         detail.Remove("distributionAssignment");
-        if (assignment is not null) detail["distributionAssignment"] = new JsonObject { ["recipientUserId"] = assignment.RecipientUserId.ToString(),
-            ["version"] = assignment.Version, ["assignedAt"] = assignment.AssignedAt.ToString("O") };
+        if (assignment is not null) detail["distributionAssignment"] = new JsonObject
+        {
+            ["recipientUserId"] = assignment.RecipientUserId.ToString(),
+            ["version"] = assignment.Version,
+            ["assignedAt"] = assignment.AssignedAt.ToString("O")
+        };
         else if (Read(before)?["distributionAssignment"] is JsonObject existing) detail["distributionAssignment"] = existing.DeepClone();
         return detail.ToJsonString();
     }

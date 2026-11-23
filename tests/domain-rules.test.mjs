@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { allowedNextStatuses, canTransition, initialStatus } from "../lib/domain.ts";
+import {
+  allowedNextStatuses,
+  canTransition,
+  initialStatus,
+} from "../lib/domain.ts";
 
 test("aplica os estados iniciais por domínio", () => {
   assert.equal(initialStatus("commercial"), "NovoLead");

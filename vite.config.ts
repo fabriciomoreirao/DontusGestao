@@ -49,7 +49,13 @@ export default defineConfig(async () => {
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
     plugins: [
-      { name: "dontus-realtime", configureServer(server: ViteDevServer) { if (server.httpServer) attachRealtimeProxy(server.httpServer, { rejectUnknown: false }); } },
+      {
+        name: "dontus-realtime",
+        configureServer(server: ViteDevServer) {
+          if (server.httpServer)
+            attachRealtimeProxy(server.httpServer, { rejectUnknown: false });
+        },
+      },
       vinext(),
       sites(),
       cloudflare({

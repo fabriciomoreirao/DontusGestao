@@ -2,60 +2,862 @@
 
 import PaginatedItems from "@/app/PaginatedItems";
 
-import { goalPeriod, goalMetricLabels, isCommercialGoalDepartment, goalFunnelName } from "@/lib/goal-progress";
+import {
+  goalPeriod,
+  goalMetricLabels,
+  isCommercialGoalDepartment,
+  goalFunnelName,
+} from "@/lib/goal-progress";
 import GoalProgressCard from "@/app/GoalProgressCard";
 import { useGoalProgress } from "@/app/useGoalProgress";
 import GoalTargetFields from "@/app/GoalTargetFields";
-import {formatGoalValue, goalTargetError} from "@/lib/goal-target";
-import GoalAssignmentFields, { goalScopeFromForm } from "@/app/GoalAssignmentFields";
+import { formatGoalValue, goalTargetError } from "@/lib/goal-target";
+import GoalAssignmentFields, {
+  goalScopeFromForm,
+} from "@/app/GoalAssignmentFields";
 import { goalModuleName, type GoalScope } from "@/lib/goal-scope";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
-import { CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, Gauge, Pencil, Plus, Save, Search, Target, Trash2, UsersRound, X } from "lucide-react";
+import {
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  CircleDollarSign,
+  Gauge,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  Target,
+  Trash2,
+  UsersRound,
+  X,
+} from "lucide-react";
 import { FormEvent, useState } from "react";
 
-type WorkItem={id:string;module:string;record_type:string;title:string;customer_name:string;owner:string;team:string;status:string;amount_cents:number;description:string;version:number;created_at:string;updated_at:string};
-type Employee={id:string;displayName:string;departmentName:string;departmentNames:string[];photoDataUrl?:string;active:boolean};
-type Department={id:string;name:string;active:boolean};
-type Catalog={id:string;catalog:string;name:string;description:string;active:boolean};
-type TaskSource={id:string;title:string;typeName:string;statusName:string;assigneeName:string;departmentName:string;createdAt:string;updatedAt:string};
-type OperationResult={id?:string}|false;
-type Metric="salesValue"|"salesCount"|"clientCount"|"referralCount"|"usageScore"|`custom:${string}`;type Cadence="daily"|"weekly"|"monthly"|"annual";
-type Goal=GoalScope & {kind:"performanceGoal";metric:Metric;cadence:Cadence;target:number;employeeId:string;employeeName:string;departmentId:string;departmentName:string;periodStart:string;periodEnd:string;createdBy:string;notes:string;active:boolean};
-type GoalMetricConfig={kind:"goalMetric";sourceModule:string;recordType:string;statusFilter:string;aggregation:"count"|"amount"|"averageScore"};
-const safe=<T,>(value:string):T|null=>{try{return JSON.parse(value) as T}catch{return null}};const normalize=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-const money=(value:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(value);const shortDate=(value:string)=>new Intl.DateTimeFormat("pt-BR",{dateStyle:"short"}).format(new Date(`${value}T12:00:00`));
-const builtInMetricLabel:Record<string,string>={salesValue:"Valor de vendas",salesCount:"Quantidade de vendas",clientCount:"Quantidade de clientes (legado)",referralCount:"Quantidade de indicações",usageScore:"Médias de score"};const cadenceLabel:Record<Cadence,string>={daily:"Diária",weekly:"Semanal",monthly:"Mensal",annual:"Anual"};
-function parseGoal(value:string){const parsed=safe<Partial<Goal>>(value);return parsed?.kind==="performanceGoal"?parsed as Goal:null}
-function parseGoalMetric(value:string){const parsed=safe<Partial<GoalMetricConfig>>(value);return parsed?.kind==="goalMetric"?parsed as GoalMetricConfig:null}
-function period(reference:string,cadence:Cadence){const base=new Date(`${reference}T12:00:00`);if(cadence==="daily")return{start:reference,end:reference};if(cadence==="weekly"){const day=(base.getDay()+6)%7;const start=new Date(base);start.setDate(base.getDate()-day);const end=new Date(start);end.setDate(start.getDate()+6);return{start:start.toISOString().slice(0,10),end:end.toISOString().slice(0,10)}}if(cadence==="annual"){const year=base.getFullYear();return{start:`${year}-01-01`,end:`${year}-12-31`}}const start=`${reference.slice(0,7)}-01`;const endDate=new Date(base.getFullYear(),base.getMonth()+1,0);return{start,end:endDate.toISOString().slice(0,10)}}
-function health(detail:Record<string,unknown>){const clean=(values:unknown)=>Array.isArray(values)?values.flatMap(value=>String(value).split(",")).map(value=>normalize(value.trim())).filter(Boolean):[];const base=clean(detail.featuresBase),active=clean(detail.featuresActive);return base.length?Math.round(base.filter(feature=>active.some(value=>value.includes(feature))).length/base.length*100):0}
-function isSale(item:WorkItem){const detail=safe<Record<string,unknown>>(item.description)||{};return item.module==="commercial"&&(detail.kind==="directSale"||/ganho|fechad|conclu|vendid/i.test(`${item.status} ${String(detail.stage||"")}`))}
-
-export default function GoalsModule({items,taskItems=[],catalogs,employees,departments,currentUser,busy,canCreate,canEdit,canManage,operate}:{items:WorkItem[];taskItems?:TaskSource[];catalogs:Catalog[];employees:Employee[];departments:Department[];currentUser:{displayName:string};busy:boolean;canCreate:boolean;canEdit:boolean;canManage:boolean;operate:(payload:Record<string,unknown>,success:string)=>Promise<OperationResult>}){
- const [creating,setCreating]=useState(false);const [saveError,setSaveError]=useState("");const [editingGoal,setEditingGoal]=useState<{item:WorkItem;goal:Goal}|null>(null);const [selectedGoal,setSelectedGoal]=useState<{item:WorkItem;goal:Goal}|null>(null);const [month,setMonth]=useState(new Date().toISOString().slice(0,7));const [employeeFilter,setEmployeeFilter]=useState("all");const [query,setQuery]=useState("");const goals=items.filter(item=>item.module==="goals").map(item=>({item,goal:parseGoal(item.description)})).filter((entry):entry is {item:WorkItem;goal:Goal}=>Boolean(entry.goal));
- const configuredMetrics=catalogs.map(entry=>({entry,config:parseGoalMetric(entry.description)})).filter((value):value is {entry:Catalog;config:GoalMetricConfig}=>value.entry.catalog==="goalMetric"&&value.entry.active&&Boolean(value.config));
- const metricName=(metric:Metric)=>metric.startsWith("custom:")?configuredMetrics.find(entry=>entry.entry.id===metric.slice(7))?.entry.name||"Meta personalizada":builtInMetricLabel[metric]||metric;
- const summary=useGoalProgress(items);
- const results=new Map(summary.results.map(result=>[result.id,result]));
- const versions=new Map(items.map(item=>[item.id,item.version]));
- const progress=(id:string)=>{const result=results.get(id);return result&&result.version===versions.get(id)?result.actual:undefined};
- const realized=(id:string,metric:string)=>{const actual=progress(id);return actual===undefined?"Calculando…":formatGoalValue(actual,metric)};
- const reminderFilter = useReminderFilter("goals");
- const visible=goals.filter(({item,goal})=>reminderFilter.matches({entityId:item.id,title:item.title})&&goal.periodStart.slice(0,7)<=month&&goal.periodEnd.slice(0,7)>=month&&(employeeFilter==="all"||goal.employeeId===employeeFilter)&&(!query||normalize(`${item.title} ${goal.employeeName} ${goal.departmentName}`).includes(normalize(query))));const activeCount=visible.filter(entry=>entry.goal.active).length;const achieved=visible.filter(entry=>(progress(entry.item.id)??-1)>=entry.goal.target).length;
- const save=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();const form=new FormData(event.currentTarget);const error=goalTargetError(Number(form.get("target")),String(form.get("metric")));if(error){setSaveError(error);return}setSaveError("");const cadence=String(form.get("cadence")) as Cadence;const reference=String(form.get("reference"));const dates=goalPeriod(reference,cadence);const employee=employees.find(entry=>entry.id===String(form.get("employeeId")));const department=departments.find(entry=>entry.id===String(form.get("departmentId")));const goal:Goal={kind:"performanceGoal",metric:String(form.get("metric")) as Metric,cadence,target:Number(form.get("target")||0),employeeId:employee?.id||"",employeeName:employee?.displayName||"",departmentId:department?.id||"",departmentName:department?.name||"",...goalScopeFromForm(form,catalogs,editingGoal?.goal),periodStart:dates.start,periodEnd:dates.end,createdBy:editingGoal?.goal.createdBy||currentUser.displayName,notes:String(form.get("notes")||""),active:editingGoal?.goal.active??true};void operate({action:editingGoal?"updateWorkItem":"createWorkItem",...(editingGoal?{requireConfirmation:true,id:editingGoal.item.id,version:editingGoal.item.version}:{module:"goals",recordType:"Meta",customerName:"",priority:"P3"}),title:String(form.get("title")),owner:goal.employeeName||goal.departmentName||"Equipe",team:goal.departmentName,status:goal.active?"Ativa":"Encerrada",amountCents:goal.metric==="salesValue"?Math.round(goal.target*100):0,description:JSON.stringify(goal)},editingGoal?"Meta atualizada.":"Meta criada e vinculada ao acompanhamento.").then(result=>{if(result){setCreating(false);setEditingGoal(null);setSelectedGoal(null)}})};
- const toggle=async(item:WorkItem,goal:Goal)=>{const next={...goal,active:!goal.active};await operate({action:"updateWorkItem",id:item.id,title:item.title,owner:item.owner,amountCents:item.amount_cents,version:item.version,description:JSON.stringify(next)},next.active?"Meta reativada.":"Meta encerrada.")};
-
- return <section className="goals-module task-visual-standard"><header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Target/></span><span className="module-page-copy"><span className="eyebrow">GESTÃO · DESEMPENHO</span><h1>Metas</h1><p>Vendas, indicações e scores com acompanhamento diário, mensal ou anual.</p></span></div><div className="module-page-actions">{canCreate&&<button className="primary-button" onClick={()=>{setSaveError("");setCreating(true)}}><Plus/>Criar meta</button>}</div></header><section className="goals-summary"><article><Target/><span><small>Metas ativas</small><strong>{activeCount}</strong></span></article><article><CheckCircle2/><span><small>Metas atingidas</small><strong>{visible.some(entry=>progress(entry.item.id)===undefined)?"—":achieved}</strong></span></article><article><CalendarDays/><span><small>Competência</small><strong>{new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"}).format(new Date(`${month}-02T12:00:00`))}</strong></span></article></section><section className="goals-filters panel reminder-filter-toolbar"><label><Search/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar meta, setor ou colaborador"/></label>{reminderFilter.control}<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/><select value={employeeFilter} onChange={event=>setEmployeeFilter(event.target.value)}><option value="all">Todos os colaboradores</option>{employees.filter(entry=>entry.active).map(entry=><option key={entry.id} value={entry.id}>{entry.displayName}</option>)}</select></section>{summary.error&&<p className="form-error" role="alert">{summary.error} <button type="button" onClick={summary.retry}>Tentar novamente</button></p>}<section className="goals-grid">{visible.length===0?<div className="goals-empty"><Target/><h2>Nenhuma meta nesta competência</h2><p>Crie uma meta para começar a acompanhar o desempenho.</p></div>:<PaginatedItems label="metas">{visible.map(({item,goal})=>{const actual=progress(item.id)??0;return <GoalProgressCard pending={progress(item.id)===undefined} key={item.id} goal={{id:item.id,title:item.title,...goal,actual,progress:goal.target>0?Math.round(actual/goal.target*100):0,achieved:actual>=goal.target,employee:goal.employeeName,department:goal.departmentName,funnelName:goalFunnelName(goal,catalogs),moduleName:goalModuleName(goal)}} onOpen={()=>setSelectedGoal({item,goal})} actions={canEdit?<><button type="button" onClick={()=>void toggle(item,goal)}>{goal.active?"Encerrar":"Reativar"}</button><button type="button" aria-label={`Editar meta ${item.title}`} title="Editar meta" onClick={()=>{setSaveError("");setEditingGoal({item,goal})}}><Pencil size={15}/></button><button type="button" className="delete" aria-label={`Excluir meta ${item.title}`} title="Excluir meta" onClick={()=>{if(window.confirm(`Excluir a meta ${item.title}?`))void operate({action:"deleteWorkItem",id:item.id},"Meta excluída.")}}><Trash2 size={15}/></button></>:undefined}/>})}</PaginatedItems>}</section>{(creating||editingGoal)&&<div className="modal-backdrop" onMouseDown={event=>{if(event.currentTarget===event.target){setCreating(false);setEditingGoal(null)}}}><section className="modal goal-modal" role="dialog" aria-modal="true" aria-label={editingGoal?"Editar meta de desempenho":"Criar meta de desempenho"}><header className="modal-head"><div><span className="eyebrow">{editingGoal?"EDITAR META":"NOVA META"}</span><h2>{editingGoal?"Editar meta de desempenho":"Criar meta de desempenho"}</h2><p>O progresso inclui os lançamentos já existentes entre a data inicial e o fim do período.</p></div><button className="icon-button" aria-label="Fechar meta" onClick={()=>{setCreating(false);setEditingGoal(null)}}><X/></button></header><form className="form-grid" onSubmit={save}><label className="wide">Nome da meta *<input name="title" required autoFocus defaultValue={editingGoal?.item.title} placeholder="Ex.: Meta comercial de setembro"/></label><GoalSetupFields key={editingGoal?.item.id||"new"} employees={employees} departments={departments} catalogs={catalogs} goal={editingGoal?.goal}/><label className="wide">Observações<textarea name="notes" rows={3} defaultValue={editingGoal?.goal.notes}/></label>{saveError&&<p className="goal-field-error wide" role="alert">{saveError}</p>}<div className="form-actions wide"><button type="button" onClick={()=>{setCreating(false);setEditingGoal(null)}}>Cancelar</button><button className="primary-button" disabled={busy}><Save/>{editingGoal?"Salvar alterações":"Criar meta"}</button></div></form></section></div>}{selectedGoal&&<div className="modal-backdrop" onMouseDown={event=>event.currentTarget===event.target&&setSelectedGoal(null)}><section className="modal goal-detail-modal"><header className="modal-head"><div><span className="eyebrow">RESUMO DA META</span><h2>{selectedGoal.item.title}</h2><p>{metricName(selectedGoal.goal.metric)} · {cadenceLabel[selectedGoal.goal.cadence]}</p></div><button className="icon-button" onClick={()=>setSelectedGoal(null)} aria-label="Fechar"><X/></button></header><div className="goal-detail-kpis"><span><small>Realizado</small><strong>{realized(selectedGoal.item.id,selectedGoal.goal.metric)}</strong></span><span><small>Meta</small><strong>{formatGoalValue(selectedGoal.goal.target,selectedGoal.goal.metric)}</strong></span><span><small>Atingimento</small><strong>{(progress(selectedGoal.item.id)===undefined?0:Math.round((progress(selectedGoal.item.id)??0)/(selectedGoal.goal.target||1)*100))}%</strong></span></div><div className="goal-progress"><i style={{width:`${Math.min(100,(progress(selectedGoal.item.id)===undefined?0:Math.round((progress(selectedGoal.item.id)??0)/(selectedGoal.goal.target||1)*100)))}%`}}/></div><dl className="goal-detail-list"><div><dt>Colaborador</dt><dd>{selectedGoal.goal.employeeName||"Todo o setor"}</dd></div><div><dt>Setor</dt><dd>{selectedGoal.goal.departmentName||"Todos"}</dd></div>{isCommercialGoalDepartment(selectedGoal.goal.departmentName)&&["salesValue","salesCount"].includes(selectedGoal.goal.metric)&&<div><dt>Funis</dt><dd>{goalFunnelName(selectedGoal.goal,catalogs)||"Todos os funis"}</dd></div>}{goalModuleName(selectedGoal.goal)&&<div><dt>Módulos</dt><dd>{goalModuleName(selectedGoal.goal)}</dd></div>}<div><dt>Período</dt><dd>{shortDate(selectedGoal.goal.periodStart)} a {shortDate(selectedGoal.goal.periodEnd)}</dd></div><div><dt>Status</dt><dd>{(progress(selectedGoal.item.id)??-1)>=selectedGoal.goal.target?"Meta batida":selectedGoal.goal.active?"Ativa":"Encerrada"}</dd></div></dl>{selectedGoal.goal.notes&&<p className="goal-detail-notes">{selectedGoal.goal.notes}</p>}<div className="form-actions">{canEdit&&<><button className="secondary-button" onClick={()=>{setEditingGoal(selectedGoal);setSelectedGoal(null)}}><Pencil size={15}/>Editar</button><button className="secondary-button danger-action" onClick={()=>{if(window.confirm(`Excluir a meta ${selectedGoal.item.title}?`)){void operate({action:"deleteWorkItem",id:selectedGoal.item.id},"Meta excluída.");setSelectedGoal(null)}}}><Trash2 size={15}/>Excluir</button></>}<button className="primary-button" onClick={()=>setSelectedGoal(null)}>Fechar</button></div></section></div>}</section>;
+type WorkItem = {
+  id: string;
+  module: string;
+  record_type: string;
+  title: string;
+  customer_name: string;
+  owner: string;
+  team: string;
+  status: string;
+  amount_cents: number;
+  description: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+type Employee = {
+  id: string;
+  displayName: string;
+  departmentName: string;
+  departmentNames: string[];
+  photoDataUrl?: string;
+  active: boolean;
+};
+type Department = { id: string; name: string; active: boolean };
+type Catalog = {
+  id: string;
+  catalog: string;
+  name: string;
+  description: string;
+  active: boolean;
+};
+type TaskSource = {
+  id: string;
+  title: string;
+  typeName: string;
+  statusName: string;
+  assigneeName: string;
+  departmentName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+type OperationResult = { id?: string } | false;
+type Metric =
+  | "salesValue"
+  | "salesCount"
+  | "clientCount"
+  | "referralCount"
+  | "usageScore"
+  | `custom:${string}`;
+type Cadence = "daily" | "weekly" | "monthly" | "annual";
+type Goal = GoalScope & {
+  kind: "performanceGoal";
+  metric: Metric;
+  cadence: Cadence;
+  target: number;
+  employeeId: string;
+  employeeName: string;
+  departmentId: string;
+  departmentName: string;
+  periodStart: string;
+  periodEnd: string;
+  createdBy: string;
+  notes: string;
+  active: boolean;
+};
+type GoalMetricConfig = {
+  kind: "goalMetric";
+  sourceModule: string;
+  recordType: string;
+  statusFilter: string;
+  aggregation: "count" | "amount" | "averageScore";
+};
+const safe = <T,>(value: string): T | null => {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+};
+const normalize = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+const money = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+    value,
+  );
+const shortDate = (value: string) =>
+  new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(
+    new Date(`${value}T12:00:00`),
+  );
+const builtInMetricLabel: Record<string, string> = {
+  salesValue: "Valor de vendas",
+  salesCount: "Quantidade de vendas",
+  clientCount: "Quantidade de clientes (legado)",
+  referralCount: "Quantidade de indicações",
+  usageScore: "Médias de score",
+};
+const cadenceLabel: Record<Cadence, string> = {
+  daily: "Diária",
+  weekly: "Semanal",
+  monthly: "Mensal",
+  annual: "Anual",
+};
+function parseGoal(value: string) {
+  const parsed = safe<Partial<Goal>>(value);
+  return parsed?.kind === "performanceGoal" ? (parsed as Goal) : null;
+}
+function parseGoalMetric(value: string) {
+  const parsed = safe<Partial<GoalMetricConfig>>(value);
+  return parsed?.kind === "goalMetric" ? (parsed as GoalMetricConfig) : null;
+}
+function period(reference: string, cadence: Cadence) {
+  const base = new Date(`${reference}T12:00:00`);
+  if (cadence === "daily") return { start: reference, end: reference };
+  if (cadence === "weekly") {
+    const day = (base.getDay() + 6) % 7;
+    const start = new Date(base);
+    start.setDate(base.getDate() - day);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return {
+      start: start.toISOString().slice(0, 10),
+      end: end.toISOString().slice(0, 10),
+    };
+  }
+  if (cadence === "annual") {
+    const year = base.getFullYear();
+    return { start: `${year}-01-01`, end: `${year}-12-31` };
+  }
+  const start = `${reference.slice(0, 7)}-01`;
+  const endDate = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+  return { start, end: endDate.toISOString().slice(0, 10) };
+}
+function health(detail: Record<string, unknown>) {
+  const clean = (values: unknown) =>
+    Array.isArray(values)
+      ? values
+          .flatMap((value) => String(value).split(","))
+          .map((value) => normalize(value.trim()))
+          .filter(Boolean)
+      : [];
+  const base = clean(detail.featuresBase),
+    active = clean(detail.featuresActive);
+  return base.length
+    ? Math.round(
+        (base.filter((feature) =>
+          active.some((value) => value.includes(feature)),
+        ).length /
+          base.length) *
+          100,
+      )
+    : 0;
+}
+function isSale(item: WorkItem) {
+  const detail = safe<Record<string, unknown>>(item.description) || {};
+  return (
+    item.module === "commercial" &&
+    (detail.kind === "directSale" ||
+      /ganho|fechad|conclu|vendid/i.test(
+        `${item.status} ${String(detail.stage || "")}`,
+      ))
+  );
 }
 
-function GoalSetupFields({employees, departments, catalogs, goal}: {employees: Employee[]; departments: Department[]; catalogs: Catalog[]; goal?: Goal}) {
+export default function GoalsModule({
+  items,
+  taskItems = [],
+  catalogs,
+  employees,
+  departments,
+  currentUser,
+  busy,
+  canCreate,
+  canEdit,
+  canManage,
+  operate,
+}: {
+  items: WorkItem[];
+  taskItems?: TaskSource[];
+  catalogs: Catalog[];
+  employees: Employee[];
+  departments: Department[];
+  currentUser: { displayName: string };
+  busy: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canManage: boolean;
+  operate: (
+    payload: Record<string, unknown>,
+    success: string,
+  ) => Promise<OperationResult>;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [editingGoal, setEditingGoal] = useState<{
+    item: WorkItem;
+    goal: Goal;
+  } | null>(null);
+  const [selectedGoal, setSelectedGoal] = useState<{
+    item: WorkItem;
+    goal: Goal;
+  } | null>(null);
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const goals = items
+    .filter((item) => item.module === "goals")
+    .map((item) => ({ item, goal: parseGoal(item.description) }))
+    .filter((entry): entry is { item: WorkItem; goal: Goal } =>
+      Boolean(entry.goal),
+    );
+  const configuredMetrics = catalogs
+    .map((entry) => ({ entry, config: parseGoalMetric(entry.description) }))
+    .filter(
+      (value): value is { entry: Catalog; config: GoalMetricConfig } =>
+        value.entry.catalog === "goalMetric" &&
+        value.entry.active &&
+        Boolean(value.config),
+    );
+  const metricName = (metric: Metric) =>
+    metric.startsWith("custom:")
+      ? configuredMetrics.find((entry) => entry.entry.id === metric.slice(7))
+          ?.entry.name || "Meta personalizada"
+      : builtInMetricLabel[metric] || metric;
+  const summary = useGoalProgress(items);
+  const results = new Map(summary.results.map((result) => [result.id, result]));
+  const versions = new Map(items.map((item) => [item.id, item.version]));
+  const progress = (id: string) => {
+    const result = results.get(id);
+    return result && result.version === versions.get(id)
+      ? result.actual
+      : undefined;
+  };
+  const realized = (id: string, metric: string) => {
+    const actual = progress(id);
+    return actual === undefined
+      ? "Calculando…"
+      : formatGoalValue(actual, metric);
+  };
+  const reminderFilter = useReminderFilter("goals");
+  const visible = goals.filter(
+    ({ item, goal }) =>
+      reminderFilter.matches({ entityId: item.id, title: item.title }) &&
+      goal.periodStart.slice(0, 7) <= month &&
+      goal.periodEnd.slice(0, 7) >= month &&
+      (employeeFilter === "all" || goal.employeeId === employeeFilter) &&
+      (!query ||
+        normalize(
+          `${item.title} ${goal.employeeName} ${goal.departmentName}`,
+        ).includes(normalize(query))),
+  );
+  const activeCount = visible.filter((entry) => entry.goal.active).length;
+  const achieved = visible.filter(
+    (entry) => (progress(entry.item.id) ?? -1) >= entry.goal.target,
+  ).length;
+  const save = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const error = goalTargetError(
+      Number(form.get("target")),
+      String(form.get("metric")),
+    );
+    if (error) {
+      setSaveError(error);
+      return;
+    }
+    setSaveError("");
+    const cadence = String(form.get("cadence")) as Cadence;
+    const reference = String(form.get("reference"));
+    const dates = goalPeriod(reference, cadence);
+    const employee = employees.find(
+      (entry) => entry.id === String(form.get("employeeId")),
+    );
+    const department = departments.find(
+      (entry) => entry.id === String(form.get("departmentId")),
+    );
+    const goal: Goal = {
+      kind: "performanceGoal",
+      metric: String(form.get("metric")) as Metric,
+      cadence,
+      target: Number(form.get("target") || 0),
+      employeeId: employee?.id || "",
+      employeeName: employee?.displayName || "",
+      departmentId: department?.id || "",
+      departmentName: department?.name || "",
+      ...goalScopeFromForm(form, catalogs, editingGoal?.goal),
+      periodStart: dates.start,
+      periodEnd: dates.end,
+      createdBy: editingGoal?.goal.createdBy || currentUser.displayName,
+      notes: String(form.get("notes") || ""),
+      active: editingGoal?.goal.active ?? true,
+    };
+    void operate(
+      {
+        action: editingGoal ? "updateWorkItem" : "createWorkItem",
+        ...(editingGoal
+          ? {
+              requireConfirmation: true,
+              id: editingGoal.item.id,
+              version: editingGoal.item.version,
+            }
+          : {
+              module: "goals",
+              recordType: "Meta",
+              customerName: "",
+              priority: "P3",
+            }),
+        title: String(form.get("title")),
+        owner: goal.employeeName || goal.departmentName || "Equipe",
+        team: goal.departmentName,
+        status: goal.active ? "Ativa" : "Encerrada",
+        amountCents:
+          goal.metric === "salesValue" ? Math.round(goal.target * 100) : 0,
+        description: JSON.stringify(goal),
+      },
+      editingGoal
+        ? "Meta atualizada."
+        : "Meta criada e vinculada ao acompanhamento.",
+    ).then((result) => {
+      if (result) {
+        setCreating(false);
+        setEditingGoal(null);
+        setSelectedGoal(null);
+      }
+    });
+  };
+  const toggle = async (item: WorkItem, goal: Goal) => {
+    const next = { ...goal, active: !goal.active };
+    await operate(
+      {
+        action: "updateWorkItem",
+        id: item.id,
+        title: item.title,
+        owner: item.owner,
+        amountCents: item.amount_cents,
+        version: item.version,
+        description: JSON.stringify(next),
+      },
+      next.active ? "Meta reativada." : "Meta encerrada.",
+    );
+  };
+
+  return (
+    <section className="goals-module task-visual-standard">
+      <header className="module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <Target />
+          </span>
+          <span className="module-page-copy">
+            <span className="eyebrow">GESTÃO · DESEMPENHO</span>
+            <h1>Metas</h1>
+            <p>
+              Vendas, indicações e scores com acompanhamento diário, mensal ou
+              anual.
+            </p>
+          </span>
+        </div>
+        <div className="module-page-actions">
+          {canCreate && (
+            <button
+              className="primary-button"
+              onClick={() => {
+                setSaveError("");
+                setCreating(true);
+              }}
+            >
+              <Plus />
+              Criar meta
+            </button>
+          )}
+        </div>
+      </header>
+      <section className="goals-summary">
+        <article>
+          <Target />
+          <span>
+            <small>Metas ativas</small>
+            <strong>{activeCount}</strong>
+          </span>
+        </article>
+        <article>
+          <CheckCircle2 />
+          <span>
+            <small>Metas atingidas</small>
+            <strong>
+              {visible.some((entry) => progress(entry.item.id) === undefined)
+                ? "—"
+                : achieved}
+            </strong>
+          </span>
+        </article>
+        <article>
+          <CalendarDays />
+          <span>
+            <small>Competência</small>
+            <strong>
+              {new Intl.DateTimeFormat("pt-BR", {
+                month: "long",
+                year: "numeric",
+              }).format(new Date(`${month}-02T12:00:00`))}
+            </strong>
+          </span>
+        </article>
+      </section>
+      <section className="goals-filters panel reminder-filter-toolbar">
+        <label>
+          <Search />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar meta, setor ou colaborador"
+          />
+        </label>
+        {reminderFilter.control}
+        <input
+          type="month"
+          value={month}
+          onChange={(event) => setMonth(event.target.value)}
+        />
+        <select
+          value={employeeFilter}
+          onChange={(event) => setEmployeeFilter(event.target.value)}
+        >
+          <option value="all">Todos os colaboradores</option>
+          {employees
+            .filter((entry) => entry.active)
+            .map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.displayName}
+              </option>
+            ))}
+        </select>
+      </section>
+      {summary.error && (
+        <p className="form-error" role="alert">
+          {summary.error}{" "}
+          <button type="button" onClick={summary.retry}>
+            Tentar novamente
+          </button>
+        </p>
+      )}
+      <section className="goals-grid">
+        {visible.length === 0 ? (
+          <div className="goals-empty">
+            <Target />
+            <h2>Nenhuma meta nesta competência</h2>
+            <p>Crie uma meta para começar a acompanhar o desempenho.</p>
+          </div>
+        ) : (
+          <PaginatedItems label="metas">
+            {visible.map(({ item, goal }) => {
+              const actual = progress(item.id) ?? 0;
+              return (
+                <GoalProgressCard
+                  pending={progress(item.id) === undefined}
+                  key={item.id}
+                  goal={{
+                    id: item.id,
+                    title: item.title,
+                    ...goal,
+                    actual,
+                    progress:
+                      goal.target > 0
+                        ? Math.round((actual / goal.target) * 100)
+                        : 0,
+                    achieved: actual >= goal.target,
+                    employee: goal.employeeName,
+                    department: goal.departmentName,
+                    funnelName: goalFunnelName(goal, catalogs),
+                    moduleName: goalModuleName(goal),
+                  }}
+                  onOpen={() => setSelectedGoal({ item, goal })}
+                  actions={
+                    canEdit ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void toggle(item, goal)}
+                        >
+                          {goal.active ? "Encerrar" : "Reativar"}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Editar meta ${item.title}`}
+                          title="Editar meta"
+                          onClick={() => {
+                            setSaveError("");
+                            setEditingGoal({ item, goal });
+                          }}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="delete"
+                          aria-label={`Excluir meta ${item.title}`}
+                          title="Excluir meta"
+                          onClick={() => {
+                            if (window.confirm(`Excluir a meta ${item.title}?`))
+                              void operate(
+                                { action: "deleteWorkItem", id: item.id },
+                                "Meta excluída.",
+                              );
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    ) : undefined
+                  }
+                />
+              );
+            })}
+          </PaginatedItems>
+        )}
+      </section>
+      {(creating || editingGoal) && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) {
+              setCreating(false);
+              setEditingGoal(null);
+            }
+          }}
+        >
+          <section
+            className="modal goal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              editingGoal
+                ? "Editar meta de desempenho"
+                : "Criar meta de desempenho"
+            }
+          >
+            <header className="modal-head">
+              <div>
+                <span className="eyebrow">
+                  {editingGoal ? "EDITAR META" : "NOVA META"}
+                </span>
+                <h2>
+                  {editingGoal
+                    ? "Editar meta de desempenho"
+                    : "Criar meta de desempenho"}
+                </h2>
+                <p>
+                  O progresso inclui os lançamentos já existentes entre a data
+                  inicial e o fim do período.
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="Fechar meta"
+                onClick={() => {
+                  setCreating(false);
+                  setEditingGoal(null);
+                }}
+              >
+                <X />
+              </button>
+            </header>
+            <form className="form-grid" onSubmit={save}>
+              <label className="wide">
+                Nome da meta *
+                <input
+                  name="title"
+                  required
+                  autoFocus
+                  defaultValue={editingGoal?.item.title}
+                  placeholder="Ex.: Meta comercial de setembro"
+                />
+              </label>
+              <GoalSetupFields
+                key={editingGoal?.item.id || "new"}
+                employees={employees}
+                departments={departments}
+                catalogs={catalogs}
+                goal={editingGoal?.goal}
+              />
+              <label className="wide">
+                Observações
+                <textarea
+                  name="notes"
+                  rows={3}
+                  defaultValue={editingGoal?.goal.notes}
+                />
+              </label>
+              {saveError && (
+                <p className="goal-field-error wide" role="alert">
+                  {saveError}
+                </p>
+              )}
+              <div className="form-actions wide">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreating(false);
+                    setEditingGoal(null);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button className="primary-button" disabled={busy}>
+                  <Save />
+                  {editingGoal ? "Salvar alterações" : "Criar meta"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+      {selectedGoal && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) =>
+            event.currentTarget === event.target && setSelectedGoal(null)
+          }
+        >
+          <section className="modal goal-detail-modal">
+            <header className="modal-head">
+              <div>
+                <span className="eyebrow">RESUMO DA META</span>
+                <h2>{selectedGoal.item.title}</h2>
+                <p>
+                  {metricName(selectedGoal.goal.metric)} ·{" "}
+                  {cadenceLabel[selectedGoal.goal.cadence]}
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setSelectedGoal(null)}
+                aria-label="Fechar"
+              >
+                <X />
+              </button>
+            </header>
+            <div className="goal-detail-kpis">
+              <span>
+                <small>Realizado</small>
+                <strong>
+                  {realized(selectedGoal.item.id, selectedGoal.goal.metric)}
+                </strong>
+              </span>
+              <span>
+                <small>Meta</small>
+                <strong>
+                  {formatGoalValue(
+                    selectedGoal.goal.target,
+                    selectedGoal.goal.metric,
+                  )}
+                </strong>
+              </span>
+              <span>
+                <small>Atingimento</small>
+                <strong>
+                  {progress(selectedGoal.item.id) === undefined
+                    ? 0
+                    : Math.round(
+                        ((progress(selectedGoal.item.id) ?? 0) /
+                          (selectedGoal.goal.target || 1)) *
+                          100,
+                      )}
+                  %
+                </strong>
+              </span>
+            </div>
+            <div className="goal-progress">
+              <i
+                style={{
+                  width: `${Math.min(100, progress(selectedGoal.item.id) === undefined ? 0 : Math.round(((progress(selectedGoal.item.id) ?? 0) / (selectedGoal.goal.target || 1)) * 100))}%`,
+                }}
+              />
+            </div>
+            <dl className="goal-detail-list">
+              <div>
+                <dt>Colaborador</dt>
+                <dd>{selectedGoal.goal.employeeName || "Todo o setor"}</dd>
+              </div>
+              <div>
+                <dt>Setor</dt>
+                <dd>{selectedGoal.goal.departmentName || "Todos"}</dd>
+              </div>
+              {isCommercialGoalDepartment(selectedGoal.goal.departmentName) &&
+                ["salesValue", "salesCount"].includes(
+                  selectedGoal.goal.metric,
+                ) && (
+                  <div>
+                    <dt>Funis</dt>
+                    <dd>
+                      {goalFunnelName(selectedGoal.goal, catalogs) ||
+                        "Todos os funis"}
+                    </dd>
+                  </div>
+                )}
+              {goalModuleName(selectedGoal.goal) && (
+                <div>
+                  <dt>Módulos</dt>
+                  <dd>{goalModuleName(selectedGoal.goal)}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Período</dt>
+                <dd>
+                  {shortDate(selectedGoal.goal.periodStart)} a{" "}
+                  {shortDate(selectedGoal.goal.periodEnd)}
+                </dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>
+                  {(progress(selectedGoal.item.id) ?? -1) >=
+                  selectedGoal.goal.target
+                    ? "Meta batida"
+                    : selectedGoal.goal.active
+                      ? "Ativa"
+                      : "Encerrada"}
+                </dd>
+              </div>
+            </dl>
+            {selectedGoal.goal.notes && (
+              <p className="goal-detail-notes">{selectedGoal.goal.notes}</p>
+            )}
+            <div className="form-actions">
+              {canEdit && (
+                <>
+                  <button
+                    className="secondary-button"
+                    onClick={() => {
+                      setEditingGoal(selectedGoal);
+                      setSelectedGoal(null);
+                    }}
+                  >
+                    <Pencil size={15} />
+                    Editar
+                  </button>
+                  <button
+                    className="secondary-button danger-action"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Excluir a meta ${selectedGoal.item.title}?`,
+                        )
+                      ) {
+                        void operate(
+                          {
+                            action: "deleteWorkItem",
+                            id: selectedGoal.item.id,
+                          },
+                          "Meta excluída.",
+                        );
+                        setSelectedGoal(null);
+                      }
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    Excluir
+                  </button>
+                </>
+              )}
+              <button
+                className="primary-button"
+                onClick={() => setSelectedGoal(null)}
+              >
+                Fechar
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function GoalSetupFields({
+  employees,
+  departments,
+  catalogs,
+  goal,
+}: {
+  employees: Employee[];
+  departments: Department[];
+  catalogs: Catalog[];
+  goal?: Goal;
+}) {
   const [metric, setMetric] = useState<string>(goal?.metric || "salesValue");
-  return <>
-    <GoalTargetFields metric={goal?.metric} target={goal?.target} onMetricChange={setMetric}/>
-    <label>Período *<select name="cadence" defaultValue={goal?.cadence || "monthly"}><option value="daily">Diária</option><option value="monthly">Mensal</option><option value="annual">Anual</option></select></label>
-    <label>Data inicial *<input name="reference" type="date" required defaultValue={goal?.periodStart || new Date().toISOString().slice(0,10)}/></label>
-    <GoalAssignmentFields employees={employees} departments={departments} catalogs={catalogs} goal={goal} metric={metric}/>
-  </>;
+  return (
+    <>
+      <GoalTargetFields
+        metric={goal?.metric}
+        target={goal?.target}
+        onMetricChange={setMetric}
+      />
+      <label>
+        Período *
+        <select name="cadence" defaultValue={goal?.cadence || "monthly"}>
+          <option value="daily">Diária</option>
+          <option value="monthly">Mensal</option>
+          <option value="annual">Anual</option>
+        </select>
+      </label>
+      <label>
+        Data inicial *
+        <input
+          name="reference"
+          type="date"
+          required
+          defaultValue={
+            goal?.periodStart || new Date().toISOString().slice(0, 10)
+          }
+        />
+      </label>
+      <GoalAssignmentFields
+        employees={employees}
+        departments={departments}
+        catalogs={catalogs}
+        goal={goal}
+        metric={metric}
+      />
+    </>
+  );
 }

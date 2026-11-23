@@ -65,8 +65,13 @@ public sealed partial class DontusIntegrationService(OperationsDbContext db, Don
         var users = await api.ListUsersAsync(identification, ct);
         Audit(actor, "ListDontusUsers", "access", identification, new { identification, count = users.Count });
         await db.SaveChangesAsync(ct);
-        return new { identification, customerName = DontusApiClient.Text(customer, "NomeFantasia"), fetchedAt = DateTimeOffset.UtcNow,
-            users = users.Select(u => new DontusEnvironmentUserDto(u.Id, u.Name, u.Username, u.Email, u.IsSupervisor, u.Active, u.Active && u.LoginUrl is not null)) };
+        return new
+        {
+            identification,
+            customerName = DontusApiClient.Text(customer, "NomeFantasia"),
+            fetchedAt = DateTimeOffset.UtcNow,
+            users = users.Select(u => new DontusEnvironmentUserDto(u.Id, u.Name, u.Username, u.Email, u.IsSupervisor, u.Active, u.Active && u.LoginUrl is not null))
+        };
     }
 
     public async Task<object> LoginAsync(DontusLoginCommand command, ActorContext actor, CancellationToken ct)
@@ -91,11 +96,17 @@ public sealed partial class DontusIntegrationService(OperationsDbContext db, Don
         if (!await db.SupportAccessReasons.AnyAsync(entry => entry.Id == reason.Id && entry.Active
                 && entry.DepartmentId == departmentId && accessibleDepartments.Contains(departmentId), ct))
             throw new DomainException("O motivo ou seu vínculo com o setor foi alterado. Atualize os motivos antes de acessar.", 403);
-        var log = new SupportAccessLog {
-            ActorEmail = actor.Email, ActorName = actor.DisplayName, Identification = identification,
-            CustomerName = DontusApiClient.Text(customer, "NomeFantasia"), TargetUserId = user.Id,
+        var log = new SupportAccessLog
+        {
+            ActorEmail = actor.Email,
+            ActorName = actor.DisplayName,
+            Identification = identification,
+            CustomerName = DontusApiClient.Text(customer, "NomeFantasia"),
+            TargetUserId = user.Id,
             TargetUserName = string.IsNullOrWhiteSpace(user.Name) ? user.Username : user.Name,
-            ReasonId = reason.Id, ReasonName = reason.Name, Justification = justification,
+            ReasonId = reason.Id,
+            ReasonName = reason.Name,
+            Justification = justification,
         };
         db.SupportAccessLogs.Add(log);
         Audit(actor, "OpenDontusAccess", "access", identification, new { identification, userId = user.Id, reasonId = reason.Id, reason = reason.Name, justification, accessLogId = log.Id });

@@ -17,9 +17,21 @@ public sealed class GoalProgressService(OperationsDbContext db)
         // Goal metrics need the full history, independently of workspace pagination and source-screen access.
         // Only the authorized goal totals leave this service; source records and client details stay private.
         var sources = await db.WorkItems.AsNoTracking().Where(x => x.Module == "commercial" || x.Module == "referrals" || x.Module == "cs" || x.Module == "lia")
-            .Select(x => new WorkItem { Id = x.Id, Module = x.Module, RecordType = x.RecordType, Title = "", CreatedBy = "",
-                Owner = x.Owner, Team = x.Team, Status = x.Status, AmountCents = x.AmountCents,
-                Description = x.Description, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt }).ToListAsync(ct);
+            .Select(x => new WorkItem
+            {
+                Id = x.Id,
+                Module = x.Module,
+                RecordType = x.RecordType,
+                Title = "",
+                CreatedBy = "",
+                Owner = x.Owner,
+                Team = x.Team,
+                Status = x.Status,
+                AmountCents = x.AmountCents,
+                Description = x.Description,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt
+            }).ToListAsync(ct);
         var catalogs = await db.CustomerCatalogOptions.AsNoTracking().Where(x => x.Catalog == "funnelStage" || x.Catalog == "commercialProduct"
             || x.Active && (x.Catalog == "csFeatureBase" || x.Catalog == "csFeature" || x.Catalog == "csFeatureActive" || x.Catalog == "csFeaturePlus")).ToListAsync(ct);
         var features = catalogs.Where(x => x.Active && (x.Catalog == "csFeatureBase" || x.Catalog.StartsWith("csFeature") && IsBase(x.Description)))

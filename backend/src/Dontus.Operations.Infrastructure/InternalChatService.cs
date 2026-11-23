@@ -26,8 +26,17 @@ public sealed class InternalChatService(
         var users = await db.Users.AsNoTracking()
             .Where(user => user.Active && user.BlockedAt == null)
             .OrderBy(user => user.DisplayName)
-            .Select(user => new { user.Id, user.DisplayName, user.Email, user.Department, user.JobTitle,
-                user.IsCoordinator, user.UpdatedAt, HasPhoto = user.PhotoDataUrl != "" })
+            .Select(user => new
+            {
+                user.Id,
+                user.DisplayName,
+                user.Email,
+                user.Department,
+                user.JobTitle,
+                user.IsCoordinator,
+                user.UpdatedAt,
+                HasPhoto = user.PhotoDataUrl != ""
+            })
             .ToDictionaryAsync(user => user.Id, cancellationToken);
         var userPhotos = users.ToDictionary(entry => entry.Key,
             entry => ProfilePhotoUrls.For(entry.Key, entry.Value.UpdatedAt, entry.Value.HasPhoto));
@@ -51,12 +60,12 @@ public sealed class InternalChatService(
 
         // Unread state must include messages older than the loaded history window.
         var unreadByRoom = await (from message in db.InternalChatMessages.AsNoTracking()
-            join member in db.InternalChatRoomMembers.AsNoTracking() on message.RoomId equals member.RoomId
-            where member.UserId == actorUser.Id && roomIds.Contains(message.RoomId) && message.SenderUserId != actorUser.Id
-                && message.Type != "pin" && message.DeletedAt == null && message.CreatedAt >= member.JoinedAt
-                && message.CreatedAt > (member.LastReadAt ?? member.JoinedAt)
-            group message by message.RoomId into roomMessages
-            select new { RoomId = roomMessages.Key, Count = roomMessages.Count() })
+                                  join member in db.InternalChatRoomMembers.AsNoTracking() on message.RoomId equals member.RoomId
+                                  where member.UserId == actorUser.Id && roomIds.Contains(message.RoomId) && message.SenderUserId != actorUser.Id
+                                      && message.Type != "pin" && message.DeletedAt == null && message.CreatedAt >= member.JoinedAt
+                                      && message.CreatedAt > (member.LastReadAt ?? member.JoinedAt)
+                                  group message by message.RoomId into roomMessages
+                                  select new { RoomId = roomMessages.Key, Count = roomMessages.Count() })
             .ToDictionaryAsync(entry => entry.RoomId, entry => entry.Count, cancellationToken);
         var membersByRoom = members.ToLookup(member => member.RoomId);
         var messagesByRoom = messages.ToLookup(message => message.RoomId);
@@ -134,7 +143,8 @@ public sealed class InternalChatService(
                 room.CreatedByUserId == actorUser.Id || roomMembers.Any(member => member.UserId == actorUser.Id && member.IsAdmin),
                 actorMembership.ArchivedAt.HasValue,
                 unreadByRoom.GetValueOrDefault(room.Id),
-                room.LastMessageAt, roomMembers.Select(member => member.UserId).ToArray(), roomMessages) { IsMuted = actorMembership.IsMuted };
+                room.LastMessageAt, roomMembers.Select(member => member.UserId).ToArray(), roomMessages)
+            { IsMuted = actorMembership.IsMuted };
         }).ToArray();
 
         return new InternalChatModuleDto(
@@ -225,9 +235,9 @@ public sealed class InternalChatService(
         if (body.Length == 0 || body.Length > maxLength)
             throw new DomainException(type == "sticker" ? "Selecione uma figurinha válida." : "Digite uma mensagem de até 4.000 caracteres.");
         var participants = await (from member in db.InternalChatRoomMembers
-            join person in db.Users on member.UserId equals person.Id
-            where member.RoomId == room.Id && person.Active && person.BlockedAt == null
-            select new { person.Id, person.DisplayName }).ToDictionaryAsync(person => person.Id, person => person.DisplayName, cancellationToken);
+                                  join person in db.Users on member.UserId equals person.Id
+                                  where member.RoomId == room.Id && person.Active && person.BlockedAt == null
+                                  select new { person.Id, person.DisplayName }).ToDictionaryAsync(person => person.Id, person => person.DisplayName, cancellationToken);
         var mentions = InternalChatMentions.Validate(body, command.Mentions, participants);
         if (type != "text" && mentions.Count > 0) throw new DomainException("Marcações são permitidas apenas em mensagens de texto.");
         await ValidateReplyAsync(room.Id, actorUser.Id, command.ReplyToMessageId, cancellationToken);
@@ -505,7 +515,7 @@ public sealed class InternalChatService(
             && !db.InternalChatMessageReceipts.Any(receipt => receipt.MessageId == message.Id && receipt.UserId == actorUser.Id))
             .Select(message => message.Id).ToArrayAsync(cancellationToken);
         db.InternalChatMessageReceipts.AddRange(unread.Select(id => new InternalChatMessageReceipt
-            { RoomId = command.RoomId, MessageId = id, UserId = actorUser.Id, ReadAt = readAt }));
+        { RoomId = command.RoomId, MessageId = id, UserId = actorUser.Id, ReadAt = readAt }));
         if (!membership.LastReadAt.HasValue || membership.LastReadAt < readThroughAt) membership.LastReadAt = readThroughAt;
         await db.SaveChangesAsync(cancellationToken);
     }

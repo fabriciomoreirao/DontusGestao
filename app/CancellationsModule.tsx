@@ -12,220 +12,2504 @@ import { beginKanbanDrag, readKanbanDrop } from "@/lib/kanban-drag";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 import { CreateTaskModal, type TaskModuleData } from "@/app/TasksModule";
-import { cancellationTaskInitial, cancellationTaskSector } from "@/lib/cancellation-tasks";
+import {
+  cancellationTaskInitial,
+  cancellationTaskSector,
+} from "@/lib/cancellation-tasks";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
-import { AlertTriangle, ArrowRight, BarChart3, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, ExternalLink, FileText, MessageSquareText, Pencil, Plus, ClipboardPlus, RotateCcw, Save, Search, Settings, ShieldCheck, Trash2, Upload, UserRound, X, XCircle } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type DragEvent } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  CircleDollarSign,
+  Clock3,
+  ExternalLink,
+  FileText,
+  MessageSquareText,
+  Pencil,
+  Plus,
+  ClipboardPlus,
+  RotateCcw,
+  Save,
+  Search,
+  Settings,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  UserRound,
+  X,
+  XCircle,
+} from "lucide-react";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type DragEvent,
+} from "react";
 import MediaUploadField from "@/app/MediaUploadField";
 import CancellationIndicators from "@/app/CancellationIndicators";
 import { cancellationReversalOwner } from "@/lib/cancellation-responsibility";
 
-type WorkItem = { id:string; module:string; record_type:string; title:string; customer_id:string|null; customer_name:string; owner:string; team:string; status:string; priority:string; amount_cents:number; description:string; version:number; created_at:string; updated_at:string; origin_type?:string|null; origin_id?:string|null };
-type Customer = { id:string; trade_name:string; legal_name:string; document_masked?:string; status?:string; product_version:string; created_at?:string; cs_owner:string; owner?:string };
-type Catalog = { id:string; catalog:string; name:string; description?:string; active:boolean };
-type Employee = { id:string; displayName:string; departmentName:string; photoDataUrl?:string; active:boolean };
-type CurrentUser = { displayName:string; email:string; isCoordinator:boolean; department:string; role:string };
-type OperationResult = { id?:string; createdProtocol?:string } | false;
-type Operate = (payload:Record<string,unknown>, success:string)=>Promise<OperationResult>;
+type WorkItem = {
+  id: string;
+  module: string;
+  record_type: string;
+  title: string;
+  customer_id: string | null;
+  customer_name: string;
+  owner: string;
+  team: string;
+  status: string;
+  priority: string;
+  amount_cents: number;
+  description: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  origin_type?: string | null;
+  origin_id?: string | null;
+};
+type Customer = {
+  id: string;
+  trade_name: string;
+  legal_name: string;
+  document_masked?: string;
+  status?: string;
+  product_version: string;
+  created_at?: string;
+  cs_owner: string;
+  owner?: string;
+};
+type Catalog = {
+  id: string;
+  catalog: string;
+  name: string;
+  description?: string;
+  active: boolean;
+};
+type Employee = {
+  id: string;
+  displayName: string;
+  departmentName: string;
+  photoDataUrl?: string;
+  active: boolean;
+};
+type CurrentUser = {
+  displayName: string;
+  email: string;
+  isCoordinator: boolean;
+  department: string;
+  role: string;
+};
+type OperationResult = { id?: string; createdProtocol?: string } | false;
+type Operate = (
+  payload: Record<string, unknown>,
+  success: string,
+) => Promise<OperationResult>;
 
 export type CancellationDetail = {
-  kind:"cancellationJourney";
-  protocol?:string;
-  requestDate:string;
-  requestMonth:string;
-  clientId:string;
-  customerName:string;
-  adhesionDate:string;
-  stayRange:string;
-  plan:string;
-  monthlyValueCents:number;
-  seller:string;
-  csOwner:string;
-  reversalOwner:string;
-  requesterPhone:string;
-  reason:string;
-  notes:string;
-  sourceModule?:string;
-  sourceItemId?:string;
-  linkedCsItemId?:string;
-  linkedTargetItemId?:string;
-  linkedDestination?:string;
-  actionCompletedAt?:string;
-  actionCompletedBy?:string;
-  attachments:Array<{id:string;name:string;dataUrl:string;contentType:string;sizeBytes:number;uploadedAt:string;uploadedBy:string}>;
-  history:Array<{id:string;type?:string;text:string;at:string;author:string;taskId?:string;taskProtocol?:string}>;
+  kind: "cancellationJourney";
+  protocol?: string;
+  requestDate: string;
+  requestMonth: string;
+  clientId: string;
+  customerName: string;
+  adhesionDate: string;
+  stayRange: string;
+  plan: string;
+  monthlyValueCents: number;
+  seller: string;
+  csOwner: string;
+  reversalOwner: string;
+  requesterPhone: string;
+  reason: string;
+  notes: string;
+  sourceModule?: string;
+  sourceItemId?: string;
+  linkedCsItemId?: string;
+  linkedTargetItemId?: string;
+  linkedDestination?: string;
+  actionCompletedAt?: string;
+  actionCompletedBy?: string;
+  attachments: Array<{
+    id: string;
+    name: string;
+    dataUrl: string;
+    contentType: string;
+    sizeBytes: number;
+    uploadedAt: string;
+    uploadedBy: string;
+  }>;
+  history: Array<{
+    id: string;
+    type?: string;
+    text: string;
+    at: string;
+    author: string;
+    taskId?: string;
+    taskProtocol?: string;
+  }>;
 };
 
-type CancellationRoute = "activation"|"retention"|"lia";
+type CancellationRoute = "activation" | "retention" | "lia";
 
 const STAGES = [
-  { id:"Fila de espera", label:"Fila de espera", color:"#3b82f6" },
-  { id:"Em processo", label:"Em processo", color:"#f59e0b" },
-  { id:"Follow up", label:"Follow up", color:"#8b5cf6" },
-  { id:"Convertido", label:"Convertido", color:"#22c55e" },
-  { id:"Não convertido", label:"Não convertido", color:"#ef4444" },
+  { id: "Fila de espera", label: "Fila de espera", color: "#3b82f6" },
+  { id: "Em processo", label: "Em processo", color: "#f59e0b" },
+  { id: "Follow up", label: "Follow up", color: "#8b5cf6" },
+  { id: "Convertido", label: "Convertido", color: "#22c55e" },
+  { id: "Não convertido", label: "Não convertido", color: "#ef4444" },
 ] as const;
 
-const NEXT_STAGE:Record<string,string>={"Fila de espera":"Em processo","Em processo":"Follow up","Follow up":"Convertido"};
-const ROUTE_LABELS:Record<CancellationRoute,string>={activation:"Acompanhamento Ativação",retention:"Ativação Retenção",lia:"Acompanhamento LIA"};
+const NEXT_STAGE: Record<string, string> = {
+  "Fila de espera": "Em processo",
+  "Em processo": "Follow up",
+  "Follow up": "Convertido",
+};
+const ROUTE_LABELS: Record<CancellationRoute, string> = {
+  activation: "Acompanhamento Ativação",
+  retention: "Ativação Retenção",
+  lia: "Acompanhamento LIA",
+};
 
-const today=()=>new Date().toISOString().slice(0,10);
-const monthLabel=(value:string)=>new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"}).format(new Date(`${value}-02T12:00:00`));
-const date=(value?:string)=>value?new Intl.DateTimeFormat("pt-BR",{dateStyle:"short"}).format(new Date(`${value.slice(0,10)}T12:00:00`)):"—";
-const dateTime=(value?:string)=>value?new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short"}).format(new Date(value)):"—";
-const money=(cents:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(cents/100);
-const normalize=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-const parse=(value:string,owner="",createdAt="",amount=0):CancellationDetail|null=>{try{const data=JSON.parse(value) as Partial<CancellationDetail>;return data?.kind==="cancellationJourney"?{...data,reversalOwner:cancellationReversalOwner(data,owner),requesterPhone:data.requesterPhone??"",requestDate:data.requestDate||createdAt.slice(0,10),requestMonth:(data.requestDate||data.requestMonth||createdAt).slice(0,7),monthlyValueCents:cancellationMonthlyCents(data as Record<string,unknown>,amount),attachments:Array.isArray(data.attachments)?data.attachments:[],history:Array.isArray(data.history)?data.history:[]} as CancellationDetail:null}catch{return null}};
-const parseCs=(value:string)=>{try{const data=JSON.parse(value) as Record<string,unknown>;return data?.kind==="csJourney"?data:null}catch{return null}};
-const publicCustomerId=(customer?:Customer)=>{const digits=customer?.document_masked?.replace(/\D/g,"")??"";return digits.length===6?digits:""};
-const mergeFiles=(current:File[],incoming:File[])=>[...current,...incoming.filter(file=>!current.some(entry=>entry.name===file.name&&entry.size===file.size&&entry.lastModified===file.lastModified))];
-const createLocalId=()=>typeof globalThis.crypto?.randomUUID==="function"?globalThis.crypto.randomUUID():`file-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const readFile=async(file:File)=>{const bytes=new Uint8Array(await file.arrayBuffer());let binary="";for(let offset=0;offset<bytes.length;offset+=0x8000)binary+=String.fromCharCode(...bytes.subarray(offset,offset+0x8000));return `data:${file.type||"application/octet-stream"};base64,${globalThis.btoa(binary)}`};
-const createAttachments=async(files:File[],author:string)=>Promise.all(files.map(async file=>({id:createLocalId(),name:file.name,dataUrl:await readFile(file),contentType:file.type||"application/octet-stream",sizeBytes:file.size,uploadedAt:new Date().toISOString(),uploadedBy:author})));
+const today = () => new Date().toISOString().slice(0, 10);
+const monthLabel = (value: string) =>
+  new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(
+    new Date(`${value}-02T12:00:00`),
+  );
+const date = (value?: string) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(
+        new Date(`${value.slice(0, 10)}T12:00:00`),
+      )
+    : "—";
+const dateTime = (value?: string) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(new Date(value))
+    : "—";
+const money = (cents: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+    cents / 100,
+  );
+const normalize = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+const parse = (
+  value: string,
+  owner = "",
+  createdAt = "",
+  amount = 0,
+): CancellationDetail | null => {
+  try {
+    const data = JSON.parse(value) as Partial<CancellationDetail>;
+    return data?.kind === "cancellationJourney"
+      ? ({
+          ...data,
+          reversalOwner: cancellationReversalOwner(data, owner),
+          requesterPhone: data.requesterPhone ?? "",
+          requestDate: data.requestDate || createdAt.slice(0, 10),
+          requestMonth: (
+            data.requestDate ||
+            data.requestMonth ||
+            createdAt
+          ).slice(0, 7),
+          monthlyValueCents: cancellationMonthlyCents(
+            data as Record<string, unknown>,
+            amount,
+          ),
+          attachments: Array.isArray(data.attachments) ? data.attachments : [],
+          history: Array.isArray(data.history) ? data.history : [],
+        } as CancellationDetail)
+      : null;
+  } catch {
+    return null;
+  }
+};
+const parseCs = (value: string) => {
+  try {
+    const data = JSON.parse(value) as Record<string, unknown>;
+    return data?.kind === "csJourney" ? data : null;
+  } catch {
+    return null;
+  }
+};
+const publicCustomerId = (customer?: Customer) => {
+  const digits = customer?.document_masked?.replace(/\D/g, "") ?? "";
+  return digits.length === 6 ? digits : "";
+};
+const mergeFiles = (current: File[], incoming: File[]) => [
+  ...current,
+  ...incoming.filter(
+    (file) =>
+      !current.some(
+        (entry) =>
+          entry.name === file.name &&
+          entry.size === file.size &&
+          entry.lastModified === file.lastModified,
+      ),
+  ),
+];
+const createLocalId = () =>
+  typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `file-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const readFile = async (file: File) => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return `data:${file.type || "application/octet-stream"};base64,${globalThis.btoa(binary)}`;
+};
+const createAttachments = async (files: File[], author: string) =>
+  Promise.all(
+    files.map(async (file) => ({
+      id: createLocalId(),
+      name: file.name,
+      dataUrl: await readFile(file),
+      contentType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: author,
+    })),
+  );
 
-export default function CancellationsModule({items,customers,catalogs,employees,currentUser,busy,canCreate,canEdit,canDelete,operate,onOpenSettings,taskModule,canCreateTask,canViewOtherTaskDepartments,uploadTaskAttachments}:{items:WorkItem[];customers:Customer[];catalogs:Catalog[];employees:Employee[];currentUser:CurrentUser;busy:boolean;canCreate:boolean;canEdit:boolean;canDelete:boolean;operate:Operate;onOpenSettings?:()=>void;taskModule:TaskModuleData|null;canCreateTask:boolean;canViewOtherTaskDepartments:boolean;uploadTaskAttachments:(taskId:string,files:File[],onUploaded:(files:File[])=>void)=>Promise<boolean>}){
-  const [stage,setStage]=useState<string>(STAGES[0].id);
-  const [query,setQuery]=useState("");
-  const [owner,setOwner]=useState("all");
-  const [sector,setSector]=useState("all");
-  const [month,setMonth]=useState(new Date().toISOString().slice(0,7));
-  const [creating,setCreating]=useState(false);
-  const [editing,setEditing]=useState<WorkItem|null>(null);
-  const [selected,setSelected]=useState<WorkItem|null>(null);
-  const [routing,setRouting]=useState<WorkItem|null>(null);
-  const [dragging,setDragging]=useState<WorkItem|null>(null);
-  const [showIndicators,setShowIndicators]=useState(false);
-  const [taskRequest,setTaskRequest]=useState<{item:WorkItem;detail:CancellationDetail;requestId:string;created?:{id?:string;createdProtocol?:string}}|null>(null);
-  const [taskSubmitting,setTaskSubmitting]=useState(false);
-  const taskSector=taskModule?cancellationTaskSector(taskModule.departments,taskModule.collaborators,currentUser,canViewOtherTaskDepartments):null;
-  useEffect(()=>{setSelected(current=>{if(!current)return current;const latest=items.find(item=>item.id===current.id);return latest&&latest.version>current.version?latest:current})},[items]);
+export default function CancellationsModule({
+  items,
+  customers,
+  catalogs,
+  employees,
+  currentUser,
+  busy,
+  canCreate,
+  canEdit,
+  canDelete,
+  operate,
+  onOpenSettings,
+  taskModule,
+  canCreateTask,
+  canViewOtherTaskDepartments,
+  uploadTaskAttachments,
+}: {
+  items: WorkItem[];
+  customers: Customer[];
+  catalogs: Catalog[];
+  employees: Employee[];
+  currentUser: CurrentUser;
+  busy: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  operate: Operate;
+  onOpenSettings?: () => void;
+  taskModule: TaskModuleData | null;
+  canCreateTask: boolean;
+  canViewOtherTaskDepartments: boolean;
+  uploadTaskAttachments: (
+    taskId: string,
+    files: File[],
+    onUploaded: (files: File[]) => void,
+  ) => Promise<boolean>;
+}) {
+  const [stage, setStage] = useState<string>(STAGES[0].id);
+  const [query, setQuery] = useState("");
+  const [owner, setOwner] = useState("all");
+  const [sector, setSector] = useState("all");
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<WorkItem | null>(null);
+  const [selected, setSelected] = useState<WorkItem | null>(null);
+  const [routing, setRouting] = useState<WorkItem | null>(null);
+  const [dragging, setDragging] = useState<WorkItem | null>(null);
+  const [showIndicators, setShowIndicators] = useState(false);
+  const [taskRequest, setTaskRequest] = useState<{
+    item: WorkItem;
+    detail: CancellationDetail;
+    requestId: string;
+    created?: { id?: string; createdProtocol?: string };
+  } | null>(null);
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const taskSector = taskModule
+    ? cancellationTaskSector(
+        taskModule.departments,
+        taskModule.collaborators,
+        currentUser,
+        canViewOtherTaskDepartments,
+      )
+    : null;
+  useEffect(() => {
+    setSelected((current) => {
+      if (!current) return current;
+      const latest = items.find((item) => item.id === current.id);
+      return latest && latest.version > current.version ? latest : current;
+    });
+  }, [items]);
   const reminderFilter = useReminderFilter("cancellations");
-  const records=useMemo(()=>items.filter(item=>item.module==="cancellations").map(item=>({item,detail:parse(item.description,item.owner,item.created_at,item.amount_cents)})).filter((entry):entry is {item:WorkItem;detail:CancellationDetail}=>Boolean(entry.detail)),[items]);
-  useEffect(()=>{const url=new URL(window.location.href);const requested=url.searchParams.get("cancellation");if(!requested)return;const match=records.find(entry=>entry.item.id===requested);if(!match)return;setStage(match.item.status);setSelected(match.item);url.searchParams.delete("cancellation");window.history.replaceState({},"",url)},[records]);
-  const stageCounts=Object.fromEntries(STAGES.map(entry=>[entry.id,records.filter(record=>record.item.status===entry.id).length])) as Record<string,number>;
-  const owners=[...new Set(records.flatMap(({item,detail})=>[cancellationReversalOwner(detail,item.owner),detail.csOwner,detail.seller]).filter(Boolean))];
-  const recordSector=(item:WorkItem,detail:CancellationDetail)=>employees.find(entry=>entry.displayName===cancellationReversalOwner(detail,item.owner))?.departmentName||item.team||"Sem setor";
-  const sectors=[...new Set(records.map(({item,detail})=>recordSector(item,detail)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
-  const customerFor=(detail:CancellationDetail,item?:WorkItem)=>customers.find(customer=>customer.id===item?.customer_id||customer.document_masked?.replace(/\D/g,"")===detail.clientId.replace(/\D/g,"")||normalize(customer.trade_name)===normalize(detail.customerName)||normalize(customer.legal_name)===normalize(detail.customerName));
-  const visible=records.filter(({item,detail})=>reminderFilter.matches({entityId:item.id,clientId:detail.clientId,title:detail.customerName})&&item.status===stage&&(!month||detail.requestMonth===month)&&(owner==="all"||cancellationReversalOwner(detail,item.owner)===owner||detail.csOwner===owner||detail.seller===owner)&&(sector==="all"||recordSector(item,detail)===sector)&&(!query.trim()||normalize(`${detail.protocol??""} ${detail.clientId} ${detail.customerName} ${detail.requesterPhone} ${item.title} ${detail.reason} ${detail.plan} ${detail.seller} ${detail.csOwner} ${detail.reversalOwner}`).includes(normalize(query.trim()))));
-  const saveDetail=async(item:WorkItem,detail:CancellationDetail,message:string,confirm=false)=>operate({action:"updateWorkItem",...(confirm?{requireConfirmation:true}:{}),id:item.id,title:detail.customerName||`Cancelamento · ${detail.clientId}`,owner:cancellationReversalOwner(detail,item.owner),customerName:detail.customerName,amountCents:detail.monthlyValueCents,version:item.version,description:JSON.stringify(detail)},message);
-  const matchingJourneys=(detail:CancellationDetail,item?:WorkItem)=>{const customer=customerFor(detail,item);return items.filter(candidate=>candidate.module==="cs"&&(()=>{const journey=parseCs(candidate.description);return Boolean(journey&&(journey.track==="activation"||journey.track==="retention")&&(String(journey.clientId||"").replace(/\D/g,"")===detail.clientId.replace(/\D/g,"")||candidate.customer_id===customer?.id||normalize(candidate.customer_name||candidate.title)===normalize(detail.customerName)))})())};
-  const sendLinkedJourneysToConference=async(item:WorkItem,detail:CancellationDetail)=>{const at=new Date().toISOString();const reason=detail.history.at(-1)?.text||detail.reason||detail.notes||"Motivo não informado";for(const linked of matchingJourneys(detail,item)){const journey=parseCs(linked.description);if(!journey)continue;const follows=Array.isArray(journey.follows)?journey.follows:[];const next={...journey,phase:"conference",status:"Não convertido pelo Comercial · aguardando conferência",cancellationOutcome:"cancelled",cancellationPendingApproval:true,cancellationReason:reason,cancellationRequestedAt:journey.cancellationRequestedAt||at,cancellationRequestedBy:currentUser.displayName,conferenceRequestedAt:at,follows:[...follows,{kind:"Cancelamento",text:`Comercial não converteu a reversão. Encaminhado para conferência da coordenação. Motivo: ${reason}`,createdAt:at,actor:currentUser.displayName}]};await operate({action:"updateWorkItem",id:linked.id,title:linked.title,owner:linked.owner,customerName:linked.customer_name,amountCents:linked.amount_cents,version:linked.version,description:JSON.stringify(next)},`${journey.track==="activation"?"Acompanhamento Ativação":"Acompanhamento Retenção"} enviado para conferência.`)}};
-  const restoreLinkedJourneys=async(item:WorkItem,detail:CancellationDetail)=>{const at=new Date().toISOString();const reason=detail.history.at(-1)?.text||detail.reason||detail.notes||"Cliente decidiu permanecer";for(const linked of matchingJourneys(detail,item)){const journey=parseCs(linked.description);if(!journey)continue;const follows=Array.isArray(journey.follows)?journey.follows:[];const next={...journey,phase:"tracking",status:"Em acompanhamento",cancellationOutcome:"reverted",cancellationPendingApproval:false,cancellationReason:reason,cancellationResolvedAt:at,follows:[...follows,{kind:"Cancelamento revertido",text:`Cliente decidiu permanecer. Continue o acompanhamento normal. Motivo informado: ${reason}`,createdAt:at,actor:currentUser.displayName}]};await operate({action:"updateWorkItem",id:linked.id,title:linked.title,owner:linked.owner,customerName:linked.customer_name,amountCents:linked.amount_cents,version:linked.version,description:JSON.stringify(next)},`Responsável ${linked.owner} avisado: cliente decidiu permanecer.`)}const customer=customerFor(detail,item);if(customer)await operate({action:"updateCustomer",id:customer.id,status:"Cliente"},"Cliente mantido como ativo.")};
-  const move=async(item:WorkItem,next:string)=>{if(!canEdit||item.status===next)return;const moved=await operate({action:"transitionWorkItem",id:item.id,nextStatus:next,version:item.version,confirmed:true,boardMove:true},`Cancelamento movido para ${next}.`);if(moved){const detail=parse(item.description,item.owner,item.created_at,item.amount_cents);if(detail&&next==="Não convertido")await sendLinkedJourneysToConference(item,detail);if(detail&&next==="Convertido")await restoreLinkedJourneys(item,detail)}setSelected(null)};
-  const linkedJourney=(detail:CancellationDetail,track?:"activation"|"retention")=>items.find(candidate=>candidate.module==="cs"&&(()=>{const journey=parseCs(candidate.description);return Boolean(journey&&(!track||journey.track===track)&&(String(journey.clientId||"")===detail.clientId||candidate.customer_id===detail.clientId||normalize(candidate.customer_name||candidate.title)===normalize(detail.customerName)))})());
-  const syncJourney=async(item:WorkItem,detail:CancellationDetail,outcome:"reengage"|"cancelled")=>{
-    const existing=linkedJourney(detail);
-    const at=new Date().toISOString();
-    const text=outcome==="reengage"?"Cancelamento convertido. Responsável deve entrar em contato e alinhar o novo onboarding.":"Cancelamento confirmado. Encaminhado para conferência do coordenador.";
-    let linkedId=existing?.id;
-    if(existing){
-      const journey=parseCs(existing.description)??{};
-      const follows=Array.isArray(journey.follows)?journey.follows:[];
-      const next={...journey,cancellationRequestedAt:journey.cancellationRequestedAt||at,cancellationRequestedBy:currentUser.displayName,cancellationOutcome:outcome==="reengage"?"requested":"cancelled",cancellationReason:detail.reason,cancellationResolvedAt:outcome==="cancelled"?at:undefined,...(outcome==="cancelled"?{phase:"cancelled",status:"Cancelado"}:{}),follows:[...follows,{kind:"Cancelamento",text,createdAt:at,actor:currentUser.displayName}]};
-      const result=await operate({action:"updateWorkItem",id:existing.id,title:existing.title,owner:existing.owner,customerName:existing.customer_name,amountCents:existing.amount_cents,version:existing.version,description:JSON.stringify(next)},outcome==="reengage"?`Responsável ${existing.owner} notificado para o novo onboarding.`:`Cancelamento enviado à conferência de ${existing.owner}.`);
-      if(!result)return;
-    }else{
-      const journey={kind:"csJourney",track:"retention",phase:outcome==="cancelled"?"cancelled":"validation",clientId:detail.clientId,commerciallyApproved:true,status:outcome==="cancelled"?"Cancelado":"Aguardando validação do coordenador",featuresBase:[],featuresActive:[],featuresPlus:[],labels:[],cancellationRequestedAt:at,cancellationRequestedBy:currentUser.displayName,cancellationOutcome:outcome==="cancelled"?"cancelled":"requested",cancellationReason:detail.reason,...(outcome==="cancelled"?{cancellationResolvedAt:at}:{}),follows:[{kind:"Cancelamento",text,createdAt:at,actor:currentUser.displayName}]};
-      const result=await operate({action:"createWorkItem",module:"cs",recordType:"Acompanhamento de retenção",title:detail.customerName||`Cliente ${detail.clientId}`,customerId:customerFor(detail,item)?.id||null,customerName:detail.customerName,owner:"Coordenação de CS",team:"Sucesso do Cliente · Retenção",status:"PendenteAgendamento",priority:"P1",amountCents:detail.monthlyValueCents,description:JSON.stringify(journey)},outcome==="reengage"?"Novo acompanhamento criado para validação do coordenador.":"Conferência de cancelamento criada para o coordenador.");
-      if(!result)return;
-      linkedId=result.id;
-    }
-    const next={...detail,linkedCsItemId:linkedId,actionCompletedAt:at,actionCompletedBy:currentUser.displayName,history:[...detail.history,{id:createLocalId(),text,at,author:currentUser.displayName}]};
-    const saved=await saveDetail(item,next,outcome==="reengage"?"Reversão encaminhada ao Acompanhamento.":"Cancelamento confirmado e Acompanhamento atualizado.");
-    if(saved){const customer=customerFor(detail,item);if(customer)await operate({action:"updateCustomer",id:customer.id,status:outcome==="cancelled"?"Cancelado":"Cliente"},outcome==="cancelled"?"Cliente marcado como cancelado.":"Cliente mantido como ativo.");setSelected(null)}
+  const records = useMemo(
+    () =>
+      items
+        .filter((item) => item.module === "cancellations")
+        .map((item) => ({
+          item,
+          detail: parse(
+            item.description,
+            item.owner,
+            item.created_at,
+            item.amount_cents,
+          ),
+        }))
+        .filter(
+          (entry): entry is { item: WorkItem; detail: CancellationDetail } =>
+            Boolean(entry.detail),
+        ),
+    [items],
+  );
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const requested = url.searchParams.get("cancellation");
+    if (!requested) return;
+    const match = records.find((entry) => entry.item.id === requested);
+    if (!match) return;
+    setStage(match.item.status);
+    setSelected(match.item);
+    url.searchParams.delete("cancellation");
+    window.history.replaceState({}, "", url);
+  }, [records]);
+  const stageCounts = Object.fromEntries(
+    STAGES.map((entry) => [
+      entry.id,
+      records.filter((record) => record.item.status === entry.id).length,
+    ]),
+  ) as Record<string, number>;
+  const owners = [
+    ...new Set(
+      records
+        .flatMap(({ item, detail }) => [
+          cancellationReversalOwner(detail, item.owner),
+          detail.csOwner,
+          detail.seller,
+        ])
+        .filter(Boolean),
+    ),
+  ];
+  const recordSector = (item: WorkItem, detail: CancellationDetail) =>
+    employees.find(
+      (entry) =>
+        entry.displayName === cancellationReversalOwner(detail, item.owner),
+    )?.departmentName ||
+    item.team ||
+    "Sem setor";
+  const sectors = [
+    ...new Set(
+      records
+        .map(({ item, detail }) => recordSector(item, detail))
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const customerFor = (detail: CancellationDetail, item?: WorkItem) =>
+    customers.find(
+      (customer) =>
+        customer.id === item?.customer_id ||
+        customer.document_masked?.replace(/\D/g, "") ===
+          detail.clientId.replace(/\D/g, "") ||
+        normalize(customer.trade_name) === normalize(detail.customerName) ||
+        normalize(customer.legal_name) === normalize(detail.customerName),
+    );
+  const visible = records.filter(
+    ({ item, detail }) =>
+      reminderFilter.matches({
+        entityId: item.id,
+        clientId: detail.clientId,
+        title: detail.customerName,
+      }) &&
+      item.status === stage &&
+      (!month || detail.requestMonth === month) &&
+      (owner === "all" ||
+        cancellationReversalOwner(detail, item.owner) === owner ||
+        detail.csOwner === owner ||
+        detail.seller === owner) &&
+      (sector === "all" || recordSector(item, detail) === sector) &&
+      (!query.trim() ||
+        normalize(
+          `${detail.protocol ?? ""} ${detail.clientId} ${detail.customerName} ${detail.requesterPhone} ${item.title} ${detail.reason} ${detail.plan} ${detail.seller} ${detail.csOwner} ${detail.reversalOwner}`,
+        ).includes(normalize(query.trim()))),
+  );
+  const saveDetail = async (
+    item: WorkItem,
+    detail: CancellationDetail,
+    message: string,
+    confirm = false,
+  ) =>
+    operate(
+      {
+        action: "updateWorkItem",
+        ...(confirm ? { requireConfirmation: true } : {}),
+        id: item.id,
+        title: detail.customerName || `Cancelamento · ${detail.clientId}`,
+        owner: cancellationReversalOwner(detail, item.owner),
+        customerName: detail.customerName,
+        amountCents: detail.monthlyValueCents,
+        version: item.version,
+        description: JSON.stringify(detail),
+      },
+      message,
+    );
+  const matchingJourneys = (detail: CancellationDetail, item?: WorkItem) => {
+    const customer = customerFor(detail, item);
+    return items.filter(
+      (candidate) =>
+        candidate.module === "cs" &&
+        (() => {
+          const journey = parseCs(candidate.description);
+          return Boolean(
+            journey &&
+            (journey.track === "activation" || journey.track === "retention") &&
+            (String(journey.clientId || "").replace(/\D/g, "") ===
+              detail.clientId.replace(/\D/g, "") ||
+              candidate.customer_id === customer?.id ||
+              normalize(candidate.customer_name || candidate.title) ===
+                normalize(detail.customerName)),
+          );
+        })(),
+    );
   };
-  const routeToOnboarding=async(item:WorkItem,detail:CancellationDetail,target:CancellationRoute)=>{
-    const at=new Date().toISOString();
-    const destination=ROUTE_LABELS[target];
-    let linkedId:string|undefined;
-    if(target==="lia"){
-      const existing=items.find(candidate=>candidate.module==="lia"&&(candidate.origin_type==="cancellations"&&candidate.origin_id===item.id||candidate.customer_id===detail.clientId));
-      if(existing){
-        linkedId=existing.id;
-      }else{
-        const liaDetail={kind:"liaJourney",clientId:detail.clientId,sourceCancellationId:item.id,startDate:at,sector:"Cancelamentos",requestType:"Reversão convertida",status:"Aguardando kick-off",featuresBase:[],featuresActive:[],featuresPlus:[],history:[{id:createLocalId(),text:`Cliente encaminhado por Cancelamentos para ${destination}.`,at,author:currentUser.displayName}]};
-        const result=await operate({action:"createWorkItem",module:"lia",recordType:"Projeto LIA",title:detail.customerName||`Cliente ${detail.clientId}`,customerId:customerFor(detail,item)?.id||null,customerName:detail.customerName,owner:"Coordenação de LIA",team:"LIA",status:"AguardandoKickoff",priority:"P1",amountCents:detail.monthlyValueCents,originType:"cancellations",originId:item.id,description:JSON.stringify(liaDetail)},`${destination} criado para validação.`);
-        if(!result)return;
-        linkedId=result.id;
+  const sendLinkedJourneysToConference = async (
+    item: WorkItem,
+    detail: CancellationDetail,
+  ) => {
+    const at = new Date().toISOString();
+    const reason =
+      detail.history.at(-1)?.text ||
+      detail.reason ||
+      detail.notes ||
+      "Motivo não informado";
+    for (const linked of matchingJourneys(detail, item)) {
+      const journey = parseCs(linked.description);
+      if (!journey) continue;
+      const follows = Array.isArray(journey.follows) ? journey.follows : [];
+      const next = {
+        ...journey,
+        phase: "conference",
+        status: "Não convertido pelo Comercial · aguardando conferência",
+        cancellationOutcome: "cancelled",
+        cancellationPendingApproval: true,
+        cancellationReason: reason,
+        cancellationRequestedAt: journey.cancellationRequestedAt || at,
+        cancellationRequestedBy: currentUser.displayName,
+        conferenceRequestedAt: at,
+        follows: [
+          ...follows,
+          {
+            kind: "Cancelamento",
+            text: `Comercial não converteu a reversão. Encaminhado para conferência da coordenação. Motivo: ${reason}`,
+            createdAt: at,
+            actor: currentUser.displayName,
+          },
+        ],
+      };
+      await operate(
+        {
+          action: "updateWorkItem",
+          id: linked.id,
+          title: linked.title,
+          owner: linked.owner,
+          customerName: linked.customer_name,
+          amountCents: linked.amount_cents,
+          version: linked.version,
+          description: JSON.stringify(next),
+        },
+        `${journey.track === "activation" ? "Acompanhamento Ativação" : "Acompanhamento Retenção"} enviado para conferência.`,
+      );
+    }
+  };
+  const restoreLinkedJourneys = async (
+    item: WorkItem,
+    detail: CancellationDetail,
+  ) => {
+    const at = new Date().toISOString();
+    const reason =
+      detail.history.at(-1)?.text ||
+      detail.reason ||
+      detail.notes ||
+      "Cliente decidiu permanecer";
+    for (const linked of matchingJourneys(detail, item)) {
+      const journey = parseCs(linked.description);
+      if (!journey) continue;
+      const follows = Array.isArray(journey.follows) ? journey.follows : [];
+      const next = {
+        ...journey,
+        phase: "tracking",
+        status: "Em acompanhamento",
+        cancellationOutcome: "reverted",
+        cancellationPendingApproval: false,
+        cancellationReason: reason,
+        cancellationResolvedAt: at,
+        follows: [
+          ...follows,
+          {
+            kind: "Cancelamento revertido",
+            text: `Cliente decidiu permanecer. Continue o acompanhamento normal. Motivo informado: ${reason}`,
+            createdAt: at,
+            actor: currentUser.displayName,
+          },
+        ],
+      };
+      await operate(
+        {
+          action: "updateWorkItem",
+          id: linked.id,
+          title: linked.title,
+          owner: linked.owner,
+          customerName: linked.customer_name,
+          amountCents: linked.amount_cents,
+          version: linked.version,
+          description: JSON.stringify(next),
+        },
+        `Responsável ${linked.owner} avisado: cliente decidiu permanecer.`,
+      );
+    }
+    const customer = customerFor(detail, item);
+    if (customer)
+      await operate(
+        { action: "updateCustomer", id: customer.id, status: "Cliente" },
+        "Cliente mantido como ativo.",
+      );
+  };
+  const move = async (item: WorkItem, next: string) => {
+    if (!canEdit || item.status === next) return;
+    const moved = await operate(
+      {
+        action: "transitionWorkItem",
+        id: item.id,
+        nextStatus: next,
+        version: item.version,
+        confirmed: true,
+        boardMove: true,
+      },
+      `Cancelamento movido para ${next}.`,
+    );
+    if (moved) {
+      const detail = parse(
+        item.description,
+        item.owner,
+        item.created_at,
+        item.amount_cents,
+      );
+      if (detail && next === "Não convertido")
+        await sendLinkedJourneysToConference(item, detail);
+      if (detail && next === "Convertido")
+        await restoreLinkedJourneys(item, detail);
+    }
+    setSelected(null);
+  };
+  const linkedJourney = (
+    detail: CancellationDetail,
+    track?: "activation" | "retention",
+  ) =>
+    items.find(
+      (candidate) =>
+        candidate.module === "cs" &&
+        (() => {
+          const journey = parseCs(candidate.description);
+          return Boolean(
+            journey &&
+            (!track || journey.track === track) &&
+            (String(journey.clientId || "") === detail.clientId ||
+              candidate.customer_id === detail.clientId ||
+              normalize(candidate.customer_name || candidate.title) ===
+                normalize(detail.customerName)),
+          );
+        })(),
+    );
+  const syncJourney = async (
+    item: WorkItem,
+    detail: CancellationDetail,
+    outcome: "reengage" | "cancelled",
+  ) => {
+    const existing = linkedJourney(detail);
+    const at = new Date().toISOString();
+    const text =
+      outcome === "reengage"
+        ? "Cancelamento convertido. Responsável deve entrar em contato e alinhar o novo onboarding."
+        : "Cancelamento confirmado. Encaminhado para conferência do coordenador.";
+    let linkedId = existing?.id;
+    if (existing) {
+      const journey = parseCs(existing.description) ?? {};
+      const follows = Array.isArray(journey.follows) ? journey.follows : [];
+      const next = {
+        ...journey,
+        cancellationRequestedAt: journey.cancellationRequestedAt || at,
+        cancellationRequestedBy: currentUser.displayName,
+        cancellationOutcome: outcome === "reengage" ? "requested" : "cancelled",
+        cancellationReason: detail.reason,
+        cancellationResolvedAt: outcome === "cancelled" ? at : undefined,
+        ...(outcome === "cancelled"
+          ? { phase: "cancelled", status: "Cancelado" }
+          : {}),
+        follows: [
+          ...follows,
+          {
+            kind: "Cancelamento",
+            text,
+            createdAt: at,
+            actor: currentUser.displayName,
+          },
+        ],
+      };
+      const result = await operate(
+        {
+          action: "updateWorkItem",
+          id: existing.id,
+          title: existing.title,
+          owner: existing.owner,
+          customerName: existing.customer_name,
+          amountCents: existing.amount_cents,
+          version: existing.version,
+          description: JSON.stringify(next),
+        },
+        outcome === "reengage"
+          ? `Responsável ${existing.owner} notificado para o novo onboarding.`
+          : `Cancelamento enviado à conferência de ${existing.owner}.`,
+      );
+      if (!result) return;
+    } else {
+      const journey = {
+        kind: "csJourney",
+        track: "retention",
+        phase: outcome === "cancelled" ? "cancelled" : "validation",
+        clientId: detail.clientId,
+        commerciallyApproved: true,
+        status:
+          outcome === "cancelled"
+            ? "Cancelado"
+            : "Aguardando validação do coordenador",
+        featuresBase: [],
+        featuresActive: [],
+        featuresPlus: [],
+        labels: [],
+        cancellationRequestedAt: at,
+        cancellationRequestedBy: currentUser.displayName,
+        cancellationOutcome:
+          outcome === "cancelled" ? "cancelled" : "requested",
+        cancellationReason: detail.reason,
+        ...(outcome === "cancelled" ? { cancellationResolvedAt: at } : {}),
+        follows: [
+          {
+            kind: "Cancelamento",
+            text,
+            createdAt: at,
+            actor: currentUser.displayName,
+          },
+        ],
+      };
+      const result = await operate(
+        {
+          action: "createWorkItem",
+          module: "cs",
+          recordType: "Acompanhamento de retenção",
+          title: detail.customerName || `Cliente ${detail.clientId}`,
+          customerId: customerFor(detail, item)?.id || null,
+          customerName: detail.customerName,
+          owner: "Coordenação de CS",
+          team: "Sucesso do Cliente · Retenção",
+          status: "PendenteAgendamento",
+          priority: "P1",
+          amountCents: detail.monthlyValueCents,
+          description: JSON.stringify(journey),
+        },
+        outcome === "reengage"
+          ? "Novo acompanhamento criado para validação do coordenador."
+          : "Conferência de cancelamento criada para o coordenador.",
+      );
+      if (!result) return;
+      linkedId = result.id;
+    }
+    const next = {
+      ...detail,
+      linkedCsItemId: linkedId,
+      actionCompletedAt: at,
+      actionCompletedBy: currentUser.displayName,
+      history: [
+        ...detail.history,
+        { id: createLocalId(), text, at, author: currentUser.displayName },
+      ],
+    };
+    const saved = await saveDetail(
+      item,
+      next,
+      outcome === "reengage"
+        ? "Reversão encaminhada ao Acompanhamento."
+        : "Cancelamento confirmado e Acompanhamento atualizado.",
+    );
+    if (saved) {
+      const customer = customerFor(detail, item);
+      if (customer)
+        await operate(
+          {
+            action: "updateCustomer",
+            id: customer.id,
+            status: outcome === "cancelled" ? "Cancelado" : "Cliente",
+          },
+          outcome === "cancelled"
+            ? "Cliente marcado como cancelado."
+            : "Cliente mantido como ativo.",
+        );
+      setSelected(null);
+    }
+  };
+  const routeToOnboarding = async (
+    item: WorkItem,
+    detail: CancellationDetail,
+    target: CancellationRoute,
+  ) => {
+    const at = new Date().toISOString();
+    const destination = ROUTE_LABELS[target];
+    let linkedId: string | undefined;
+    if (target === "lia") {
+      const existing = items.find(
+        (candidate) =>
+          candidate.module === "lia" &&
+          ((candidate.origin_type === "cancellations" &&
+            candidate.origin_id === item.id) ||
+            candidate.customer_id === detail.clientId),
+      );
+      if (existing) {
+        linkedId = existing.id;
+      } else {
+        const liaDetail = {
+          kind: "liaJourney",
+          clientId: detail.clientId,
+          sourceCancellationId: item.id,
+          startDate: at,
+          sector: "Cancelamentos",
+          requestType: "Reversão convertida",
+          status: "Aguardando kick-off",
+          featuresBase: [],
+          featuresActive: [],
+          featuresPlus: [],
+          history: [
+            {
+              id: createLocalId(),
+              text: `Cliente encaminhado por Cancelamentos para ${destination}.`,
+              at,
+              author: currentUser.displayName,
+            },
+          ],
+        };
+        const result = await operate(
+          {
+            action: "createWorkItem",
+            module: "lia",
+            recordType: "Projeto LIA",
+            title: detail.customerName || `Cliente ${detail.clientId}`,
+            customerId: customerFor(detail, item)?.id || null,
+            customerName: detail.customerName,
+            owner: "Coordenação de LIA",
+            team: "LIA",
+            status: "AguardandoKickoff",
+            priority: "P1",
+            amountCents: detail.monthlyValueCents,
+            originType: "cancellations",
+            originId: item.id,
+            description: JSON.stringify(liaDetail),
+          },
+          `${destination} criado para validação.`,
+        );
+        if (!result) return;
+        linkedId = result.id;
       }
-    }else{
-      const existing=linkedJourney(detail,target);
-      if(existing){
-        const journey=parseCs(existing.description)??{};
-        const follows=Array.isArray(journey.follows)?journey.follows:[];
-        const next={...journey,track:target,phase:"validation",status:"Aguardando validação do coordenador",cancellationOutcome:"requested",cancellationReason:detail.reason,cancellationRequestedAt:at,cancellationRequestedBy:currentUser.displayName,follows:[...follows,{kind:"Encaminhamento",text:`Cliente encaminhado por Cancelamentos para ${destination}.`,createdAt:at,actor:currentUser.displayName}]};
-        const result=await operate({action:"updateWorkItem",id:existing.id,title:existing.title,owner:existing.owner,customerName:existing.customer_name,amountCents:existing.amount_cents,version:existing.version,description:JSON.stringify(next)},`${destination} atualizado e responsável notificado.`);
-        if(!result)return;
-        linkedId=existing.id;
-      }else{
-        const journey={kind:"csJourney",track:target,phase:"validation",clientId:detail.clientId,commerciallyApproved:true,status:"Aguardando validação do coordenador",featuresBase:[],featuresActive:[],featuresPlus:[],labels:[],cancellationRequestedAt:at,cancellationRequestedBy:currentUser.displayName,cancellationOutcome:"requested",cancellationReason:detail.reason,follows:[{kind:"Encaminhamento",text:`Cliente encaminhado por Cancelamentos para ${destination}.`,createdAt:at,actor:currentUser.displayName}]};
-        const result=await operate({action:"createWorkItem",module:"cs",recordType:target==="activation"?"Onboarding":"Acompanhamento de retenção",title:detail.customerName||`Cliente ${detail.clientId}`,customerId:customerFor(detail,item)?.id||null,customerName:detail.customerName,owner:detail.csOwner||"Coordenação de CS",team:target==="activation"?"Sucesso do Cliente · Ativação":"Sucesso do Cliente · Retenção",status:"PendenteAgendamento",priority:"P1",amountCents:detail.monthlyValueCents,originType:"cancellations",originId:item.id,description:JSON.stringify(journey)},`${destination} criado para validação do coordenador.`);
-        if(!result)return;
-        linkedId=result.id;
+    } else {
+      const existing = linkedJourney(detail, target);
+      if (existing) {
+        const journey = parseCs(existing.description) ?? {};
+        const follows = Array.isArray(journey.follows) ? journey.follows : [];
+        const next = {
+          ...journey,
+          track: target,
+          phase: "validation",
+          status: "Aguardando validação do coordenador",
+          cancellationOutcome: "requested",
+          cancellationReason: detail.reason,
+          cancellationRequestedAt: at,
+          cancellationRequestedBy: currentUser.displayName,
+          follows: [
+            ...follows,
+            {
+              kind: "Encaminhamento",
+              text: `Cliente encaminhado por Cancelamentos para ${destination}.`,
+              createdAt: at,
+              actor: currentUser.displayName,
+            },
+          ],
+        };
+        const result = await operate(
+          {
+            action: "updateWorkItem",
+            id: existing.id,
+            title: existing.title,
+            owner: existing.owner,
+            customerName: existing.customer_name,
+            amountCents: existing.amount_cents,
+            version: existing.version,
+            description: JSON.stringify(next),
+          },
+          `${destination} atualizado e responsável notificado.`,
+        );
+        if (!result) return;
+        linkedId = existing.id;
+      } else {
+        const journey = {
+          kind: "csJourney",
+          track: target,
+          phase: "validation",
+          clientId: detail.clientId,
+          commerciallyApproved: true,
+          status: "Aguardando validação do coordenador",
+          featuresBase: [],
+          featuresActive: [],
+          featuresPlus: [],
+          labels: [],
+          cancellationRequestedAt: at,
+          cancellationRequestedBy: currentUser.displayName,
+          cancellationOutcome: "requested",
+          cancellationReason: detail.reason,
+          follows: [
+            {
+              kind: "Encaminhamento",
+              text: `Cliente encaminhado por Cancelamentos para ${destination}.`,
+              createdAt: at,
+              actor: currentUser.displayName,
+            },
+          ],
+        };
+        const result = await operate(
+          {
+            action: "createWorkItem",
+            module: "cs",
+            recordType:
+              target === "activation"
+                ? "Onboarding"
+                : "Acompanhamento de retenção",
+            title: detail.customerName || `Cliente ${detail.clientId}`,
+            customerId: customerFor(detail, item)?.id || null,
+            customerName: detail.customerName,
+            owner: detail.csOwner || "Coordenação de CS",
+            team:
+              target === "activation"
+                ? "Sucesso do Cliente · Ativação"
+                : "Sucesso do Cliente · Retenção",
+            status: "PendenteAgendamento",
+            priority: "P1",
+            amountCents: detail.monthlyValueCents,
+            originType: "cancellations",
+            originId: item.id,
+            description: JSON.stringify(journey),
+          },
+          `${destination} criado para validação do coordenador.`,
+        );
+        if (!result) return;
+        linkedId = result.id;
       }
     }
-    const text=`Encaminhado para ${destination}.`;
-    const next={...detail,linkedTargetItemId:linkedId,linkedCsItemId:target==="lia"?detail.linkedCsItemId:linkedId,linkedDestination:destination,actionCompletedAt:at,actionCompletedBy:currentUser.displayName,history:[...detail.history,{id:createLocalId(),type:"Encaminhamento",text,at,author:currentUser.displayName}]};
-    const saved=await saveDetail(item,next,`${destination} recebeu o cliente.`);
-    if(saved){const customer=customerFor(detail,item);if(customer)await operate({action:"updateCustomer",id:customer.id,status:"Cliente"},"Cliente reativado após conversão.");setRouting(null);setSelected(null)}
+    const text = `Encaminhado para ${destination}.`;
+    const next = {
+      ...detail,
+      linkedTargetItemId: linkedId,
+      linkedCsItemId: target === "lia" ? detail.linkedCsItemId : linkedId,
+      linkedDestination: destination,
+      actionCompletedAt: at,
+      actionCompletedBy: currentUser.displayName,
+      history: [
+        ...detail.history,
+        {
+          id: createLocalId(),
+          type: "Encaminhamento",
+          text,
+          at,
+          author: currentUser.displayName,
+        },
+      ],
+    };
+    const saved = await saveDetail(
+      item,
+      next,
+      `${destination} recebeu o cliente.`,
+    );
+    if (saved) {
+      const customer = customerFor(detail, item);
+      if (customer)
+        await operate(
+          { action: "updateCustomer", id: customer.id, status: "Cliente" },
+          "Cliente reativado após conversão.",
+        );
+      setRouting(null);
+      setSelected(null);
+    }
   };
-  if(showIndicators)return <CancellationIndicators records={records} employees={employees} month={month} sector={sector} onMonth={setMonth} onSector={setSector} onBack={()=>setShowIndicators(false)}/>;
-  return <section className="cancellation-module task-visual-standard">
-    <header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon cancellation-title-icon"><RotateCcw size={21}/></span><span className="module-page-copy"><span className="eyebrow">SUCESSO DO CLIENTE · REVERSÃO</span><h1>Cancelamentos</h1><p>Solicitações, tentativas de reversão, renegociação e impacto mensal recorrente.</p></span></div><div className="module-page-actions"><button className="secondary-button" onClick={()=>setShowIndicators(true)}><BarChart3 size={16}/> Indicadores</button>{onOpenSettings&&<button className="icon-button" onClick={onOpenSettings} title="Configurar cancelamentos"><Settings size={18}/></button>}{canCreate&&<button className="primary-button" onClick={()=>setCreating(true)}><Plus size={16}/> Inserir cliente</button>}</div></header>
-    <section className="cancellation-kpis"><article><AlertTriangle/><span><small>Solicitações no mês</small><strong>{records.filter(entry=>entry.detail.requestMonth===month).length}</strong></span></article><article><RotateCcw/><span><small>Taxa de reversão</small><strong>{records.filter(entry=>entry.detail.requestMonth===month).length?`${Math.round(records.filter(entry=>entry.detail.requestMonth===month&&entry.item.status==="Convertido").length/records.filter(entry=>entry.detail.requestMonth===month).length*100)}%`:"0%"}</strong></span></article><article><CircleDollarSign/><span><small>MRR recuperado</small><strong>{money(records.filter(entry=>entry.detail.requestMonth===month&&entry.item.status==="Convertido").reduce((sum,entry)=>sum+entry.detail.monthlyValueCents,0))}</strong></span></article><article><XCircle/><span><small>MRR em risco/perdido</small><strong>{money(records.filter(entry=>entry.detail.requestMonth===month&&entry.item.status!=="Convertido").reduce((sum,entry)=>sum+entry.detail.monthlyValueCents,0))}</strong></span></article></section>
-    <nav className="cancellation-tabs">{STAGES.map(entry=><button className={stage===entry.id?"active":""} style={{"--cancel-stage":entry.color} as CSSProperties} onClick={()=>setStage(entry.id)} onDragOver={event=>{if(canEdit&&dragging)event.preventDefault()}} onDrop={event=>{event.preventDefault();const item=records.find(record=>record.item.id===readKanbanDrop(event,"text/plain"))?.item??dragging;if(item){void move(item,entry.id);setStage(entry.id)}}} key={entry.id}><i/>{entry.label}<b>{stageCounts[entry.id]}</b></button>)}</nav>
-    <section className="cancellation-toolbar reminder-filter-toolbar"><label><Search size={16}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar protocolo, ID, cliente, motivo ou plano"/></label>{reminderFilter.control}<select value={owner} onChange={event=>setOwner(event.target.value)}><option value="all">Todos os responsáveis</option>{owners.map(name=><option key={name}>{name}</option>)}</select><select value={sector} onChange={event=>setSector(event.target.value)}><option value="all">Todos os setores</option>{sectors.map(name=><option key={name}>{name}</option>)}</select><input type="month" value={month} onChange={event=>setMonth(event.target.value)}/><strong>{visible.length} registro(s)</strong></section>
-    <section className="cancellation-board">{STAGES.filter(entry=>entry.id===stage).map(column=><div className="cancellation-column" key={column.id} style={{"--cancel-stage":column.color} as CSSProperties} onDragOver={event=>{if(canEdit)event.preventDefault()}} onDrop={event=>{event.preventDefault();const item=records.find(entry=>entry.item.id===(readKanbanDrop(event, "text/plain")||dragging?.id))?.item;if(item)void move(item,column.id)}}><header><span><i/>{column.label}</span><b>{visible.length}</b></header><div>{visible.length===0?<div className="cancellation-empty"><ShieldCheck/><strong>Nenhum cliente nesta etapa</strong><p>Novas solicitações de cancelamento aparecerão na fila de espera.</p></div>:<PaginatedItems label="cancelamentos">{visible.map(({item,detail})=>{const nextStage=NEXT_STAGE[item.status];return <CancellationCard key={item.id} item={item} detail={detail} employee={employees.find(entry=>entry.displayName===item.owner)} canEdit={canEdit} canDelete={canDelete} nextStage={nextStage} onboarding={item.status==="Convertido"} onNext={()=>setRouting(item)} onOpen={()=>setSelected(item)} onEdit={()=>setEditing(item)} onDelete={()=>void operate({action:"deleteWorkItem",id:item.id},"Cancelamento excluído.")} onDragStart={event=>{setDragging(item);beginKanbanDrag(event, "text/plain", item.id)}} onDragEnd={()=>setDragging(null)}/>})}</PaginatedItems>}</div></div>)}</section>
-    {(creating||editing)&&<CancellationEntryModal initial={editing?parse(editing.description,editing.owner,editing.created_at,editing.amount_cents)??undefined:undefined} customers={customers} catalogs={catalogs} employees={employees.filter(entry=>entry.active)} currentUser={currentUser} busy={busy} onClose={()=>{setCreating(false);setEditing(null)}} onSave={async detail=>{const customer=customerFor(detail,editing??undefined);const result=editing?await operate({action:"updateWorkItem",requireConfirmation:true,id:editing.id,title:detail.customerName||`Cancelamento · ${detail.clientId}`,owner:detail.reversalOwner,customerName:detail.customerName,amountCents:detail.monthlyValueCents,version:editing.version,description:JSON.stringify(detail)},"Cancelamento atualizado."):await operate({action:"createWorkItem",module:"cancellations",recordType:"Solicitação de cancelamento",title:detail.customerName||`Cancelamento · ${detail.clientId}`,customerId:customer?.id||null,customerName:detail.customerName,owner:detail.reversalOwner,team:"Reversão de cancelamentos",status:"Fila de espera",priority:"P1",amountCents:detail.monthlyValueCents,description:JSON.stringify(detail)},"Cancelamento incluído na fila de espera.");if(result){setCreating(false);setEditing(null)}}}/>}
-    {selected&&<CancellationDrawer key={selected.id} onCreateTask={canEdit&&canCreateTask&&taskModule?()=>setTaskRequest({item:selected,detail:parse(selected.description,selected.owner,selected.created_at,selected.amount_cents)!,requestId:crypto.randomUUID()}):undefined} item={selected} detail={parse(selected.description,selected.owner,selected.created_at,selected.amount_cents)!} stages={STAGES.map(entry=>entry.id)} catalogs={catalogs} employees={employees.filter(entry=>entry.active)} currentUser={currentUser} busy={busy} canEdit={canEdit} onClose={()=>setSelected(null)} onMove={next=>move(selected,next)} onSave={async detail=>{const result=await saveDetail(selected,detail,"Cancelamento atualizado.");if(result)setSelected({...selected,description:JSON.stringify(detail),owner:detail.reversalOwner,version:selected.version+1});return Boolean(result)}} onConverted={()=>setRouting(selected)} onCancelled={()=>syncJourney(selected,parse(selected.description,selected.owner,selected.created_at,selected.amount_cents)!,"cancelled")}/>}
-    {taskRequest&&taskModule&&taskSector&&<CreateTaskModal customerLocked module={taskModule} customers={customers} user={currentUser} departmentIds={taskSector.departmentIds} initialDepartmentId={taskSector.initialDepartmentId} initial={cancellationTaskInitial(taskRequest.detail,taskRequest.item)} busy={busy||taskSubmitting} attachmentsOnly={Boolean(taskRequest.created)} onClose={()=>{if(!taskSubmitting)setTaskRequest(null)}} onSubmit={async(payload,files,onUploaded)=>{if(taskSubmitting)return;setTaskSubmitting(true);try{const result=taskRequest.created??await operate({action:"createCancellationTask",id:taskRequest.item.id,version:taskRequest.item.version,taskCreationId:taskRequest.requestId,taskDraft:payload},"Tarefa criada e registrada no histórico do cancelamento.");if(!result)return;if(result.id&&files.length&&!await uploadTaskAttachments(result.id,files,onUploaded)){setTaskRequest(current=>current?{...current,created:result}:current);return}setTaskRequest(null)}finally{setTaskSubmitting(false)}}}/>}
-    {routing&&parse(routing.description,routing.owner)&&<CancellationRouteModal item={routing} detail={parse(routing.description,routing.owner)!} nextStage={NEXT_STAGE[routing.status]} busy={busy} onClose={()=>setRouting(null)} onStage={async next=>{await move(routing,next);setRouting(null)}} onRoute={target=>routeToOnboarding(routing,parse(routing.description,routing.owner)!,target)}/>}
-  </section>;
+  if (showIndicators)
+    return (
+      <CancellationIndicators
+        records={records}
+        employees={employees}
+        month={month}
+        sector={sector}
+        onMonth={setMonth}
+        onSector={setSector}
+        onBack={() => setShowIndicators(false)}
+      />
+    );
+  return (
+    <section className="cancellation-module task-visual-standard">
+      <header className="module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon cancellation-title-icon">
+            <RotateCcw size={21} />
+          </span>
+          <span className="module-page-copy">
+            <span className="eyebrow">SUCESSO DO CLIENTE · REVERSÃO</span>
+            <h1>Cancelamentos</h1>
+            <p>
+              Solicitações, tentativas de reversão, renegociação e impacto
+              mensal recorrente.
+            </p>
+          </span>
+        </div>
+        <div className="module-page-actions">
+          <button
+            className="secondary-button"
+            onClick={() => setShowIndicators(true)}
+          >
+            <BarChart3 size={16} /> Indicadores
+          </button>
+          {onOpenSettings && (
+            <button
+              className="icon-button"
+              onClick={onOpenSettings}
+              title="Configurar cancelamentos"
+            >
+              <Settings size={18} />
+            </button>
+          )}
+          {canCreate && (
+            <button
+              className="primary-button"
+              onClick={() => setCreating(true)}
+            >
+              <Plus size={16} /> Inserir cliente
+            </button>
+          )}
+        </div>
+      </header>
+      <section className="cancellation-kpis">
+        <article>
+          <AlertTriangle />
+          <span>
+            <small>Solicitações no mês</small>
+            <strong>
+              {
+                records.filter((entry) => entry.detail.requestMonth === month)
+                  .length
+              }
+            </strong>
+          </span>
+        </article>
+        <article>
+          <RotateCcw />
+          <span>
+            <small>Taxa de reversão</small>
+            <strong>
+              {records.filter((entry) => entry.detail.requestMonth === month)
+                .length
+                ? `${Math.round((records.filter((entry) => entry.detail.requestMonth === month && entry.item.status === "Convertido").length / records.filter((entry) => entry.detail.requestMonth === month).length) * 100)}%`
+                : "0%"}
+            </strong>
+          </span>
+        </article>
+        <article>
+          <CircleDollarSign />
+          <span>
+            <small>MRR recuperado</small>
+            <strong>
+              {money(
+                records
+                  .filter(
+                    (entry) =>
+                      entry.detail.requestMonth === month &&
+                      entry.item.status === "Convertido",
+                  )
+                  .reduce(
+                    (sum, entry) => sum + entry.detail.monthlyValueCents,
+                    0,
+                  ),
+              )}
+            </strong>
+          </span>
+        </article>
+        <article>
+          <XCircle />
+          <span>
+            <small>MRR em risco/perdido</small>
+            <strong>
+              {money(
+                records
+                  .filter(
+                    (entry) =>
+                      entry.detail.requestMonth === month &&
+                      entry.item.status !== "Convertido",
+                  )
+                  .reduce(
+                    (sum, entry) => sum + entry.detail.monthlyValueCents,
+                    0,
+                  ),
+              )}
+            </strong>
+          </span>
+        </article>
+      </section>
+      <nav className="cancellation-tabs">
+        {STAGES.map((entry) => (
+          <button
+            className={stage === entry.id ? "active" : ""}
+            style={{ "--cancel-stage": entry.color } as CSSProperties}
+            onClick={() => setStage(entry.id)}
+            onDragOver={(event) => {
+              if (canEdit && dragging) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const item =
+                records.find(
+                  (record) =>
+                    record.item.id === readKanbanDrop(event, "text/plain"),
+                )?.item ?? dragging;
+              if (item) {
+                void move(item, entry.id);
+                setStage(entry.id);
+              }
+            }}
+            key={entry.id}
+          >
+            <i />
+            {entry.label}
+            <b>{stageCounts[entry.id]}</b>
+          </button>
+        ))}
+      </nav>
+      <section className="cancellation-toolbar reminder-filter-toolbar">
+        <label>
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar protocolo, ID, cliente, motivo ou plano"
+          />
+        </label>
+        {reminderFilter.control}
+        <select
+          value={owner}
+          onChange={(event) => setOwner(event.target.value)}
+        >
+          <option value="all">Todos os responsáveis</option>
+          {owners.map((name) => (
+            <option key={name}>{name}</option>
+          ))}
+        </select>
+        <select
+          value={sector}
+          onChange={(event) => setSector(event.target.value)}
+        >
+          <option value="all">Todos os setores</option>
+          {sectors.map((name) => (
+            <option key={name}>{name}</option>
+          ))}
+        </select>
+        <input
+          type="month"
+          value={month}
+          onChange={(event) => setMonth(event.target.value)}
+        />
+        <strong>{visible.length} registro(s)</strong>
+      </section>
+      <section className="cancellation-board">
+        {STAGES.filter((entry) => entry.id === stage).map((column) => (
+          <div
+            className="cancellation-column"
+            key={column.id}
+            style={{ "--cancel-stage": column.color } as CSSProperties}
+            onDragOver={(event) => {
+              if (canEdit) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const item = records.find(
+                (entry) =>
+                  entry.item.id ===
+                  (readKanbanDrop(event, "text/plain") || dragging?.id),
+              )?.item;
+              if (item) void move(item, column.id);
+            }}
+          >
+            <header>
+              <span>
+                <i />
+                {column.label}
+              </span>
+              <b>{visible.length}</b>
+            </header>
+            <div>
+              {visible.length === 0 ? (
+                <div className="cancellation-empty">
+                  <ShieldCheck />
+                  <strong>Nenhum cliente nesta etapa</strong>
+                  <p>
+                    Novas solicitações de cancelamento aparecerão na fila de
+                    espera.
+                  </p>
+                </div>
+              ) : (
+                <PaginatedItems label="cancelamentos">
+                  {visible.map(({ item, detail }) => {
+                    const nextStage = NEXT_STAGE[item.status];
+                    return (
+                      <CancellationCard
+                        key={item.id}
+                        item={item}
+                        detail={detail}
+                        employee={employees.find(
+                          (entry) => entry.displayName === item.owner,
+                        )}
+                        canEdit={canEdit}
+                        canDelete={canDelete}
+                        nextStage={nextStage}
+                        onboarding={item.status === "Convertido"}
+                        onNext={() => setRouting(item)}
+                        onOpen={() => setSelected(item)}
+                        onEdit={() => setEditing(item)}
+                        onDelete={() =>
+                          void operate(
+                            { action: "deleteWorkItem", id: item.id },
+                            "Cancelamento excluído.",
+                          )
+                        }
+                        onDragStart={(event) => {
+                          setDragging(item);
+                          beginKanbanDrag(event, "text/plain", item.id);
+                        }}
+                        onDragEnd={() => setDragging(null)}
+                      />
+                    );
+                  })}
+                </PaginatedItems>
+              )}
+            </div>
+          </div>
+        ))}
+      </section>
+      {(creating || editing) && (
+        <CancellationEntryModal
+          initial={
+            editing
+              ? (parse(
+                  editing.description,
+                  editing.owner,
+                  editing.created_at,
+                  editing.amount_cents,
+                ) ?? undefined)
+              : undefined
+          }
+          customers={customers}
+          catalogs={catalogs}
+          employees={employees.filter((entry) => entry.active)}
+          currentUser={currentUser}
+          busy={busy}
+          onClose={() => {
+            setCreating(false);
+            setEditing(null);
+          }}
+          onSave={async (detail) => {
+            const customer = customerFor(detail, editing ?? undefined);
+            const result = editing
+              ? await operate(
+                  {
+                    action: "updateWorkItem",
+                    requireConfirmation: true,
+                    id: editing.id,
+                    title:
+                      detail.customerName ||
+                      `Cancelamento · ${detail.clientId}`,
+                    owner: detail.reversalOwner,
+                    customerName: detail.customerName,
+                    amountCents: detail.monthlyValueCents,
+                    version: editing.version,
+                    description: JSON.stringify(detail),
+                  },
+                  "Cancelamento atualizado.",
+                )
+              : await operate(
+                  {
+                    action: "createWorkItem",
+                    module: "cancellations",
+                    recordType: "Solicitação de cancelamento",
+                    title:
+                      detail.customerName ||
+                      `Cancelamento · ${detail.clientId}`,
+                    customerId: customer?.id || null,
+                    customerName: detail.customerName,
+                    owner: detail.reversalOwner,
+                    team: "Reversão de cancelamentos",
+                    status: "Fila de espera",
+                    priority: "P1",
+                    amountCents: detail.monthlyValueCents,
+                    description: JSON.stringify(detail),
+                  },
+                  "Cancelamento incluído na fila de espera.",
+                );
+            if (result) {
+              setCreating(false);
+              setEditing(null);
+            }
+          }}
+        />
+      )}
+      {selected && (
+        <CancellationDrawer
+          key={selected.id}
+          onCreateTask={
+            canEdit && canCreateTask && taskModule
+              ? () =>
+                  setTaskRequest({
+                    item: selected,
+                    detail: parse(
+                      selected.description,
+                      selected.owner,
+                      selected.created_at,
+                      selected.amount_cents,
+                    )!,
+                    requestId: crypto.randomUUID(),
+                  })
+              : undefined
+          }
+          item={selected}
+          detail={parse(
+            selected.description,
+            selected.owner,
+            selected.created_at,
+            selected.amount_cents,
+          )!}
+          stages={STAGES.map((entry) => entry.id)}
+          catalogs={catalogs}
+          employees={employees.filter((entry) => entry.active)}
+          currentUser={currentUser}
+          busy={busy}
+          canEdit={canEdit}
+          onClose={() => setSelected(null)}
+          onMove={(next) => move(selected, next)}
+          onSave={async (detail) => {
+            const result = await saveDetail(
+              selected,
+              detail,
+              "Cancelamento atualizado.",
+            );
+            if (result)
+              setSelected({
+                ...selected,
+                description: JSON.stringify(detail),
+                owner: detail.reversalOwner,
+                version: selected.version + 1,
+              });
+            return Boolean(result);
+          }}
+          onConverted={() => setRouting(selected)}
+          onCancelled={() =>
+            syncJourney(
+              selected,
+              parse(
+                selected.description,
+                selected.owner,
+                selected.created_at,
+                selected.amount_cents,
+              )!,
+              "cancelled",
+            )
+          }
+        />
+      )}
+      {taskRequest && taskModule && taskSector && (
+        <CreateTaskModal
+          customerLocked
+          module={taskModule}
+          customers={customers}
+          user={currentUser}
+          departmentIds={taskSector.departmentIds}
+          initialDepartmentId={taskSector.initialDepartmentId}
+          initial={cancellationTaskInitial(
+            taskRequest.detail,
+            taskRequest.item,
+          )}
+          busy={busy || taskSubmitting}
+          attachmentsOnly={Boolean(taskRequest.created)}
+          onClose={() => {
+            if (!taskSubmitting) setTaskRequest(null);
+          }}
+          onSubmit={async (payload, files, onUploaded) => {
+            if (taskSubmitting) return;
+            setTaskSubmitting(true);
+            try {
+              const result =
+                taskRequest.created ??
+                (await operate(
+                  {
+                    action: "createCancellationTask",
+                    id: taskRequest.item.id,
+                    version: taskRequest.item.version,
+                    taskCreationId: taskRequest.requestId,
+                    taskDraft: payload,
+                  },
+                  "Tarefa criada e registrada no histórico do cancelamento.",
+                ));
+              if (!result) return;
+              if (
+                result.id &&
+                files.length &&
+                !(await uploadTaskAttachments(result.id, files, onUploaded))
+              ) {
+                setTaskRequest((current) =>
+                  current ? { ...current, created: result } : current,
+                );
+                return;
+              }
+              setTaskRequest(null);
+            } finally {
+              setTaskSubmitting(false);
+            }
+          }}
+        />
+      )}
+      {routing && parse(routing.description, routing.owner) && (
+        <CancellationRouteModal
+          item={routing}
+          detail={parse(routing.description, routing.owner)!}
+          nextStage={NEXT_STAGE[routing.status]}
+          busy={busy}
+          onClose={() => setRouting(null)}
+          onStage={async (next) => {
+            await move(routing, next);
+            setRouting(null);
+          }}
+          onRoute={(target) =>
+            routeToOnboarding(
+              routing,
+              parse(routing.description, routing.owner)!,
+              target,
+            )
+          }
+        />
+      )}
+    </section>
+  );
 }
 
-function CancellationCard({item,detail,employee,canEdit,canDelete,nextStage,onboarding,onNext,onOpen,onEdit,onDelete,onDragStart,onDragEnd}:{item:WorkItem;detail:CancellationDetail;employee?:Employee;canEdit:boolean;canDelete:boolean;nextStage?:string;onboarding:boolean;onNext:()=>void;onOpen:()=>void;onEdit:()=>void;onDelete:()=>void;onDragStart:(event:DragEvent<HTMLElement>)=>void;onDragEnd:()=>void}){
-  return <article className="cancellation-card" draggable={canEdit} onDragStart={onDragStart} onDragEnd={onDragEnd}><button className="cancellation-card-main" onClick={onOpen}>{detail.protocol&&<span className="cancellation-protocol"><FileText size={13}/> Protocolo <strong>{detail.protocol}</strong></span>}<header><span><small>ID DONTUS</small><strong>{detail.clientId}</strong></span><b>{money(detail.monthlyValueCents)}</b></header><h3>{detail.customerName||item.title}</h3><p>{detail.reason||"Motivo não informado"}</p><div className="cancellation-card-tags"><span>{detail.plan||"Sem plano"}</span><span>{detail.stayRange||"Permanência não informada"}</span></div><div className="cancellation-card-responsibilities"><span><small>Vendedor</small><strong>{detail.seller||"Não informado"}</strong></span><span><small>Responsável CS</small><strong>{detail.csOwner||"Não informado"}</strong></span></div><footer><span className="cancellation-owner" data-collaborator-name={item.owner}><i className={employee?.photoDataUrl?"has-photo":""} style={employee?.photoDataUrl?{backgroundImage:`url("${employee.photoDataUrl}")`}:undefined}>{!employee?.photoDataUrl&&<UserRound size={12}/>}</i><span><small>Responsável pela reversão</small><strong>{cancellationReversalOwner(detail,item.owner)||"Não informado"}</strong></span></span><ChevronRight size={16}/></footer>{detail.actionCompletedAt&&<em><CheckCircle2 size={12}/> {detail.linkedDestination||"Integração concluída"}</em>}</button>{canEdit&&<div className="cancellation-card-controls">{(nextStage||onboarding||item.status==="Fila de espera")&&<span className="cancellation-forward-control"><small>{onboarding?"Escolha o onboarding":nextStage?`Próxima etapa: ${nextStage}`:"Escolha o destino"}</small><button className="cancellation-next-stage" onClick={event=>{event.stopPropagation();onNext()}}><ArrowRight size={13}/>{onboarding?"Encaminhar para onboarding":"Encaminhar"}</button></span>}<span className="cancellation-card-actions"><button onClick={event=>{event.stopPropagation();onEdit()}} title="Editar cancelamento"><Pencil size={14}/></button>{canDelete&&<button className="delete" onClick={event=>{event.stopPropagation();onDelete()}} title="Excluir cancelamento"><Trash2 size={14}/></button>}</span></div>}</article>;
+function CancellationCard({
+  item,
+  detail,
+  employee,
+  canEdit,
+  canDelete,
+  nextStage,
+  onboarding,
+  onNext,
+  onOpen,
+  onEdit,
+  onDelete,
+  onDragStart,
+  onDragEnd,
+}: {
+  item: WorkItem;
+  detail: CancellationDetail;
+  employee?: Employee;
+  canEdit: boolean;
+  canDelete: boolean;
+  nextStage?: string;
+  onboarding: boolean;
+  onNext: () => void;
+  onOpen: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDragStart: (event: DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
+}) {
+  return (
+    <article
+      className="cancellation-card"
+      draggable={canEdit}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
+      <button className="cancellation-card-main" onClick={onOpen}>
+        {detail.protocol && (
+          <span className="cancellation-protocol">
+            <FileText size={13} /> Protocolo <strong>{detail.protocol}</strong>
+          </span>
+        )}
+        <header>
+          <span>
+            <small>ID DONTUS</small>
+            <strong>{detail.clientId}</strong>
+          </span>
+          <b>{money(detail.monthlyValueCents)}</b>
+        </header>
+        <h3>{detail.customerName || item.title}</h3>
+        <p>{detail.reason || "Motivo não informado"}</p>
+        <div className="cancellation-card-tags">
+          <span>{detail.plan || "Sem plano"}</span>
+          <span>{detail.stayRange || "Permanência não informada"}</span>
+        </div>
+        <div className="cancellation-card-responsibilities">
+          <span>
+            <small>Vendedor</small>
+            <strong>{detail.seller || "Não informado"}</strong>
+          </span>
+          <span>
+            <small>Responsável CS</small>
+            <strong>{detail.csOwner || "Não informado"}</strong>
+          </span>
+        </div>
+        <footer>
+          <span
+            className="cancellation-owner"
+            data-collaborator-name={item.owner}
+          >
+            <i
+              className={employee?.photoDataUrl ? "has-photo" : ""}
+              style={
+                employee?.photoDataUrl
+                  ? { backgroundImage: `url("${employee.photoDataUrl}")` }
+                  : undefined
+              }
+            >
+              {!employee?.photoDataUrl && <UserRound size={12} />}
+            </i>
+            <span>
+              <small>Responsável pela reversão</small>
+              <strong>
+                {cancellationReversalOwner(detail, item.owner) ||
+                  "Não informado"}
+              </strong>
+            </span>
+          </span>
+          <ChevronRight size={16} />
+        </footer>
+        {detail.actionCompletedAt && (
+          <em>
+            <CheckCircle2 size={12} />{" "}
+            {detail.linkedDestination || "Integração concluída"}
+          </em>
+        )}
+      </button>
+      {canEdit && (
+        <div className="cancellation-card-controls">
+          {(nextStage || onboarding || item.status === "Fila de espera") && (
+            <span className="cancellation-forward-control">
+              <small>
+                {onboarding
+                  ? "Escolha o onboarding"
+                  : nextStage
+                    ? `Próxima etapa: ${nextStage}`
+                    : "Escolha o destino"}
+              </small>
+              <button
+                className="cancellation-next-stage"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onNext();
+                }}
+              >
+                <ArrowRight size={13} />
+                {onboarding ? "Encaminhar para onboarding" : "Encaminhar"}
+              </button>
+            </span>
+          )}
+          <span className="cancellation-card-actions">
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit();
+              }}
+              title="Editar cancelamento"
+            >
+              <Pencil size={14} />
+            </button>
+            {canDelete && (
+              <button
+                className="delete"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete();
+                }}
+                title="Excluir cancelamento"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+    </article>
+  );
 }
 
-function CancellationRouteModal({item,detail,nextStage,busy,onClose,onStage,onRoute}:{item:WorkItem;detail:CancellationDetail;nextStage?:string;busy:boolean;onClose:()=>void;onStage:(stage:string)=>Promise<void>;onRoute:(target:CancellationRoute)=>Promise<void>}){
-  const showOnboarding=item.status==="Fila de espera"||item.status==="Convertido";
-  return <div className="modal-backdrop nested-modal" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><section className="modal cancellation-route-modal"><header className="modal-head"><div><span className="eyebrow">ENCAMINHAMENTO · ID {detail.clientId}</span><h2>{item.status==="Convertido"?"Encaminhar para onboarding":"Encaminhar cancelamento"}</h2><p>{detail.customerName||item.title} · selecione o destino correto.</p></div><button className="icon-button" onClick={onClose}><X size={18}/></button></header>{nextStage&&<button className="cancellation-route-option operational" disabled={busy} onClick={()=>void onStage(nextStage)}><span><b>Próxima etapa operacional</b><small>{item.status} → {nextStage}</small></span><ArrowRight size={17}/></button>}{showOnboarding&&<section className="cancellation-route-list"><h3>Destino do onboarding</h3>{(Object.keys(ROUTE_LABELS) as CancellationRoute[]).map(target=><button className="cancellation-route-option" disabled={busy||Boolean(detail.actionCompletedAt&&detail.linkedDestination===ROUTE_LABELS[target])} onClick={()=>void onRoute(target)} key={target}><span><b>{ROUTE_LABELS[target]}</b><small>Cria ou atualiza o acompanhamento e registra no histórico.</small></span><ChevronRight size={17}/></button>)}</section>}<footer className="modal-actions"><button type="button" onClick={onClose}>Cancelar</button></footer></section></div>;
+function CancellationRouteModal({
+  item,
+  detail,
+  nextStage,
+  busy,
+  onClose,
+  onStage,
+  onRoute,
+}: {
+  item: WorkItem;
+  detail: CancellationDetail;
+  nextStage?: string;
+  busy: boolean;
+  onClose: () => void;
+  onStage: (stage: string) => Promise<void>;
+  onRoute: (target: CancellationRoute) => Promise<void>;
+}) {
+  const showOnboarding =
+    item.status === "Fila de espera" || item.status === "Convertido";
+  return (
+    <div
+      className="modal-backdrop nested-modal"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <section className="modal cancellation-route-modal">
+        <header className="modal-head">
+          <div>
+            <span className="eyebrow">
+              ENCAMINHAMENTO · ID {detail.clientId}
+            </span>
+            <h2>
+              {item.status === "Convertido"
+                ? "Encaminhar para onboarding"
+                : "Encaminhar cancelamento"}
+            </h2>
+            <p>
+              {detail.customerName || item.title} · selecione o destino correto.
+            </p>
+          </div>
+          <button className="icon-button" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        {nextStage && (
+          <button
+            className="cancellation-route-option operational"
+            disabled={busy}
+            onClick={() => void onStage(nextStage)}
+          >
+            <span>
+              <b>Próxima etapa operacional</b>
+              <small>
+                {item.status} → {nextStage}
+              </small>
+            </span>
+            <ArrowRight size={17} />
+          </button>
+        )}
+        {showOnboarding && (
+          <section className="cancellation-route-list">
+            <h3>Destino do onboarding</h3>
+            {(Object.keys(ROUTE_LABELS) as CancellationRoute[]).map(
+              (target) => (
+                <button
+                  className="cancellation-route-option"
+                  disabled={
+                    busy ||
+                    Boolean(
+                      detail.actionCompletedAt &&
+                      detail.linkedDestination === ROUTE_LABELS[target],
+                    )
+                  }
+                  onClick={() => void onRoute(target)}
+                  key={target}
+                >
+                  <span>
+                    <b>{ROUTE_LABELS[target]}</b>
+                    <small>
+                      Cria ou atualiza o acompanhamento e registra no histórico.
+                    </small>
+                  </span>
+                  <ChevronRight size={17} />
+                </button>
+              ),
+            )}
+          </section>
+        )}
+        <footer className="modal-actions">
+          <button type="button" onClick={onClose}>
+            Cancelar
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
 }
 
-export function CancellationEntryModal({initial,customers,catalogs,employees,currentUser,busy,onClose,onSave,prefill}:{initial?:CancellationDetail;customers:Customer[];catalogs:Catalog[];employees:Employee[];currentUser:CurrentUser;busy:boolean;onClose:()=>void;onSave:(detail:CancellationDetail)=>Promise<void>;prefill?:Partial<CancellationDetail>}){
-  const base={...prefill,...initial};
-  const [clientId,setClientId]=useState(base.clientId||"");
-  const [customerName,setCustomerName]=useState(base.customerName||"");
-  const [selectedCustomerId,setSelectedCustomerId]=useState(()=>base.clientId?customers.find(customer=>publicCustomerId(customer)===base.clientId)?.id||"":"");
-  const [files,setFiles]=useState<File[]>([]);
-  const [fileError,setFileError]=useState("");
-  const options=(catalog:string)=>catalogs.filter(entry=>entry.active&&entry.catalog===catalog).map(entry=>entry.name);
-  const selectCustomer=(id:string)=>{setSelectedCustomerId(id);const customer=customers.find(entry=>entry.id===id);setClientId(publicCustomerId(customer));if(customer)setCustomerName(customer.trade_name||customer.legal_name)};
-  const submit=async(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!/^\d{6}$/.test(clientId)){setFileError("O ID Dontus deve conter exatamente 6 dígitos.");return}if(files.some(file=>file.size>5*1024*1024)){setFileError("Cada documento deve ter no máximo 5 MB.");return}if((base.attachments?.length??0)+files.length>10){setFileError("É permitido manter até 10 documentos por cancelamento.");return}const form=new FormData(event.currentTarget);const reversalOwner=String(form.get("reversalOwner")||"").trim();if(!reversalOwner){setFileError("Informe o responsável pela reversão do cancelamento.");return}const requesterPhone=String(form.get("requesterPhone")||"").trim();if(requesterPhone.replace(/\D/g,"").length<10){setFileError("Informe um telefone válido para o responsável pela solicitação.");return}let attachments:CancellationDetail["attachments"];try{attachments=[...(base.attachments??[]),...await createAttachments(files,currentUser.displayName)]}catch{setFileError("Não foi possível ler um dos documentos selecionados. Selecione novamente e tente outra vez.");return}const monthlyValueCents=parseMoneyInput(String(form.get("monthlyValue")||""));if(monthlyValueCents===null){setFileError("Informe um valor mensal válido.");return}const requestDate=String(form.get("requestDate")||today());const detail:CancellationDetail={kind:"cancellationJourney",protocol:base.protocol,requestDate,requestMonth:requestDate.slice(0,7),clientId,customerName:customerName.trim(),adhesionDate:String(form.get("adhesionDate")||""),stayRange:String(form.get("stayRange")||""),plan:String(form.get("plan")||""),monthlyValueCents,seller:String(form.get("seller")||""),csOwner:String(form.get("csOwner")||currentUser.displayName),reversalOwner,requesterPhone,reason:String(form.get("reason")||""),notes:String(form.get("notes")||""),sourceModule:base.sourceModule,sourceItemId:base.sourceItemId,linkedCsItemId:base.linkedCsItemId,linkedTargetItemId:base.linkedTargetItemId,linkedDestination:base.linkedDestination,actionCompletedAt:base.actionCompletedAt,actionCompletedBy:base.actionCompletedBy,attachments,history:base.history??[{id:createLocalId(),text:"Solicitação de cancelamento registrada.",at:new Date().toISOString(),author:currentUser.displayName}]};setFileError("");try{await onSave(detail)}catch{setFileError("Não foi possível salvar a solicitação. Tente novamente.")}};
-  const employeeNames=[...new Set([base.seller||"",base.csOwner||"",base.reversalOwner||"",currentUser.displayName,...employees.map(entry=>entry.displayName)].filter(Boolean))];
-  return <div className="modal-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><section className="modal cancellation-entry-modal"><header className="modal-head"><div><span className="eyebrow">{initial?`EDITAR SOLICITAÇÃO · ${initial.protocol??"Cancelamento"}`:"NOVA SOLICITAÇÃO"}</span><h2>{initial?"Editar cancelamento":"Inserir cliente em cancelamentos"}</h2><p>O registro será direcionado automaticamente para a fila de espera.</p></div><button className="icon-button" onClick={onClose}><X size={18}/></button></header><form className="form-grid" onSubmit={event=>void submit(event)}><label>Data<input name="requestDate" type="date" required defaultValue={base.requestDate||today()}/></label><label>Mês<input readOnly value={monthLabel((base.requestDate||today()).slice(0,7))}/></label><label className="wide">Cliente cadastrado<select value={selectedCustomerId} onChange={event=>selectCustomer(event.target.value)}><option value="">Preencher ID manualmente</option>{customers.map(customer=>{const publicId=publicCustomerId(customer);return <option value={customer.id} disabled={!publicId} key={customer.id}>{customer.trade_name||customer.legal_name} · {publicId||"sem ID Dontus"}</option>})}</select></label><label>ID Dontus *<input required inputMode="numeric" maxLength={6} pattern="\d{6}" value={clientId} onChange={event=>{setSelectedCustomerId("");setClientId(event.target.value.replace(/\D/g,"").slice(0,6))}} placeholder="000000"/></label><label>Cliente / empresa<input value={customerName} onChange={event=>setCustomerName(event.target.value)} placeholder="Nome para identificação do card"/></label><label>Data de adesão<input name="adhesionDate" type="date" defaultValue={base.adhesionDate}/></label><label>Faixa de permanência *<select name="stayRange" required defaultValue={base.stayRange}><option value="">Selecionar</option>{options("cancellationStayRange").map(value=><option key={value}>{value}</option>)}</select></label><label>Plano *<select name="plan" required defaultValue={base.plan}><option value="">Selecionar</option>{options("cancellationPlan").map(value=><option key={value}>{value}</option>)}</select></label><label>Valor mensal (R$) *<input name="monthlyValue" type="number" min="0" step="0.01" required defaultValue={(base.monthlyValueCents||0)/100}/></label><label>Vendedor *<SearchablePeopleSelect searchLabel="Vendedor *" name="seller" required defaultValue={base.seller||""}><option value="">Selecionar colaborador</option>{employeeNames.map(value=><option key={value}>{value}</option>)}</SearchablePeopleSelect><small className="cancellation-role-help">Pessoa que fechou a venda.</small></label>
-<label>Responsável CS *<SearchablePeopleSelect searchLabel="Responsável CS *" name="csOwner" required defaultValue={base.csOwner||currentUser.displayName}><option value="">Selecionar colaborador</option>{employeeNames.map(value=><option key={value}>{value}</option>)}</SearchablePeopleSelect><small className="cancellation-role-help">Pessoa que acompanha o cliente.</small></label>
-<label>Responsável pela reversão *<SearchablePeopleSelect searchLabel="Responsável pela reversão *" name="reversalOwner" required defaultValue={base.reversalOwner||""}><option value="">Selecionar colaborador</option>{employeeNames.map(value=><option key={value}>{value}</option>)}</SearchablePeopleSelect><small className="cancellation-role-help">Pessoa que conduz as tratativas e responde pelo card.</small></label>
-<label>Telefone do responsável pela solicitação *<PhoneInput name="requesterPhone" type="tel" inputMode="tel" required minLength={10} maxLength={20} defaultValue={base.requesterPhone} placeholder="(00) 00000-0000"/></label>
-<label>Motivo *<select name="reason" required defaultValue={base.reason}><option value="">Selecionar</option>{options("cancellationReason").map(value=><option key={value}>{value}</option>)}</select></label><label className="wide">Observação | Resumo<textarea name="notes" rows={4} defaultValue={base.notes} placeholder="Contexto, tratativas já realizadas e expectativa do cliente"/></label><MediaUploadField className="wide" label="Documentos, imagens e vídeos" multiple  selectedFiles={files} onRemoveFile={index=>setFiles(current=>current.filter((_,i)=>i!==index))} selectedText={files.length?`${files.length} arquivo(s) selecionado(s)`:undefined} hint="Selecione até 10 documentos. Cada arquivo pode ter no máximo 5 MB." onChange={event=>setFiles(current=>mergeFiles(current,Array.from(event.currentTarget.files??[])))}/>{fileError&&<p className="form-error wide">{fileError}</p>}<div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><Save size={15}/>{initial?"Salvar alterações":"Adicionar à fila"}</button></div></form></section></div>;
+export function CancellationEntryModal({
+  initial,
+  customers,
+  catalogs,
+  employees,
+  currentUser,
+  busy,
+  onClose,
+  onSave,
+  prefill,
+}: {
+  initial?: CancellationDetail;
+  customers: Customer[];
+  catalogs: Catalog[];
+  employees: Employee[];
+  currentUser: CurrentUser;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (detail: CancellationDetail) => Promise<void>;
+  prefill?: Partial<CancellationDetail>;
+}) {
+  const base = { ...prefill, ...initial };
+  const [clientId, setClientId] = useState(base.clientId || "");
+  const [customerName, setCustomerName] = useState(base.customerName || "");
+  const [selectedCustomerId, setSelectedCustomerId] = useState(() =>
+    base.clientId
+      ? customers.find(
+          (customer) => publicCustomerId(customer) === base.clientId,
+        )?.id || ""
+      : "",
+  );
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState("");
+  const options = (catalog: string) =>
+    catalogs
+      .filter((entry) => entry.active && entry.catalog === catalog)
+      .map((entry) => entry.name);
+  const selectCustomer = (id: string) => {
+    setSelectedCustomerId(id);
+    const customer = customers.find((entry) => entry.id === id);
+    setClientId(publicCustomerId(customer));
+    if (customer) setCustomerName(customer.trade_name || customer.legal_name);
+  };
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!/^\d{6}$/.test(clientId)) {
+      setFileError("O ID Dontus deve conter exatamente 6 dígitos.");
+      return;
+    }
+    if (files.some((file) => file.size > 5 * 1024 * 1024)) {
+      setFileError("Cada documento deve ter no máximo 5 MB.");
+      return;
+    }
+    if ((base.attachments?.length ?? 0) + files.length > 10) {
+      setFileError("É permitido manter até 10 documentos por cancelamento.");
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    const reversalOwner = String(form.get("reversalOwner") || "").trim();
+    if (!reversalOwner) {
+      setFileError("Informe o responsável pela reversão do cancelamento.");
+      return;
+    }
+    const requesterPhone = String(form.get("requesterPhone") || "").trim();
+    if (requesterPhone.replace(/\D/g, "").length < 10) {
+      setFileError(
+        "Informe um telefone válido para o responsável pela solicitação.",
+      );
+      return;
+    }
+    let attachments: CancellationDetail["attachments"];
+    try {
+      attachments = [
+        ...(base.attachments ?? []),
+        ...(await createAttachments(files, currentUser.displayName)),
+      ];
+    } catch {
+      setFileError(
+        "Não foi possível ler um dos documentos selecionados. Selecione novamente e tente outra vez.",
+      );
+      return;
+    }
+    const monthlyValueCents = parseMoneyInput(
+      String(form.get("monthlyValue") || ""),
+    );
+    if (monthlyValueCents === null) {
+      setFileError("Informe um valor mensal válido.");
+      return;
+    }
+    const requestDate = String(form.get("requestDate") || today());
+    const detail: CancellationDetail = {
+      kind: "cancellationJourney",
+      protocol: base.protocol,
+      requestDate,
+      requestMonth: requestDate.slice(0, 7),
+      clientId,
+      customerName: customerName.trim(),
+      adhesionDate: String(form.get("adhesionDate") || ""),
+      stayRange: String(form.get("stayRange") || ""),
+      plan: String(form.get("plan") || ""),
+      monthlyValueCents,
+      seller: String(form.get("seller") || ""),
+      csOwner: String(form.get("csOwner") || currentUser.displayName),
+      reversalOwner,
+      requesterPhone,
+      reason: String(form.get("reason") || ""),
+      notes: String(form.get("notes") || ""),
+      sourceModule: base.sourceModule,
+      sourceItemId: base.sourceItemId,
+      linkedCsItemId: base.linkedCsItemId,
+      linkedTargetItemId: base.linkedTargetItemId,
+      linkedDestination: base.linkedDestination,
+      actionCompletedAt: base.actionCompletedAt,
+      actionCompletedBy: base.actionCompletedBy,
+      attachments,
+      history: base.history ?? [
+        {
+          id: createLocalId(),
+          text: "Solicitação de cancelamento registrada.",
+          at: new Date().toISOString(),
+          author: currentUser.displayName,
+        },
+      ],
+    };
+    setFileError("");
+    try {
+      await onSave(detail);
+    } catch {
+      setFileError("Não foi possível salvar a solicitação. Tente novamente.");
+    }
+  };
+  const employeeNames = [
+    ...new Set(
+      [
+        base.seller || "",
+        base.csOwner || "",
+        base.reversalOwner || "",
+        currentUser.displayName,
+        ...employees.map((entry) => entry.displayName),
+      ].filter(Boolean),
+    ),
+  ];
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <section className="modal cancellation-entry-modal">
+        <header className="modal-head">
+          <div>
+            <span className="eyebrow">
+              {initial
+                ? `EDITAR SOLICITAÇÃO · ${initial.protocol ?? "Cancelamento"}`
+                : "NOVA SOLICITAÇÃO"}
+            </span>
+            <h2>
+              {initial
+                ? "Editar cancelamento"
+                : "Inserir cliente em cancelamentos"}
+            </h2>
+            <p>
+              O registro será direcionado automaticamente para a fila de espera.
+            </p>
+          </div>
+          <button className="icon-button" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        <form className="form-grid" onSubmit={(event) => void submit(event)}>
+          <label>
+            Data
+            <input
+              name="requestDate"
+              type="date"
+              required
+              defaultValue={base.requestDate || today()}
+            />
+          </label>
+          <label>
+            Mês
+            <input
+              readOnly
+              value={monthLabel((base.requestDate || today()).slice(0, 7))}
+            />
+          </label>
+          <label className="wide">
+            Cliente cadastrado
+            <select
+              value={selectedCustomerId}
+              onChange={(event) => selectCustomer(event.target.value)}
+            >
+              <option value="">Preencher ID manualmente</option>
+              {customers.map((customer) => {
+                const publicId = publicCustomerId(customer);
+                return (
+                  <option
+                    value={customer.id}
+                    disabled={!publicId}
+                    key={customer.id}
+                  >
+                    {customer.trade_name || customer.legal_name} ·{" "}
+                    {publicId || "sem ID Dontus"}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label>
+            ID Dontus *
+            <input
+              required
+              inputMode="numeric"
+              maxLength={6}
+              pattern="\d{6}"
+              value={clientId}
+              onChange={(event) => {
+                setSelectedCustomerId("");
+                setClientId(event.target.value.replace(/\D/g, "").slice(0, 6));
+              }}
+              placeholder="000000"
+            />
+          </label>
+          <label>
+            Cliente / empresa
+            <input
+              value={customerName}
+              onChange={(event) => setCustomerName(event.target.value)}
+              placeholder="Nome para identificação do card"
+            />
+          </label>
+          <label>
+            Data de adesão
+            <input
+              name="adhesionDate"
+              type="date"
+              defaultValue={base.adhesionDate}
+            />
+          </label>
+          <label>
+            Faixa de permanência *
+            <select name="stayRange" required defaultValue={base.stayRange}>
+              <option value="">Selecionar</option>
+              {options("cancellationStayRange").map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Plano *
+            <select name="plan" required defaultValue={base.plan}>
+              <option value="">Selecionar</option>
+              {options("cancellationPlan").map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Valor mensal (R$) *
+            <input
+              name="monthlyValue"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              defaultValue={(base.monthlyValueCents || 0) / 100}
+            />
+          </label>
+          <label>
+            Vendedor *
+            <SearchablePeopleSelect
+              searchLabel="Vendedor *"
+              name="seller"
+              required
+              defaultValue={base.seller || ""}
+            >
+              <option value="">Selecionar colaborador</option>
+              {employeeNames.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </SearchablePeopleSelect>
+            <small className="cancellation-role-help">
+              Pessoa que fechou a venda.
+            </small>
+          </label>
+          <label>
+            Responsável CS *
+            <SearchablePeopleSelect
+              searchLabel="Responsável CS *"
+              name="csOwner"
+              required
+              defaultValue={base.csOwner || currentUser.displayName}
+            >
+              <option value="">Selecionar colaborador</option>
+              {employeeNames.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </SearchablePeopleSelect>
+            <small className="cancellation-role-help">
+              Pessoa que acompanha o cliente.
+            </small>
+          </label>
+          <label>
+            Responsável pela reversão *
+            <SearchablePeopleSelect
+              searchLabel="Responsável pela reversão *"
+              name="reversalOwner"
+              required
+              defaultValue={base.reversalOwner || ""}
+            >
+              <option value="">Selecionar colaborador</option>
+              {employeeNames.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </SearchablePeopleSelect>
+            <small className="cancellation-role-help">
+              Pessoa que conduz as tratativas e responde pelo card.
+            </small>
+          </label>
+          <label>
+            Telefone do responsável pela solicitação *
+            <PhoneInput
+              name="requesterPhone"
+              type="tel"
+              inputMode="tel"
+              required
+              minLength={10}
+              maxLength={20}
+              defaultValue={base.requesterPhone}
+              placeholder="(00) 00000-0000"
+            />
+          </label>
+          <label>
+            Motivo *
+            <select name="reason" required defaultValue={base.reason}>
+              <option value="">Selecionar</option>
+              {options("cancellationReason").map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+          <label className="wide">
+            Observação | Resumo
+            <textarea
+              name="notes"
+              rows={4}
+              defaultValue={base.notes}
+              placeholder="Contexto, tratativas já realizadas e expectativa do cliente"
+            />
+          </label>
+          <MediaUploadField
+            className="wide"
+            label="Documentos, imagens e vídeos"
+            multiple
+            selectedFiles={files}
+            onRemoveFile={(index) =>
+              setFiles((current) => current.filter((_, i) => i !== index))
+            }
+            selectedText={
+              files.length
+                ? `${files.length} arquivo(s) selecionado(s)`
+                : undefined
+            }
+            hint="Selecione até 10 documentos. Cada arquivo pode ter no máximo 5 MB."
+            onChange={(event) =>
+              setFiles((current) =>
+                mergeFiles(
+                  current,
+                  Array.from(event.currentTarget.files ?? []),
+                ),
+              )
+            }
+          />
+          {fileError && <p className="form-error wide">{fileError}</p>}
+          <div className="form-actions wide">
+            <button type="button" onClick={onClose}>
+              Cancelar
+            </button>
+            <button className="primary-button" disabled={busy}>
+              <Save size={15} />
+              {initial ? "Salvar alterações" : "Adicionar à fila"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
 }
 
-function CancellationDrawer({item,detail,stages,catalogs,employees,currentUser,busy,canEdit,onClose,onMove,onSave,onConverted,onCancelled,onCreateTask}:{item:WorkItem;detail:CancellationDetail;stages:string[];catalogs:Catalog[];employees:Employee[];currentUser:CurrentUser;busy:boolean;canEdit:boolean;onClose:()=>void;onMove:(stage:string)=>Promise<void>;onSave:(detail:CancellationDetail)=>Promise<boolean>;onConverted:()=>void|Promise<void>;onCancelled:()=>Promise<void>;onCreateTask?:()=>void}){
-  const [comment,setComment]=useState("");
-  const [commentType,setCommentType]=useState("");
-  const [reversalOwner,setReversalOwner]=useState(cancellationReversalOwner(detail,item.owner));
-  useEffect(()=>setReversalOwner(cancellationReversalOwner(detail,item.owner)),[detail.reversalOwner,item.owner]);
-  const [attachmentFiles,setAttachmentFiles]=useState<File[]>([]);
-  const [attachmentError,setAttachmentError]=useState("");
-  const communicationTypes=catalogs.filter(entry=>entry.active&&entry.catalog==="cancellationCommunicationType").map(entry=>entry.name);
-  const addComment=async()=>{if(!comment.trim()||!commentType)return;const saved=await onSave({...detail,history:[...detail.history,{id:createLocalId(),type:commentType,text:comment,at:new Date().toISOString(),author:currentUser.displayName}]});if(saved){setComment("");setCommentType("")}};
-  const addAttachments=async(attachmentFiles:File[])=>{setAttachmentError("");if(!attachmentFiles.length)return;if(attachmentFiles.some(file=>file.size>5*1024*1024)){setAttachmentError("Cada documento deve ter no máximo 5 MB.");return}if(detail.attachments.length+attachmentFiles.length>10){setAttachmentError("É permitido manter até 10 documentos por cancelamento.");return}let attachments:CancellationDetail["attachments"];try{attachments=await createAttachments(attachmentFiles,currentUser.displayName)}catch{setAttachmentError("Não foi possível ler um dos documentos. Selecione novamente e tente outra vez.");return}try{const saved=await onSave({...detail,attachments:[...detail.attachments,...attachments],history:[...detail.history,{id:createLocalId(),type:"Documentos",text:`${attachments.length} documento(s) anexado(s).`,at:new Date().toISOString(),author:currentUser.displayName}]});if(saved)setAttachmentFiles([]);else setAttachmentError("Não foi possível salvar os arquivos. Selecione novamente para tentar outra vez.")}catch{setAttachmentError("Não foi possível salvar os documentos. Tente novamente.")}};
-  return <div className="drawer-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><aside className="journey-drawer cancellation-drawer" onMouseDown={event=>event.stopPropagation()}><header data-card-detail-id={item.id}><div><span className="eyebrow">CANCELAMENTO · ID {detail.clientId}</span>{detail.protocol&&<span className="cancellation-protocol"><FileText size={14}/> Protocolo <strong>{detail.protocol}</strong></span>}<h2>{detail.customerName||item.title}</h2><p>{detail.reason} · {money(detail.monthlyValueCents)}/mês</p></div><div className="detail-header-actions cancellation-header-actions" role="group" aria-label="Ações do cancelamento">{onCreateTask&&<button type="button" className="cancellation-create-task-button" disabled={busy} onClick={onCreateTask}><ClipboardPlus size={15}/> Criar tarefa</button>}</div><button className="icon-button" aria-label="Fechar" onClick={onClose}><X/></button></header><div className="journey-drawer-body"><section className="cancellation-detail-grid">{detail.protocol&&<div><small>Protocolo de cancelamento</small><strong>{detail.protocol}</strong></div>}<div><small>Solicitação</small><strong>{date(detail.requestDate)}</strong></div><div><small>Adesão</small><strong>{date(detail.adhesionDate)}</strong></div><div><small>Permanência</small><strong>{detail.stayRange||"—"}</strong></div><div><small>Plano</small><strong>{detail.plan||"—"}</strong></div><div><small>Vendedor</small><strong>{detail.seller||"—"}</strong></div>
-<div><small>Responsável CS</small><strong>{detail.csOwner||"—"}</strong></div>
-<div><small>Responsável pela reversão</small><strong>{cancellationReversalOwner(detail,item.owner)||"Não informado"}</strong></div>
-<div><small>Telefone da solicitação</small><strong><PhoneLink phone={detail.requesterPhone||"—"}/></strong></div>
-</section><section className="journey-action-card"><h3>Resumo da solicitação</h3><p>{detail.notes||"Nenhuma observação informada."}</p></section><section className="journey-action-card cancellation-attachments"><h3><FileText size={16}/> Documentos anexados</h3>{detail.attachments.length?<div className={detail.attachments.length>1?"multiple":"single"}>{detail.attachments.map(file=><article data-reminder-entity-id={file.id} key={file.id}><a href={file.dataUrl} target="_blank" rel="noreferrer" onClick={event=>{event.preventDefault();openFile({name:file.name,type:file.contentType,size:file.sizeBytes,dataUrl:file.dataUrl})}}><FileText size={14}/><span><b>{file.name}</b><small>{Math.max(1,Math.round(file.sizeBytes/1024))} KB · {file.uploadedBy}</small></span><ExternalLink size={13}/></a>{canEdit&&<button type="button" disabled={busy} onClick={()=>void onSave({...detail,attachments:detail.attachments.filter(entry=>entry.id!==file.id)})} aria-label={`Excluir ${file.name}`}><Trash2 size={13}/></button>}</article>)}</div>:<p className="empty-copy">Nenhum documento anexado.</p>}{canEdit&&<div className="cancellation-attachment-upload"><MediaUploadField className="compact" label="Adicionar documentos" multiple  selectedFiles={attachmentFiles} selectedText={attachmentFiles.length?`${attachmentFiles.length} arquivo(s) selecionado(s)`:undefined} hint="Selecione os arquivos para anexar. Até 10 arquivos de 5 MB cada." disabled={busy} onChange={event=>{const files=Array.from(event.currentTarget.files??[]);event.currentTarget.value="";void addAttachments(files)}}/>{attachmentError&&<p className="form-error">{attachmentError}</p>}</div>}</section>{canEdit&&<section className="journey-action-card cancellation-controls"><label>Etapa<select value={item.status} disabled={busy} onChange={event=>void onMove(event.target.value)}>{stages.map(value=><option key={value}>{value}</option>)}</select></label><label>Responsável pela reversão<SearchablePeopleSelect searchLabel="Responsável pela reversão" required value={reversalOwner} disabled={busy} onChange={event=>setReversalOwner(event.target.value)}>{employees.map(employee=><option key={employee.id}>{employee.displayName}</option>)}</SearchablePeopleSelect></label><button className="secondary-button" disabled={busy||!reversalOwner.trim()||reversalOwner===cancellationReversalOwner(detail,item.owner)} onClick={()=>void onSave({...detail,reversalOwner,history:[...detail.history,{id:crypto.randomUUID(),type:"Alteração de responsável",text:`Responsável pela reversão alterado de ${cancellationReversalOwner(detail,item.owner)||"Não informado"} para ${reversalOwner}.`,at:new Date().toISOString(),author:currentUser.displayName}]})}><Save size={14}/> Atualizar responsável</button></section>}{item.status==="Convertido"&&canEdit&&<section className="cancellation-outcome converted"><RotateCcw/><div><h3>Cliente decidiu permanecer</h3><p>O responsável do acompanhamento foi avisado e o processo normal foi mantido. Use o encaminhamento somente se precisar reiniciar outro onboarding.</p></div><button className="primary-button" disabled={busy||Boolean(detail.actionCompletedAt)} onClick={()=>void onConverted()}><ArrowRight size={15}/>{detail.actionCompletedAt?"Encaminhado":"Iniciar outro onboarding"}</button></section>}{item.status==="Não convertido"&&<section className="cancellation-outcome lost"><AlertTriangle/><div><h3>Aguardando conferência</h3><p>O acompanhamento foi enviado automaticamente para a coordenação. A aprovação moverá o cliente para Cancelados.</p></div></section>}<section className="cancellation-history"><h3><MessageSquareText size={16}/> Histórico e tratativas</h3>{canEdit&&<div data-comment-composer="true" className="cancellation-comment-form"><select value={commentType} onChange={event=>setCommentType(event.target.value)}><option value="">Tipo de comunicação</option>{communicationTypes.map(value=><option key={value}>{value}</option>)}</select><CommentInput disabled={busy} data-comment-input="true" rows={3} value={comment} onChange={event=>setComment(event.target.value)} placeholder="Registre contato, proposta ou retorno do cliente"/><button className="primary-button" disabled={busy||!commentType||!comment.trim()} onClick={()=>void addComment()}>Registrar comentário</button></div>}<div><CommentHistory>{detail.history.slice().reverse().map(entry=><article data-reminder-entity-id={entry.id} key={entry.id}><span><strong>{entry.type||entry.author}</strong><small>{dateTime(entry.at)}</small></span><p><CommentContent text={entry.text}/></p>{entry.taskId&&<a className="cancellation-linked-task" href={`/?mod=tasks&task=${encodeURIComponent(entry.taskId)}`}><ClipboardPlus size={14}/> Abrir tarefa {entry.taskProtocol||"vinculada"}<ExternalLink size={13}/></a>}<em>por {entry.author}</em></article>)}</CommentHistory></div></section></div></aside></div>;
+function CancellationDrawer({
+  item,
+  detail,
+  stages,
+  catalogs,
+  employees,
+  currentUser,
+  busy,
+  canEdit,
+  onClose,
+  onMove,
+  onSave,
+  onConverted,
+  onCancelled,
+  onCreateTask,
+}: {
+  item: WorkItem;
+  detail: CancellationDetail;
+  stages: string[];
+  catalogs: Catalog[];
+  employees: Employee[];
+  currentUser: CurrentUser;
+  busy: boolean;
+  canEdit: boolean;
+  onClose: () => void;
+  onMove: (stage: string) => Promise<void>;
+  onSave: (detail: CancellationDetail) => Promise<boolean>;
+  onConverted: () => void | Promise<void>;
+  onCancelled: () => Promise<void>;
+  onCreateTask?: () => void;
+}) {
+  const [comment, setComment] = useState("");
+  const [commentType, setCommentType] = useState("");
+  const [reversalOwner, setReversalOwner] = useState(
+    cancellationReversalOwner(detail, item.owner),
+  );
+  useEffect(
+    () => setReversalOwner(cancellationReversalOwner(detail, item.owner)),
+    [detail.reversalOwner, item.owner],
+  );
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const communicationTypes = catalogs
+    .filter(
+      (entry) =>
+        entry.active && entry.catalog === "cancellationCommunicationType",
+    )
+    .map((entry) => entry.name);
+  const addComment = async () => {
+    if (!comment.trim() || !commentType) return;
+    const saved = await onSave({
+      ...detail,
+      history: [
+        ...detail.history,
+        {
+          id: createLocalId(),
+          type: commentType,
+          text: comment,
+          at: new Date().toISOString(),
+          author: currentUser.displayName,
+        },
+      ],
+    });
+    if (saved) {
+      setComment("");
+      setCommentType("");
+    }
+  };
+  const addAttachments = async (attachmentFiles: File[]) => {
+    setAttachmentError("");
+    if (!attachmentFiles.length) return;
+    if (attachmentFiles.some((file) => file.size > 5 * 1024 * 1024)) {
+      setAttachmentError("Cada documento deve ter no máximo 5 MB.");
+      return;
+    }
+    if (detail.attachments.length + attachmentFiles.length > 10) {
+      setAttachmentError(
+        "É permitido manter até 10 documentos por cancelamento.",
+      );
+      return;
+    }
+    let attachments: CancellationDetail["attachments"];
+    try {
+      attachments = await createAttachments(
+        attachmentFiles,
+        currentUser.displayName,
+      );
+    } catch {
+      setAttachmentError(
+        "Não foi possível ler um dos documentos. Selecione novamente e tente outra vez.",
+      );
+      return;
+    }
+    try {
+      const saved = await onSave({
+        ...detail,
+        attachments: [...detail.attachments, ...attachments],
+        history: [
+          ...detail.history,
+          {
+            id: createLocalId(),
+            type: "Documentos",
+            text: `${attachments.length} documento(s) anexado(s).`,
+            at: new Date().toISOString(),
+            author: currentUser.displayName,
+          },
+        ],
+      });
+      if (saved) setAttachmentFiles([]);
+      else
+        setAttachmentError(
+          "Não foi possível salvar os arquivos. Selecione novamente para tentar outra vez.",
+        );
+    } catch {
+      setAttachmentError(
+        "Não foi possível salvar os documentos. Tente novamente.",
+      );
+    }
+  };
+  return (
+    <div
+      className="drawer-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <aside
+        className="journey-drawer cancellation-drawer"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header data-card-detail-id={item.id}>
+          <div>
+            <span className="eyebrow">CANCELAMENTO · ID {detail.clientId}</span>
+            {detail.protocol && (
+              <span className="cancellation-protocol">
+                <FileText size={14} /> Protocolo{" "}
+                <strong>{detail.protocol}</strong>
+              </span>
+            )}
+            <h2>{detail.customerName || item.title}</h2>
+            <p>
+              {detail.reason} · {money(detail.monthlyValueCents)}/mês
+            </p>
+          </div>
+          <div
+            className="detail-header-actions cancellation-header-actions"
+            role="group"
+            aria-label="Ações do cancelamento"
+          >
+            {onCreateTask && (
+              <button
+                type="button"
+                className="cancellation-create-task-button"
+                disabled={busy}
+                onClick={onCreateTask}
+              >
+                <ClipboardPlus size={15} /> Criar tarefa
+              </button>
+            )}
+          </div>
+          <button className="icon-button" aria-label="Fechar" onClick={onClose}>
+            <X />
+          </button>
+        </header>
+        <div className="journey-drawer-body">
+          <section className="cancellation-detail-grid">
+            {detail.protocol && (
+              <div>
+                <small>Protocolo de cancelamento</small>
+                <strong>{detail.protocol}</strong>
+              </div>
+            )}
+            <div>
+              <small>Solicitação</small>
+              <strong>{date(detail.requestDate)}</strong>
+            </div>
+            <div>
+              <small>Adesão</small>
+              <strong>{date(detail.adhesionDate)}</strong>
+            </div>
+            <div>
+              <small>Permanência</small>
+              <strong>{detail.stayRange || "—"}</strong>
+            </div>
+            <div>
+              <small>Plano</small>
+              <strong>{detail.plan || "—"}</strong>
+            </div>
+            <div>
+              <small>Vendedor</small>
+              <strong>{detail.seller || "—"}</strong>
+            </div>
+            <div>
+              <small>Responsável CS</small>
+              <strong>{detail.csOwner || "—"}</strong>
+            </div>
+            <div>
+              <small>Responsável pela reversão</small>
+              <strong>
+                {cancellationReversalOwner(detail, item.owner) ||
+                  "Não informado"}
+              </strong>
+            </div>
+            <div>
+              <small>Telefone da solicitação</small>
+              <strong>
+                <PhoneLink phone={detail.requesterPhone || "—"} />
+              </strong>
+            </div>
+          </section>
+          <section className="journey-action-card">
+            <h3>Resumo da solicitação</h3>
+            <p>{detail.notes || "Nenhuma observação informada."}</p>
+          </section>
+          <section className="journey-action-card cancellation-attachments">
+            <h3>
+              <FileText size={16} /> Documentos anexados
+            </h3>
+            {detail.attachments.length ? (
+              <div
+                className={
+                  detail.attachments.length > 1 ? "multiple" : "single"
+                }
+              >
+                {detail.attachments.map((file) => (
+                  <article data-reminder-entity-id={file.id} key={file.id}>
+                    <a
+                      href={file.dataUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        openFile({
+                          name: file.name,
+                          type: file.contentType,
+                          size: file.sizeBytes,
+                          dataUrl: file.dataUrl,
+                        });
+                      }}
+                    >
+                      <FileText size={14} />
+                      <span>
+                        <b>{file.name}</b>
+                        <small>
+                          {Math.max(1, Math.round(file.sizeBytes / 1024))} KB ·{" "}
+                          {file.uploadedBy}
+                        </small>
+                      </span>
+                      <ExternalLink size={13} />
+                    </a>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void onSave({
+                            ...detail,
+                            attachments: detail.attachments.filter(
+                              (entry) => entry.id !== file.id,
+                            ),
+                          })
+                        }
+                        aria-label={`Excluir ${file.name}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-copy">Nenhum documento anexado.</p>
+            )}
+            {canEdit && (
+              <div className="cancellation-attachment-upload">
+                <MediaUploadField
+                  className="compact"
+                  label="Adicionar documentos"
+                  multiple
+                  selectedFiles={attachmentFiles}
+                  selectedText={
+                    attachmentFiles.length
+                      ? `${attachmentFiles.length} arquivo(s) selecionado(s)`
+                      : undefined
+                  }
+                  hint="Selecione os arquivos para anexar. Até 10 arquivos de 5 MB cada."
+                  disabled={busy}
+                  onChange={(event) => {
+                    const files = Array.from(event.currentTarget.files ?? []);
+                    event.currentTarget.value = "";
+                    void addAttachments(files);
+                  }}
+                />
+                {attachmentError && (
+                  <p className="form-error">{attachmentError}</p>
+                )}
+              </div>
+            )}
+          </section>
+          {canEdit && (
+            <section className="journey-action-card cancellation-controls">
+              <label>
+                Etapa
+                <select
+                  value={item.status}
+                  disabled={busy}
+                  onChange={(event) => void onMove(event.target.value)}
+                >
+                  {stages.map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Responsável pela reversão
+                <SearchablePeopleSelect
+                  searchLabel="Responsável pela reversão"
+                  required
+                  value={reversalOwner}
+                  disabled={busy}
+                  onChange={(event) => setReversalOwner(event.target.value)}
+                >
+                  {employees.map((employee) => (
+                    <option key={employee.id}>{employee.displayName}</option>
+                  ))}
+                </SearchablePeopleSelect>
+              </label>
+              <button
+                className="secondary-button"
+                disabled={
+                  busy ||
+                  !reversalOwner.trim() ||
+                  reversalOwner ===
+                    cancellationReversalOwner(detail, item.owner)
+                }
+                onClick={() =>
+                  void onSave({
+                    ...detail,
+                    reversalOwner,
+                    history: [
+                      ...detail.history,
+                      {
+                        id: crypto.randomUUID(),
+                        type: "Alteração de responsável",
+                        text: `Responsável pela reversão alterado de ${cancellationReversalOwner(detail, item.owner) || "Não informado"} para ${reversalOwner}.`,
+                        at: new Date().toISOString(),
+                        author: currentUser.displayName,
+                      },
+                    ],
+                  })
+                }
+              >
+                <Save size={14} /> Atualizar responsável
+              </button>
+            </section>
+          )}
+          {item.status === "Convertido" && canEdit && (
+            <section className="cancellation-outcome converted">
+              <RotateCcw />
+              <div>
+                <h3>Cliente decidiu permanecer</h3>
+                <p>
+                  O responsável do acompanhamento foi avisado e o processo
+                  normal foi mantido. Use o encaminhamento somente se precisar
+                  reiniciar outro onboarding.
+                </p>
+              </div>
+              <button
+                className="primary-button"
+                disabled={busy || Boolean(detail.actionCompletedAt)}
+                onClick={() => void onConverted()}
+              >
+                <ArrowRight size={15} />
+                {detail.actionCompletedAt
+                  ? "Encaminhado"
+                  : "Iniciar outro onboarding"}
+              </button>
+            </section>
+          )}
+          {item.status === "Não convertido" && (
+            <section className="cancellation-outcome lost">
+              <AlertTriangle />
+              <div>
+                <h3>Aguardando conferência</h3>
+                <p>
+                  O acompanhamento foi enviado automaticamente para a
+                  coordenação. A aprovação moverá o cliente para Cancelados.
+                </p>
+              </div>
+            </section>
+          )}
+          <section className="cancellation-history">
+            <h3>
+              <MessageSquareText size={16} /> Histórico e tratativas
+            </h3>
+            {canEdit && (
+              <div
+                data-comment-composer="true"
+                className="cancellation-comment-form"
+              >
+                <select
+                  value={commentType}
+                  onChange={(event) => setCommentType(event.target.value)}
+                >
+                  <option value="">Tipo de comunicação</option>
+                  {communicationTypes.map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+                <CommentInput
+                  disabled={busy}
+                  data-comment-input="true"
+                  rows={3}
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  placeholder="Registre contato, proposta ou retorno do cliente"
+                />
+                <button
+                  className="primary-button"
+                  disabled={busy || !commentType || !comment.trim()}
+                  onClick={() => void addComment()}
+                >
+                  Registrar comentário
+                </button>
+              </div>
+            )}
+            <div>
+              <CommentHistory>
+                {detail.history
+                  .slice()
+                  .reverse()
+                  .map((entry) => (
+                    <article data-reminder-entity-id={entry.id} key={entry.id}>
+                      <span>
+                        <strong>{entry.type || entry.author}</strong>
+                        <small>{dateTime(entry.at)}</small>
+                      </span>
+                      <p>
+                        <CommentContent text={entry.text} />
+                      </p>
+                      {entry.taskId && (
+                        <a
+                          className="cancellation-linked-task"
+                          href={`/?mod=tasks&task=${encodeURIComponent(entry.taskId)}`}
+                        >
+                          <ClipboardPlus size={14} /> Abrir tarefa{" "}
+                          {entry.taskProtocol || "vinculada"}
+                          <ExternalLink size={13} />
+                        </a>
+                      )}
+                      <em>por {entry.author}</em>
+                    </article>
+                  ))}
+              </CommentHistory>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  );
 }

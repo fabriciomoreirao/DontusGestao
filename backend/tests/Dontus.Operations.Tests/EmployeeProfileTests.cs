@@ -13,13 +13,25 @@ public sealed class EmployeeProfileTests
         chat ? [new("internalChat", true, true, true, false, false)] : []);
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-    private static AppUser User(string email) => new() {
-        Email = email, DisplayName = "Mesmo nome", Department = "Suporte", CreatedBy = "test",
-        PasswordHash = "private-hash", BirthDate = new(1993, 10, 15), JobTitle = "Analista",
+    private static AppUser User(string email) => new()
+    {
+        Email = email,
+        DisplayName = "Mesmo nome",
+        Department = "Suporte",
+        CreatedBy = "test",
+        PasswordHash = "private-hash",
+        BirthDate = new(1993, 10, 15),
+        JobTitle = "Analista",
     };
-    private static WorkItem Record(AppUser user, string bio = "Bio anterior") => new() {
-        Module = "internalChat", RecordType = "Perfil de colaborador", Title = "Perfil", Status = "Ativo",
-        Owner = user.DisplayName, CreatedBy = user.Email, Version = 4,
+    private static WorkItem Record(AppUser user, string bio = "Bio anterior") => new()
+    {
+        Module = "internalChat",
+        RecordType = "Perfil de colaborador",
+        Title = "Perfil",
+        Status = "Ativo",
+        Owner = user.DisplayName,
+        CreatedBy = user.Email,
+        Version = 4,
         Description = JsonSerializer.Serialize(new { kind = "employeeProfile", employeeId = user.Id, bio, phrase = "Frase anterior", coverDataUrl = Cover }),
     };
 
@@ -111,9 +123,12 @@ public sealed class EmployeeProfileTests
         await using var db = Context(); var user = User("own@example.com"); db.Users.Add(user); db.WorkItems.Add(Record(user)); await db.SaveChangesAsync();
         var service = new EmployeeProfileService(db); var actor = Actor(user);
         var profile = await service.GetAsync(null, actor);
-        var command = new SaveEmployeeProfileCommand(invalid switch {
-            "svg" => "data:image/svg+xml;base64,AA==", "invalid-base64" => "data:image/png;base64,invalid!",
-            "oversize" => "data:image/png;base64," + Convert.ToBase64String(new byte[2 * 1024 * 1024 + 1]), _ => Cover,
+        var command = new SaveEmployeeProfileCommand(invalid switch
+        {
+            "svg" => "data:image/svg+xml;base64,AA==",
+            "invalid-base64" => "data:image/png;base64,invalid!",
+            "oversize" => "data:image/png;base64," + Convert.ToBase64String(new byte[2 * 1024 * 1024 + 1]),
+            _ => Cover,
         }, invalid == "bio" ? new string('a', 901) : "Bio", invalid == "phrase" ? new string('a', 181) : "Frase", profile.Version);
         await Assert.ThrowsAsync<DomainException>(() => service.SaveAsync(command, actor));
         Assert.Equal("Bio anterior", (await service.GetAsync(null, actor)).Bio);

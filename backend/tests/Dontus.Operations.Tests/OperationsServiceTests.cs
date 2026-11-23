@@ -12,22 +12,52 @@ public sealed class OperationsServiceTests
     {
         await using var db = CreateContext();
         var registeredAt = DateTimeOffset.UtcNow.AddHours(-1);
-        var user = new AppUser { Email = Actor.Email, DisplayName = Actor.DisplayName,
-            CreatedBy = Actor.Email, CreatedAt = registeredAt };
+        var user = new AppUser
+        {
+            Email = Actor.Email,
+            DisplayName = Actor.DisplayName,
+            CreatedBy = Actor.Email,
+            CreatedAt = registeredAt
+        };
         db.Users.Add(user);
-        var oldNotice = new CompanyNotice { Title = "Antigo", AuthorUserId = user.Id,
-            CreatedAt = registeredAt.AddDays(-1), PublishedAt = registeredAt.AddDays(-1) };
+        var oldNotice = new CompanyNotice
+        {
+            Title = "Antigo",
+            AuthorUserId = user.Id,
+            CreatedAt = registeredAt.AddDays(-1),
+            PublishedAt = registeredAt.AddDays(-1)
+        };
         var newNotice = new CompanyNotice { Title = "Novo", AuthorUserId = user.Id };
         db.CompanyNotices.AddRange(oldNotice, newNotice);
         db.WorkItems.AddRange(
-            new WorkItem { Module = "reminders", RecordType = "Lembrete", Title = "Antigo", Status = "Pendente",
-                CustomerName = user.Email, Owner = user.DisplayName, CreatedBy = user.Email, CreatedAt = registeredAt.AddDays(-1) },
-            new WorkItem { Module = "reminders", RecordType = "Lembrete", Title = "Novo", Status = "Pendente",
-                CustomerName = user.Email, Owner = user.DisplayName, CreatedBy = user.Email });
+            new WorkItem
+            {
+                Module = "reminders",
+                RecordType = "Lembrete",
+                Title = "Antigo",
+                Status = "Pendente",
+                CustomerName = user.Email,
+                Owner = user.DisplayName,
+                CreatedBy = user.Email,
+                CreatedAt = registeredAt.AddDays(-1)
+            },
+            new WorkItem
+            {
+                Module = "reminders",
+                RecordType = "Lembrete",
+                Title = "Novo",
+                Status = "Pendente",
+                CustomerName = user.Email,
+                Owner = user.DisplayName,
+                CreatedBy = user.Email
+            });
         await db.SaveChangesAsync();
         var service = new OperationsService(db);
-        var recipient = Actor with { Permissions = [new EffectivePermission("notices", true, false, false, false, false),
-            new EffectivePermission("reminders", true, false, false, false, false)] };
+        var recipient = Actor with
+        {
+            Permissions = [new EffectivePermission("notices", true, false, false, false, false),
+            new EffectivePermission("reminders", true, false, false, false, false)]
+        };
         var notices = await service.GetNoticesModuleAsync(recipient);
         Assert.Equal(newNotice.Id, Assert.Single(notices.Notices).Id);
         Assert.False((await service.GetNoticesModuleAsync(Actor)).Notices.Single(n => n.Id == oldNotice.Id).VisibleToCurrentUser);
@@ -329,8 +359,16 @@ public sealed class OperationsServiceTests
         db.AgendaStatuses.Add(status);
         var now = DateTimeOffset.UtcNow;
         var own = new WorkItem { Module = "diary", RecordType = "Tarefa", Title = "Minha atividade", Status = "Pendente", CreatedBy = coordinator.Email };
-        var manual = new WorkItem { Module = "diary", RecordType = "Tarefa", Title = "Atividade da equipe", Status = "Pendente", CreatedBy = subordinate.Email,
-            CreatedAt = now.AddMonths(-2), DueAt = now };
+        var manual = new WorkItem
+        {
+            Module = "diary",
+            RecordType = "Tarefa",
+            Title = "Atividade da equipe",
+            Status = "Pendente",
+            CreatedBy = subordinate.Email,
+            CreatedAt = now.AddMonths(-2),
+            DueAt = now
+        };
         db.WorkItems.AddRange(own, manual,
             new WorkItem { Module = "diary", RecordType = "Tarefa", Title = "Atividade sem vínculo", Status = "Pendente", CreatedBy = unrelated.Email });
         var commitment = new AgendaCommitment { AgendaStatusId = status.Id, ResponsibleUserId = subordinate.Id, Title = "Agenda da equipe", StartsAt = now, EndsAt = now.AddHours(1), CreatedBy = unrelated.Email };
@@ -364,18 +402,22 @@ public sealed class OperationsServiceTests
     public async Task Customer_snapshot_includes_records_beyond_the_old_thousand_row_limit_and_keeps_permissions()
     {
         await using var db = CreateContext();
-        var customers = Enumerable.Range(1,1005).Select(index => new Customer {
-            LegalName = $"Clínica {index:D4}", TradeName = $"Clínica {index:D4}", DocumentMasked = index.ToString("D6"), CreatedBy = Actor.Email,
+        var customers = Enumerable.Range(1, 1005).Select(index => new Customer
+        {
+            LegalName = $"Clínica {index:D4}",
+            TradeName = $"Clínica {index:D4}",
+            DocumentMasked = index.ToString("D6"),
+            CreatedBy = Actor.Email,
             UpdatedAt = DateTimeOffset.UtcNow.AddDays(-index)
         }).ToArray();
         db.Customers.AddRange(customers); await db.SaveChangesAsync();
         var service = new OperationsService(db);
-        var viewer = Actor with { Permissions = [new EffectivePermission("customers",true,false,false,false,false)] };
+        var viewer = Actor with { Permissions = [new EffectivePermission("customers", true, false, false, false, false)] };
         var snapshot = await service.GetSnapshotAsync(viewer);
-        Assert.Equal(1005,snapshot.Customers.Count);
-        Assert.Contains(snapshot.Customers,customer => customer.Id == customers[^1].Id);
-        Assert.Empty((await service.GetSnapshotAsync(viewer with {Permissions=[new EffectivePermission("notes",true,false,false,false,false)]})).Customers);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.GetSnapshotAsync(viewer with {Permissions=[]}))).StatusCode);
+        Assert.Equal(1005, snapshot.Customers.Count);
+        Assert.Contains(snapshot.Customers, customer => customer.Id == customers[^1].Id);
+        Assert.Empty((await service.GetSnapshotAsync(viewer with { Permissions = [new EffectivePermission("notes", true, false, false, false, false)] })).Customers);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetSnapshotAsync(viewer with { Permissions = [] }))).StatusCode);
     }
 
     private static OperationsDbContext CreateContext()

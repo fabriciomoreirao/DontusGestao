@@ -66,7 +66,7 @@ public sealed partial class LiaFormService(OperationsDbContext db, IDataProtecti
             .Select(x => new { x.RequestId, File = new LiaFormAttachmentDto(x.Id, x.QuestionId, x.FileName, x.ContentType, x.SizeBytes) }).ToListAsync(ct);
         return entries.Select(x => new LiaFormRequestDto(x.Id, x.WorkItemId, x.FormId, x.FormName, x.FormDescription,
             Questions(x.QuestionsJson), x.CreatedAt, x.SubmittedAt, JsonSerializer.Deserialize<Dictionary<string, string>>(x.AnswersJson) ?? [], protection.CreateProtector("lia-form-links-v1").Unprotect(x.ProtectedToken), clientNames.GetValueOrDefault(x.WorkItemId, "Cliente"))
-            { Attachments = attachments.Where(a => a.RequestId == x.Id).Select(a => a.File).ToList() }).ToList();
+        { Attachments = attachments.Where(a => a.RequestId == x.Id).Select(a => a.File).ToList() }).ToList();
     }
 
     public async Task<object> GenerateAsync(GenerateLiaFormCommand command, ActorContext actor, CancellationToken ct)
@@ -78,9 +78,17 @@ public sealed partial class LiaFormService(OperationsDbContext db, IDataProtecti
         var form = await db.LiaForms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.FormId && x.Active, ct)
             ?? throw new DomainException("Escolha um formulário ativo.");
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-        var entry = new LiaFormRequest { WorkItemId = command.WorkItemId, FormId = form.Id, TokenHash = Hash(token),
+        var entry = new LiaFormRequest
+        {
+            WorkItemId = command.WorkItemId,
+            FormId = form.Id,
+            TokenHash = Hash(token),
             ProtectedToken = protection.CreateProtector("lia-form-links-v1").Protect(token),
-            FormName = form.Name, FormDescription = form.Description, QuestionsJson = form.QuestionsJson, CreatedBy = actor.Email };
+            FormName = form.Name,
+            FormDescription = form.Description,
+            QuestionsJson = form.QuestionsJson,
+            CreatedBy = actor.Email
+        };
         db.LiaFormRequests.Add(entry); Audit(actor.Email, "GenerateFormLink", entry.Id);
         await db.SaveChangesAsync(ct);
         return new { entry.Id, token };
@@ -137,5 +145,5 @@ public sealed partial class LiaFormService(OperationsDbContext db, IDataProtecti
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
     private static IReadOnlyList<LiaFormQuestion> Questions(string json) => JsonSerializer.Deserialize<List<LiaFormQuestion>>(json) ?? [];
     private void Audit(string email, string action, Guid id) => db.AuditEvents.Add(new AuditEvent
-        { ActorEmail = email, Action = action, Module = "lia", Resource = "lia_form", ResourceId = id.ToString() });
+    { ActorEmail = email, Action = action, Module = "lia", Resource = "lia_form", ResourceId = id.ToString() });
 }

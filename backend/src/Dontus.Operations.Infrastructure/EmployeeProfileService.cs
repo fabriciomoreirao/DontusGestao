@@ -38,22 +38,40 @@ public sealed class EmployeeProfileService(OperationsDbContext db)
         var created = record is null;
         if (record is null)
         {
-            record = new WorkItem {
-                Module = "internalChat", RecordType = RecordType, Title = $"Perfil · {user.DisplayName}",
-                Owner = user.DisplayName, CustomerName = user.DisplayName, Team = user.Department,
-                Status = "Ativo", Priority = "P4", CreatedBy = actor.Email,
+            record = new WorkItem
+            {
+                Module = "internalChat",
+                RecordType = RecordType,
+                Title = $"Perfil · {user.DisplayName}",
+                Owner = user.DisplayName,
+                CustomerName = user.DisplayName,
+                Team = user.Department,
+                Status = "Ativo",
+                Priority = "P4",
+                CreatedBy = actor.Email,
             };
             db.WorkItems.Add(record);
         }
         else record.Version++;
         record.UpdatedAt = DateTimeOffset.UtcNow;
-        record.Description = JsonSerializer.Serialize(new {
-            kind = "employeeProfile", employeeId = user.Id, coverDataUrl = cover, bio, phrase,
-            updatedAt = record.UpdatedAt, updatedBy = user.DisplayName,
+        record.Description = JsonSerializer.Serialize(new
+        {
+            kind = "employeeProfile",
+            employeeId = user.Id,
+            coverDataUrl = cover,
+            bio,
+            phrase,
+            updatedAt = record.UpdatedAt,
+            updatedBy = user.DisplayName,
         });
-        db.AuditEvents.Add(new AuditEvent {
-            ActorEmail = actor.Email, Action = created ? "Create" : "Update", Resource = "employee_profile",
-            ResourceId = user.Id.ToString(), Module = "profile", DetailsJson = JsonSerializer.Serialize(new { employeeId = user.Id }),
+        db.AuditEvents.Add(new AuditEvent
+        {
+            ActorEmail = actor.Email,
+            Action = created ? "Create" : "Update",
+            Resource = "employee_profile",
+            ResourceId = user.Id.ToString(),
+            Module = "profile",
+            DetailsJson = JsonSerializer.Serialize(new { employeeId = user.Id }),
         });
         await db.SaveChangesAsync(ct);
         return await DescribeAsync(user, user.Id, record, ct);
@@ -68,11 +86,14 @@ public sealed class EmployeeProfileService(OperationsDbContext db)
         var id = userId.ToString();
         var records = await db.WorkItems.Where(item => item.Module == "internalChat" && item.RecordType == RecordType
                 && item.Description.Contains(id)).OrderByDescending(item => item.UpdatedAt).ToListAsync(ct);
-        return records.FirstOrDefault(record => {
-            try {
+        return records.FirstOrDefault(record =>
+        {
+            try
+            {
                 using var json = JsonDocument.Parse(record.Description);
                 return json.RootElement.TryGetProperty("employeeId", out var employeeId) && employeeId.GetString() == id;
-            } catch (Exception error) when (error is JsonException or InvalidOperationException) { return false; }
+            }
+            catch (Exception error) when (error is JsonException or InvalidOperationException) { return false; }
         });
     }
 
@@ -85,7 +106,8 @@ public sealed class EmployeeProfileService(OperationsDbContext db)
         var supervisors = await db.EmployeeSupervisions.Where(link => link.SubordinateUserId == user.Id
                 && link.CoordinatorUser.Active && !link.CoordinatorUser.BlockedAt.HasValue)
             .Select(link => link.CoordinatorUser.DisplayName).Distinct().Order().ToListAsync(ct);
-        string Read(string name) {
+        string Read(string name)
+        {
             if (record is null) return "";
             try { using var json = JsonDocument.Parse(record.Description); return json.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : ""; }
             catch (JsonException) { return ""; }
@@ -103,10 +125,12 @@ public sealed class EmployeeProfileService(OperationsDbContext db)
             .FirstOrDefault(prefix => cover.StartsWith(prefix, StringComparison.Ordinal));
         if (prefix is null || cover.Length > (maxBytes + 2) / 3 * 4 + 40)
             throw new DomainException("Selecione uma capa PNG, JPEG ou WebP de até 2 MB.");
-        try {
+        try
+        {
             var bytes = Convert.FromBase64String(cover[prefix.Length..]);
             if (bytes.Length == 0 || bytes.Length > maxBytes) throw new FormatException();
-        } catch (FormatException) { throw new DomainException("Selecione uma capa PNG, JPEG ou WebP de até 2 MB."); }
+        }
+        catch (FormatException) { throw new DomainException("Selecione uma capa PNG, JPEG ou WebP de até 2 MB."); }
     }
 
     internal static void RequireDedicatedEditor(string? recordType, string? description)
