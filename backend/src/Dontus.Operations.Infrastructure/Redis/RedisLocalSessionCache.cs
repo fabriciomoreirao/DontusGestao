@@ -5,13 +5,13 @@ using StackExchange.Redis;
 namespace Dontus.Operations.Infrastructure.Redis;
 
 /// <summary>
-/// Sessões locais no Redis, por até 10 min. Se o Redis falhar, nada quebra: a autenticação consulta o banco.
+/// Sessões locais no Redis, por até 120 min. Se o Redis falhar, nada quebra: a autenticação consulta o banco.
 /// Chaves: dontus:auth:session:{hash do token} (sessão), dontus:auth:user:{id} (tokens em cache do usuário)
 /// e dontus:auth:generation (contador de invalidações).
 /// </summary>
 public sealed class RedisLocalSessionCache(IConnectionMultiplexer redis, ILogger<RedisLocalSessionCache> logger) : ILocalSessionCache
 {
-    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(120);
     // O índice do usuário precisa durar mais que qualquer sessão dele em cache.
     private static readonly TimeSpan UserIndexLifetime = Lifetime + TimeSpan.FromMinutes(1);
     private static readonly RedisKey GenerationKey = "dontus:auth:generation";
