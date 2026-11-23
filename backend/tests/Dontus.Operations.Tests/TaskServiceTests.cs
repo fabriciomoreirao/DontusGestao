@@ -212,6 +212,8 @@ public sealed class TaskServiceTests
         await db.SaveChangesAsync();
         var created=await service.CreateAsync(new("Assumir fila","Contexto",type.Id,null,null,support.Id,support.Id,null,null,null,null,"5511999990000",null,null,null,null,false,[],[]),admin);
         var task=await db.CorporateTasks.SingleAsync(entry=>entry.Id==created.Id);
+        // Existing shared-queue records remain claimable after automatic creator assignment.
+        task.AssigneeUserId=null;await db.SaveChangesAsync();
         ActorContext Viewer(AppUser person)=>new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false)]);
         var anaActor=Viewer(ana);
         // A shared task can only be claimed for oneself, with normal tasks/view access.
@@ -249,6 +251,7 @@ public sealed class TaskServiceTests
         firstDb.UserDepartments.AddRange(new UserDepartment{UserId=ana.Id,DepartmentId=department.Id},new UserDepartment{UserId=bia.Id,DepartmentId=department.Id});
         await firstDb.SaveChangesAsync();
         var created=await firstService.CreateAsync(new("Disputa de fila","Contexto",type.Id,null,null,department.Id,department.Id,null,null,null,null,"5511999990000",null,null,null,null,false,[],[]),admin);
+        (await firstDb.CorporateTasks.SingleAsync(entry=>entry.Id==created.Id)).AssigneeUserId=null;await firstDb.SaveChangesAsync();
         await using var secondDb=new OperationsDbContext(options);
         var stale=await secondDb.CorporateTasks.SingleAsync(entry=>entry.Id==created.Id);
         ActorContext Viewer(AppUser person)=>new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false)]);
@@ -306,6 +309,12 @@ public sealed class TaskServiceTests
         db.UserDepartments.AddRange(new UserDepartment{UserId=ana.Id,DepartmentId=support.Id},new UserDepartment{UserId=bia.Id,DepartmentId=support.Id},new UserDepartment{UserId=bia.Id,DepartmentId=finance.Id},new UserDepartment{UserId=outsider.Id,DepartmentId=finance.Id});
         await db.SaveChangesAsync();
         var created=await service.CreateAsync(new("Fila compartilhada","Contexto",type.Id,null,null,support.Id,support.Id,null,null,"123456","Clínica","5511999990000",null,null,null,null,false,[],[]),admin);
+        var initialTask=await db.CorporateTasks.SingleAsync(entry=>entry.Id==created.Id);
+        // Simulate records already persisted in the legacy shared queue.
+        initialTask.AssigneeUserId=null;
+        var adminId=(await db.Users.SingleAsync(person=>person.Email==admin.Email)).Id;
+        foreach(var recipient in new[]{ana,bia})db.TaskNotifications.Add(new(){TaskId=initialTask.Id,RecipientUserId=recipient.Id,ActorUserId=adminId,EventType="assigned",Message="Tarefa na fila compartilhada"});
+        await db.SaveChangesAsync();
         ActorContext Actor(AppUser user)=>new(user.Email,user.DisplayName,"Colaborador","",[new("tasks",true,false,true,false,false)]);
         foreach(var user in new[]{ana,bia})
         {
@@ -870,7 +879,7 @@ public sealed class TaskServiceTests
         var creatorId=(await db.Users.SingleAsync(entry=>entry.Email==admin.Email)).Id;
         foreach(var id in new[]{commenter.Id,commenter.Id,owner.Id,coordinator.Id,creatorId,blocked.Id})db.TaskComments.Add(new TaskComment{TaskId=task.Id,AuthorUserId=id,Body="Histórico de contato"});await db.SaveChangesAsync();
         ActorContext Viewer(AppUser person)=>new(person.Email,person.DisplayName,"Colaborador","",[new("tasks",true,false,false,false,false)]);
-        await service.AssignAsync(new(task.Id,null,task.Version),Viewer(owner));
+        await service.AssignAsync(new(task.Id,owner.Id,task.Version),admin);
         Assert.False(Assert.Single((await service.GetModuleAsync(Viewer(commenter))).Tasks).CanModify);
         var final=await db.TaskStatuses.SingleAsync(status=>status.Name=="Resolvida");
         await service.ChangeStatusAsync(new(task.Id,final.Id,null,task.Version),admin);
@@ -893,6 +902,91 @@ public sealed class TaskServiceTests
         ActorContext Viewer(AppUser user)=>new(user.Email,user.DisplayName,"Colaborador","TI",[new("ti",true,false,false,false,false)]);
         Assert.Equal(task.Id,Assert.Single((await service.GetModuleAsync(Viewer(developer))).Tasks).Id);Assert.NotNull((await service.GetAttachmentDownloadAsync(file,Viewer(developer))).Content);
         Assert.Empty((await service.GetModuleAsync(Viewer(outsider))).Tasks);Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.GetAttachmentDownloadAsync(file,Viewer(outsider)))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Creation_assigns_creator_and_priority_alert_targets_only_current_workflow_stakeholders()
+    {
+        await using var db = CreateContext(); var (service, admin) = await InitializeAsync(db);
+        var department = await db.TaskDepartments.SingleAsync(entry => entry.Name == "Suporte");
+        var type = await db.TaskTypes.SingleAsync();
+        var creator = new AppUser { Email = "priority-creator@test", DisplayName = "Criador", CreatedBy = admin.Email };
+        var coordinator = new AppUser { Email = "priority-coord@test", DisplayName = "Coordenação", CreatedBy = admin.Email };
+        var approver = new AppUser { Email = "priority-approver@test", DisplayName = "Aprovador", CreatedBy = admin.Email };
+        var outsider = new AppUser { Email = "priority-outsider@test", DisplayName = "Outro setor", CreatedBy = admin.Email };
+        db.Users.AddRange(creator, coordinator, approver, outsider);
+        db.UserDepartments.AddRange(new() { UserId = creator.Id, DepartmentId = department.Id }, new() { UserId = coordinator.Id, DepartmentId = department.Id, IsCoordinator = true });
+        department.ApproverUserId = approver.Id; await db.SaveChangesAsync();
+        ActorContext Actor(AppUser person) => new(person.Email, person.DisplayName, "Colaborador", "Suporte", [new("tasks",true,true,true,false,false)]);
+        var created = await service.CreateAsync(new("Tarefa prioritária", "Contexto", type.Id, null, null, department.Id, department.Id, null, null, null, null, "5511999990000", null, null, null, null, false, [], []), Actor(creator));
+        var task = await db.CorporateTasks.SingleAsync(entry => entry.Id == created.Id);
+        Assert.Equal(creator.Id, task.AssigneeUserId);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GeneratePriorityAlertAsync(task.Id, task.Version, Actor(creator)))).StatusCode);
+        Assert.Empty(await db.TaskNotifications.Where(entry => entry.EventType == "priority_requested").ToArrayAsync());
+        await service.GeneratePriorityAlertAsync(task.Id, task.Version, Actor(coordinator));
+        var recipients = await db.TaskNotifications.Where(entry => entry.TaskId == task.Id && entry.EventType == "priority_requested").Select(entry => entry.RecipientUserId).ToArrayAsync();
+        var expected=(await db.UserDepartments.Where(link=>link.DepartmentId==department.Id&&link.IsCoordinator).Select(link=>link.UserId).ToArrayAsync()).Concat(new[]{creator.Id,approver.Id}).Distinct().Order();
+        Assert.Equal(expected, recipients.Order());
+        Assert.DoesNotContain(outsider.Id,recipients);
+        foreach(var person in new[] { creator, coordinator, approver })
+            Assert.Contains((await service.GetModuleAsync(Actor(person))).Notifications, entry => entry.EventType == "priority_requested");
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GeneratePriorityAlertAsync(task.Id, task.Version, Actor(outsider)))).StatusCode);
+        Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.GeneratePriorityAlertAsync(task.Id, task.Version - 1, Actor(coordinator)))).StatusCode);
+        var projected = (await service.GetModuleAsync(Actor(creator))).Tasks.Single(entry => entry.Id == task.Id);
+        Assert.Equal(coordinator.DisplayName, projected.History.Single(entry => entry.EventType == "priority_requested").ActorName);
+        await service.AssignAsync(new(task.Id, approver.Id, task.Version), Actor(creator));
+        Assert.Equal(approver.Id, task.AssigneeUserId);
+    }
+
+    [Fact]
+    public async Task Updating_sla_days_recalculates_linked_tasks_from_creation_and_preserves_unrelated_deadlines()
+    {
+        await using var db = CreateContext(); var (service, actor) = await InitializeAsync(db);
+        var department = await db.TaskDepartments.SingleAsync(entry => entry.Name == "Suporte");
+        var type = await db.TaskTypes.SingleAsync();
+        var command = new SaveTaskSlaPolicyCommand(null,"1 dia útil",department.Id,null,null,0,0,480,[1,2,3,4,5],"08:00","16:00",0,0,true,[],true);
+        var slaId = await service.SaveSlaPolicyAsync(command,actor);
+        async Task<CorporateTask> Create(string title,Guid? policy,string creation) {
+            var result=await service.CreateAsync(new(title,"Contexto",type.Id,null,null,department.Id,department.Id,null,null,null,null,"5511999990000",null,null,null,policy,false,[],[]),actor);
+            var task=await db.CorporateTasks.SingleAsync(entry=>entry.Id==result.Id);task.CreatedAt=DateTimeOffset.Parse(creation);await db.SaveChangesAsync();
+            await service.ChangeSlaAsync(new(task.Id,policy,task.Version),actor);return task;
+        }
+        var friday=await Create("Sexta-feira",slaId,"2026-10-23T08:00:00Z");
+        var monday=await Create("Segunda-feira",slaId,"2026-10-26T08:00:00Z");
+        var unrelated=await Create("Outro SLA",null,"2026-10-23T08:00:00Z");
+        var oldVersion=friday.Version;var otherVersion=unrelated.Version;
+        await service.SaveSlaPolicyAsync(command with {Id=slaId,Name="3 dias úteis",CompletionMinutes=3*480},actor);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-27T16:00:00Z"),friday.SlaDueAt);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-28T16:00:00Z"),monday.SlaDueAt);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-23T08:00:00Z"),friday.CreatedAt);
+        Assert.Equal(oldVersion+1,friday.Version);Assert.Equal(otherVersion,unrelated.Version);Assert.Null(unrelated.SlaDueAt);
+        Assert.Equal(2,await db.TaskHistory.CountAsync(entry=>entry.EventType=="sla_recalculated"));
+        var projected=(await service.GetModuleAsync(actor)).Tasks.Single(entry=>entry.Id==friday.Id);
+        Assert.Equal(friday.SlaDueAt,projected.SlaDueAt);Assert.Equal(friday.Version,projected.Version);
+        await service.SaveSlaPolicyAsync(command with {Id=slaId,Name="Prazo renomeado",CompletionMinutes=3*480},actor);
+        Assert.Equal(oldVersion+1,friday.Version);
+        await service.SaveSlaPolicyAsync(command with {Id=slaId,Name="2 dias úteis",CompletionMinutes=2*480},actor);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-26T16:00:00Z"),friday.SlaDueAt);
+        Assert.Equal(oldVersion+2,friday.Version);
+        friday.SlaDueAt=DateTimeOffset.Parse("2026-10-23T16:00:00Z");await db.SaveChangesAsync();
+        await service.SaveSlaPolicyAsync(command with {Id=slaId,Name="2 dias úteis",CompletionMinutes=2*480},actor);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-26T16:00:00Z"),friday.SlaDueAt);
+        Assert.Equal(oldVersion+3,friday.Version);
+    }
+
+    [Fact]
+    public async Task Task_management_permission_alone_does_not_authorize_priority_requests()
+    {
+        await using var db=CreateContext();var(service,actor)=await InitializeAsync(db);
+        var department=await db.TaskDepartments.SingleAsync(entry=>entry.Name=="Suporte");var type=await db.TaskTypes.SingleAsync();
+        var manager=new AppUser{Email="priority-manager@test",DisplayName="Gestor sem coordenação",CreatedBy=actor.Email};db.Users.Add(manager);await db.SaveChangesAsync();
+        var result=await service.CreateAsync(new("Permissão de prioridade","Contexto",type.Id,null,null,department.Id,department.Id,null,null,null,null,"5511999990000",null,null,null,null,false,[],[]),actor);
+        var task=await db.CorporateTasks.SingleAsync(entry=>entry.Id==result.Id);
+        var managerActor=new ActorContext(manager.Email,manager.DisplayName,"Coordenador","Suporte",[new("tasks",true,true,true,true,true,TaskCapabilities.All)]);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.GeneratePriorityAlertAsync(task.Id,task.Version,managerActor))).StatusCode);
+        manager.IsCoordinator=true;await db.SaveChangesAsync();
+        await service.GeneratePriorityAlertAsync(task.Id,task.Version,managerActor);
+        Assert.Contains(await db.TaskHistory.ToArrayAsync(),entry=>entry.EventType=="priority_requested"&&entry.ActorUserId==manager.Id);
     }
 
     private static async Task<(TaskService Service, ActorContext Actor)> InitializeAsync(

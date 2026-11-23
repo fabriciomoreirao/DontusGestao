@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { Copy, Save, Search, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -57,7 +59,7 @@ export default function ReferralCommissionRules({ collaborator, collaborators, m
   };
   return <>
     <form className="referral-rules-form" onSubmit={event => void saveAll(event)}>
-      <div className="referral-commission-list">{modules.map(module => {
+      <div className="referral-commission-list">{<PaginatedItems label="regras de indicação">{modules.map(module => {
         const rule = existingRule(catalogs, collaborator, module);
         return <div className="referral-rule-row" key={module.id}>
           <span><strong>{module.name}</strong><small>{rule ? "Regra configurada" : "Aguardando configuração"}</small></span>
@@ -65,7 +67,7 @@ export default function ReferralCommissionRules({ collaborator, collaborators, m
           <label>Percentual (%)<input name={`${module.id}:percentage`} disabled={disabled} type="number" min="0" max="100" step="0.01" required defaultValue={rule?.percentage ?? 0} /></label>
           <label>Valor fixo (R$)<input name={`${module.id}:fixed`} disabled={disabled} type="number" min="0" step="0.01" required defaultValue={(rule?.fixedCents ?? 0) / 100} /></label>
         </div>;
-      })}</div>
+      })}</PaginatedItems>}</div>
       <footer className="referral-rules-footer"><span>{modules.length} regras de <strong>{collaborator.displayName}</strong></span><button ref={saveButton} className="primary-button" disabled={disabled} type="submit"><Save size={16} />{saving ? "Salvando..." : "Salvar todas as regras"}</button></footer>
     </form>
     {copyRevision && createPortal(<div className="modal-backdrop action-modal-backdrop referral-copy-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeCopy(); }}>
@@ -81,7 +83,7 @@ export default function ReferralCommissionRules({ collaborator, collaborators, m
         <header className="modal-head"><div><span className="eyebrow">REGRAS SALVAS</span><h2 id="referral-copy-title">Copiar para outros colaboradores?</h2></div><button type="button" className="icon-button" disabled={disabled} aria-label="Fechar cópia de regras" onClick={closeCopy}><X size={19} /></button></header>
         <p>Todas as {modules.length} regras de <strong>{collaborator.displayName}</strong> serão copiadas, substituindo os percentuais, valores fixos e tipos dos colaboradores marcados.</p>
         <label className="referral-copy-search"><Search size={16} /><input type="search" autoFocus placeholder="Buscar colaborador ou setor..." aria-label="Buscar colaborador para copiar regras" value={query} onChange={event => setQuery(event.target.value)} /></label>
-        <div className="referral-copy-list">{visible.map(person => <label key={person.id}><input type="checkbox" disabled={disabled} checked={targets.includes(person.id)} onChange={event => setTargets(current => event.target.checked ? [...current, person.id] : current.filter(id => id !== person.id))} /><span><strong>{person.displayName}</strong><small>{person.departmentName}</small></span></label>)}{!visible.length && <p>Nenhum colaborador encontrado.</p>}</div>
+        <div className="referral-copy-list">{<PaginatedItems label="regras de indicação">{visible.map(person => <label key={person.id}><input type="checkbox" disabled={disabled} checked={targets.includes(person.id)} onChange={event => setTargets(current => event.target.checked ? [...current, person.id] : current.filter(id => id !== person.id))} /><span><strong>{person.displayName}</strong><small>{person.departmentName}</small></span></label>)}</PaginatedItems>}{!visible.length && <p>Nenhum colaborador encontrado.</p>}</div>
         <footer className="form-actions"><button type="button" className="secondary-button" disabled={disabled} onClick={closeCopy}>Não, concluir</button><button type="button" className="primary-button" disabled={disabled || !targets.length} onClick={() => void copy()}><Copy size={15} />{saving ? "Copiando..." : `Copiar regras (${targets.length})`}</button></footer>
       </section>
     </div>, document.querySelector(".app-shell") || document.body)}

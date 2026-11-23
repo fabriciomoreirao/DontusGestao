@@ -2,7 +2,7 @@ import {waitingQueueNeedsContact} from "./waitingQueue.ts";
 export type AppNotification = {
   id: string; title: string; meta: string; module: string; at: string;
   sourceId: string; category: "arrival" | "comment" | "task" | "chat" | "reminder" | "notice" | "agenda";
-  targetUrl?: string; roomId?: string; count?: number;
+  targetUrl?: string; roomId?: string; count?: number; messageId?: string;
 };
 type Item = {
   id: string; module: string; title: string; owner: string; team: string; record_type: string;
@@ -16,7 +16,7 @@ export type NotificationData = {
   access?: { employees: Array<{id:string;email:string;displayName:string;departmentName:string;departmentNames:string[]}>; users?:Array<{id:string;email:string;createdAt:string}> } | null;
   waitingQueueDirectory?: {employees:Array<{id:string;email:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames:string[]}>}|null;
   assignmentDirectory?: {employees:Array<{id:string;email:string;displayName:string;departmentId?:string|null;departmentIds?:string[];departmentName:string;departmentNames:string[]}>}|null;
-  internalChatModule?: {currentUserId:string;rooms:Array<{isMuted?:boolean;id:string;name:string;unreadCount:number;lastMessageAt:string;messages:Array<{id:string;senderUserId:string;senderName:string;body:string;type:string;createdAt:string}>}>} | null;
+  internalChatModule?: {currentUserId:string;rooms:Array<{isMuted?:boolean;id:string;name:string;unreadCount:number;lastMessageAt:string;messages:Array<{id:string;senderUserId:string;senderName:string;body:string;type:string;createdAt:string;isUnread?:boolean;deletedAt?:string|null;mentions?:Array<{userId:string}>}>}>} | null;
   taskModule?: { notifications:Array<{id:string;taskId:string;eventType:string;message:string;read:boolean;createdAt:string}>; tasks:Array<{id:string;assigneeUserId:string|null;assigneeName:string}>;collaborators:Array<{id:string;email:string}> } | null;
   noticesModule?: {notices:Array<{id:string;title:string;kind:string;authorUserId:string;active:boolean;visibleToCurrentUser:boolean;isRead:boolean;publishedAt:string}>} | null;
   agendaModule?: {collaborators:Array<{id:string;email:string}>;commitments:Array<{id:string;title:string;startsAt:string;responsibleUserId:string;responsibleName:string;participantUserIds:string[];statusName:string}>} | null;
@@ -102,14 +102,17 @@ export function buildNotifications(data:NotificationData,now:number):AppNotifica
   }
   for(const notification of data.taskModule?.notifications??[]){
     const task=data.taskModule?.tasks.find(task=>task.id===notification.taskId);
-    const workflowNotice=["client_contact_requested","approval_requested","task_completed"].includes(notification.eventType);
-    if(notification.read||!["assigned","transferred","comment_added","client_contact_requested","approval_requested","task_completed"].includes(notification.eventType)||!task||!workflowNotice&&!(!task.assigneeUserId||owns(task.assigneeUserId)||owns(task.assigneeName)))continue;
+    const workflowNotice=["client_contact_requested","approval_requested","task_completed","priority_requested"].includes(notification.eventType);
+    if(notification.read||!["assigned","transferred","comment_added","client_contact_requested","approval_requested","task_completed","priority_requested"].includes(notification.eventType)||!task||!workflowNotice&&!(!task.assigneeUserId||owns(task.assigneeUserId)||owns(task.assigneeName)))continue;
     add({id:`task-${notification.id}`,sourceId:notification.taskId,category:"task",title:notification.message,meta:"Tarefa",module:"tasks",at:notification.createdAt,targetUrl:`/?mod=tasks&task=${encodeURIComponent(notification.taskId)}`});
   }
   for(const room of data.internalChatModule?.rooms??[]){
     const incoming=room.messages.filter(message=>!isSelf(message.senderUserId));const latest=incoming.at(-1);
-    if(room.isMuted||room.unreadCount<=0)continue;
-    add({id:`chat-${room.id}-${latest?.id||`unread-${room.unreadCount}`}`,sourceId:room.id,category:"chat",title:`${room.unreadCount} nova(s) mensagem(ns) em ${room.name}`,meta:"Chat interno",module:"internalChat",at:latest?.createdAt||room.lastMessageAt,roomId:room.id,count:room.unreadCount});
+    const mentioned=incoming.filter(message=>message.isUnread&&!message.deletedAt&&message.mentions?.some(mention=>mention.userId===data.internalChatModule?.currentUserId)).at(-1);
+    if(room.unreadCount<=0||room.isMuted&&!mentioned)continue;
+    const alertMessage=room.isMuted?mentioned:latest;
+    const mentionNotice=alertMessage?.isUnread&&alertMessage.mentions?.some(mention=>mention.userId===data.internalChatModule?.currentUserId);
+    add({id:`chat-${room.id}-${alertMessage?.id||`unread-${room.unreadCount}`}`,sourceId:room.id,category:"chat",title:mentionNotice?`${alertMessage?.senderName} marcou você em ${room.name}`:`${room.unreadCount} nova(s) mensagem(ns) em ${room.name}`,meta:mentionNotice?"Menção no chat interno":"Chat interno",module:"internalChat",at:alertMessage?.createdAt||room.lastMessageAt,roomId:room.id,messageId:alertMessage?.id,count:room.unreadCount});
   }
   for(const notice of data.noticesModule?.notices??[])if(notice.active&&notice.visibleToCurrentUser&&!notice.isRead&&!isSelf(notice.authorUserId))add({id:`notice-${notice.id}`,sourceId:notice.id,category:"notice",title:notice.title,meta:notice.kind,module:"notices",at:notice.publishedAt});
   for(const item of data.items.filter(item=>item.module==="reminders")){

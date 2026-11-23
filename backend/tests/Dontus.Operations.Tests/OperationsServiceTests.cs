@@ -360,6 +360,24 @@ public sealed class OperationsServiceTests
         Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.GetDiaryModuleAsync(deniedActor))).StatusCode);
     }
 
+    [Fact]
+    public async Task Customer_snapshot_includes_records_beyond_the_old_thousand_row_limit_and_keeps_permissions()
+    {
+        await using var db = CreateContext();
+        var customers = Enumerable.Range(1,1005).Select(index => new Customer {
+            LegalName = $"Clínica {index:D4}", TradeName = $"Clínica {index:D4}", DocumentMasked = index.ToString("D6"), CreatedBy = Actor.Email,
+            UpdatedAt = DateTimeOffset.UtcNow.AddDays(-index)
+        }).ToArray();
+        db.Customers.AddRange(customers); await db.SaveChangesAsync();
+        var service = new OperationsService(db);
+        var viewer = Actor with { Permissions = [new EffectivePermission("customers",true,false,false,false,false)] };
+        var snapshot = await service.GetSnapshotAsync(viewer);
+        Assert.Equal(1005,snapshot.Customers.Count);
+        Assert.Contains(snapshot.Customers,customer => customer.Id == customers[^1].Id);
+        Assert.Empty((await service.GetSnapshotAsync(viewer with {Permissions=[new EffectivePermission("notes",true,false,false,false,false)]})).Customers);
+        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.GetSnapshotAsync(viewer with {Permissions=[]}))).StatusCode);
+    }
+
     private static OperationsDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<OperationsDbContext>()

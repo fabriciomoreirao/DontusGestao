@@ -1,5 +1,7 @@
 "use client";
 
+import PaginatedItems from "@/app/PaginatedItems";
+
 import { BarChart3, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { currentDistributionRows, unknownClientVersion, type ClientDistribution, type PortfolioPhase } from "@/lib/client-distribution";
@@ -31,7 +33,7 @@ export default function CsDistributionIndicators({ board, onClose }: { board: Cl
       <div className="cs-distribution-table-scroll cs-distribution-current-table"><table>
         <caption>Clientes atuais · {phases[phase]}</caption>
         <thead><tr><th scope="col">Colaborador</th>{versions.map(version => <th scope="col" key={version}>{version}</th>)}<th scope="col">Total atual</th></tr></thead>
-        <tbody>{rows.map(row => <tr key={row.userId}><th scope="row"><span className="cs-distribution-person">{row.photoDataUrl ? <img src={row.photoDataUrl} alt="" /> : <i>{row.displayName.split(/\s+/).slice(0, 2).map(part => part[0]).join("")}</i>}<span><strong>{row.displayName}</strong><small>{row.department}</small></span></span></th>{versions.map(version => <td key={version}>{row.clientsByVersion[version] ?? 0}</td>)}<td className="cs-distribution-current-total">{row.totalClients}</td></tr>)}</tbody>
+        <tbody>{<PaginatedItems label="colaboradores" table>{rows.map(row => <tr key={row.userId}><th scope="row"><span className="cs-distribution-person">{row.photoDataUrl ? <img src={row.photoDataUrl} alt="" /> : <i>{row.displayName.split(/\s+/).slice(0, 2).map(part => part[0]).join("")}</i>}<span><strong>{row.displayName}</strong><small>{row.department}</small></span></span></th>{versions.map(version => <td key={version}>{row.clientsByVersion[version] ?? 0}</td>)}<td className="cs-distribution-current-total">{row.totalClients}</td></tr>)}</PaginatedItems>}</tbody>
         <tfoot><tr><th scope="row">Total de clientes</th>{versions.map(version => <td key={version}>{rows.reduce((sum, row) => sum + (row.clientsByVersion[version] ?? 0), 0)}</td>)}<td className="cs-distribution-current-total">{total}</td></tr></tfoot>
       </table></div>
       {!rows.length && <p className="cs-distribution-empty">Nenhum colaborador habilitado para esta funcionalidade.</p>}

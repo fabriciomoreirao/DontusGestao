@@ -2063,6 +2063,10 @@ namespace Dontus.Operations.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("MentionsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(120)

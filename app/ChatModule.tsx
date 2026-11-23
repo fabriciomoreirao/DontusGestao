@@ -1,4 +1,6 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import MessageText from "@/app/MessageText";
 import ChatMessageComposer from "@/app/ChatMessageComposer";
 import WhatsAppTemplateSender from "./WhatsAppTemplateSender";
@@ -717,7 +719,7 @@ function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModu
         <button disabled={busy}>{editing ? <Save size={16} /> : <Plus size={16} />} {editing ? "Salvar alterações" : "Adicionar número"}</button>
       </div>
     </form>}
-    <div className="whatsapp-number-grid">{module.whatsAppNumbers.map((item) => <article className={editingId === item.id ? "editing" : ""} key={item.id}>
+    <div className="whatsapp-number-grid">{<PaginatedItems label="conexões">{module.whatsAppNumbers.map((item) => <article className={editingId === item.id ? "editing" : ""} key={item.id}>
       <span className="whatsapp-icon"><Phone size={19} /></span>
       <div><h3>{item.internalName}</h3><p>{item.displayName} · <PhoneLink phone={item.phoneNumber}/></p><small>{item.departmentName} · {item.connectionMode === "Coexistence" ? "Coexistência" : "Cloud API"} · API {item.apiVersion}</small></div>
       <em className={item.active && item.status === "Configurado" ? "active" : item.coexistenceStatus === "Erro" ? "error" : ""}>{item.connectionMode === "Coexistence" ? item.coexistenceStatus : item.status}</em>
@@ -728,7 +730,7 @@ function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModu
         {item.connectionMode === "Coexistence" && item.coexistenceStatus === "Erro" && item.hasAccessToken && <button className="retry-coexistence" disabled={busy} onClick={() => void operate({ action: "retryChatWhatsAppCoexistence", id: item.id }, "Sincronização da coexistência concluída.")}><RefreshCw size={14} /> Tentar novamente</button>}
         <button className="edit-whatsapp-number" onClick={() => { setEditingId(item.id); setConnectionMode(item.connectionMode); window.scrollTo({ top: 0, behavior: "smooth" }); }}><Pencil size={14} /> Editar</button>
       </div>}
-    </article>)}</div>
+    </article>)}</PaginatedItems>}</div>
   </>;
 }
 function TagSettings({ module, busy, allowed, operate }: { module: ChatModuleData; busy: boolean; allowed: boolean; operate: Props["operate"] }) {
@@ -749,7 +751,7 @@ function submitSettings(operate: Props["operate"], action: string, success: stri
   };
 }
 function SettingsList({ items }: { items: Array<{ id: string; title: string; subtitle: string; active: boolean; color?: string }> }) {
-  return <div className="chat-settings-list">{items.map((item) => <article key={item.id}><i style={{ background: item.color }} /><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><em className={item.active ? "active" : ""}>{item.active ? "Ativo" : "Inativo"}</em></article>)}</div>;
+  return <div className="chat-settings-list">{<PaginatedItems label="cadastros do WhatsApp">{items.map((item) => <article key={item.id}><i style={{ background: item.color }} /><span><strong>{item.title}</strong><small>{item.subtitle}</small></span><em className={item.active ? "active" : ""}>{item.active ? "Ativo" : "Inativo"}</em></article>)}</PaginatedItems>}</div>;
 }
 
 function NewConversationModal({ module, busy, initialPhone = "", initialSubject = "", onClose, onSubmit }: { module: ChatModuleData; busy: boolean; initialPhone?: string; initialSubject?: string; onClose: () => void; onSubmit: (payload: Record<string, unknown>) => void }) {

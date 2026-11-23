@@ -4,6 +4,7 @@ public sealed record InternalChatUserDto(
     Guid Id, string Name, string Email, string DepartmentName, string PhotoDataUrl,
     string JobTitle, bool IsCoordinator, bool IsOnline = false, DateTimeOffset? LastSeenAt = null);
 public sealed record UserPresenceDto(Guid UserId, bool IsOnline, DateTimeOffset? LastSeenAt);
+public sealed record InternalChatMentionDto(Guid UserId, string Name, int Start, int Length);
 public sealed record InternalChatReactionDto(string Emoji, int Count, IReadOnlyCollection<Guid> UserIds, IReadOnlyCollection<string> UserNames);
 public sealed record InternalChatReplyDto(Guid Id, string SenderName, string Type, string Body, string FileName, DateTimeOffset? DeletedAt);
 
@@ -13,6 +14,8 @@ public sealed record InternalChatMessageDto(
     string Type, string Body, string FileName, string ContentType, bool HasAttachment, bool IsPinned,
     string ReceiptState, DateTimeOffset CreatedAt, DateTimeOffset? EditedAt = null, DateTimeOffset? DeletedAt = null, long Version = 1)
 {
+    public IReadOnlyCollection<InternalChatMentionDto> Mentions { get; init; } = [];
+    public bool IsUnread { get; init; }
     public InternalChatReplyDto? ReplyTo { get; init; }
     public DateTimeOffset? SeenAt { get; init; }
     public int SeenByCount { get; init; }
@@ -42,7 +45,7 @@ public sealed record InternalChatModuleDto(
 public sealed record CreateInternalChatRoomCommand(
     string? Name, string? PhotoDataUrl, bool IsGroup, IReadOnlyCollection<Guid>? MemberUserIds);
 
-public sealed record SendInternalChatMessageCommand(Guid RoomId, string? Body, string? Type, Guid? ReplyToMessageId = null);
+public sealed record SendInternalChatMessageCommand(Guid RoomId, string? Body, string? Type, Guid? ReplyToMessageId = null, IReadOnlyCollection<InternalChatMentionDto>? Mentions = null);
 public sealed record EditInternalChatMessageCommand(Guid RoomId, Guid MessageId, string Body, long Version);
 public sealed record DeleteInternalChatMessageCommand(Guid RoomId, Guid MessageId, long Version);
 public sealed record CreateInternalChatPollCommand(Guid RoomId, string? Question, IReadOnlyCollection<string>? Options, Guid? ReplyToMessageId = null);

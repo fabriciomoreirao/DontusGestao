@@ -572,6 +572,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         {
             entity.Property(x => x.Type).HasMaxLength(20);
             entity.Property(x => x.Body).HasColumnType("text");
+            entity.Property(x => x.MentionsJson).HasColumnType("text");
             entity.Property(x => x.FileName).HasMaxLength(260);
             entity.Property(x => x.ContentType).HasMaxLength(120);
             entity.Property(x => x.StorageKey).HasMaxLength(600);

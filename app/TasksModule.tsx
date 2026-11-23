@@ -1,5 +1,8 @@
 "use client";
+
+import PaginatedItems from "@/app/PaginatedItems";
 import "./task-search-filters.css";
+import { taskDeliveryDate, taskPriorityRequest, canRequestTaskPriority } from "@/lib/task-details";
 import { canInteractWithTask } from "@/lib/task-interaction";
 import { LinkedDevelopmentDrawer } from "@/app/DevelopmentModule";
 import { desktopWhatsappUrl } from "@/lib/whatsapp";
@@ -111,7 +114,7 @@ const dt = (value?: string | null) => value
   : "—";
 
 function TaskDeliveryDeadline({ task, compact = false }: { task: Pick<CorporateTask, "dueAt" | "slaDueAt">; compact?: boolean }) {
-  const value = task.dueAt ?? task.slaDueAt;
+  const value = taskDeliveryDate(task);
   const date = value ? new Date(value) : null;
   const valid = date !== null && Number.isFinite(date.getTime());
   const full = valid ? dt(value) : "Não definido";
@@ -119,6 +122,13 @@ function TaskDeliveryDeadline({ task, compact = false }: { task: Pick<CorporateT
     ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date)
     : full;
   return <span className={`task-delivery-deadline${compact ? " compact" : ""}`} title={`Prazo de entrega: ${full}`} aria-label={`Prazo de entrega: ${full}`}><CalendarDays size={14}/><span>{compact ? "Entrega: " : "Prazo de entrega: "}{valid ? <time dateTime={value!}>{label}</time> : "Não definido"}</span></span>;
+}
+
+function TaskPriorityBadge({ history }: { history: TaskHistory[] }) {
+  const request = taskPriorityRequest(history);
+  if (!request) return null;
+  const label = `Prioridade solicitada por: ${request.actorName}`;
+  return <span className="task-priority-requested-by" title={`Prioridade solicitada por: ${request.actorName} · ${dt(request.createdAt)}`}><Flag size={14}/><span>{label}</span></span>;
 }
 
 export default function TasksModule({ linkedDevelopmentItems = [], module, customers, user, canCreate, canEdit, canManage, canRemind=false, canSchedule=false, capabilities, busy, month, onMonthChange, operate, onSendToDevelopment, uploadAttachments, deleteAttachment, onOpenSettings }: Props) {
@@ -245,15 +255,12 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
 }
 
 function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, canDrag, canMoveTo, busy, onOpen, onEdit, onMove, onDelete }: { tasks: CorporateTask[]; statuses: Status[]; collaborators: Collaborator[]; departmentId: string; canEdit: boolean; canDrag:(task:CorporateTask)=>boolean; canMoveTo:(task:CorporateTask,statusId:string)=>boolean; busy: boolean; onOpen: (task: CorporateTask) => void; onEdit: (task: CorporateTask) => void; onMove: (task: CorporateTask, statusId: string) => void; onDelete: (task: CorporateTask) => void }) {
-  const [limits, setLimits] = useState<Record<string, number>>({});
   const [draggedId,setDraggedId]=useState("");
   const visibleStatuses = statuses
     .filter((status) => status.active && (!departmentId || !status.departmentId || status.departmentId === departmentId))
     .sort((a, b) => a.displayOrder - b.displayOrder);
   return <div className="task-board">{visibleStatuses.map((status) => {
     const column = tasks.filter((task) => task.statusId === status.id);
-    const limit = limits[status.id] ?? 10;
-    const visibleTasks = column.slice(0, limit);
     return <section className="task-column" key={status.id} onDragOver={(e) => {
       const task=tasks.find(entry=>entry.id===draggedId);
       if(task&&canMoveTo(task,status.id)){e.preventDefault();e.dataTransfer.dropEffect="move";e.currentTarget.classList.add("drag-over");}
@@ -263,13 +270,13 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, canDrag
       if (task&&canMoveTo(task,status.id)) void onMove(task, status.id);
     }}>
       <header><span><CircleDot size={14} />{status.kanbanColumn || status.name}</span><b>{column.length}</b></header>
-      <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{visibleTasks.map((task) => <article draggable={!busy&&canDrag(task)} tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} key={task.id}
+      <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{<PaginatedItems label="tarefas">{column.map((task) => <article draggable={!busy&&canDrag(task)} tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} key={task.id}
         onDragStart={(e) => {beginKanbanDrag(e, "taskId", task.id);setDraggedId(task.id);}} onDragEnd={()=>{setDraggedId("");document.querySelectorAll(".task-column.drag-over").forEach(column=>column.classList.remove("drag-over"));}} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(task); } }}>
         <div className="task-card-heading"><strong className="task-card-title">{task.title}</strong><TaskClientStateBadge state={task.clientNotificationState}/></div>
         <div className="task-card-labels"><span className="task-card-type"><CircleDot size={13}/><span>{task.typeName}</span></span></div>
         <div className="task-card-meta"><span className="task-card-priority"><i style={{ background: task.priorityColor }}/>{task.priorityName}</span><span className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}><Clock3 size={12} /> {task.completedAt ? "Concluída" : `${task.slaState} · ${dt(task.slaDueAt)}`}</span></div>
         <footer><div className="task-card-sector-deadline"><span className="task-card-department"><UsersRound size={14} /> {task.departmentName}</span><TaskDeliveryDeadline task={task} compact/></div><span className="task-card-owner"><CollaboratorAvatar collaborator={collaborators.find((item) => item.id === task.assigneeUserId)} /><span><small>Responsável</small><b>{task.assigneeName}</b></span><ChevronRight size={17} className="task-card-open-icon" /></span></footer>{canEdit && task.canModify && <div className="task-card-bottom-actions"><span className="task-card-actions"><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></span></div>}
-      </article>)}{column.length > visibleTasks.length && <button type="button" className="task-column-more" onClick={() => setLimits((current) => ({ ...current, [status.id]: limit + 10 }))}>Ver mais ({column.length - visibleTasks.length})</button>}</div>
+      </article>)}</PaginatedItems>}</div>
     </section>;
   })}</div>;
 }
@@ -281,14 +288,14 @@ function TaskProtocolChip({protocol}:{protocol:string}){
 
 function TaskList({ tasks, collaborators, onOpen }: { tasks: CorporateTask[]; collaborators: Collaborator[]; onOpen: (task: CorporateTask) => void }) {
   return <div className="task-table"><div className="task-table-row head"><span>Código / tarefa</span><span>Tipo</span><span>Setor</span><span>Prioridade</span><span>Status</span><span>Responsável</span><span>Prazo / SLA</span><span>Atualização</span></div>
-    {tasks.length === 0 ? <div className="task-empty">Nenhuma tarefa encontrada com estes filtros.</div> : tasks.map((task) => <button className="task-table-row" data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} onClick={() => onOpen(task)} key={task.id}>
+    {tasks.length === 0 ? <div className="task-empty">Nenhuma tarefa encontrada com estes filtros.</div> : <PaginatedItems label="tarefas e cadastros">{tasks.map((task) => <button className="task-table-row" data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} onClick={() => onOpen(task)} key={task.id}>
       <span><b>#{task.number} · {task.title}</b><small>{task.protocol || task.customerName || "Sem protocolo"}</small></span>
       <span>{task.typeName}</span><span>{task.departmentName}</span>
       <span><i className="priority-dot" style={{ background: task.priorityColor }} />{task.priorityName}</span>
       <span><b>{task.statusName}</b><small className="task-list-client-state">{task.clientNotificationState}</small></span><span className="task-assignee"><CollaboratorAvatar collaborator={collaborators.find((item) => item.id === task.assigneeUserId)} /><em>{task.assigneeName}</em></span>
       <span><b className={task.slaState === "Vencido" ? "danger-text" : ""}>{task.slaState}</b><small>{dt(task.slaDueAt)}</small></span>
       <span>{dt(task.updatedAt)}<ChevronRight size={15} /></span>
-    </button>)}</div>;
+    </button>)}</PaginatedItems>}</div>;
 }
 
 function CollaboratorAvatar({ collaborator }: { collaborator?: Collaborator }) {
@@ -336,7 +343,7 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
     onSubmit({
       title: f.get("title"), description: f.get("description"),
       typeId: f.get("typeId"), priorityId: null, statusId: null,
-      sourceDepartmentId: departmentId, currentDepartmentId: departmentId, assigneeUserId: null,
+      sourceDepartmentId: departmentId, currentDepartmentId: departmentId, assigneeUserId: module.collaborators.find(person=>person.email.toLowerCase()===user.email.toLowerCase())?.id ?? null,
       customerId: customerId || null, customerCode, customerName: customers.find(customer => customer.id === customerId)?.trade_name ?? "",
       clientWhatsApp: f.get("clientWhatsApp"), internalNotes: "", dueAt: null, slaPolicyId: null,
       cancellationRequest: false,
@@ -451,6 +458,7 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
   const availableAssignees = module.collaborators.filter(collaborator=>collaborator.active);
   const currentCollaborator = module.collaborators.find(collaborator=>collaborator.email.toLocaleLowerCase()===user.email.toLocaleLowerCase());
   const currentUserId = currentCollaborator?.id;
+  const canRequestPriority = canRequestTaskPriority(canEdit, user.isCoordinator, currentCollaborator);
   const {canClaim,canTransfer:canTransferResponsible} = taskAssignmentAccess(task,currentCollaborator);
   const responsibleChoices = canClaim ? availableAssignees.filter(collaborator=>collaborator.id===currentUserId) : availableAssignees;
   useEffect(()=>{setResponsibleUserId(task.assigneeUserId??"");},[task.id,task.assigneeUserId]);
@@ -504,7 +512,7 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
       setFileInputKey((value) => value + 1);
     }
   };
-  return <Overlay title={task.title} titleAccessory={<><TaskProtocolChip protocol={task.protocol}/><span className="task-current-department" title={task.departmentName}><UsersRound size={15}/>{task.departmentName || "Setor não informado"}</span><TaskDeliveryDeadline task={task}/></>} eyebrow="Detalhes da tarefa" onClose={onClose} wide side detail headerMeta={<>
+  return <Overlay title={task.title} titleAccessory={<><TaskProtocolChip protocol={task.protocol}/><span className="task-current-department" title={task.departmentName}><UsersRound size={15}/>{task.departmentName || "Setor não informado"}</span><TaskDeliveryDeadline task={task}/><TaskPriorityBadge history={task.history}/></>} eyebrow="Detalhes da tarefa" onClose={onClose} wide side detail headerMeta={<>
     <TaskClientStateBadge state={task.clientNotificationState}/>
     <span className="task-header-subtitle">Última atualização em {dt(task.updatedAt)}</span>
   </>} headerActions={<>
@@ -512,6 +520,7 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
     {canRemind&&<ReminderAction context={{module:"tasks",entityId:task.id,clientId:task.customerCode,customerName:task.customerName,title:task.title,summary:task.description}} compact={false}/>}
     {(linkedDevelopment || developmentSubtaskId) ? <button className="task-dev-detail-action" type="button" onClick={() => { if(linkedDevelopment)setLinkedDrawer(true);else window.location.href = `/?mod=ti&subtask=${developmentSubtaskId}`; }}><Code2 size={15} /> Acessar subtarefa de TI</button> : canEdit && <button className="task-dev-detail-action" type="button" disabled={busy || sentToDevelopment} title="Enviar esta tarefa para a triagem de desenvolvimento" onClick={() => { void onSendToDevelopment(task).then((result) => { if (result) { setSentToDevelopment(true); setDevelopmentSubtaskId(result.id ?? ""); } }); }}><Code2 size={15} /> {sentToDevelopment ? "Enviada para Desenvolvimento" : "Enviar para Desenvolvimento"}</button>}
     {canSchedule&&<button type="button" className="task-agenda-action agenda-detail-action" onClick={()=>openAgendaComposer({module:"tasks",entityId:task.id,clientId:task.customerCode,customerName:task.customerName,title:task.title,summary:task.description})}><CalendarDays size={15}/>Agendar</button>}
+    {canRequestPriority&&<button type="button" className="task-priority-action" disabled={busy} onClick={()=>void operate({action:"generateTaskPriority",taskId:task.id,version:task.version},"Aviso de prioridade enviado ao responsável, aprovador e coordenadores do setor.")}><Flag size={15}/>Gerar prioridade</button>}
   </>} headerWorkflow={<>
         {(canApprove || directComplete) && finalStatus && (awaitingApproval || directComplete && !task.completedAt) && <button className="task-complete-button" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: finalStatus.id, justification: directComplete ? "Concluída pelo coordenador responsável." : "Aprovada pela coordenação.", version: task.version }, directComplete ? "Tarefa concluída com sucesso." : "Tarefa aprovada e concluída com sucesso.")}><CheckCircle2 size={17} /> {directComplete ? "Concluir tarefa" : "Aprovar e concluir"}</button>}
         {canApprove && task.completedAt && resumeStatus && <button className="task-resume-control" type="button" disabled={busy} onClick={() => void operate({ action: "changeTaskStatus", taskId: task.id, statusId: resumeStatus.id, justification: "Tarefa retomada.", version: task.version }, "Tarefa retomada com sucesso.")}><RotateCcw size={16} /> Retomar tarefa</button>}
@@ -672,7 +681,7 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
         </form>
       </div>
       <div className="catalog-records-heading"><div><h2>Colaboradores cadastrados</h2><p>Usuários inativos permanecem no histórico, mas não recebem novas tarefas.</p></div><b>{module.collaborators.length} registro(s)</b></div>
-      <div className="collaborator-list">{module.collaborators.map((c) => <form key={c.id} onSubmit={async (e) => { e.preventDefault(); const f = new FormData(e.currentTarget); await operate({ action: "saveTaskCollaborator", userId: c.id, phone: f.get("phone"), jobTitle: f.get("jobTitle"), departmentIds: f.getAll("departmentIds"), coordinatorDepartmentIds: f.getAll("coordinatorDepartmentIds"), active: f.has("active") }, "Colaborador atualizado."); }}><div className="collaborator-identity"><CollaboratorAvatar collaborator={c} /><span><b>{c.name}</b><small>{c.email}</small></span></div><PhoneInput name="phone" defaultValue={c.phone} placeholder="Telefone" aria-label={`Telefone de ${c.name}`} /><input name="jobTitle" defaultValue={c.jobTitle} placeholder="Cargo" aria-label={`Cargo de ${c.name}`} /><CheckGroup legend="Setores" name="departmentIds" values={module.departments.map((d) => ({ id: d.id, label: d.name }))} selected={c.departmentIds} /><CheckGroup legend="Coordena" name="coordinatorDepartmentIds" values={module.departments.map((d) => ({ id: d.id, label: d.name }))} selected={c.coordinatorDepartmentIds} /><ActiveField value={c.active} /><button disabled={busy}>Salvar alterações</button></form>)}</div>
+      <div className="collaborator-list">{<PaginatedItems label="tarefas e cadastros">{module.collaborators.map((c) => <form key={c.id} onSubmit={async (e) => { e.preventDefault(); const f = new FormData(e.currentTarget); await operate({ action: "saveTaskCollaborator", userId: c.id, phone: f.get("phone"), jobTitle: f.get("jobTitle"), departmentIds: f.getAll("departmentIds"), coordinatorDepartmentIds: f.getAll("coordinatorDepartmentIds"), active: f.has("active") }, "Colaborador atualizado."); }}><div className="collaborator-identity"><CollaboratorAvatar collaborator={c} /><span><b>{c.name}</b><small>{c.email}</small></span></div><PhoneInput name="phone" defaultValue={c.phone} placeholder="Telefone" aria-label={`Telefone de ${c.name}`} /><input name="jobTitle" defaultValue={c.jobTitle} placeholder="Cargo" aria-label={`Cargo de ${c.name}`} /><CheckGroup legend="Setores" name="departmentIds" values={module.departments.map((d) => ({ id: d.id, label: d.name }))} selected={c.departmentIds} /><CheckGroup legend="Coordena" name="coordinatorDepartmentIds" values={module.departments.map((d) => ({ id: d.id, label: d.name }))} selected={c.coordinatorDepartmentIds} /><ActiveField value={c.active} /><button disabled={busy}>Salvar alterações</button></form>)}</PaginatedItems>}</div>
     </div>}
   </section></div></TaskCatalogActions.Provider>;
 }
@@ -680,7 +689,7 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
 function LegacyCatalog({ title, items, editingId, onEdit, children }: { title: string; items: Array<{ id: string; title: string; subtitle: string; active: boolean; color?: string }>; editingId: string | null; onEdit: (id: string) => void; children: React.ReactNode }) {
   const actions = useContext(TaskCatalogActions);
   const catalog = ({ "Setores": "departments", "Prioridades": "priorities", "Status": "statuses", "Kanban": "statuses", "Tipos de tarefa": "types", "Políticas de SLA": "sla" } as Record<string, string>)[title];
-  return <div className="catalog-page-content" aria-label={title}><div className="catalog-form"><div className="catalog-card-heading"><span>{editingId ? "EDITANDO REGISTRO" : "NOVO REGISTRO"}</span><h2>{editingId ? `Editar ${title.toLocaleLowerCase("pt-BR")}` : `Cadastrar ${title.toLocaleLowerCase("pt-BR")}`}</h2><p>Cadastros inativos deixam de aparecer imediatamente nas seleções operacionais.</p></div>{children}</div><div className="catalog-records-heading"><div><h2>{title} cadastrados</h2><p>Itens inativos permanecem aqui para edição, reativação ou exclusão definitiva.</p></div><b>{items.filter((item) => item.active).length} ativo(s) de {items.length}</b></div><div className="catalog-list">{items.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}><i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} /><span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span><em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em><button type="button" onClick={() => onEdit(item.id)}>Editar</button>{actions && catalog && <button type="button" className="catalog-delete-action" onClick={() => void actions.remove(catalog, item.id, item.title)}><Trash2 size={14} /> Desativar</button>}</article>)}</div></div>;
+  return <div className="catalog-page-content" aria-label={title}><div className="catalog-form"><div className="catalog-card-heading"><span>{editingId ? "EDITANDO REGISTRO" : "NOVO REGISTRO"}</span><h2>{editingId ? `Editar ${title.toLocaleLowerCase("pt-BR")}` : `Cadastrar ${title.toLocaleLowerCase("pt-BR")}`}</h2><p>Cadastros inativos deixam de aparecer imediatamente nas seleções operacionais.</p></div>{children}</div><div className="catalog-records-heading"><div><h2>{title} cadastrados</h2><p>Itens inativos permanecem aqui para edição, reativação ou exclusão definitiva.</p></div><b>{items.filter((item) => item.active).length} ativo(s) de {items.length}</b></div><div className="catalog-list">{<PaginatedItems label="tarefas e cadastros">{items.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}><i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} /><span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span><em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em><button type="button" onClick={() => onEdit(item.id)}>Editar</button>{actions && catalog && <button type="button" className="catalog-delete-action" onClick={() => void actions.remove(catalog, item.id, item.title)}><Trash2 size={14} /> Desativar</button>}</article>)}</PaginatedItems>}</div></div>;
 }
 
 function Catalog({ title, items, editingId, onEdit, children }: { title: string; items: Array<{ id: string; title: string; subtitle: string; active: boolean; color?: string }>; editingId: string | null | undefined; onEdit: (id: string | null | undefined) => void; children: React.ReactNode }) {
@@ -698,13 +707,13 @@ function Catalog({ title, items, editingId, onEdit, children }: { title: string;
     </div>
     <div className="catalog-list">
       {visibleItems.length === 0 && <p className="catalog-empty">Nenhum cadastro ativo encontrado. Marque “Mostrar inativos” para consultar e reativar registros.</p>}
-      {visibleItems.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}>
+      {<PaginatedItems label="tarefas e cadastros">{visibleItems.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}>
         <i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} />
         <span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span>
         <em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em>
         {actions && catalog && <button type="button" className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`} onClick={() => void actions.toggle(catalog, item.id, item.title)} aria-label={item.active ? `Bloquear ${item.title}` : `Reativar ${item.title}`} title={item.active ? "Bloquear temporariamente" : "Reativar cadastro"}><Power size={14} /></button>}
         <button type="button" onClick={() => onEdit(item.id)}>Editar</button>
-      </article>)}
+      </article>)}</PaginatedItems>}
     </div>
     {editorOpen && <div className="modal-backdrop catalog-editor-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onEdit(null)}>
       <div className="modal task-catalog-modal" role="dialog" aria-modal="true" aria-label={editorTitle}>

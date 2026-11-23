@@ -1581,6 +1581,10 @@ operations.MapPost("", async (
                 request.Version ?? 0), actor, cancellationToken);
             break;
 
+        case "generateTaskPriority":
+            await taskService.GeneratePriorityAlertAsync(request.TaskId ?? request.Id ?? throw new DomainException("Tarefa obrigatória."), request.Version ?? 0, actor, cancellationToken);
+            break;
+
         case "changeTaskSla":
             await taskService.ChangeSlaAsync(new ChangeTaskSlaCommand(
                 request.TaskId ?? request.Id ?? throw new DomainException("Tarefa obrigatória."),
@@ -1737,7 +1741,7 @@ operations.MapPost("", async (
         case "sendInternalChatMessage":
             id = await internalChatService.SendMessageAsync(new SendInternalChatMessageCommand(
                 request.RoomId ?? throw new DomainException("Conversa obrigatória."),
-                request.Body, request.MessageType, request.ReplyToMessageId), actor, cancellationToken);
+                request.Body, request.MessageType, request.ReplyToMessageId, request.Mentions), actor, cancellationToken);
             break;
 
         case "createInternalChatPoll":
@@ -1915,7 +1919,7 @@ operations.MapPost("", async (
     if (request.Action is "markNoticeViewed" or "markNoticeRead")
         return Results.Ok(new { ok = true, noticesModule = await service.GetNoticesModuleAsync(actor, cancellationToken) });
     if ((request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus" or "requestTaskApproval"
-        or "changeTaskPriority" or "changeTaskSla" or "transferTask" or "assignTask"
+        or "generateTaskPriority" or "changeTaskPriority" or "changeTaskSla" or "transferTask" or "assignTask"
         or "addTaskComment" or "updateTaskComment" or "communicateWithClient" or "markTaskNotificationRead")
         && actor.HasPermission("tasks", "view"))
     {
@@ -2489,6 +2493,7 @@ public sealed class OperationsRequest
     public string? InitialMessage { get; init; }
     public bool? Internal { get; init; }
     public Guid? ReplyToMessageId { get; init; }
+    public IReadOnlyCollection<InternalChatMentionDto>? Mentions { get; init; }
     public Guid? ReadThroughMessageId { get; init; }
     public bool? Favorite { get; init; }
     public bool? MarkRead { get; init; }

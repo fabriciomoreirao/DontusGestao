@@ -220,14 +220,14 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         var pauseStatuses = await db.TaskSlaPauseStatuses.AsNoTracking().ToListAsync(cancellationToken);
         var notifications = await db.TaskNotifications.AsNoTracking()
             .Where(x => x.RecipientUserId == user.Id && taskIds.Contains(x.TaskId)
-                && (x.EventType == "task_completed"
+                && (x.EventType == "priority_requested" || (x.EventType == "task_completed"
                     ? db.CorporateTasks.Any(task => task.Id == x.TaskId && task.CompletedAt.HasValue && !task.Cancelled)
                     : x.EventType == "client_contact_requested"
                     ? db.CorporateTasks.Any(task => task.Id == x.TaskId && task.ClientNotificationState == "Avisar Cliente")
                     : x.ActorUserId != user.Id && (x.EventType == "approval_requested"
                         || (x.EventType == "assigned" || x.EventType == "transferred" || x.EventType == "comment_added")
                         && db.CorporateTasks.Any(task => task.Id == x.TaskId && (task.AssigneeUserId == user.Id
-                            || task.AssigneeUserId == null && memberDepartments.Contains(task.CurrentDepartmentId))))))
+                            || task.AssigneeUserId == null && memberDepartments.Contains(task.CurrentDepartmentId)))))))
             .OrderByDescending(x => x.CreatedAt).Take(100).ToListAsync(cancellationToken);
         var taskNumbers = tasks.ToDictionary(x => x.Id, x => x.Number);
 
@@ -350,7 +350,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             SourceDepartmentId = command.SourceDepartmentId,
             CurrentDepartmentId = command.CurrentDepartmentId,
             CreatorUserId = user.Id,
-            AssigneeUserId = command.AssigneeUserId,
+            AssigneeUserId = command.AssigneeUserId ?? user.Id,
             CustomerId = command.CustomerId,
             CustomerCode = command.CustomerCode?.Trim() ?? "",
             CustomerName = command.CustomerName?.Trim() ?? "",
@@ -500,6 +500,29 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         AddHistory(task.Id, user.Id, "priority_changed", $"Prioridade alterada para {priority.Name}",
             new { PriorityId = previous }, new { PriorityId = priority.Id });
         await NotifyInterestedAsync(task, user.Id, "priority_changed", $"A prioridade da tarefa #{task.Number} foi alterada para {priority.Name}.", cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task GeneratePriorityAlertAsync(Guid taskId, long version, ActorContext actor, CancellationToken cancellationToken = default)
+    {
+        var user = await GetActorUserAsync(actor, cancellationToken);
+        if (!user.IsCoordinator && !await db.UserDepartments.AnyAsync(link => link.UserId == user.Id && link.IsCoordinator, cancellationToken))
+            throw new DomainException("Somente coordenadores podem solicitar prioridade para uma tarefa.", 403);
+        var task = await LoadEditableTaskAsync(taskId, version, user, actor, cancellationToken);
+        var ids = await db.UserDepartments.AsNoTracking()
+            .Where(link => link.DepartmentId == task.CurrentDepartmentId && link.IsCoordinator)
+            .Select(link => link.UserId).ToListAsync(cancellationToken);
+        ids.AddRange(await db.TaskDepartments.Where(department => department.Id == task.CurrentDepartmentId && department.ApproverUserId.HasValue)
+            .Select(department => department.ApproverUserId!.Value).ToArrayAsync(cancellationToken));
+        if (task.AssigneeUserId.HasValue) ids.Add(task.AssigneeUserId.Value);
+        var recipients = await db.Users.Where(person => ids.Contains(person.Id) && person.Active && person.BlockedAt == null)
+            .Select(person => person.Id).Distinct().ToArrayAsync(cancellationToken);
+        if (recipients.Length == 0) throw new DomainException("Defina um responsável, aprovador ou coordenador ativo para receber o aviso.");
+        foreach (var recipient in recipients)
+            AddNotification(task.Id, recipient, user.Id, "priority_requested", $"Tarefa com prioridade: {task.Protocol} · {task.Title}");
+        task.UpdatedAt = DateTimeOffset.UtcNow;
+        task.Version++;
+        AddHistory(task.Id, user.Id, "priority_requested", "Aviso de prioridade enviado ao responsável, aprovador e coordenação do setor", null, new { Recipients = recipients });
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -978,6 +1001,26 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         db.TaskSlaPauseStatuses.RemoveRange(pauses);
         foreach (var statusId in command.PauseStatusIds.Distinct())
             db.TaskSlaPauseStatuses.Add(new() { SlaPolicyId = entity.Id, StatusId = statusId });
+        if (command.Id.HasValue)
+        {
+            var user = await GetActorUserAsync(actor, cancellationToken);
+            var linkedTasks = await db.CorporateTasks.Where(task => task.SlaPolicyId == entity.Id).ToArrayAsync(cancellationToken);
+            foreach (var task in linkedTasks)
+            {
+                var firstResponseDueAt = AddBusinessMinutes(task.CreatedAt, entity.FirstResponseMinutes, entity);
+                var serviceStartDueAt = AddBusinessMinutes(task.CreatedAt, entity.ServiceStartMinutes, entity);
+                var slaDueAt = AddBusinessMinutes(task.CreatedAt, entity.CompletionMinutes, entity);
+                if (task.FirstResponseDueAt == firstResponseDueAt && task.ServiceStartDueAt == serviceStartDueAt && task.SlaDueAt == slaDueAt) continue;
+                var previous = new { task.SlaPolicyId, task.FirstResponseDueAt, task.ServiceStartDueAt, task.SlaDueAt };
+                task.FirstResponseDueAt = firstResponseDueAt;
+                task.ServiceStartDueAt = serviceStartDueAt;
+                task.SlaDueAt = slaDueAt;
+                task.UpdatedAt = entity.UpdatedAt;
+                task.Version++;
+                AddHistory(task.Id, user.Id, "sla_recalculated", "Prazo recalculado desde a criação após atualizar os dias do SLA", previous,
+                    new { task.SlaPolicyId, task.FirstResponseDueAt, task.ServiceStartDueAt, task.SlaDueAt });
+            }
+        }
         await db.SaveChangesAsync(cancellationToken);
         return entity.Id;
     }
@@ -1503,8 +1546,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
 
     private void AddNotification(Guid taskId, Guid recipientId, Guid actorId, string type, string message)
     {
-        if (recipientId == actorId && type is not ("client_contact_requested" or "task_completed")
-            || type is not ("assigned" or "transferred" or "comment_added" or "client_contact_requested" or "approval_requested" or "task_completed")) return;
+        if (recipientId == actorId && type is not ("client_contact_requested" or "task_completed" or "priority_requested")
+            || type is not ("assigned" or "transferred" or "comment_added" or "client_contact_requested" or "approval_requested" or "task_completed" or "priority_requested")) return;
         db.TaskNotifications.Add(new()
         {
             TaskId = taskId, RecipientUserId = recipientId, ActorUserId = actorId,

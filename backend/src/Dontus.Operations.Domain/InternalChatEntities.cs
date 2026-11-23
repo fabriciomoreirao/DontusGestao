@@ -27,6 +27,7 @@ public sealed class InternalChatMessage : Entity
     public Guid SenderUserId { get; set; }
     public string Type { get; set; } = "text";
     public string Body { get; set; } = "";
+    public string MentionsJson { get; set; } = "[]";
     public string FileName { get; set; } = "";
     public string ContentType { get; set; } = "";
     public string StorageKey { get; set; } = "";
