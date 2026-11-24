@@ -198,7 +198,8 @@ public sealed class InternalChatServiceTests
     [Theory]
     [InlineData(32)]
     [InlineData(50)]
-    public async Task Large_videos_up_to_the_file_limit_are_stored_and_available_only_to_members(int megabytes)
+    [InlineData(64)]
+    public async Task Large_videos_are_stored_and_available_only_to_members(int megabytes)
     {
         await using var db = CreateContext();
         var sender = AddUser(db, "sender@test.local", "Remetente");
@@ -228,7 +229,7 @@ public sealed class InternalChatServiceTests
     }
 
     [Fact]
-    public async Task Videos_over_50_MB_are_rejected_before_storing_a_message()
+    public async Task A_file_with_a_mismatched_size_is_rejected_before_storing_a_message()
     {
         await using var db = CreateContext();
         var sender = AddUser(db, "sender@test.local", "Remetente");
@@ -239,7 +240,7 @@ public sealed class InternalChatServiceTests
         await using var content = new MemoryStream([1]);
         var error = await Assert.ThrowsAsync<DomainException>(() => service.UploadAttachmentAsync(
             new(room, "video.mp4", "video/mp4", 50L * 1024 * 1024 + 1, content), Actor(sender)));
-        Assert.Contains("50 MB", error.Message);
+        Assert.Contains("não foi recebido por completo", error.Message);
         Assert.Empty(db.InternalChatMessages);
     }
 

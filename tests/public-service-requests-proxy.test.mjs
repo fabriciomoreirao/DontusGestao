@@ -32,7 +32,7 @@ test("a abertura de chamado preserva o corpo e os erros da API", async () => {
   try {
     globalThis.fetch = async (url, options) => {
       assert.equal(options.method, "POST");
-      assert.equal(new TextDecoder().decode(options.body), "request-body");
+      assert.equal(await new Response(options.body).text(), "request-body");
       assert.equal(new URL(url).search, "");
       return Response.json({ detail:"Dados inválidos" }, { status:400 });
     };

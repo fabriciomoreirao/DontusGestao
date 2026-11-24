@@ -1,4 +1,5 @@
 "use client";
+import { RecordPageSize } from "@/app/PaginatedItems";
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Database, History, Home, RefreshCw, Search, Settings, ShieldCheck } from "lucide-react";
@@ -100,6 +101,7 @@ export function DontusSupportAccess({ canManage = false }: { canManage?: boolean
   const [name, setName] = useState("");
   const [type, setType] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize,setPageSize]=useState(10);
   const [result, setResult] = useState<UsersResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState<number | null>(null);
@@ -133,7 +135,7 @@ export function DontusSupportAccess({ canManage = false }: { canManage?: boolean
     } catch (err) { popup.close(); setAccessError(message(err)); }
     finally { setOpening(null); }
   }
-  const pagination = dontusUsersPage(result?.users ?? [], name, type, page);
+  const pagination = dontusUsersPage(result?.users ?? [], name, type, page, pageSize);
   const entries = pagination.items;
   if (view === "history") return <SupportAccessHistory reasons={catalogReasons} onBack={() => setView("access")} />;
   if (view === "settings" && canManage) return <SupportAccessSettings onUpdated={saved => setCatalogReasons(current => [...current.filter(reason => reason.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")))} onBack={() => setView("access")} />;
@@ -148,14 +150,14 @@ export function DontusSupportAccess({ canManage = false }: { canManage?: boolean
       </form>
       {error && <div className="dontus-integration-error" role="alert">{error}</div>}
       {result && <p className="dontus-access-meta"><strong>{result.customerName || "Cliente Dontus"}</strong> · Identificação {result.identification} · Exibindo {pagination.start}–{pagination.end} de {pagination.total} usuário(s){pagination.total !== result.users.length ? ` · ${result.users.length} no ambiente` : ""} · {timestamp(result.fetchedAt)} (Brasília)</p>}
-      <div className="support-access-table" role="table" aria-label="Usuários do sistema Dontus">
+      <RecordPageSize value={pageSize} onChange={size=>{setPageSize(size);setPage(1)}} label="usuários"/><div className="support-access-table" role="table" aria-label="Usuários do sistema Dontus">
         <div className="support-access-row head" role="row"><span role="columnheader">Nome</span><span role="columnheader">Usuário</span><span role="columnheader">E-mail</span><span role="columnheader">Tipo</span><span role="columnheader">Status</span><span role="columnheader">Acessar</span></div>
         {busy ? <p className="support-access-empty" role="status">Buscando usuários no sistema Dontus…</p> : !result ? <p className="support-access-empty">Informe a identificação do cliente e clique em Pesquisar.</p> : entries.length === 0 ? <p className="support-access-empty">{result.users.length ? "Nenhum usuário corresponde aos filtros." : "Nenhum usuário encontrado para esta identificação."}</p> : entries.map(user => <div className="support-access-row" role="row" key={user.id}>
           <span role="cell"><b>{user.name || "Não informado"}</b></span><span role="cell">{user.username || "Não informado"}</span><span role="cell">{user.email || "Não informado"}</span><span role="cell">{user.isSupervisor ? "Supervisor" : "Comum"}</span><span role="cell"><b className={`status-pill ${user.active ? "positive" : "negative"}`}>{user.active ? "Ativo" : "Inativo"}</b></span>
           <span role="cell"><button className="dontus-home-access" type="button" disabled={!user.canAccess || opening !== null} title={user.canAccess ? `Acessar Dontus como ${user.name || user.username}` : "Acesso inativo ou endereço indisponível"} aria-label={`Acessar Dontus como ${user.name || user.username}`} onClick={() => { setAccessError(""); setSelectedUser(user); }}><Home size={19} />{opening === user.id ? "Abrindo…" : "Acessar"}</button></span>
         </div>)}
       </div>
-      {result && pagination.total > 0 && <nav className="dontus-users-pagination" aria-label="Páginas de usuários Dontus"><span>Página {pagination.page} de {pagination.totalPages} · 10 por página</span><div><button type="button" className="secondary-button" disabled={pagination.page === 1 || opening !== null} onClick={() => setPage(pagination.page - 1)}>Anterior</button><button type="button" className="secondary-button" disabled={pagination.page === pagination.totalPages || opening !== null} onClick={() => setPage(pagination.page + 1)}>Próxima</button></div></nav>}
+      {result && pagination.total > 0 && <nav className="dontus-users-pagination" aria-label="Páginas de usuários Dontus"><span>Página {pagination.page} de {pagination.totalPages} · {pageSize} por página</span><div><button type="button" className="secondary-button" disabled={pagination.page === 1 || opening !== null} onClick={() => setPage(pagination.page - 1)}>Anterior</button><button type="button" className="secondary-button" disabled={pagination.page === pagination.totalPages || opening !== null} onClick={() => setPage(pagination.page + 1)}>Próxima</button></div></nav>}
     </div>
     {selectedUser && result && <SupportAccessReasonModal key={selectedUser.id} userName={selectedUser.name || selectedUser.username} customerName={result.customerName} identification={result.identification} reasons={reasons} loading={reasonsLoading} busy={opening !== null} error={accessError} onClose={() => setSelectedUser(null)} onConfirm={(reasonId, justification) => void open(selectedUser, reasonId, justification)} />}
   </section>;

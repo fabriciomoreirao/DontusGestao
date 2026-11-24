@@ -1,4 +1,5 @@
 "use client";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import { Activity, BadgeCheck, BriefcaseBusiness, CalendarDays, Camera, Code2, Headphones, ListTodo, Save, Sparkles, UserRound, UsersRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -55,15 +56,11 @@ export default function EmployeeProfileDrawer({ profileId, editable, items, task
   }).length;
   const developmentCount = assigned.filter(item => item.module === "ti").length;
   const taskCount = tasks.filter(task => task.assigneeName === employee?.displayName && !task.completedAt && !task.cancelled).length;
-  const upload = (file?: File) => {
+  const upload = async (file?: File) => {
     setError(""); setSuccess("");
     if (!file) return;
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) { setError("Selecione uma imagem PNG, JPEG ou WebP."); return; }
-    if (file.size > 2 * 1024 * 1024) { setError("A capa deve ter no máximo 2 MB."); return; }
-    const reader = new FileReader();
-    reader.onload = () => setCoverDataUrl(String(reader.result ?? ""));
-    reader.onerror = () => setError("Não foi possível ler a imagem. Selecione o arquivo novamente.");
-    reader.readAsDataURL(file);
+    setSaving(true);try{setCoverDataUrl(await workspaceFileUrl(file,{module:"profile"}))}catch(error){setError(error instanceof Error?error.message:"Não foi possível enviar a imagem.")}finally{setSaving(false)}
   };
   const save = async () => {
     if (!profile || !canEdit || saving) return;

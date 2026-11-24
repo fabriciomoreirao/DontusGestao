@@ -35,7 +35,6 @@ function CampaignForm({ state, edit, reload, onSaved }: { state: WaState; edit: 
   async function importFile(file?: File) {
     if (!file) return; setError(""); setBusy(true);
     try {
-      if (file.size > 5000000) throw new Error("Selecione uma planilha de até 5 MB.");
       const XLSX = await import("xlsx"); const book = XLSX.read(await file.arrayBuffer(), { type: "array", sheetRows: 5002 });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(book.Sheets[book.SheetNames[0]], { defval: "", raw: false });
       if (!rows.length || rows.length > 5000) throw new Error("A planilha deve conter entre 1 e 5.000 destinatários.");

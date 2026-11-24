@@ -23,13 +23,11 @@ test('anexos corrompidos são tratados como texto sem quebrar a leitura dos come
   }
 });
 
-test('leitura recusa excesso de tamanho ou quantidade antes de carregar os arquivos', async () => {
-  await assert.rejects(readCommentFiles([new File([], 'vazio.bin')]), /não vazios/);
-  const large = new File(['x'], 'video.mp4');
-  Object.defineProperty(large, 'size', { value: 5 * 1024 * 1024 + 1 });
-  await assert.rejects(readCommentFiles([large]), /5 MB/);
-  await assert.rejects(readCommentFiles(Array.from({ length: 11 }, () => new File(['x'], 'dados.json'))), /10 arquivos/);
-  const total = new File(['x'], 'arquivo.zip');
-  Object.defineProperty(total, 'size', { value: 4 * 1024 * 1024 });
-  await assert.rejects(readCommentFiles([total, total, total, total]), /15 MB/);
+test('leitura recusa arquivos vazios e excesso de quantidade',async()=>{
+  await assert.rejects(readCommentFiles([new File([],'vazio.bin')]),/não vazio/);
+  await assert.rejects(readCommentFiles(Array.from({length:11},()=>new File(['x'],'dados.json'))),/10 arquivos/);
+});
+test('anexos privados preservam metadados de arquivos grandes sem embutir os bytes',()=>{
+  const file={name:'video.mp4',type:'video/mp4',size:10_000_000_000,dataUrl:'/api/workspace-files/01234567-1234-1234-1234-123456789abc'};
+  assert.deepEqual(splitComment(joinComment('Vídeo',[file])),{text:'Vídeo',files:[file]});
 });

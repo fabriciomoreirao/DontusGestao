@@ -1,6 +1,8 @@
 "use client";
-
 import PaginatedItems from "@/app/PaginatedItems";
+
+import CustomerSelect from "@/app/CustomerSelect";
+
 import "./task-search-filters.css";
 import { taskDeliveryDate, taskPriorityRequest, canRequestTaskPriority } from "@/lib/task-details";
 import { canInteractWithTask } from "@/lib/task-interaction";
@@ -138,6 +140,7 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
   const [priority, setPriority] = useState("");
   const [assignee, setAssignee] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
+  const [onlyPriority, setOnlyPriority] = useState(false);
   const [approvalFilter, setApprovalFilter] = useState("");
   const [clientNotice, setClientNotice] = useState("Todos");
   const filterResultsRef = useRef<HTMLDivElement>(null);
@@ -165,12 +168,13 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
       return reminderFilter.matches({ entityId: task.id, clientId: task.customerCode, title: task.title }) && (!needle || text.includes(needle))
         && (!departmentFilter || task.currentDepartmentId === departmentFilter)
         && (!approvalFilter || isTaskApprovalStatus(module.statuses.find(status=>status.id===task.statusId)||{name:task.statusName}) && (approvalFilter==="all" || task.approverUserId===approvalFilter))
+        && (!onlyPriority || Boolean(taskPriorityRequest(task.history)))
         && (!priorityFilter || task.priorityId === priorityFilter)
         && (!assigneeFilter || task.assigneeUserId === assigneeFilter)
         && (clientNotice === "Todos" || task.clientNotificationState === clientNotice)
         && (!onlyMine || (currentCollaborator ? task.assigneeUserId === currentCollaborator.id : task.assigneeName === user.displayName));
     });
-  }, [module.tasks, module.statuses, approvalFilter, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, currentCollaborator, user.displayName, reminderFilter.matches]);
+  }, [module.tasks, module.statuses, approvalFilter, query, departmentFilter, priorityFilter, assigneeFilter, clientNotice, onlyMine, onlyPriority, currentCollaborator, user.displayName, reminderFilter.matches]);
 
   useEffect(() => {
     const taskId = new URLSearchParams(window.location.search).get("task");
@@ -219,7 +223,8 @@ export default function TasksModule({ linkedDevelopmentItems = [], module, custo
       <form className="tasks-toolbar task-search-filters" role="group" aria-label="Filtros de tarefas" onSubmit={event => { event.preventDefault(); filterResultsRef.current?.focus(); }}>
         <div className="task-filter-heading"><div className="task-filter-title"><span className="task-filter-icon"><Filter size={23} aria-hidden="true" /></span><h2>Filtros de pesquisa</h2><span className="task-filter-subtitle">Refine os resultados</span></div><div className="task-filter-actions">
           <label className="mine-filter"><input type="checkbox" checked={onlyMine} onChange={event => setOnlyMine(event.target.checked)} />Somente minhas</label>
-          <button type="button" className="secondary-button task-filter-reset" onClick={() => { setQuery(""); setDepartment(""); setPriority(""); setAssignee(""); setClientNotice("Todos"); setOnlyMine(false); setApprovalFilter(""); reminderFilter.setMode("all"); }}><RotateCcw size={17} aria-hidden="true" />Limpar filtros</button>
+          <label className="mine-filter task-priority-filter"><input type="checkbox" checked={onlyPriority} onChange={event=>setOnlyPriority(event.target.checked)}/><Flag size={15}/>Prioridade</label>
+          <button type="button" className="secondary-button task-filter-reset" onClick={() => { setQuery(""); setDepartment(""); setPriority(""); setAssignee(""); setClientNotice("Todos"); setOnlyMine(false); setOnlyPriority(false); setApprovalFilter(""); reminderFilter.setMode("all"); }}><RotateCcw size={17} aria-hidden="true" />Limpar filtros</button>
           <button type="submit" className="primary-button task-filter-submit"><Search size={18} aria-hidden="true" />Filtrar</button>
         </div></div>
         <div className="task-filter-controls">
@@ -270,13 +275,13 @@ function Kanban({ tasks, statuses, collaborators, departmentId, canEdit, canDrag
       if (task&&canMoveTo(task,status.id)) void onMove(task, status.id);
     }}>
       <header><span><CircleDot size={14} />{status.kanbanColumn || status.name}</span><b>{column.length}</b></header>
-      <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{<PaginatedItems label="tarefas">{column.map((task) => <article draggable={!busy&&canDrag(task)} tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} key={task.id}
+      <div>{column.length === 0 && <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>}{column.map((task) => <article draggable={!busy&&canDrag(task)} tabIndex={0} role="button" className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`} data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} key={task.id}
         onDragStart={(e) => {beginKanbanDrag(e, "taskId", task.id);setDraggedId(task.id);}} onDragEnd={()=>{setDraggedId("");document.querySelectorAll(".task-column.drag-over").forEach(column=>column.classList.remove("drag-over"));}} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(task); } }}>
         <div className="task-card-heading"><strong className="task-card-title">{task.title}</strong><TaskClientStateBadge state={task.clientNotificationState}/></div>
-        <div className="task-card-labels"><span className="task-card-type"><CircleDot size={13}/><span>{task.typeName}</span></span></div>
+        <div className="task-card-labels"><span className="task-card-type"><CircleDot size={13}/><span>{task.typeName}</span></span>{taskPriorityRequest(task.history)&&<Flag className="task-priority-flag" size={15} aria-label="Prioridade solicitada"/>}</div>
         <div className="task-card-meta"><span className="task-card-priority"><i style={{ background: task.priorityColor }}/>{task.priorityName}</span><span className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}><Clock3 size={12} /> {task.completedAt ? "Concluída" : `${task.slaState} · ${dt(task.slaDueAt)}`}</span></div>
         <footer><div className="task-card-sector-deadline"><span className="task-card-department"><UsersRound size={14} /> {task.departmentName}</span><TaskDeliveryDeadline task={task} compact/></div><span className="task-card-owner"><CollaboratorAvatar collaborator={collaborators.find((item) => item.id === task.assigneeUserId)} /><span><small>Responsável</small><b>{task.assigneeName}</b></span><ChevronRight size={17} className="task-card-open-icon" /></span></footer>{canEdit && task.canModify && <div className="task-card-bottom-actions"><span className="task-card-actions"><button type="button" onClick={event => { event.stopPropagation(); onEdit(task); }} title="Editar tarefa" aria-label="Editar tarefa"><Pencil size={15}/></button><button type="button" className="delete" onClick={event => { event.stopPropagation(); onDelete(task); }} title="Excluir tarefa" aria-label="Excluir tarefa"><Trash2 size={15}/></button></span></div>}
-      </article>)}</PaginatedItems>}</div>
+      </article>)}</div>
     </section>;
   })}</div>;
 }
@@ -288,7 +293,7 @@ function TaskProtocolChip({protocol}:{protocol:string}){
 
 function TaskList({ tasks, collaborators, onOpen }: { tasks: CorporateTask[]; collaborators: Collaborator[]; onOpen: (task: CorporateTask) => void }) {
   return <div className="task-table"><div className="task-table-row head"><span>Código / tarefa</span><span>Tipo</span><span>Setor</span><span>Prioridade</span><span>Status</span><span>Responsável</span><span>Prazo / SLA</span><span>Atualização</span></div>
-    {tasks.length === 0 ? <div className="task-empty">Nenhuma tarefa encontrada com estes filtros.</div> : <PaginatedItems label="tarefas e cadastros">{tasks.map((task) => <button className="task-table-row" data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} onClick={() => onOpen(task)} key={task.id}>
+    {tasks.length === 0 ? <div className="task-empty">Nenhuma tarefa encontrada com estes filtros.</div> : <PaginatedItems label="tarefas">{tasks.map((task) => <button className="task-table-row" data-reminder-entity-id={task.id} data-reminder-client-id={task.customerCode} data-reminder-customer-name={task.customerName} onClick={() => onOpen(task)} key={task.id}>
       <span><b>#{task.number} · {task.title}</b><small>{task.protocol || task.customerName || "Sem protocolo"}</small></span>
       <span>{task.typeName}</span><span>{task.departmentName}</span>
       <span><i className="priority-dot" style={{ background: task.priorityColor }} />{task.priorityName}</span>
@@ -357,7 +362,7 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
       <div className="task-form-section-grid">
         <label className="wide">Título *<input name="title" required defaultValue={initial?.title} placeholder="Resuma a demanda em uma frase" /></label>
         <label className="task-customer-code-field">ID do cliente *<input name="customerCode" readOnly={customerLocked} inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" /><small className={customerId ? "task-customer-linked" : undefined}>{customerId ? "Cliente vinculado pelo ID Dontus" : "Informe os 6 dígitos do ID Dontus do cliente."}</small></label>
-        <label>Cliente<select name="customerId" disabled={customerLocked} value={customerId} onChange={(event) => selectCustomer(event.target.value)}><option value="">Sem cliente vinculado</option>{customers.map((c) => <option value={c.id} key={c.id}>{c.trade_name}</option>)}</select></label>
+        <label>Cliente<CustomerSelect name="customerId" disabled={customerLocked} value={customerId} onChange={(event) => selectCustomer(event.target.value)} customers={customers} emptyLabel="Sem cliente vinculado" label="tradeName"/></label>
         <label>WhatsApp do cliente *<PhoneInput name="clientWhatsApp" type="tel" required minLength={10} defaultValue={initial?.clientWhatsApp} placeholder="(11) 99999-9999" /></label>
         <label>Setor responsável *<select name="departmentId" required value={departmentId} onChange={event => { setDepartmentId(event.target.value); setRequestedTypeId(""); }}><option value="">Selecione o setor</option>{module.departments.filter(department => department.active && departmentIds.includes(department.id)).map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select>{!departmentIds.length && <small>Nenhum setor ativo disponível para seu usuário. Confira os vínculos ou as permissões de Tarefas.</small>}</label>
         <div className="task-readonly-field"><span>Aprovador</span><strong>{module.collaborators.find(person => person.id === selectedDepartment?.approverUserId)?.name || "Coordenador do setor não cadastrado"}</strong><small>A tarefa atribuída ao próprio coordenador pode ser concluída diretamente. Os demais responsáveis enviam para aprovação.</small></div>
@@ -370,7 +375,7 @@ export function CreateTaskModal({ module, customers, user, departmentIds, initia
       <header><span>02</span><div><h3>Acesso e evidências</h3><p>Inclua participantes e arquivos somente quando forem necessários.</p></div></header>
       <div className="task-form-section-grid">
         {!attachmentsOnly && <CheckboxMultiSelect label="Colaboradores participantes" name="participantUserIds" options={module.collaborators.filter(item => item.active).map(item => ({ id: item.id, label: item.name }))} disabled={busy} hint="Todos os colaboradores do setor podem consultar a tarefa. Participantes acompanham a execução." />}
-        <MediaUploadField className="wide" label="Imagens, vídeos e documentos" name="files" disabled={busy} multiple selectedFiles={files} onRemoveFile={index=>setFiles(current=>current.filter((_,i)=>i!==index))} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada." onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); setFiles(current => mergeSelectedFiles(current, selectedFiles)); }} />
+        <MediaUploadField className="wide" label="Imagens, vídeos e documentos" name="files" disabled={busy} multiple selectedFiles={files} onRemoveFile={index=>setFiles(current=>current.filter((_,i)=>i!==index))} selectedText={files.length ? `${files.length} arquivo(s) selecionado(s)` : undefined} hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, sem limite de tamanho no sistema." onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); setFiles(current => mergeSelectedFiles(current, selectedFiles)); }} />
       </div>
     </section>
     {fileError && <p className="wide" role="alert">{fileError}</p>}
@@ -406,7 +411,7 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
   };
   return <Overlay title="Editar tarefa" eyebrow={task.protocol} subtitle="Atualize somente as informações da solicitação." onClose={onClose}><form className="task-form task-edit-form" onSubmit={submit}>
     <label className="wide">Título *<input name="title" required defaultValue={task.title} /></label>
-    <label>Cliente<select name="customerId" value={customerId} onChange={(event) => { setCustomerId(event.target.value); const customer = customers.find((item) => item.id === event.target.value); if (customer) setCustomerCode(publicCustomerCode(customer)); }}><option value="">Sem cliente vinculado</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.trade_name}</option>)}</select></label>
+    <label>Cliente<CustomerSelect name="customerId" value={customerId} onChange={(event) => { setCustomerId(event.target.value); const customer = customers.find((item) => item.id === event.target.value); if (customer) setCustomerCode(publicCustomerCode(customer)); }} customers={customers} emptyLabel="Sem cliente vinculado" label="tradeName"/></label>
     <label>ID do cliente<input name="customerCode" inputMode="numeric" maxLength={6} pattern="\d{6}" required value={customerCode} onChange={(event) => resolveCustomerCode(event.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />{customerId && <small className="task-customer-linked">Cliente vinculado automaticamente</small>}</label>
     <label>WhatsApp do cliente *<PhoneInput name="clientWhatsApp" required minLength={10} defaultValue={task.clientWhatsApp} /></label>
     <label>Tipo *<select name="typeId" required defaultValue={task.typeId}>{validTypes.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>
@@ -419,7 +424,6 @@ function EditTaskModal({ task, module, customers, busy, onClose, onSubmit }: { t
 export function TaskDetail({ linkedDevelopmentItems = [], task, module, customers, user, canManage, canEdit:moduleCanEdit, canRemind, canSchedule, startEditing, has, busy, onClose, operate, onSendToDevelopment, uploadAttachments, deleteAttachment }: { linkedDevelopmentItems?: LinkedDevelopmentItem[]; task: CorporateTask; module: TaskModuleData; customers: CustomerOption[]; user: Props["user"]; canManage: boolean; canEdit: boolean; canRemind:boolean; canSchedule:boolean; startEditing: boolean; has: (cap: string) => boolean; busy: boolean; onClose: () => void; operate: Props["operate"]; onSendToDevelopment: Props["onSendToDevelopment"]; uploadAttachments: Props["uploadAttachments"]; deleteAttachment: Props["deleteAttachment"] }) {
   const canInteract = canInteractWithTask(task,module.collaborators.find(person=>person.email.toLowerCase()===user.email.toLowerCase()),canManage);
   const canEdit = moduleCanEdit && canInteract;
-  const [comment, setComment] = useState("");
   const [commentLimit, setCommentLimit] = useState(5);
   const [historyLimit, setHistoryLimit] = useState(5);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -434,14 +438,12 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
     reveal();
     return () => observer.disconnect();
   }, [historyOpen]);
-  const commentsByDate = [...task.comments].sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt));
-  const historyByDate = [...task.history].sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));
+  const commentsByDate = useMemo(() => [...task.comments].sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt)), [task.comments]);
+  const historyByDate = useMemo(() => [...task.history].sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)), [task.history]);
   useEffect(()=>{setCommentLimit(5);setHistoryLimit(5);setHistoryOpen(false)},[task.id]);
   const [transferOpen, setTransferOpen] = useState(false);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
-  const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [fileInputKey, setFileInputKey] = useState(0);
-  const [showEmojis, setShowEmojis] = useState(false);
   const [clientNoticeOpen, setClientNoticeOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState<{ url: string; name: string; video: boolean; temporary?: boolean } | null>(null);
   const [editingCommentId, setEditingCommentId] = useState("");
@@ -453,7 +455,6 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
   const linkedDevelopment = linkedDevelopmentItems.find(item=>{try{return JSON.parse(item.description).sourceTaskId===task.id}catch{return false}});
   const [developmentSubtaskId, setDevelopmentSubtaskId] = useState(() => task.comments.map((entry) => entry.body.match(/\[TI:([^\]]+)\]/)?.[1]).find(Boolean) ?? "");
   const [responsibleUserId, setResponsibleUserId] = useState(task.assigneeUserId ?? "");
-  const commentInput = useRef<HTMLTextAreaElement>(null);
   const attachmentInput = useRef<HTMLInputElement>(null);
   const availableAssignees = module.collaborators.filter(collaborator=>collaborator.active);
   const currentCollaborator = module.collaborators.find(collaborator=>collaborator.email.toLocaleLowerCase()===user.email.toLocaleLowerCase());
@@ -476,34 +477,6 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
   const approverUserId = task.approverUserId ?? "";
   const approver = module.collaborators.find((item) => item.id === approverUserId);
   const resumeStatus = availableStatuses.find((status) => !status.isFinal && status.isInitial) ?? availableStatuses.find((status) => !status.isFinal);
-  const insertEmoji = (emoji: string) => {
-    const input = commentInput.current;
-    const start = input?.selectionStart ?? comment.length;
-    const end = input?.selectionEnd ?? start;
-    const next = `${comment.slice(0, start)}${emoji}${comment.slice(end)}`;
-    setComment(next);
-    requestAnimationFrame(() => {
-      input?.focus();
-      input?.setSelectionRange(start + emoji.length, start + emoji.length);
-    });
-  };
-  const [pendingCommentId, setPendingCommentId] = useState<string | null>(null);
-  const [commentError, setCommentError] = useState("");
-  const submitComment = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); if (busy || !comment.trim()) return;
-    try { taskUploadBatches(commentFiles); } catch (error) { setCommentError(error instanceof Error ? error.message : "Confira os arquivos selecionados."); return; }
-    setCommentError("");
-    const result = pendingCommentId ? { id: pendingCommentId } : await operate({ action: "addTaskComment", taskId: task.id, body: comment }, "Comentário registrado.");
-    if (!result) return;
-    if (commentFiles.length) {
-      if (!result.id) { setCommentError("O comentário foi salvo, mas não foi possível vincular os arquivos. Reabra a tarefa para anexá-los."); return; }
-      setPendingCommentId(result.id);
-      if (!await uploadAttachments(task.id, commentFiles, result.id, sent => setCommentFiles(current => current.filter(file => !sent.includes(file))))) {
-        setCommentError("O comentário foi salvo. Reenvie os anexos pendentes para concluir."); return;
-      }
-    }
-    setPendingCommentId(null); setComment(""); setCommentFiles([]); setShowEmojis(false);
-  };
   const selectAndUploadAttachments = async (files: File[]) => {
     setAttachmentFiles(files);
     if (files.length === 0) return;
@@ -534,7 +507,7 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
     </section>
       <section className="task-conversation-card"><header><h3><MessageSquareText size={17} /> Comentários</h3><span>({Math.min(commentLimit,task.comments.length)} últimos)</span></header><div className="task-comments">{task.comments.length === 0 ? <p className="task-empty-message">Nenhum comentário registrado.</p> : commentsByDate.slice(-commentLimit).map((c) => <article key={c.id} className={`task-comment-entry${currentUserId===c.authorUserId?" own":""}`}><CollaboratorAvatar collaborator={module.collaborators.find((item) => item.id === c.authorUserId)} /><div><header className="task-comment-head"><b>{c.authorName}</b><time>{dt(c.createdAt)}</time>{canInteract&&currentUserId===c.authorUserId&&editingCommentId!==c.id&&<button type="button" onClick={()=>{setEditingCommentId(c.id);setEditingCommentBody(c.body)}} aria-label="Editar comentário"><Pencil size={13}/></button>}</header>{canInteract&&editingCommentId===c.id?<div data-comment-composer="true" className="task-comment-editor"><CommentInput data-comment-input="true" value={editingCommentBody} onChange={event=>setEditingCommentBody(event.target.value)} rows={3}/><span><button type="button" onClick={()=>{setEditingCommentId("");setEditingCommentBody("")}}>Cancelar</button><button type="button" className="primary-button" disabled={busy||!editingCommentBody.trim()} onClick={async()=>{const result=await operate({action:"updateTaskComment",taskId:task.id,id:c.id,body:editingCommentBody},"Comentário atualizado.");if(result){setEditingCommentId("");setEditingCommentBody("")}}}>Salvar</button></span></div>:c.body&&<p><CommentContent text={c.body}/></p>}{c.attachments?.length > 0 && <div className="comment-attachments">{c.attachments.map((file) => isImageFile(file.fileName) || isVideoFile(file.fileName) ? <button type="button" key={file.id} onClick={() => setAttachmentPreview({ url: file.url, name: file.fileName, video: isVideoFile(file.fileName) })}><Paperclip size={13} /> Visualizar {file.fileName}</button> : <a href={file.url} target="_blank" rel="noreferrer" key={file.id}><Paperclip size={13} /> {file.fileName}</a>)}</div>}</div></article>)}</div>
         {task.comments.length>commentLimit&&<button type="button" className="task-see-more" onClick={()=>setCommentLimit(value=>value+5)}><ChevronDown size={15}/>Ver mais comentários ({task.comments.length-commentLimit})</button>}
-        {commentError && <p role="alert">{commentError}</p>}{canEdit && <form data-comment-composer="true" onSubmit={submitComment}><label htmlFor="task-comment" className="sr-only">Adicionar comentário</label><CommentEditor data-comment-input="true" ref={commentInput} id="task-comment" rows={2} readOnly={!!pendingCommentId} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Escreva uma mensagem…" /><div className="task-comment-tools"><button className={showEmojis ? "active" : ""} type="button" onClick={() => setShowEmojis((value) => !value)} aria-label="Adicionar emoji" title="Adicionar emoji"><Smile size={17} /></button><label className="comment-file-picker" title="Anexar arquivos"><Paperclip size={17} /><span className="sr-only">Anexar arquivos</span><input type="file" multiple onChange={(event) => setCommentFiles((current) => mergeSelectedFiles(current, Array.from(event.target.files ?? [])))} /></label>{showEmojis && <div className="task-emoji-picker" aria-label="Emojis rápidos">{["😀", "👍", "✅", "🎯", "🚨", "🙏", "📌", "💬", "📎", "🚀"].map((emoji) => <button type="button" onClick={() => insertEmoji(emoji)} key={emoji} aria-label={`Inserir ${emoji}`}>{emoji}</button>)}</div>}</div>{commentFiles.length > 0 && <div className="comment-selected-files">{commentFiles.map((file) => <button type="button" key={`${file.name}-${file.lastModified}`} onClick={() => {if(/^(image\/(png|jpeg|gif|webp|avif)|video\/(mp4|webm|ogg|quicktime))$/.test(file.type))setAttachmentPreview({url:URL.createObjectURL(file),name:file.name,video:file.type.startsWith("video/"),temporary:true});else downloadSelectedTaskFile(file)}}><Paperclip size={13}/>{file.name}<small>Clique para visualizar</small></button>)}</div>}<footer><small>{comment.length} caracteres · {commentFiles.length} arquivo(s)</small><button data-comment-submit="true" disabled={busy || !comment.trim()}><Send size={17}/><span className="sr-only">Enviar</span></button></footer></form>}</section></main><aside className="task-detail-side-column"><section className="task-detail-summary"><header><Clipboard size={18}/><strong>Resumo</strong></header><div><FileText size={18}/><span><small>ID</small><strong>{task.customerCode||"Não vinculado"}</strong></span></div><div><Layers size={18}/><span><small>Tipo</small><strong>{task.typeName}</strong></span></div><div className={`task-summary-priority ${/alta|urgente|cr[ií]tica/i.test(task.priorityName)?"high":""}`}><Flag size={18}/><span><small>Prioridade</small><strong>{task.priorityName}</strong></span></div><div><CalendarDays size={18}/><span><small>Criação</small><strong>{dt(task.createdAt)}</strong></span></div><div><History size={18}/><span><small>Atualização</small><strong>{dt(task.updatedAt)}</strong></span></div><div className="task-summary-owner"><UserRound size={18}/><span><small>Responsável</small><strong>{task.assigneeName}</strong></span></div></section>    <section className="task-actions-panel">
+        {canEdit && <TaskCommentComposer key={task.id} taskId={task.id} busy={busy} operate={operate} uploadAttachments={uploadAttachments} onPreview={setAttachmentPreview}/>}</section></main><aside className="task-detail-side-column"><section className="task-detail-summary"><header><Clipboard size={18}/><strong>Resumo</strong></header><div><FileText size={18}/><span><small>ID</small><strong>{task.customerCode||"Não vinculado"}</strong></span></div><div><Layers size={18}/><span><small>Tipo</small><strong>{task.typeName}</strong></span></div><div className={`task-summary-priority ${/alta|urgente|cr[ií]tica/i.test(task.priorityName)?"high":""}`}><Flag size={18}/><span><small>Prioridade</small><strong>{task.priorityName}</strong></span></div><div><CalendarDays size={18}/><span><small>Criação</small><strong>{dt(task.createdAt)}</strong></span></div><div><History size={18}/><span><small>Atualização</small><strong>{dt(task.updatedAt)}</strong></span></div><div className="task-summary-owner"><UserRound size={18}/><span><small>Responsável</small><strong>{task.assigneeName}</strong></span></div></section>    <section className="task-actions-panel">
       <header><div><span>AÇÕES DA TAREFA</span><h3><Zap size={22}/>Ações da tarefa</h3></div><p>Use os controles abaixo para alterar o fluxo ou solicitar uma ação.</p></header>
       <div className="task-action-fields">
         <div className="task-responsible-transfer"><label><span>{canTransferResponsible?"Transferir responsável":"Responsável"}</span>{canClaim||canTransferResponsible?<SearchablePeopleSelect searchLabel="Responsável da tarefa" disabled={busy} value={responsibleUserId} onChange={event=>setResponsibleUserId(event.target.value)}>{!task.assigneeUserId&&<option value="">Fila compartilhada</option>}{responsibleChoices.map(collaborator=><option value={collaborator.id} key={collaborator.id}>{collaborator.name}</option>)}</SearchablePeopleSelect>:<input aria-label="Responsável da tarefa" value={task.assigneeName||"Fila compartilhada"} readOnly/>}</label>{(canClaim||canTransferResponsible)&&<button type="button" aria-label={canClaim?"Assumir tarefa":"Transferir responsável"} title={canClaim?"Assumir tarefa em meu nome":"Confirmar transferência do responsável"} disabled={busy||!canClaim&&(!responsibleUserId||responsibleUserId===task.assigneeUserId)} onClick={()=>void operate({action:"assignTask",taskId:task.id,assigneeUserId:canClaim?currentUserId:responsibleUserId,version:task.version},canClaim?"Tarefa assumida.":"Responsável transferido com sucesso.")}><UsersRound size={15}/>{canClaim?"Assumir":"Transferir"}</button>}</div>
@@ -562,6 +535,47 @@ export function TaskDetail({ linkedDevelopmentItems = [], task, module, customer
     {linkedDrawer && linkedDevelopment && <LinkedDevelopmentDrawer item={linkedDevelopment} taskModule={module} user={user} onClose={()=>setLinkedDrawer(false)}/>}
     {attachmentPreview && <div className="task-media-preview-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) { if (attachmentPreview.temporary) URL.revokeObjectURL(attachmentPreview.url); setAttachmentPreview(null); } }}><section className="task-media-preview" role="dialog" aria-modal="true" aria-label={`Visualizar ${attachmentPreview.name}`}><header><strong>{attachmentPreview.name}</strong><button type="button" aria-label="Fechar" onClick={() => { if (attachmentPreview.temporary) URL.revokeObjectURL(attachmentPreview.url); setAttachmentPreview(null); }}><X size={19}/></button></header>{attachmentPreview.video ? <video controls autoPlay><source src={attachmentPreview.url}/></video> : <img src={attachmentPreview.url} alt={attachmentPreview.name}/>}<a href={attachmentPreview.url} target="_blank" rel="noreferrer">Abrir arquivo em nova guia</a></section></div>}
   </Overlay>;
+}
+
+function TaskCommentComposer({ taskId, busy, operate, uploadAttachments, onPreview }: {
+  taskId: string; busy: boolean; operate: Props["operate"]; uploadAttachments: Props["uploadAttachments"];
+  onPreview: (preview: { url: string; name: string; video: boolean; temporary?: boolean }) => void;
+}) {
+  const [comment, setComment] = useState("");
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
+  const [showEmojis, setShowEmojis] = useState(false);
+  const commentInput = useRef<HTMLTextAreaElement>(null);
+
+  const insertEmoji = (emoji: string) => {
+    const input = commentInput.current;
+    const start = input?.selectionStart ?? comment.length;
+    const end = input?.selectionEnd ?? start;
+    const next = `${comment.slice(0, start)}${emoji}${comment.slice(end)}`;
+    setComment(next);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
+  };
+  const [pendingCommentId, setPendingCommentId] = useState<string | null>(null);
+  const [commentError, setCommentError] = useState("");
+  const submitComment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); if (busy || !comment.trim()) return;
+    try { taskUploadBatches(commentFiles); } catch (error) { setCommentError(error instanceof Error ? error.message : "Confira os arquivos selecionados."); return; }
+    setCommentError("");
+    const result = pendingCommentId ? { id: pendingCommentId } : await operate({ action: "addTaskComment", taskId, body: comment }, "Comentário registrado.");
+    if (!result) return;
+    if (commentFiles.length) {
+      if (!result.id) { setCommentError("O comentário foi salvo, mas não foi possível vincular os arquivos. Reabra a tarefa para anexá-los."); return; }
+      setPendingCommentId(result.id);
+      if (!await uploadAttachments(taskId, commentFiles, result.id, sent => setCommentFiles(current => current.filter(file => !sent.includes(file))))) {
+        setCommentError("O comentário foi salvo. Reenvie os anexos pendentes para concluir."); return;
+      }
+    }
+    setPendingCommentId(null); setComment(""); setCommentFiles([]); setShowEmojis(false);
+  };
+
+  return <>{commentError && <p role="alert">{commentError}</p>}<form data-comment-composer="true" onSubmit={submitComment}><label htmlFor="task-comment" className="sr-only">Adicionar comentário</label><CommentEditor data-comment-input="true" ref={commentInput} id="task-comment" rows={2} readOnly={!!pendingCommentId} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Escreva uma mensagem…" /><div className="task-comment-tools"><button className={showEmojis ? "active" : ""} type="button" onClick={() => setShowEmojis((value) => !value)} aria-label="Adicionar emoji" title="Adicionar emoji"><Smile size={17} /></button><label className="comment-file-picker" title="Anexar arquivos"><Paperclip size={17} /><span className="sr-only">Anexar arquivos</span><input type="file" multiple onChange={(event) => setCommentFiles((current) => mergeSelectedFiles(current, Array.from(event.target.files ?? [])))} /></label>{showEmojis && <div className="task-emoji-picker" aria-label="Emojis rápidos">{["😀", "👍", "✅", "🎯", "🚨", "🙏", "📌", "💬", "📎", "🚀"].map((emoji) => <button type="button" onClick={() => insertEmoji(emoji)} key={emoji} aria-label={`Inserir ${emoji}`}>{emoji}</button>)}</div>}</div>{commentFiles.length > 0 && <div className="comment-selected-files">{commentFiles.map((file) => <button type="button" key={`${file.name}-${file.lastModified}`} onClick={() => {if(/^(image\/(png|jpeg|gif|webp|avif)|video\/(mp4|webm|ogg|quicktime))$/.test(file.type))onPreview({url:URL.createObjectURL(file),name:file.name,video:file.type.startsWith("video/"),temporary:true});else downloadSelectedTaskFile(file)}}><Paperclip size={13}/>{file.name}<small>Clique para visualizar</small></button>)}</div>}<footer><small>{comment.length} caracteres · {commentFiles.length} arquivo(s)</small><button data-comment-submit="true" disabled={busy || !comment.trim()}><Send size={17}/><span className="sr-only">Enviar</span></button></footer></form></>;
 }
 
 function downloadSelectedTaskFile(file:File){const url=URL.createObjectURL(new Blob([file],{type:"application/octet-stream"}));const link=document.createElement("a");link.href=url;link.download=file.name;link.click();window.setTimeout(()=>URL.revokeObjectURL(url),60_000);}
@@ -645,7 +659,7 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
         {tab === "sla" && <SimpleSlaEditor module={module} editingId={editingId} setEditingId={setEditingId} busy={busy} operate={operate} />}
         {tab === "departments" && <Catalog title="Setores" editingId={editingId} onEdit={setEditingId} items={module.departments.map((d) => ({ id: d.id, title: d.name, subtitle: d.description, active: d.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskDepartment", "Setor salvo.")}><input name="name" required placeholder="Nome do setor" defaultValue={department?.name} /><input name="catalogDescription" placeholder="Descrição" defaultValue={department?.description} /><label><input type="checkbox" name="requiresAssigneeOnTransfer" defaultChecked={department?.requiresAssigneeOnTransfer} /> Exigir responsável</label><DepartmentApproverFields people={module.collaborators.filter(c => c.active).map(c => ({ id: c.id, label: c.name }))} coordinatorUserIds={department?.coordinatorUserIds ?? []} approverUserId={department?.approverUserId} disabled={busy} /><ActiveField value={department?.active} /><FormButtons editing={!!department} busy={busy} onCancel={() => setEditingId(null)} label="setor" /></form></Catalog>}
     {tab === "priorities" && <Catalog title="Prioridades" editingId={editingId} onEdit={setEditingId} items={module.priorities.map((p) => ({ id: p.id, title: p.name, subtitle: `Ordem ${p.severityOrder} · prazo ${p.defaultDueMinutes ?? "—"} min`, active: p.active, color: p.color }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskPriority", "Prioridade salva.")}><input name="name" required placeholder="Nome" defaultValue={priority?.name} /><input name="severityOrder" required type="number" placeholder="Ordem" min="0" defaultValue={priority?.severityOrder ?? Math.max(0, ...module.priorities.map(p => p.severityOrder)) + 1} /><input name="color" type="color" defaultValue={priority?.color ?? "#2563eb"} /><input name="defaultDueMinutes" type="number" placeholder="Prazo padrão (min)" defaultValue={priority?.defaultDueMinutes ?? ""} /><ActiveField value={priority?.active} /><FormButtons editing={!!priority} busy={busy} onCancel={() => setEditingId(null)} label="prioridade" /></form></Catalog>}
-    {tab === "statuses" && <Catalog title="Etapas do Kanban" editingId={editingId} onEdit={setEditingId} items={module.statuses.map((s) => ({ id: s.id, title: s.name, subtitle: `${module.departments.find((department) => department.id === s.departmentId)?.name ?? "Todos os setores"} · posição ${s.displayOrder}${s.isInitial ? " · inicial" : ""}${s.isFinal ? " · final" : ""}`, active: s.active }))}><form key={editingId ?? "new"} onSubmit={submit("saveTaskStatus", "Etapa do Kanban salva.")}>
+    {tab === "statuses" && <Catalog title="Etapas do Kanban" editingId={editingId} onEdit={setEditingId} items={module.statuses.map((s) => ({ id: s.id, title: s.name, subtitle: `${module.departments.find((department) => department.id === s.departmentId)?.name ?? "Todos os setores"} · posição ${s.displayOrder}${s.isInitial ? " · inicial" : ""}${s.isFinal ? " · final" : ""}`, active: s.active }))}><form className="task-status-form" key={editingId ?? "new"} onSubmit={submit("saveTaskStatus", "Etapa do Kanban salva.")}>
       <label className="catalog-field"><span>Nome da etapa *</span><input name="name" required maxLength={120} placeholder="Ex.: Em análise" defaultValue={status?.name} autoFocus /></label>
       <label className="catalog-field"><span>Setor</span><select name="departmentId" defaultValue={status?.departmentId ?? ""}><option value="">Todos os setores</option>{module.departments.filter((department) => department.active || department.id === status?.departmentId).map((department) => <option value={department.id} key={department.id}>{department.name}</option>)}</select></label>
       <label className="catalog-field"><span>Posição no Kanban</span><input name="displayOrder" type="number" min="0" required defaultValue={status?.displayOrder ?? Math.max(0, ...module.statuses.map(s => s.displayOrder)) + 1} /></label>
@@ -681,7 +695,7 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
         </form>
       </div>
       <div className="catalog-records-heading"><div><h2>Colaboradores cadastrados</h2><p>Usuários inativos permanecem no histórico, mas não recebem novas tarefas.</p></div><b>{module.collaborators.length} registro(s)</b></div>
-      <div className="collaborator-list">{<PaginatedItems label="tarefas e cadastros">{module.collaborators.map((c) => <form key={c.id} onSubmit={async (e) => { e.preventDefault(); const f = new FormData(e.currentTarget); await operate({ action: "saveTaskCollaborator", userId: c.id, phone: f.get("phone"), jobTitle: f.get("jobTitle"), departmentIds: f.getAll("departmentIds"), coordinatorDepartmentIds: f.getAll("coordinatorDepartmentIds"), active: f.has("active") }, "Colaborador atualizado."); }}><div className="collaborator-identity"><CollaboratorAvatar collaborator={c} /><span><b>{c.name}</b><small>{c.email}</small></span></div><PhoneInput name="phone" defaultValue={c.phone} placeholder="Telefone" aria-label={`Telefone de ${c.name}`} /><input name="jobTitle" defaultValue={c.jobTitle} placeholder="Cargo" aria-label={`Cargo de ${c.name}`} /><CheckGroup legend="Setores" name="departmentIds" values={module.departments.map((d) => ({ id: d.id, label: d.name }))} selected={c.departmentIds} /><CheckGroup legend="Coordena" name="coordinatorDepartmentIds" values={module.departments.map((d) => ({ id: d.id, label: d.name }))} selected={c.coordinatorDepartmentIds} /><ActiveField value={c.active} /><button disabled={busy}>Salvar alterações</button></form>)}</PaginatedItems>}</div>
+      <div className="collaborator-list"><PaginatedItems label="registros">{module.collaborators.map((c) => <form key={c.id} onSubmit={async (e) => { e.preventDefault(); const f = new FormData(e.currentTarget); await operate({ action: "saveTaskCollaborator", userId: c.id, phone: f.get("phone"), jobTitle: f.get("jobTitle"), departmentIds: f.getAll("departmentIds"), coordinatorDepartmentIds: f.getAll("coordinatorDepartmentIds"), active: f.has("active") }, "Colaborador atualizado."); }}><div className="collaborator-identity"><CollaboratorAvatar collaborator={c} /><span><b>{c.name}</b><small>{c.email}</small></span></div><PhoneInput name="phone" defaultValue={c.phone} placeholder="Telefone" aria-label={`Telefone de ${c.name}`} /><input name="jobTitle" defaultValue={c.jobTitle} placeholder="Cargo" aria-label={`Cargo de ${c.name}`} /><CheckGroup legend="Setores" name="departmentIds" values={module.departments.map((d) => ({ id: d.id, label: d.name }))} selected={c.departmentIds} /><CheckGroup legend="Coordena" name="coordinatorDepartmentIds" values={module.departments.map((d) => ({ id: d.id, label: d.name }))} selected={c.coordinatorDepartmentIds} /><ActiveField value={c.active} /><button disabled={busy}>Salvar alterações</button></form>)}</PaginatedItems></div>
     </div>}
   </section></div></TaskCatalogActions.Provider>;
 }
@@ -689,7 +703,7 @@ function TaskSettings({ module, tab, onTab, canManage, busy, operate }: { module
 function LegacyCatalog({ title, items, editingId, onEdit, children }: { title: string; items: Array<{ id: string; title: string; subtitle: string; active: boolean; color?: string }>; editingId: string | null; onEdit: (id: string) => void; children: React.ReactNode }) {
   const actions = useContext(TaskCatalogActions);
   const catalog = ({ "Setores": "departments", "Prioridades": "priorities", "Status": "statuses", "Kanban": "statuses", "Tipos de tarefa": "types", "Políticas de SLA": "sla" } as Record<string, string>)[title];
-  return <div className="catalog-page-content" aria-label={title}><div className="catalog-form"><div className="catalog-card-heading"><span>{editingId ? "EDITANDO REGISTRO" : "NOVO REGISTRO"}</span><h2>{editingId ? `Editar ${title.toLocaleLowerCase("pt-BR")}` : `Cadastrar ${title.toLocaleLowerCase("pt-BR")}`}</h2><p>Cadastros inativos deixam de aparecer imediatamente nas seleções operacionais.</p></div>{children}</div><div className="catalog-records-heading"><div><h2>{title} cadastrados</h2><p>Itens inativos permanecem aqui para edição, reativação ou exclusão definitiva.</p></div><b>{items.filter((item) => item.active).length} ativo(s) de {items.length}</b></div><div className="catalog-list">{<PaginatedItems label="tarefas e cadastros">{items.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}><i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} /><span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span><em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em><button type="button" onClick={() => onEdit(item.id)}>Editar</button>{actions && catalog && <button type="button" className="catalog-delete-action" onClick={() => void actions.remove(catalog, item.id, item.title)}><Trash2 size={14} /> Desativar</button>}</article>)}</PaginatedItems>}</div></div>;
+  return <div className="catalog-page-content" aria-label={title}><div className="catalog-form"><div className="catalog-card-heading"><span>{editingId ? "EDITANDO REGISTRO" : "NOVO REGISTRO"}</span><h2>{editingId ? `Editar ${title.toLocaleLowerCase("pt-BR")}` : `Cadastrar ${title.toLocaleLowerCase("pt-BR")}`}</h2><p>Cadastros inativos deixam de aparecer imediatamente nas seleções operacionais.</p></div>{children}</div><div className="catalog-records-heading"><div><h2>{title} cadastrados</h2><p>Itens inativos permanecem aqui para edição, reativação ou exclusão definitiva.</p></div><b>{items.filter((item) => item.active).length} ativo(s) de {items.length}</b></div><div className="catalog-list"><PaginatedItems label="registros">{items.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}><i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} /><span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span><em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em><button type="button" onClick={() => onEdit(item.id)}>Editar</button>{actions && catalog && <button type="button" className="catalog-delete-action" onClick={() => void actions.remove(catalog, item.id, item.title)}><Trash2 size={14} /> Desativar</button>}</article>)}</PaginatedItems></div></div>;
 }
 
 function Catalog({ title, items, editingId, onEdit, children }: { title: string; items: Array<{ id: string; title: string; subtitle: string; active: boolean; color?: string }>; editingId: string | null | undefined; onEdit: (id: string | null | undefined) => void; children: React.ReactNode }) {
@@ -707,13 +721,13 @@ function Catalog({ title, items, editingId, onEdit, children }: { title: string;
     </div>
     <div className="catalog-list">
       {visibleItems.length === 0 && <p className="catalog-empty">Nenhum cadastro ativo encontrado. Marque “Mostrar inativos” para consultar e reativar registros.</p>}
-      {<PaginatedItems label="tarefas e cadastros">{visibleItems.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}>
+      <PaginatedItems label="registros">{visibleItems.map((item) => <article className={editingId === item.id ? "selected" : ""} key={item.id}>
         <i style={{ background: item.color ?? (item.active ? "#22c55e" : "#94a3b8") }} />
         <span><b>{item.title}</b><small>{item.subtitle || "Sem descrição"}</small></span>
         <em className={item.active ? "active" : "inactive"}>{item.active ? "Ativo" : "Inativo"}</em>
         {actions && catalog && <button type="button" className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`} onClick={() => void actions.toggle(catalog, item.id, item.title)} aria-label={item.active ? `Bloquear ${item.title}` : `Reativar ${item.title}`} title={item.active ? "Bloquear temporariamente" : "Reativar cadastro"}><Power size={14} /></button>}
         <button type="button" onClick={() => onEdit(item.id)}>Editar</button>
-      </article>)}</PaginatedItems>}
+      </article>)}</PaginatedItems>
     </div>
     {editorOpen && <div className="modal-backdrop catalog-editor-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onEdit(null)}>
       <div className="modal task-catalog-modal" role="dialog" aria-modal="true" aria-label={editorTitle}>

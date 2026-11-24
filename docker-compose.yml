@@ -86,6 +86,7 @@ services:
       - dontus_chat_keys:/app/data-protection-keys
       - dontus_internal_chat_files:/app/internal-chat-files
       - dontus_service_request_files:/app/service-request-files
+      - dontus_workspace_files:/app/workspace-files
     depends_on:
       database:
         condition: service_healthy
@@ -114,6 +115,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  dontus_workspace_files:
+    name: dontus_workspace_files
   dontus_postgres_data:
     name: dontus_postgres_data
   dontus_chat_keys:

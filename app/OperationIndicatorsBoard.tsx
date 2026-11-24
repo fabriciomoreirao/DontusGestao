@@ -1,4 +1,7 @@
 "use client";
+import PaginatedItems from "@/app/PaginatedItems";
+import CsFeaturesIndicators from "@/app/CsFeaturesIndicators";
+import { parseJourney } from "@/app/CustomerSuccessJourneyModule";
 import CommercialAnalyticsBoard from "@/app/CommercialAnalyticsBoard";
 import FollowupRiskIndicators from "@/app/FollowupRiskIndicators";
 import LiaPromptIndicators from "@/app/LiaPromptIndicators";
@@ -80,6 +83,7 @@ function scopeItems(items: Item[], module: string, contextKey: string) {
     if (item.module !== "cs") return false;
     const detail = parse(item.description);
     const kind = clean(detail.kind);
+    if (contextKey.includes("general")) return Boolean(parseJourney(item.description||""));
     if (contextKey.includes("enterprise")) return /enterprise/.test(kind) || /rede|unidade/.test(clean(item.record_type));
     if (contextKey.includes("evolution")) return /retention|retencao/.test(clean(detail.track ?? detail.flow ?? item.record_type));
     return !/enterprise|retention|retencao/.test(clean(`${kind} ${detail.track ?? ""}`));
@@ -104,6 +108,7 @@ function normalizedStage(value: unknown, fallback = "Sem status") {
   const raw = stringOf(value) || fallback;
   const key = clean(raw);
   const known: Record<string, string> = {
+    onboarding:"Onboarding",finished:"Finalizados",unsuccessful:"Finalizados sem sucesso",cancelledwithouttraining:"Cancelado sem treinamento",validation:"Validação",cancelled:"Cancelados",
     waiting: "Em espera", contacted: "Contato feito", approved: "Aprovada", rejected: "Reprovada",
     pending: "Pendente", tracking: "Em acompanhamento", conference: "Conferência", active: "Ativa", inactive: "Inativa",
   };
@@ -494,8 +499,10 @@ function supplementaryMetricsFor(module: string, contextKey: string, rows: Item[
 
 function GenericOperationIndicatorsBoard({ title, module, contextKey = "", items, employees, catalogs = [], customers = [], onClose }: { title: string; module: string; contextKey?: string; items: Item[]; employees: Employee[]; catalogs?: Catalog[]; customers?: {id:string;document_masked?:string;product_version?:string}[]; onClose: () => void }) {
   const rawBase = useMemo(() => scopeItems(items, module, contextKey).map(item => { const detail = parse(item.description); return ["cs", "lia"].includes(module) && detail.status ? { ...item, status: String(detail.status) } : item; }), [items, module, contextKey]);
-  const fieldAnalysis = useFieldIndicatorAnalysis(rawBase);
-  const base = rawBase.filter(fieldAnalysis.matches);
+  const [track,setTrack] = useState("all");
+  const trackBase=rawBase.filter(item=>track==="all"||parseJourney(item.description||"")?.track===track);
+  const fieldAnalysis = useFieldIndicatorAnalysis(trackBase);
+  const base = trackBase.filter(fieldAnalysis.matches);
   const [tab, setTab] = useState<string>("overview");
   const [from, setFrom] = useState(""); const [to, setTo] = useState(""); const [owner, setOwner] = useState("all"); const [team, setTeam] = useState("all"); const [status, setStatus] = useState("all");
   const scoped = useMemo(() => base.filter((item) => (!from || dateKey(item.created_at) >= from) && (!to || dateKey(item.created_at) <= to) && (owner === "all" || (item.owner || "Não atribuído") === owner) && (team === "all" || (item.team || "Sem setor") === team) && (status === "all" || (item.status || "Sem status") === status)), [base, from, to, owner, team, status]);
@@ -514,10 +521,11 @@ function GenericOperationIndicatorsBoard({ title, module, contextKey = "", items
   ];
   return <main className="operation-bi-page cancellation-bi-style" aria-labelledby="operation-bi-title"><section className="operation-bi-board">
     <header><div><span className="operation-bi-mark"><BarChart3 /></span><span><small>INDICADORES · OPERAÇÃO</small><h1 id="operation-bi-title">{title}</h1><p>Métricas calculadas com os registros reais e filtros desta funcionalidade.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para a funcionalidade"><ArrowLeft /><span>Voltar</span></button></header>
+    {module==="cs"&&contextKey.includes("general")&&<div className="analytics-filter-row"><label>Acompanhamento<select aria-label="Filtrar acompanhamento" value={track} onChange={event=>setTrack(event.target.value)}><option value="all">Ativação e Retenção</option><option value="activation">Ativação</option><option value="retention">Retenção</option></select></label></div>}
     {tab!=="prompts"&&<section className="operation-bi-filters"><Filter /><label>De<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>Até<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label><label>Responsável<SearchablePeopleSelect searchLabel="Responsável" value={owner} onChange={(event) => setOwner(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.owner || "Não atribuído"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</SearchablePeopleSelect></label><label>Setor<select value={team} onChange={(event) => setTeam(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.team || "Sem setor"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.status || "Sem status"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><button onClick={() => { setFrom(""); setTo(""); setOwner("all"); setTeam("all"); setStatus("all"); }}>Limpar</button><strong>{scoped.length} registro(s)</strong></section>}
-    <IndicatorTabs value={tab} onChange={setTab} tabs={[{id:"overview",label:"Visão geral"},{id:"results",label:"Resultados e qualidade"},{id:"activity",label:"Atividade"},{id:"team",label:"Equipe"},{id:"fields",label:"Campos preenchidos"},...(module==="cs"?[{id:"critical",label:"Clientes críticos"},...(!contextKey.includes("evolution")?[{id:"training",label:"Treinamentos em haver"}]:[])]:[]),...(module==="lia"?[{id:"prompts",label:"Ajustes de prompts"}]:[])]} />
+    <IndicatorTabs value={tab} onChange={setTab} tabs={[{id:"overview",label:"Visão geral"},{id:"results",label:"Resultados e qualidade"},{id:"activity",label:"Atividade"},{id:"team",label:"Equipe"},{id:"fields",label:"Campos preenchidos"},...(module==="cs"&&!contextKey.includes("enterprise")?[{id:"features",label:"Features"},{id:"critical",label:"Clientes críticos"},...(!contextKey.includes("evolution")?[{id:"training",label:"Treinamentos em haver"}]:[])]:[]),...(module==="lia"?[{id:"prompts",label:"Ajustes de prompts"}]:[])]} />
     <section role="tabpanel" id={`indicator-panel-${tab}`} aria-labelledby={`indicator-tab-${tab}`} className="indicator-panel">
-    {tab === "critical" || tab === "training" ? <FollowupRiskIndicators records={scoped} items={items} customers={customers} catalogs={catalogs} mode={tab === "critical" ? "critical" : "training"}/> : tab === "prompts" ? <LiaPromptIndicators items={items}/> : tab === "fields" ? fieldAnalysis.panel(scoped) : <>
+    {tab === "features" ? <CsFeaturesIndicators items={scoped} catalogs={catalogs}/> : tab === "critical" || tab === "training" ? <FollowupRiskIndicators records={scoped} items={items} customers={customers} catalogs={catalogs} mode={tab === "critical" ? "critical" : "training"}/> : tab === "prompts" ? <LiaPromptIndicators items={items}/> : tab === "fields" ? fieldAnalysis.panel(scoped) : <>
     <section className="operation-bi-kpis">{metrics.map((metric, index) => <article key={metric.label}>{index % 4 === 0 ? <Activity /> : index % 4 === 1 ? <CheckCircle2 /> : index % 4 === 2 ? <Gauge /> : <WalletCards />}<span><small>{metric.label}</small><strong>{metric.value}</strong><em>{metric.note}</em></span></article>)}</section>
     <div className="operation-bi-grid">
       {tab === "overview" && <section className="operation-bi-panel trend-panel"><header><span><TrendingUp />{charts.trendTitle}</span><b>ÚLTIMOS 6 MESES</b></header><TrendChart title={charts.trendTitle} entries={months.map(entry=>({label:entry.label,value:entry.count}))}/></section>}
@@ -526,7 +534,7 @@ function GenericOperationIndicatorsBoard({ title, module, contextKey = "", items
       {tab === "results" && <section className="operation-bi-panel category-panel"><header><span><Clock3 />{charts.categoryTitle}</span><b>VOLUME E PARTICIPAÇÃO</b></header><DistributionChart title={charts.categoryTitle} entries={categories}/></section>}
     </div>
     {tab === "overview" && <section className="operation-bi-insights"><Lightbulb /><strong>Insights estratégicos</strong>{insights.map((entry) => <span key={entry}>{entry}</span>)}</section>}
-    {tab === "activity" && <section className="indicator-records"><header><h2>Registros recentes</h2><small>Até 30 registros, conforme os filtros acima</small></header><div className="indicator-record-list">{scoped.slice().sort((a,b) => b.updated_at.localeCompare(a.updated_at)).slice(0,30).map(item => <article key={item.id}><span><strong>{item.title}</strong><small>{item.owner || "Não atribuído"}</small></span><b>{item.status || "Sem status"}</b><time>{new Date(item.updated_at).toLocaleDateString("pt-BR")}</time></article>)}{!scoped.length && <p>Nenhum registro neste recorte.</p>}</div></section>}
+    {tab === "activity" && <section className="indicator-records"><header><h2>Registros recentes</h2><small>Todos os registros, conforme os filtros acima</small></header><div className="indicator-record-list"><PaginatedItems label="registros">{scoped.slice().sort((a,b) => b.updated_at.localeCompare(a.updated_at)).map(item => <article key={item.id}><span><strong>{item.title}</strong><small>{item.owner || "Não atribuído"}</small></span><b>{item.status || "Sem status"}</b><time>{new Date(item.updated_at).toLocaleDateString("pt-BR")}</time></article>)}</PaginatedItems>{!scoped.length && <p>Nenhum registro neste recorte.</p>}</div></section>}
     </>}
     </section>
   </section></main>;

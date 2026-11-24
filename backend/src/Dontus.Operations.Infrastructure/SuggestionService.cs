@@ -9,7 +9,7 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileStorage? fileStorage = null, ILogger<SuggestionService>? logger = null) : ISuggestionService
 {
-    private const long MaximumAttachmentSizeBytes = 25 * 1024 * 1024;
+    private const long MaximumAttachmentSizeBytes = long.MaxValue;
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (!await db.SuggestionPriorities.AnyAsync(cancellationToken))
@@ -315,7 +315,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
         if (!(actor.HasPermission("suggestions", "create") && suggestion.ResponsibleUserId == actorUser.Id))
             await RequireCoordinatorEditAsync(actor, cancellationToken);
         if (command.SizeBytes <= 0 || command.SizeBytes > MaximumAttachmentSizeBytes)
-            throw new DomainException("Cada anexo deve ter no máximo 25 MB.");
+            throw new DomainException("O arquivo excedeu o tamanho informado.");
         var fileName = Path.GetFileName(command.FileName).Trim();
         if (string.IsNullOrWhiteSpace(fileName) || fileName.Length > 260)
             throw new DomainException("Nome do arquivo inválido.");
@@ -340,6 +340,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
         var attachment = await db.SuggestionAttachments.AsNoTracking()
             .SingleOrDefaultAsync(entry => entry.Id == attachmentId, cancellationToken)
             ?? throw new DomainException("Anexo não encontrado.", 404);
+        if(AttachmentSpool.Resolve(attachment.StorageKey) is { } path)return new TaskAttachmentDownloadDto(""){FilePath=path,ContentType=attachment.ContentType,FileName=attachment.FileName};
         var content = await db.SuggestionAttachmentContents.AsNoTracking().Where(entry => entry.AttachmentId == attachmentId)
             .Select(entry => entry.Content).SingleOrDefaultAsync(cancellationToken);
         if (content is not null)

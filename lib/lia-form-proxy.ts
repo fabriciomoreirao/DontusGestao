@@ -5,6 +5,8 @@ export async function liaFormProxy(request: Request, path: string, authenticated
   const download = path.startsWith("/api/lia-forms/attachments/");
   const headers = new Headers({ accept: download ? "*/*" : "application/json" });
   if (!multipart) headers.set("content-type", "application/json");
+  else headers.set("content-type",request.headers.get("content-type")!);
+  for(const name of ["range","if-range"]){const value=request.headers.get(name);if(value)headers.set(name,value)}
   if (authenticated) {
     const token = request.headers.get("cookie")?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
     if (token) headers.set("x-local-session", decodeURIComponent(token));
@@ -15,11 +17,11 @@ export async function liaFormProxy(request: Request, path: string, authenticated
   }
   try {
     const response = await fetch((process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "") + path + new URL(request.url).search, {
-      method: request.method, headers, cache: "no-store", redirect: "manual", signal: apiRequestSignal(request),
-      body: request.method === "POST" ? multipart ? await request.formData() : await request.text() : undefined,
-    });
+      method: request.method, headers, cache: "no-store", redirect: "manual", signal:request.signal,duplex:"half",
+      body: request.method === "POST" ? multipart ? request.body : await request.text() : undefined,
+    } as RequestInit);
     const outgoing = new Headers({ "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
-    for (const name of ["content-type", "content-disposition", "content-length"]) {
+    for (const name of ["content-type", "content-disposition", "content-length","accept-ranges","content-range"]) {
       const value = response.headers.get(name);
       if (value) outgoing.set(name, value);
     }

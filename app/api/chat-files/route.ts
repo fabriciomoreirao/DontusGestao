@@ -15,8 +15,8 @@ export async function POST(request: Request) {
   if (contentType) headers.set("content-type", contentType);
   try {
     const response = await fetch(`${apiBase()}/api/chats/${encodeURIComponent(conversationId)}/attachments`, {
-      method: "POST", headers, body: request.body, cache: "no-store", signal: AbortSignal.timeout(120_000),
-    });
+      method: "POST", headers, body: request.body, duplex:"half", cache: "no-store", signal: request.signal,
+    } as RequestInit);
     return new Response(response.body, { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json" } });
   } catch {
     return Response.json({ detail: "Não foi possível enviar o arquivo para a API." }, { status: 503 });

@@ -22,6 +22,6 @@ test('upload limits apply per question and across the whole form', () => {
   assert.match(validateLiaFiles([{ questionId: 'a', files: Array(11).fill(file) }]), /10 arquivos/);
   assert.match(validateLiaFiles(['a', 'b', 'c'].map(questionId => ({ questionId, files: Array(7).fill(file) }))), /20 arquivos/);
   assert.match(validateLiaFiles([{ questionId: 'a', files: [{ ...file, size: 0 }] }]), /vazio/);
-  assert.match(validateLiaFiles([{ questionId: 'a', files: [{ ...file, size: liaFileLimits.perFile + 1 }] }]), /50 MB/);
-  assert.match(validateLiaFiles([{ questionId: 'a', files: Array(3).fill({ ...file, size: liaFileLimits.perFile }) }]), /100 MB/);
+  assert.equal(validateLiaFiles([{questionId:'a',files:[{...file,size:10_000_000_000}]}]),'');
+  assert.equal(validateLiaFiles([{questionId:'a',files:Array(3).fill({...file,size:10_000_000_000})}]),'');
 });

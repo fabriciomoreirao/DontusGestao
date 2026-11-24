@@ -11,12 +11,13 @@ test('divide dez arquivos de até 50 MB em lotes limitados sem perder a ordem', 
   const mixed = [{ size: 20 * 1024 * 1024 }, { size: 30 * 1024 * 1024 }, { size: 1 }];
   assert.deepEqual(internalChatUploadBatches(mixed).map(batch => batch.length), [2, 1]);
   assert.deepEqual(internalChatUploadBatches([]), []);
+  assert.equal(internalChatUploadBatches([{size:10_000_000_000}])[0][0].size,10_000_000_000);
 });
 
-test('recusa arquivos vazios, acima de 50 MB ou mais de dez antes de iniciar o envio', async t => {
+test('recusa arquivos vazios ou mais de dez antes de iniciar o envio', async t => {
   const fetch = t.mock.method(globalThis, 'fetch', () => { throw new Error('Unexpected upload'); });
-  for (const files of [[{ size: 0 }], [{ size: INTERNAL_CHAT_FILE_BYTES + 1 }], Array.from({ length: 11 }, () => ({ size: 1 }))])
-    await assert.rejects(sendInternalChatFiles('room', files), /50 MB|10 arquivos/);
+  for (const files of [[{ size: 0 }], Array.from({ length: 11 }, () => ({ size: 1 }))])
+    await assert.rejects(sendInternalChatFiles('room', files), /não vazios|10 arquivos/);
   assert.equal(fetch.mock.callCount(), 0);
 });
 
@@ -56,7 +57,7 @@ test('confirma somente os lotes enviados e interrompe ao falhar sem repetir arqu
 test('traduz o erro 413 de um proxy e mantém a mensagem de validação da API', async t => {
   const file = new File(['video'], 'video.mp4');
   const fetch = t.mock.method(globalThis, 'fetch', async () => new Response('Payload Too Large', { status: 413 }));
-  await assert.rejects(sendInternalChatFiles('room', [file]), /50 MB/);
+  await assert.rejects(sendInternalChatFiles('room', [file]), /servidor de acesso/);
   fetch.mock.mockImplementation(async () => Response.json({ detail: 'Este tipo de arquivo não é permitido no chat.' }, { status: 400 }));
   await assert.rejects(sendInternalChatFiles('room', [file]), /tipo de arquivo/);
 });

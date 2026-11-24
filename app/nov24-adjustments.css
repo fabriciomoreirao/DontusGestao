@@ -1,0 +1,33 @@
+.analytics-filter-row{display:flex;align-items:end;flex-wrap:wrap;gap:14px;padding:16px;margin:0 0 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.analytics-filter-row>label{display:grid;flex:1 1 190px;gap:7px;min-width:0;font-size:12px;font-weight:600;color:var(--muted)}
+.analytics-filter-row :is(input,select){width:100%;min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--input);color:var(--ink);font:inherit}
+.analytics-filter-row>strong{align-self:center;font-size:13px}
+.analytics-chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:18px 0}
+.analytics-chart-panel{min-width:0;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.analytics-chart-panel>h3{margin:0 0 18px;color:var(--ink);font-size:15px}
+.analytics-table-scroll{width:100%;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.analytics-data-table{width:100%;border-collapse:collapse;color:var(--ink);font-size:13px}
+.analytics-data-table :is(th,td){padding:14px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;min-width:110px;max-width:330px;overflow-wrap:anywhere}
+.analytics-data-table thead th{background:var(--panel-elevated,var(--surface));font-size:12px;color:var(--muted);white-space:nowrap}
+.analytics-data-table td small{display:block;margin-top:5px;color:var(--muted);font-size:12px}
+.analytics-data-table details{margin-top:8px;min-width:180px}.analytics-data-table summary{cursor:pointer;color:var(--primary);padding:8px 0}
+.analytics-method-note{margin:16px 0;color:var(--muted);font-size:12px;line-height:1.6}
+.feature-adoption-bars{display:grid;gap:18px}.feature-adoption-bars>div{display:grid;grid-template-columns:1fr auto;gap:8px;font-size:13px}.feature-adoption-bars strong{font-variant-numeric:tabular-nums}.feature-adoption-bars progress{grid-column:1/-1;width:100%;height:9px;accent-color:var(--primary)}
+.lia-row-details{min-width:230px;max-width:380px}.lia-row-details>summary{cursor:pointer;color:var(--primary);padding:9px 0}.lia-row-details dl{margin:12px 0}.lia-row-details dt{font-weight:700;margin-top:10px}.lia-row-details dd{margin:3px 0;color:var(--muted);white-space:normal}.lia-row-details p{font-size:12px;white-space:normal}
+.task-card-labels .task-priority-flag{flex:0 0 auto;color:#c88a0a;fill:#facc15;vertical-align:middle}.task-priority-filter{display:inline-flex;align-items:center;gap:6px}
+.app-shell .lia-journey-module .lia-workspace-tabs>.journey-tabs{width:100%;flex-basis:100%}
+.app-shell .lia-journey-module .lia-workspace-tabs{flex-wrap:wrap}
+.app-shell .content .lia-compact-filters{align-items:end}
+.lia-compact-filters>.view-switch{display:flex;align-items:center;gap:4px;justify-content:flex-start;align-self:end;min-height:44px}
+.lia-compact-filters>.view-switch>button{display:grid;place-items:center;min-width:44px;min-height:44px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.lia-compact-filters>.view-switch>button.active{background:var(--primary);color:white;border-color:var(--primary)}
+.app-shell .content .lia-adjustment-filters{display:grid;grid-template-columns:minmax(220px,2fr) minmax(160px,1fr) minmax(210px,1.4fr) auto auto;align-items:end;gap:14px;width:100%;box-sizing:border-box}
+.app-shell .content .lia-adjustment-filters>label{display:grid;align-content:end;gap:7px;width:100%;min-width:0;margin:0}
+.app-shell .content .lia-adjustment-filters>.lia-adjustment-search{display:flex;align-items:center;min-height:44px}
+.app-shell .content .lia-adjustment-filters>label :is(input,select){min-height:44px;width:100%;box-sizing:border-box}
+.app-shell .content .lia-adjustment-filters>.lia-adjustment-search input{min-width:0;flex:1}
+.app-shell .content .lia-adjustment-filters>strong{align-self:center;white-space:nowrap}
+.lia-adjustment-view{display:flex;align-items:center;gap:4px}.lia-adjustment-view>button{min-height:44px;min-width:44px}
+.module-page-actions>.operation-indicators-button{order:-3}.module-page-actions>.lia-clients-button,.module-page-actions>.operation-general-indicators-button{order:-2}
+@media(max-width:1100px){.app-shell .content .lia-adjustment-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.app-shell .content .lia-adjustment-filters>.lia-adjustment-search{grid-column:1/-1}}
+@media(max-width:700px){.analytics-chart-grid{grid-template-columns:minmax(0,1fr)}.analytics-filter-row{padding:12px}.app-shell .content .lia-adjustment-filters{grid-template-columns:minmax(0,1fr)}.app-shell .content .lia-adjustment-filters>.lia-adjustment-search{grid-column:auto}}

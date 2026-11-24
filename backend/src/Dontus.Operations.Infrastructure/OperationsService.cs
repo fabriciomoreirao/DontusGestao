@@ -592,8 +592,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (expiresAt.HasValue && expiresAt.Value <= DateTimeOffset.UtcNow)
             throw new DomainException("A validade deve ser uma data futura.");
         var normalizedImage = imageDataUrl?.Trim() ?? "";
-        if (normalizedImage.Length > 3_000_000 || (normalizedImage.Length > 0 && !normalizedImage.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase)))
-            throw new DomainException("A imagem do aviso é inválida ou excede o limite permitido.");
+        if (normalizedImage.Length > 0 && !normalizedImage.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) && !System.Text.RegularExpressions.Regex.IsMatch(normalizedImage,@"^/api/workspace-files/[0-9a-f-]{36}$"))
+            throw new DomainException("A imagem do aviso é inválida.");
         var user = await db.Users.SingleOrDefaultAsync(entry => entry.Email == actor.Email, cancellationToken)
             ?? throw new DomainException("Usuário autenticado não encontrado.", 403);
         if (normalizedAudience == "Colaborador")

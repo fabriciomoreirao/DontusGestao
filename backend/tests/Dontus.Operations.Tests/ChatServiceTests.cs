@@ -189,6 +189,23 @@ public sealed class ChatServiceTests
         Assert.Empty(await service.GetReportAsync(DateTimeOffset.UtcNow.AddDays(-2), DateTimeOffset.UtcNow.AddDays(1), restricted));
     }
 
+    [Theory]
+    [InlineData(10, 10)]
+    [InlineData(30, 30)]
+    [InlineData(50, 50)]
+    [InlineData(100, 65)]
+    [InlineData(999, 10)]
+    public async Task Inbox_respects_allowed_page_sizes(int requested, int expected)
+    {
+        await using var db = CreateContext();
+        var (service, actor) = await InitializeAsync(db);
+        await SeedInboxAsync(db, 65);
+        var result = await service.GetModuleAsync(actor, query: new ChatInboxQuery(PageSize: requested));
+        Assert.Equal(expected, result.Conversations.Count);
+        Assert.Equal(65, result.Page.Total);
+        Assert.Equal(requested == 999 ? 10 : requested, result.Page.Size);
+    }
+
     private static async Task<ChatConversation[]> SeedInboxAsync(OperationsDbContext db, int count)
     {
         var channel = await db.ChatChannels.FirstAsync();

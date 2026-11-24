@@ -11,8 +11,8 @@ const number = (value: number) => value.toLocaleString("pt-BR", { maximumFractio
 const money = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 }).format(value / 100);
 const share = (part: number, total: number) => `${(total ? part / total * 100 : 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
-export function TrendChart({ entries, title, currency = false, unit = "registros" }: {
-  entries: Array<{ label: string; value: number }>; title: string; currency?: boolean; unit?: string;
+export function TrendChart({ entries, title, currency = false, unit = "registros", aggregation = "total" }: {
+  entries: Array<{ label: string; value: number }>; title: string; currency?: boolean; unit?: string; aggregation?: "total" | "average";
 }) {
   const id = useId().replace(/:/g, "");
   const [active, setActive] = useState<number | null>(null);
@@ -23,6 +23,7 @@ export function TrendChart({ entries, title, currency = false, unit = "registros
   const axisFormat = (value: number) => compact ? new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1,
     ...(currency ? { style: "currency", currency: "BRL" } : {}) }).format(currency ? value / 100 : value) : format(value);
   const total = data.reduce((sum, entry) => sum + entry.value, 0);
+  const summary = aggregation === "average" ? (data.length ? total / data.length : 0) : total;
   const peak = data.reduce<typeof data[number] | null>((best, entry) => !best || entry.value > best.value ? entry : best, null);
   const left = currency ? 100 : 58, right = 22, top = 34, bottom = 240, width = 720;
   const step = (width - left - right) / Math.max(1, data.length);
@@ -31,9 +32,9 @@ export function TrendChart({ entries, title, currency = false, unit = "registros
   const points = data.map((entry, index) => `${x(index)},${y(entry.value)}`).join(" ");
   const area = data.length ? `M${x(0)},${bottom} L${data.map((entry, index) => `${x(index)},${y(entry.value)}`).join(" L")} L${x(data.length - 1)},${bottom} Z` : "";
   return <div className="bi-trend-detail">
-    <div className="bi-chart-summary"><span><small>TOTAL NO GRÁFICO</small><strong>{format(total)}{!currency && <em>{unit}</em>}</strong></span><span><TrendingUp size={16} /><small>Pico: <b>{peak && total ? `${peak.label} · ${format(peak.value)}` : "sem movimentação"}</b></small></span></div>
+    <div className="bi-chart-summary"><span><small>{aggregation === "average" ? "MÉDIA NO GRÁFICO" : "TOTAL NO GRÁFICO"}</small><strong>{format(summary)}{!currency && <em>{unit}</em>}</strong></span><span><TrendingUp size={16} /><small>Pico: <b>{peak && total ? `${peak.label} · ${format(peak.value)}` : "sem movimentação"}</b></small></span></div>
     <div className="bi-plot-scroll"><svg className="bi-trend-svg" viewBox="0 0 720 284" role="img" aria-labelledby={`${id}-title`}>
-      <title id={`${id}-title`}>{title}. Total: {format(total)} {currency ? "" : unit}. Consulte os valores na tabela abaixo.</title>
+      <title id={`${id}-title`}>{title}. {aggregation === "average" ? "Média" : "Total"}: {format(summary)} {currency ? "" : unit}. Consulte os valores na tabela abaixo.</title>
       <defs><linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563eb" stopOpacity=".22" /><stop offset="100%" stopColor="#2563eb" stopOpacity=".02" /></linearGradient></defs>
       {scale.ticks.map(tick => <g key={tick}><line className="bi-grid-line" x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} /><text className="bi-axis-label" x={left - 12} y={y(tick) + 4} textAnchor="end">{axisFormat(tick)}</text></g>)}
       {area && <path d={area} fill={`url(#${id}-fill)`} />}

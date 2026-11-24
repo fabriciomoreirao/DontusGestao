@@ -1,6 +1,6 @@
 "use client";
 
-import PaginatedItems from "@/app/PaginatedItems";
+import PaginatedItems, { RecordPageSize } from "@/app/PaginatedItems";
 import MessageText from "@/app/MessageText";
 import ChatMessageComposer from "@/app/ChatMessageComposer";
 import WhatsAppTemplateSender from "./WhatsAppTemplateSender";
@@ -73,7 +73,7 @@ type WorkspaceProps = {
   refreshVersion: number;
   onUnauthorized: () => void;
 };
-type InboxFilters = { page: number; search: string; status: string; departmentId: string; isGroup: boolean; conversationId: string };
+type InboxFilters = { page: number; pageSize:number; search: string; status: string; departmentId: string; isGroup: boolean; conversationId: string };
 type Props = WorkspaceProps & {
   module: ChatModuleData; loading: boolean; filters: InboxFilters;
   onFilters: (patch: Partial<InboxFilters>) => void;
@@ -134,7 +134,7 @@ const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2)
 
 export default function ChatWorkspace(props: WorkspaceProps) {
   const [module, setModule] = useState<ChatModuleData | null>(null);
-  const [filters, setFilters] = useState<InboxFilters>(() => ({ page: 1, search: typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("phone") ?? "", status: "Todos", departmentId: "", isGroup: false, conversationId: typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("conversationId") || "" }));
+  const [filters, setFilters] = useState<InboxFilters>(() => ({ page: 1, pageSize:10, search: typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("phone") ?? "", status: "Todos", departmentId: "", isGroup: false, conversationId: typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("conversationId") || "" }));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -150,7 +150,7 @@ export default function ChatWorkspace(props: WorkspaceProps) {
     const timer = window.setTimeout(async () => {
       setLoading(true); setError("");
       try {
-        const query = new URLSearchParams({ page: String(filters.page), search: filters.search, status: filters.status, isGroup: String(filters.isGroup) });
+        const query = new URLSearchParams({ page: String(filters.page), pageSize:String(filters.pageSize), search: filters.search, status: filters.status, isGroup: String(filters.isGroup) });
         if (filters.departmentId) query.set("departmentId", filters.departmentId);
         if (filters.conversationId) query.set("conversationId", filters.conversationId);
         const response = await fetch(`/api/chat?${query}`, { cache: "no-store", signal: controller.signal });
@@ -276,7 +276,7 @@ function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities,
             if (result) setSelectedConversationIds([]);
           }}><CheckCheck size={14} /> Finalizar ({selectedConversationIds.length})</button>
         </div>}
-        <div className="conversation-list" aria-busy={loading}>
+        <RecordPageSize value={module.page.size} onChange={pageSize=>{setSelectedConversationIds([]);onFilters({page:1,pageSize})}} label="conversas"/><div className="conversation-list" aria-busy={loading}>
           {visibleConversations.length === 0 && <div className="chat-empty"><MessageCircleMore size={26} /><b>{conversationKind === "groups" ? "Nenhum grupo" : "Nenhuma conversa"}</b><span>Ajuste os filtros ou inicie um atendimento.</span></div>}
           {visibleConversations.map((conversation) => {
             const last = conversation.messages.at(-1);
@@ -299,7 +299,7 @@ function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities,
             </div>;
           })}
         </div>
-        <ChatPagination page={module.page.number} total={module.page.total} loading={loading} onPage={page => { setSelectedConversationIds([]); onFilters({ page }); }} />
+        <ChatPagination pageSize={module.page.size} page={module.page.number} total={module.page.total} loading={loading} onPage={page => { setSelectedConversationIds([]); onFilters({ page }); }} />
       </aside>
 
       <main className="chat-thread-column">
@@ -349,10 +349,10 @@ function ChatModule({ module, busy, canCreate, canEdit, canManage, capabilities,
   </section>;
 }
 
-function ChatPagination({ page, total, loading, onPage }: { page: number; total: number; loading: boolean; onPage: (page: number) => void }) {
-  const pages = Math.max(1, Math.ceil(total / 10));
+function ChatPagination({ page, total, loading, onPage, pageSize=10 }: { page: number; total: number; loading: boolean; onPage: (page: number) => void; pageSize?:number }) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
   return <nav className="chat-pagination" aria-label="Páginas de atendimentos">
-    <span role="status" aria-live="polite">{loading ? "Carregando…" : total ? `${(page - 1) * 10 + 1}–${Math.min(page * 10, total)} de ${total}` : "0 atendimentos"}</span>
+    <span role="status" aria-live="polite">{loading ? "Carregando…" : total ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} de ${total}` : "0 atendimentos"}</span>
     <div><button type="button" disabled={loading || page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft size={15} aria-hidden="true" /> Anterior</button>
       <span aria-label={`Página ${page} de ${pages}`}>{page}/{pages}</span>
       <button type="button" disabled={loading || page >= pages} onClick={() => onPage(page + 1)}>Seguinte <ChevronRight size={15} aria-hidden="true" /></button></div>
@@ -468,8 +468,9 @@ function ChatDashboard({ module, busy, has, operate, refreshVersion, onUnauthori
   }, [report, module.currentUserId, canViewAll, dateFrom, dateTo, assigneeId, subject, clientId]);
 
   const closed = conversations.filter((item) => item.closedAt);
-  const currentReportPage = Math.min(reportPage, Math.max(1, Math.ceil(conversations.length / 10)));
-  const reportRows = conversations.slice((currentReportPage - 1) * 10, currentReportPage * 10);
+  const [reportPageSize,setReportPageSize]=useState(10);
+  const currentReportPage = Math.min(reportPage, Math.max(1, Math.ceil(conversations.length / reportPageSize)));
+  const reportRows = conversations.slice((currentReportPage - 1) * reportPageSize, currentReportPage * reportPageSize);
   const durations = closed.map((item) => Math.max(0, (new Date(item.closedAt!).getTime() - new Date(item.createdAt).getTime()) / 60000));
   const averageDuration = durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0;
   const satisfaction = conversations.filter((item) => item.satisfactionScore !== null);
@@ -524,7 +525,7 @@ function ChatDashboard({ module, busy, has, operate, refreshVersion, onUnauthori
       <article className="panel chat-satisfaction-panel"><header><div><span className="eyebrow">SATISFAÇÃO</span><h3>Avaliação dos atendimentos</h3></div><strong>{satisfaction.length} resposta{satisfaction.length === 1 ? "" : "s"}</strong></header><div className="satisfaction-score"><b>{satisfaction.length ? satisfactionAverage.toFixed(1) : "—"}</b><span>{"★".repeat(Math.round(satisfactionAverage))}{"☆".repeat(5 - Math.round(satisfactionAverage))}</span></div><div className="satisfaction-bars">{[5, 4, 3, 2, 1].map((score) => { const count = satisfaction.filter((item) => item.satisfactionScore === score).length; return <div key={score}><span>{score} estrelas</span><i><b style={{ width: `${satisfaction.length ? count / satisfaction.length * 100 : 0}%` }} /></i><strong>{count}</strong></div>; })}</div></article>
     </div>
 
-    <article className="panel chat-report-table-panel"><header><div><span className="eyebrow">DETALHAMENTO</span><h3>Relatório de atendimentos</h3></div><span>{conversations.length} registro{conversations.length === 1 ? "" : "s"}</span></header><div className="chat-report-table-wrap"><table className="chat-report-table"><thead><tr><th>Protocolo</th><th>Cliente</th><th>Assunto</th><th>Colaborador</th><th>Início</th><th>Término</th><th>Duração</th><th>Transferência</th><th>Satisfação</th>{has("editReports") && <th>Ações</th>}</tr></thead><tbody>{reportRows.map((conversation) => { const duration = conversation.closedAt ? (new Date(conversation.closedAt).getTime() - new Date(conversation.createdAt).getTime()) / 60000 : null; return <tr key={conversation.id}><td><b>{conversation.protocol}</b></td><td>{conversation.contact.companyName || conversation.contact.name}</td><td>{conversation.subject}</td><td>{conversation.assigneeName || "Não atribuído"}</td><td>{formatDate(conversation.createdAt)}</td><td>{conversation.closedAt ? formatDate(conversation.closedAt) : "Em andamento"}</td><td>{duration === null ? "—" : formatDuration(duration)}</td><td>{conversation.transfers.length ? `Sim (${conversation.transfers.length})` : "Não"}</td><td>{conversation.satisfactionScore ? `${conversation.satisfactionScore}/5` : "Pendente"}</td>{has("editReports") && <td><button className="chat-report-edit" onClick={() => setEditing(conversation)}><Pencil size={13} /> Editar</button></td>}</tr>; })}{conversations.length === 0 && <tr><td colSpan={has("editReports") ? 10 : 9}><div className="chat-report-empty">Nenhum atendimento encontrado com estes filtros.</div></td></tr>}</tbody></table></div><ChatPagination page={currentReportPage} total={conversations.length} loading={reportLoading} onPage={setReportPage} /></article>
+    <article className="panel chat-report-table-panel"><header><div><span className="eyebrow">DETALHAMENTO</span><h3>Relatório de atendimentos</h3></div><span>{conversations.length} registro{conversations.length === 1 ? "" : "s"}</span></header><RecordPageSize value={reportPageSize} onChange={size=>{setReportPageSize(size);setReportPage(1)}} label="atendimentos"/><div className="chat-report-table-wrap"><table className="chat-report-table"><thead><tr><th>Protocolo</th><th>Cliente</th><th>Assunto</th><th>Colaborador</th><th>Início</th><th>Término</th><th>Duração</th><th>Transferência</th><th>Satisfação</th>{has("editReports") && <th>Ações</th>}</tr></thead><tbody>{reportRows.map((conversation) => { const duration = conversation.closedAt ? (new Date(conversation.closedAt).getTime() - new Date(conversation.createdAt).getTime()) / 60000 : null; return <tr key={conversation.id}><td><b>{conversation.protocol}</b></td><td>{conversation.contact.companyName || conversation.contact.name}</td><td>{conversation.subject}</td><td>{conversation.assigneeName || "Não atribuído"}</td><td>{formatDate(conversation.createdAt)}</td><td>{conversation.closedAt ? formatDate(conversation.closedAt) : "Em andamento"}</td><td>{duration === null ? "—" : formatDuration(duration)}</td><td>{conversation.transfers.length ? `Sim (${conversation.transfers.length})` : "Não"}</td><td>{conversation.satisfactionScore ? `${conversation.satisfactionScore}/5` : "Pendente"}</td>{has("editReports") && <td><button className="chat-report-edit" onClick={() => setEditing(conversation)}><Pencil size={13} /> Editar</button></td>}</tr>; })}{conversations.length === 0 && <tr><td colSpan={has("editReports") ? 10 : 9}><div className="chat-report-empty">Nenhum atendimento encontrado com estes filtros.</div></td></tr>}</tbody></table></div><ChatPagination pageSize={reportPageSize} page={currentReportPage} total={conversations.length} loading={reportLoading} onPage={setReportPage} /></article>
     {editing && <ReportEditModal conversation={editing} busy={busy} onClose={() => setEditing(null)} onSubmit={async (payload) => {
       const result = await operate({ action: "updateChatConversation", requireConfirmation: true, conversationId: editing.id, version: editing.version, ...payload }, "Dados do relatório atualizados.");
       if (result) { setEditing(null); setReportRevision(value => value + 1); }

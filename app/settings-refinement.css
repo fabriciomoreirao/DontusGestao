@@ -24,7 +24,8 @@
 .task-catalog-modal .catalog-field{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:0;background:transparent;border:0;min-width:0}
 .task-catalog-modal .catalog-field>span{color:var(--muted);font-size:.76rem;font-weight:650}.task-catalog-modal .catalog-field:first-child{grid-column:1/-1}
 .task-catalog-modal .catalog-field input,.task-catalog-modal .catalog-field select{width:100%;min-width:0;min-height:42px;box-sizing:border-box}
-.task-catalog-modal:has(input[name="acceptsNewTasks"]) form{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* Avoid a name-based :has(): React updates input names during text entry. */
+.task-catalog-modal form.task-status-form{grid-template-columns:repeat(2,minmax(0,1fr))}
 .task-catalog-modal .catalog-form form .catalog-field{background:transparent!important}
 .task-catalog-modal .task-sla-form{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:20px;width:100%;min-width:0}
 .task-catalog-modal .task-sla-form>.catalog-field{display:flex;flex-direction:column;grid-column:1/-1;width:100%;min-width:0;align-items:stretch}

@@ -2,6 +2,7 @@ using Amazon;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Amazon.S3.Transfer;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Microsoft.Extensions.Configuration;
@@ -34,13 +35,15 @@ public sealed class S3TaskFileStorage : ITaskFileStorage, IDisposable
         EnsureConfigured();
         try
         {
-            await client.Value.PutObjectAsync(new PutObjectRequest
+            using var transfer = new TransferUtility(client.Value);
+            await transfer.UploadAsync(new TransferUtilityUploadRequest
             {
                 BucketName = bucketName,
                 Key = key,
                 InputStream = content,
                 ContentType = contentType,
                 AutoCloseStream = false,
+                PartSize = 16L * 1024 * 1024,
                 ServerSideEncryptionMethod = ServerSideEncryptionMethod.AES256,
                 Metadata =
                 {

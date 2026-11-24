@@ -34,7 +34,7 @@ test('falhas de autorização continuam visíveis sem virar sucesso ou erro gen�
  }
 });
 test('reenvio mantém apenas arquivos pendentes e valida limites antes de iniciar',async t=>{
- assert.throws(()=>validateSuggestionFiles([{size:0}]));assert.throws(()=>validateSuggestionFiles(Array.from({length:11},()=>({size:1}))));assert.throws(()=>validateSuggestionFiles([{size:25*1024*1024+1}]));
+ assert.throws(()=>validateSuggestionFiles([{size:0}]));assert.throws(()=>validateSuggestionFiles(Array.from({length:11},()=>({size:1}))));assert.doesNotThrow(()=>validateSuggestionFiles([{size:10_000_000_000}]));
  const files=[new File(['png'],'a.png'),new File(['pdf'],'b.pdf')];const sent=[];let calls=0;
  t.mock.method(globalThis,'fetch',async()=>++calls===1?Response.json({ok:true}):Response.json({detail:'Indisponível'},{status:503}));
  await assert.rejects(sendSuggestionFiles('suggestion',files,files=>sent.push(...files)),/Indisponível/);
