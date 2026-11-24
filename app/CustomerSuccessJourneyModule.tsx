@@ -1,6 +1,7 @@
 "use client";
 
 import CustomerSelect from "@/app/CustomerSelect";
+import SaleObservation from "@/app/SaleObservation";
 
 import PaginatedItems from "@/app/PaginatedItems";
 import { AgendaTypeSelectionModal } from "@/app/AgendaModule";
@@ -54,6 +55,7 @@ type HistoryEntry = { text: string; createdAt: string; actor?: string; kind?: st
 type ScoreEvolutionEntry = { id: string; createdAt: string; actor: string; period: string; score: number; previousScore: number; featuresBase: string[]; featuresActive: string[]; featuresPlus: string[]; summary: string; kind: "Evolução de score" };
 type CsJourney = {
   trainingRequired?: boolean;
+  saleObservation?: string;
   kind: "csJourney";
   productVersion?: string;
   version?: string;
@@ -451,6 +453,7 @@ function JourneyCard({ item, journey, featureUniverse, commercial, employee, can
       <small>ID {journey.clientId || item.id.slice(0, 8)}</small>
       <div className="cs-card-owner" data-collaborator-name={item.owner}><span className={`cs-owner-avatar ${employee?.photoDataUrl ? "has-photo" : ""}`} style={employee?.photoDataUrl ? { backgroundImage: `url("${employee.photoDataUrl}")` } : undefined}>{!employee?.photoDataUrl && <UserRound size={11} />}</span>{item.owner || "Não atribuído"}</div>
       {(journey.phone || lead?.phone) && <div className="cs-card-phone"><PhoneLink phone={journey.phone || lead?.phone}/></div>}
+      <SaleObservation text={journey.saleObservation} compact />
       {(journey.labels?.length ?? 0) > 0 && <div className="cs-card-labels" aria-label="Etiquetas vinculadas">{journey.labels.map((label) => <span key={label}>{label}</span>)}</div>}
       <div className="cs-card-progress"><span><small>Status</small><strong>{journey.status || "Pendente"}</strong></span>{journey.phase === "tracking" && <span><small>Dias</small><strong>{trackedDays(journey, item)} / {journey.track === "retention" ? 30 : 90}</strong></span>}<span><small>Health</small><strong className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>{score}%</strong></span></div>
       {!isClosedCsJourney(journey.phase) && <div className={`cs-card-inactivity ${interactionDays(journey,item)>=5?"alert":""}`}><Clock3 size={13}/><strong>{interactionDays(journey,item)} dia(s)</strong> sem interação</div>}
@@ -468,7 +471,7 @@ function JourneyList({ records, sourceItems, featureUniverse, canDelete, canEdit
   return <section className="cs-client-table"><header><span>ID</span><span>CLIENTE</span><span>RESPONSÁVEL</span><span>STATUS</span><span>DIAS</span><span>HEALTH</span><span>AÇÕES</span></header>{<PaginatedItems label="acompanhamentos">{records.map(({ item, journey }) => {
     const lead = parseCommercial(sourceItems.find((entry) => entry.id === journey.sourceLeadId)?.description || "");
     const score = healthScore(journey, featureUniverse);
-    return <article data-reminder-entity-id={item.id} key={item.id}><span>{journey.clientId || item.id.slice(0, 8)}</span><span><strong>{item.title}{score < 50 && <CircleHelp className="followup-critical-icon" size={16} aria-label={`Cliente com atenção: score ${score}%`}/>}</strong>{hasTrainingPending(journey) && <span className="training-pending-badge">Treinamento em haver</span>}<small><PhoneLink phone={lead?.phone || item.customer_name}/></small></span><span data-collaborator-name={item.owner}>{item.owner}</span><span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{journey.status || PHASES.find((entry) => entry.id === journey.phase)?.label}</b></span><span>{journey.phase === "tracking" ? `${trackedDays(journey, item)} / ${journey.track === "retention" ? 30 : 90}` : "—"}</span><span className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>{score}%</span><span><button onClick={() => onOpen(item)} aria-label="Abrir cliente"><ExternalLink size={14} /></button>{canEdit && <button onClick={() => onEdit(item)} aria-label="Editar cliente"><Pencil size={14}/></button>}{canDelete && <button className="delete" onClick={() => onDelete(item)} aria-label="Excluir cliente"><Trash2 size={14} /></button>}</span></article>;
+    return <article data-reminder-entity-id={item.id} key={item.id}><span>{journey.clientId || item.id.slice(0, 8)}</span><span><strong>{item.title}{score < 50 && <CircleHelp className="followup-critical-icon" size={16} aria-label={`Cliente com atenção: score ${score}%`}/>}</strong>{hasTrainingPending(journey) && <span className="training-pending-badge">Treinamento em haver</span>}<small><PhoneLink phone={lead?.phone || item.customer_name}/></small><SaleObservation text={journey.saleObservation} compact /></span><span data-collaborator-name={item.owner}>{item.owner}</span><span><b className={`cs-stage-pill ${phaseTone(journey.phase)}`}>{journey.status || PHASES.find((entry) => entry.id === journey.phase)?.label}</b></span><span>{journey.phase === "tracking" ? `${trackedDays(journey, item)} / ${journey.track === "retention" ? 30 : 90}` : "—"}</span><span className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>{score}%</span><span><button onClick={() => onOpen(item)} aria-label="Abrir cliente"><ExternalLink size={14} /></button>{canEdit && <button onClick={() => onEdit(item)} aria-label="Editar cliente"><Pencil size={14}/></button>}{canDelete && <button className="delete" onClick={() => onDelete(item)} aria-label="Excluir cliente"><Trash2 size={14} /></button>}</span></article>;
   })}</PaginatedItems>}</section>;
 }
 
@@ -702,6 +705,7 @@ export function JourneyDrawer({ item, journey, commercialSource, catalogs, custo
       <CancellationPanel journey={journey} />
 
       <JourneyTimeline current={journey.phase} />
+      <SaleObservation text={journey.saleObservation} />
       {journey.phase === "conference" && isStrategic && <div className="cs-strategic-conference-notice"><ShieldCheck size={17} /><span><strong>Cliente estratégico</strong><small>{journey.strategicNetworkName || strategicContext?.networkName || "Conta estratégica"} · {journey.strategicUnitName || strategicContext?.unitName || item.title}</small></span></div>}
 
       {commercial && <section className="cs-drawer-panel"><header><span className="eyebrow">ORIGEM COMERCIAL</span><h3>Informações e interações preservadas</h3></header><div className="cs-info-grid"><span><small>Origem</small><strong>{commercial.source || "Não informada"}</strong></span><span><small>Vendedor</small><strong>{commercial.seller || commercialSource?.owner || "Não informado"}</strong></span><span><small>Temperatura</small><strong>{commercial.temperature || "Não definida"}</strong></span><span><small>Produtos</small><strong>{commercial.products?.length || 0}</strong></span></div></section>}

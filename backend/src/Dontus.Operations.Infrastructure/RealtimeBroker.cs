@@ -15,13 +15,13 @@ public enum RealtimeChange { None = 0, Operations = 1, InternalChat = 2, Presenc
 // Notifications carry invalidation flags only. Data continues through authorized HTTP projections.
 public sealed class RealtimeBroker(TimeProvider? clock = null)
 {
-    private sealed record ConnectionPresence(Guid UserId, DateTimeOffset At, bool Connected);
+    private sealed record ConnectionPresence(Guid UserId, DateTimeOffset At, bool Connected, DateTimeOffset? GraceUntil = null);
     private readonly ConcurrentDictionary<Guid, ConnectionPresence> presence = new();
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> lastSeen = new();
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> lastPresenceBroadcast = new();
     private DateTimeOffset Now => (clock ?? TimeProvider.System).GetUtcNow();
     public UserPresenceDto GetPresence(Guid userId) => new(userId,
-        presence.Values.Any(session => session.UserId == userId && session.Connected && Now - session.At < TimeSpan.FromSeconds(75)),
+        presence.Values.Any(session => session.UserId == userId && (session.Connected && Now - session.At < TimeSpan.FromSeconds(75) || !session.Connected && session.GraceUntil > Now)),
         lastSeen.TryGetValue(userId, out var at) ? at : null);
     public UserPresenceDto[] GetPresence() => lastSeen.Keys.Select(GetPresence).ToArray();
     private readonly ConcurrentDictionary<Guid, Subscription> subscribers = new();
@@ -84,7 +84,8 @@ public sealed class RealtimeBroker(TimeProvider? clock = null)
                 || !json.RootElement.TryGetProperty("online", out var online) || online.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return;
             var before = GetPresence(userId.Value).IsOnline;
             var next = new ConnectionPresence(userId.Value, at, online.GetBoolean());
-            presence.AddOrUpdate(connectionId, next, (_, previous) => at >= previous.At ? next : previous);
+            presence.AddOrUpdate(connectionId, next, (_, previous) => at < previous.At ? previous : next.Connected ? next
+                : next with { GraceUntil = previous.Connected && at - previous.At < TimeSpan.FromSeconds(75) ? at.AddSeconds(30) : previous.GraceUntil });
             lastSeen.AddOrUpdate(userId.Value, at, (_, previous) => at > previous ? at : previous);
             foreach (var stale in presence.Where(entry => Now - entry.Value.At > TimeSpan.FromMinutes(10))) presence.TryRemove(stale.Key, out _);
             var due = !lastPresenceBroadcast.TryGetValue(userId.Value, out var broadcastAt) || at - broadcastAt >= TimeSpan.FromSeconds(30);

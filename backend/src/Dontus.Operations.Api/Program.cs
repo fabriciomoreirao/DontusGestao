@@ -30,6 +30,7 @@ builder.Services.AddAuthorization();
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = null);
 builder.Services.AddHealthChecks();
 builder.Services.AddScoped<WorkspaceFileStorage>();
+builder.Services.AddScoped<PublicRecruitmentService>();
 builder.Services.Configure<FormOptions>(options =>
 {
     options.MultipartBodyLengthLimit = long.MaxValue;
@@ -68,6 +69,7 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 app.MapWorkspaceFiles();
+app.MapPublicRecruitment();
 
 app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 {

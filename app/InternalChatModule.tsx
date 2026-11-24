@@ -110,9 +110,9 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const [imageDrafts, setImageDrafts] = useState<Record<string, ImageDraft[]>>({});
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
-  const [groupsView,setGroupsView]=useState(Boolean(module.rooms.find(room=>room.id===initialRoomId)?.isGroup));
+  const [groupsOnly,setGroupsOnly]=useState(false);
   const selectedInitialRoom=useRef<string|undefined>(undefined);
-  useEffect(()=>{if(!initialRoomId||selectedInitialRoom.current===initialRoomId)return;const room=module.rooms.find(entry=>entry.id===initialRoomId);if(room){selectedInitialRoom.current=initialRoomId;setGroupsView(room.isGroup);setArchivedView(room.isArchived)}},[initialRoomId,module.rooms]);
+  useEffect(()=>{if(!initialRoomId||selectedInitialRoom.current===initialRoomId)return;const room=module.rooms.find(entry=>entry.id===initialRoomId);if(room){selectedInitialRoom.current=initialRoomId;setGroupsOnly(false);setArchivedView(room.isArchived)}},[initialRoomId,module.rooms]);
   const [managingMembers,setManagingMembers]=useState(false);
   const [stickersOpen, setStickersOpen] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
@@ -133,7 +133,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const [sendError, setSendError] = useState("");
 
   const canCreateGroup = canCreate && Boolean(module.users.find(user => user.id === module.currentUserId)?.isCoordinator);
-  const conversations = useMemo(() => buildConversations(module, archivedView).filter(entry => archivedView || entry.isGroup === groupsView).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, groupsView, pinnedConversationKeys]);
+  const conversations = useMemo(() => buildConversations(module, archivedView).filter(entry => !groupsOnly || entry.isGroup).sort((a,b)=>Number(pinnedConversationKeys.includes(b.key))-Number(pinnedConversationKeys.includes(a.key))), [module, archivedView, groupsOnly, pinnedConversationKeys]);
   const presenceNow=useActivityClock();
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
@@ -142,6 +142,9 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
   const effectiveSelectedKey = filteredConversations.some((entry) => entry.key === selectedKey) ? selectedKey : "";
   const selectedConversation = conversations.find((entry) => entry.key === effectiveSelectedKey);
   const selectedRoom = selectedConversation?.room;
+  useLayoutEffect(() => {
+    if (effectiveSelectedKey && canCreate) composerInput.current?.focus({ preventScroll: true });
+  }, [effectiveSelectedKey, canCreate]);
   const voice=useVoiceRecorder(effectiveSelectedKey);
   const publishTyping=useChatTypingPublisher(selectedRoom?.id,canCreate&&voice.state!=="recording"&&voice.state!=="requesting");
   const pastedImages = imageDrafts[effectiveSelectedKey] ?? [];
@@ -411,17 +414,16 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     <section className={`internal-chat-shell ${selectedKey ? "show-conversation" : ""}`}>
       <aside className="internal-chat-sidebar">
         <div className="internal-chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar colaboradores ou grupos..." /></div>
-        <div className="internal-chat-view-tabs">
-          <button className={!archivedView&&!groupsView ? "active" : ""} onClick={() => { setArchivedView(false);setGroupsView(false); setSelectedKey(""); }}>Conversas<UnreadBadge count={unreadTotals.conversations} /></button>
-          <button className={!archivedView&&groupsView?"active":""} onClick={()=>{setArchivedView(false);setGroupsView(true);setSelectedKey("")}}>Grupos<UnreadBadge count={unreadTotals.groups} /></button>
-          <button className={archivedView ? "active" : ""} onClick={() => { setArchivedView(true); setGroupsView(false); setSelectedKey(""); }}>Arquivadas<UnreadBadge count={unreadTotals.archived} /></button>
+        <div className="internal-chat-list-filters" role="group" aria-label="Filtros das conversas">
+          <button type="button" className={groupsOnly ? "active" : ""} aria-pressed={groupsOnly} onClick={() => setGroupsOnly(value => !value)}><UsersRound size={15}/>Somente grupos<UnreadBadge count={unreadTotals.groups} /></button>
+          <button type="button" className={archivedView ? "active" : ""} aria-pressed={archivedView} onClick={() => setArchivedView(value => !value)}><Archive size={15}/>Arquivadas<UnreadBadge count={unreadTotals.archived} /></button>
         </div>
         <span className="sr-only" role="status" aria-atomic="true">{unreadTotals.conversations} mensagens não lidas em conversas, {unreadTotals.groups} em grupos e {unreadTotals.archived} em arquivadas.</span>
         <div className="internal-chat-room-list">
           {filteredConversations.length === 0 && <div className="internal-chat-empty-list"><Archive size={24} /><span>{archivedView ? "Nenhuma conversa arquivada." : "Nenhum colaborador encontrado."}</span></div>}
           {filteredConversations.map((entry) => {
             const last = entry.room?.messages.at(-1);
-            return <button className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`} onClick={() => setSelectedKey(entry.key)} key={entry.key}>
+            return <button className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`} onClick={() => { setSelectedKey(entry.key); if (entry.key === effectiveSelectedKey) composerInput.current?.focus({ preventScroll: true }); }} key={entry.key}>
               <Avatar name={entry.name} photo={entry.photoDataUrl} group={entry.isGroup} />
               <span className="internal-chat-room-copy"><strong>{userHasBirthdayToday(entry.user) && <BirthdayGift name={entry.name} />}{pinnedConversationKeys.includes(entry.key)&&<Pin size={12}/>}<span>{entry.name}</span>{entry.user&&<PresenceBadge user={entry.user} now={presenceNow}/>}</strong><small>{last ? messagePreview(last) : entry.isGroup ? "Grupo privado" : entry.user?.jobTitle || entry.user?.departmentName || "Inicie uma conversa"}</small></span>
               <span className="internal-chat-room-meta">{entry.room && <time>{chatListDateLabel(entry.room.lastMessageAt,presenceNow)}</time>}{!!entry.room?.unreadCount && <b>{entry.room.unreadCount}</b>}</span>
@@ -473,7 +475,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     </section>
     {appearanceOpen && <ChatAppearanceModal appearance={appearance} userId={module.currentUserId} onSave={setAppearance} onClose={() => setAppearanceOpen(false)} />}
     {managingMembers&&selectedRoom?.isGroup&&selectedRoom.canManage&&canEdit&&<ManageGroupMembersModal module={module} room={selectedRoom} busy={busy} onClose={()=>setManagingMembers(false)} onAdd={async ids=>{if(await operate({action:"addInternalChatMembers",roomId:selectedRoom.id,memberUserIds:ids},"Participantes adicionados."))setManagingMembers(false)}}/>}
-    {creatingGroup && canCreateGroup && <CreateGroupModal module={module} busy={busy} onClose={() => setCreatingGroup(false)} onCreate={async (payload) => { const result = await operate({ action: "createInternalChatRoom", isGroup: true, ...payload }, "Grupo criado com sucesso."); if (result) { setCreatingGroup(false); if (result.id){setGroupsView(true);setArchivedView(false);setSelectedKey(result.id);} } }} />}
+    {creatingGroup && canCreateGroup && <CreateGroupModal module={module} busy={busy} onClose={() => setCreatingGroup(false)} onCreate={async (payload) => { const result = await operate({ action: "createInternalChatRoom", isGroup: true, ...payload }, "Grupo criado com sucesso."); if (result) { setCreatingGroup(false); if (result.id){setGroupsOnly(false);setArchivedView(false);setSelectedKey(result.id);} } }} />}
     {pollOpen && selectedRoom?.isGroup && <CreatePollModal busy={busy} onClose={() => setPollOpen(false)} onCreate={createPoll} />}
     {mediaPreview && <div className="internal-chat-media-backdrop" onMouseDown={(event)=>event.currentTarget===event.target&&setMediaPreview(null)}><section className="internal-chat-media-preview" role="dialog" aria-modal="true"><header><strong>{mediaPreview.name}</strong><button type="button" onClick={()=>setMediaPreview(null)} aria-label="Fechar"><X size={18}/></button></header>{mediaPreview.video?<video controls autoPlay><source src={mediaPreview.url}/></video>:<img src={mediaPreview.url} alt={mediaPreview.name}/>}<a href={mediaPreview.url} target="_blank" rel="noreferrer">Abrir em nova guia</a></section></div>}
   </div>;
