@@ -20,11 +20,14 @@ test('Enter envia; Shift, composição de caracteres e repetição de tecla pres
   for(const flag of ['shiftKey','ctrlKey','altKey','metaKey','isComposing','repeat'])assert.equal(isCommentSubmitKey({...event,[flag]:true}),false,flag);
   assert.equal(isCommentSubmitKey({...event,keyCode:229}),false);
 });
-test('a presença altera somente os usuários e expira após a perda de conexão',()=>{
+test('a presença segue a conexão do sistema informada pelo servidor sem depender do relógio do navegador',()=>{
   const module={users:[{id:'ana',name:'Ana'}],rooms:[{id:'private-room'}]};const now=Date.parse('2026-11-03T12:00:00Z');
   const updated=applyChatPresence(module,[{userId:'ana',isOnline:true,lastSeenAt:new Date(now).toISOString()}]);
-  assert.equal(updated.rooms,module.rooms);assert.equal(userIsOnline(updated.users[0],now),true);assert.equal(userIsOnline(updated.users[0],now+76000),false);
+  assert.equal(updated.rooms,module.rooms);assert.equal(userIsOnline(updated.users[0],now),true);assert.equal(userIsOnline(updated.users[0],now+76000),true);
+  assert.equal(userIsOnline(updated.users[0],now-60000),true);
+  assert.equal(userIsOnline(applyChatPresence(updated,[{userId:'ana',isOnline:false,lastSeenAt:new Date(now).toISOString()}]).users[0],now),false);
   assert.equal(applyChatPresence(updated,[{userId:'ana',isOnline:true,lastSeenAt:new Date(now).toISOString()}]),updated);
+  assert.equal(applyChatPresence(updated,[{userId:'ana',isOnline:false,lastSeenAt:new Date(now-1000).toISOString()}]),updated);
 });
 const queue=(sector='support',responsible='')=>({id:'queue',module:'waitingQueue',title:'Clínica',owner:'Remetente de outro setor',team:sector==='support'?'Suporte':'Comercial',record_type:'Encaminhamento',created_by:'sender@example.test',created_at:'2026-11-03T11:00:00Z',updated_at:'2026-11-03T11:00:00Z',description:JSON.stringify({kind:'waitingQueue',state:'waiting',departmentId:sector,departmentName:sector==='support'?'Suporte':'Comercial',responsibleUserId:responsible,responsibleName:''})});
 test('fila compartilhada conta e notifica só o setor de destino, mesmo que o proprietário seja o remetente',()=>{

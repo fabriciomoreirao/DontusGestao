@@ -1,0 +1,7 @@
+.app-shell .content .sale-observation{display:grid;gap:5px;min-width:0;max-width:100%;margin:10px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);text-align:left;box-sizing:border-box}
+.app-shell .content .sale-observation>strong{display:block;font-size:12px;line-height:1.4;white-space:normal;overflow:visible}
+.app-shell .content .sale-observation>span{font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.app-shell .content .sale-observation.compact{margin:4px 0;padding:9px}
+.app-shell .content .sale-observation.compact>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+.app-shell .content .enterprise-unit-tabs>button:has(>.sale-observation){flex-wrap:wrap}
+.app-shell .content .enterprise-unit-tabs>button>.sale-observation{flex-basis:100%;width:100%}

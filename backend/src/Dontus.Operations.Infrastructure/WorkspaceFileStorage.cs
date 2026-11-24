@@ -113,6 +113,17 @@ public sealed class WorkspaceFileStorage(IConfiguration configuration, Operation
         return (entry, PathFor(id, ".bin"));
     }
 
+    public async Task<WorkspaceFile> RequireRecruitmentFileAsync(Guid processId, string url, CancellationToken ct)
+    {
+        const string prefix = "/api/workspace-files/";
+        if (!url.StartsWith(prefix, StringComparison.Ordinal) || !Guid.TryParse(url[prefix.Length..], out var id))
+            throw new DomainException("Envie o currículo antes de concluir a candidatura.");
+        var entry = await ReadAsync(id, ct);
+        if (!entry.Complete || entry.Module != "admin" || entry.SourceId != processId)
+            throw new DomainException("O currículo não pertence a este processo seletivo.");
+        return entry;
+    }
+
     private async Task RequireSourceAsync(WorkspaceFile entry, ActorContext actor, CancellationToken ct)
     {
         if (!entry.SourceId.HasValue) return;

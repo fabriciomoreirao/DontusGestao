@@ -24,7 +24,9 @@ public sealed class RealtimeBrokerTests
         clock.Now = clock.Now.AddSeconds(1); broker.Publish(Presence(first, user, false, clock.Now));
         Assert.True(broker.GetPresence(user).IsOnline); Assert.Equal(RealtimeChange.None, viewer.Take());
         broker.Publish(Presence(second, user, false, clock.Now));
-        Assert.False(broker.GetPresence(user).IsOnline); Assert.Equal(RealtimeChange.Presence, viewer.Take()); Assert.Equal(cursor, broker.Cursor);
+        Assert.True(broker.GetPresence(user).IsOnline); Assert.Equal(RealtimeChange.None, viewer.Take());
+        clock.Now = clock.Now.AddSeconds(31);
+        Assert.False(broker.GetPresence(user).IsOnline); Assert.Equal(cursor, broker.Cursor);
     }
 
     [Fact]
@@ -47,7 +49,32 @@ public sealed class RealtimeBrokerTests
         broker.Publish(Presence(connection, user, true, clock.Now)); Assert.True(broker.GetPresence(user).IsOnline);
         clock.Now = clock.Now.AddSeconds(1); broker.Publish(Presence(connection, user, false, clock.Now));
         broker.Publish(Presence(connection, user, true, opened));
-        Assert.False(broker.GetPresence(user).IsOnline); Assert.Equal(clock.Now, broker.GetPresence(user).LastSeenAt);
+        Assert.True(broker.GetPresence(user).IsOnline); Assert.Equal(clock.Now, broker.GetPresence(user).LastSeenAt);
+        clock.Now = clock.Now.AddSeconds(31);
+        Assert.False(broker.GetPresence(user).IsOnline);
+    }
+
+    [Fact]
+    public void Reconnecting_while_navigating_does_not_flash_offline()
+    {
+        var clock = new Clock(); var broker = new RealtimeBroker(clock); broker.SetAvailable(true);
+        using var viewer = broker.Subscribe(Guid.NewGuid(), true);
+        var user = Guid.NewGuid(); var first = Guid.NewGuid();
+        broker.Publish(Presence(first, user, true, clock.Now)); viewer.Take();
+        clock.Now = clock.Now.AddSeconds(1); broker.Publish(Presence(first, user, false, clock.Now));
+        Assert.True(broker.GetPresence(user).IsOnline); Assert.Equal(RealtimeChange.None, viewer.Take());
+        clock.Now = clock.Now.AddSeconds(5); broker.Publish(Presence(Guid.NewGuid(), user, true, clock.Now));
+        Assert.True(broker.GetPresence(user).IsOnline); Assert.Equal(RealtimeChange.None, viewer.Take());
+        clock.Now = clock.Now.AddSeconds(76); Assert.False(broker.GetPresence(user).IsOnline);
+    }
+
+    [Fact]
+    public void A_disconnect_without_an_active_connection_does_not_make_a_user_online()
+    {
+        var clock = new Clock(); var broker = new RealtimeBroker(clock); var user = Guid.NewGuid(); var connection = Guid.NewGuid();
+        broker.Publish(Presence(connection, user, false, clock.Now)); Assert.False(broker.GetPresence(user).IsOnline);
+        broker.Publish(Presence(connection, user, true, clock.Now)); clock.Now = clock.Now.AddSeconds(76);
+        broker.Publish(Presence(connection, user, false, clock.Now)); Assert.False(broker.GetPresence(user).IsOnline);
     }
     [Fact]
     public void Private_chat_invalidations_only_reach_participants_with_chat_access()
