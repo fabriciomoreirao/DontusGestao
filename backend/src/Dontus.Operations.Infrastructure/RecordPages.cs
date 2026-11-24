@@ -28,7 +28,7 @@ public sealed class RecordPages(OperationsDbContext db, OperationsService operat
         {
             case "chatReport":
                 if(request.Path.Length != 3 || !DateTimeOffset.TryParse(request.Path[1],out var from) || !DateTimeOffset.TryParse(request.Path[2],out var to)) throw new DomainException("Período obrigatório.");
-                resource = await chat.GetReportAsync(from,to,actor,ct); skip = 3; break;
+                resource = await chat.GetReportAsync(from.ToUniversalTime(),to.ToUniversalTime(),actor,ct); skip = 3; break;
             case "whatsAppDeliveries":
                 actor.RequirePermission("chat","manage");actor.RequireCapability("chat","manageWhatsApp");
                 if(request.Path.Length != 2 || !Guid.TryParse(request.Path[1],out var campaignId)) throw new DomainException("Campanha obrigatória.");
