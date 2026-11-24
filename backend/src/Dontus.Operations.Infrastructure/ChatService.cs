@@ -113,7 +113,7 @@ public sealed partial class ChatService(
             filtered = filtered.Where(x => x.DepartmentId == query.DepartmentId.Value);
         var contactsCount = await filtered.CountAsync(x => !x.IsGroup, cancellationToken);
         var groupsCount = await filtered.CountAsync(x => x.IsGroup, cancellationToken);
-        const int pageSize = 10;
+        var pageSize = query.PageSize is 10 or 30 or 50 or 100 ? query.PageSize : 10;
         var total = query.IsGroup ? groupsCount : contactsCount;
         var page = Math.Clamp(query.Page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)));
         var conversations = await filtered.Where(x => x.IsGroup == query.IsGroup)
@@ -899,8 +899,8 @@ public sealed partial class ChatService(
     {
         actor.RequirePermission("chat", "edit");
         if (fileStorage is null) throw new DomainException("O armazenamento de arquivos do chat não está configurado.", 503);
-        if (command.SizeBytes <= 0 || command.SizeBytes > 50 * 1024 * 1024)
-            throw new DomainException("O arquivo deve possuir até 50 MB.");
+        if (command.SizeBytes <= 0)
+            throw new DomainException("Selecione um arquivo não vazio.");
         var conversation = await AccessibleConversationAsync(command.ConversationId, actor, cancellationToken);
         var user = await CurrentUserAsync(actor, cancellationToken);
         var safeName = Path.GetFileName(command.FileName);

@@ -72,11 +72,11 @@ public sealed class LiaFormFileTests
         if (scenario == "textQuestion") files = [Upload(question: "name")];
         if (scenario == "forgedAnswer") answers["files"] = "arquivo.pdf";
         if (scenario == "empty") files = [Upload() with { SizeBytes = 0 }];
-        if (scenario == "oversize") files = [Upload() with { SizeBytes = LiaFormService.MaximumFileBytes + 1 }];
+        if (scenario == "oversize") files = [Upload() with { SizeBytes = 50L * 1024 * 1024 + 1 }];
         if (scenario == "truncated") files = [Upload() with { SizeBytes = 8 }];
         if (scenario == "tooManyPerQuestion") files = Enumerable.Range(0, 11).Select(_ => Upload()).ToList();
         if (scenario == "tooManyTotal") files = Enumerable.Range(0, 21).Select(_ => Upload()).ToList();
-        if (scenario == "tooLargeTotal") files = Enumerable.Range(0, 3).Select(_ => Upload() with { SizeBytes = LiaFormService.MaximumFileBytes }).ToList();
+        if (scenario == "tooLargeTotal") files = Enumerable.Range(0, 3).Select(_ => Upload() with { SizeBytes = 50L * 1024 * 1024 }).ToList();
         await Assert.ThrowsAsync<DomainException>(() => service.SubmitAsync(token, new(answers), default, files));
         Assert.Null((await db.LiaFormRequests.SingleAsync()).SubmittedAt);
         Assert.Empty(await db.LiaFormAttachments.AsNoTracking().ToListAsync());

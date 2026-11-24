@@ -1,4 +1,5 @@
 "use client";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import type { ChatMention } from "@/lib/chat-mentions";
 import ChatTypingIndicator from "@/app/ChatTypingIndicator";
@@ -327,9 +328,9 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     if (!images.length) return;
     event.preventDefault();
     if (!canCreate || busy || sendingRef.current) return;
-    const accepted = images.filter(file => file.size > 0 && file.size <= 50 * 1024 * 1024);
+    const accepted = images.filter(file => file.size > 0);
     const capacity = Math.max(0, 10 - pastedImages.length);
-    setSendError(accepted.length !== images.length ? "Imagens vazias ou maiores que 50 MB não podem ser enviadas."
+    setSendError(accepted.length !== images.length ? "Imagens vazias ou inválidos não podem ser enviadas."
       : accepted.length > capacity ? "É permitido preparar até 10 imagens por envio." : "");
     const drafts = accepted.slice(0, capacity).map((file, index) => ({
       id: typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : `pasted-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`, file,
@@ -374,7 +375,7 @@ export default function InternalChatModule({ module, employees = [], busy, canCr
     try {
     const roomId = await ensureRoom();
     if (!roomId) return false;
-    const accepted = Array.from(files).filter((file) => file.size > 0 && file.size <= 50 * 1024 * 1024);
+    const accepted = Array.from(files).filter((file) => file.size > 0);
     if (accepted.length !== files.length) setSendError("Arquivos vazios ou maiores que 50 MB não podem ser enviados.");
     const sent=accepted.length>0&&await uploadAttachments(roomId, accepted, undefined, replyToMessageId);
     if(sent)clearReply(effectiveSelectedKey, replyToMessageId);
@@ -591,8 +592,8 @@ function Avatar({ name, photo, group = false, coordinator = false }: { name: str
 }
 
 async function readImage(file?: File) {
-  if (!file || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) || file.size > 2 * 1024 * 1024) return null;
-  return await new Promise<string | null>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result ?? "")); reader.onerror = () => resolve(null); reader.readAsDataURL(file); });
+  if (!file || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) return null;
+  try{return await workspaceFileUrl(file,{module:"profile"})}catch{return null}
 }
 
 function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?"; }

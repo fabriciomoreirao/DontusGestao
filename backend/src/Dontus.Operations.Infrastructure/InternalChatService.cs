@@ -14,7 +14,7 @@ public sealed class InternalChatService(
     private sealed record PollPayload(string Question, List<PollOption> Options);
     private sealed record PinPayload(Guid MessageId, bool Pinned);
     private static readonly JsonSerializerOptions ChatJsonOptions = new(JsonSerializerDefaults.Web);
-    private const long MaxAttachmentBytes = 50 * 1024 * 1024;
+    private const long MaxAttachmentBytes = long.MaxValue;
     private readonly string filesRoot = Path.GetFullPath(configuration["InternalChat:FilesPath"]
         ?? Path.Combine(AppContext.BaseDirectory, "internal-chat-files"));
 
@@ -390,7 +390,7 @@ public sealed class InternalChatService(
         var room = await GetMemberRoomAsync(command.RoomId, actorUser.Id, cancellationToken);
         await ValidateReplyAsync(room.Id, actorUser.Id, command.ReplyToMessageId, cancellationToken);
         if (command.SizeBytes <= 0 || command.SizeBytes > MaxAttachmentBytes)
-            throw new DomainException("Envie um arquivo de até 50 MB.");
+            throw new DomainException("Selecione um arquivo não vazio.");
         var contentType = string.IsNullOrWhiteSpace(command.ContentType)
             ? "application/octet-stream" : command.ContentType.Trim().ToLowerInvariant();
         if (contentType.Length > 200 || !System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(contentType, out _))
@@ -403,8 +403,8 @@ public sealed class InternalChatService(
         var storageKey = $"{room.Id:N}/{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
         var fullPath = ResolveStoragePath(storageKey);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        await using (var target = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
-            await command.Content.CopyToAsync(target, cancellationToken);
+        try { await using var target = new FileStream(fullPath,FileMode.CreateNew,FileAccess.Write,FileShare.None,81920,true);await AttachmentSpool.CopyVerifiedAsync(command.Content,target,command.SizeBytes,cancellationToken); }
+        catch { File.Delete(fullPath);throw; }
 
         var type = contentType.StartsWith("image/", StringComparison.Ordinal) ? "image"
             : contentType.StartsWith("video/", StringComparison.Ordinal) ? "video"
@@ -663,12 +663,13 @@ public sealed class InternalChatService(
     {
         var photo = value?.Trim() ?? "";
         if (photo.Length == 0) return "";
-        if (photo.Length > 3_000_000 ||
+        if(System.Text.RegularExpressions.Regex.IsMatch(photo,@"^/api/workspace-files/[0-9a-f-]{36}$"))return photo;
+        if (
             !(photo.StartsWith("data:image/png;base64,", StringComparison.OrdinalIgnoreCase) ||
               photo.StartsWith("data:image/jpeg;base64,", StringComparison.OrdinalIgnoreCase) ||
               photo.StartsWith("data:image/webp;base64,", StringComparison.OrdinalIgnoreCase) ||
               photo.StartsWith("data:image/gif;base64,", StringComparison.OrdinalIgnoreCase)))
-            throw new DomainException("Envie uma imagem PNG, JPG, WEBP ou GIF de até 2 MB.");
+            throw new DomainException("Envie uma imagem PNG, JPG, WEBP ou GIF.");
         return photo;
     }
 

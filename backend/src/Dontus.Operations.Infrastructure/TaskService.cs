@@ -10,7 +10,7 @@ namespace Dontus.Operations.Infrastructure;
 public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileStorage = null, ILogger<TaskService>? logger = null) : ITaskService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private const long MaximumAttachmentSizeBytes = 25 * 1024 * 1024;
+    private const long MaximumAttachmentSizeBytes = long.MaxValue;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -1219,7 +1219,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (command.SizeBytes <= 0)
             throw new DomainException("O arquivo está vazio.");
         if (command.SizeBytes > MaximumAttachmentSizeBytes)
-            throw new DomainException("Cada anexo pode possuir no máximo 25 MB.");
+            throw new DomainException("O arquivo excedeu o tamanho informado.");
         var attachment = new TaskAttachment
         {
             TaskId = task.Id,
@@ -1232,18 +1232,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             SizeBytes = command.SizeBytes,
             StorageKey = $"tasks/{task.Id:N}/{Guid.NewGuid():N}/{Uri.EscapeDataString(fileName)}",
         };
-        // Retain a bounded copy: S3 can consume part of a stream before rejecting its credentials.
-        await using var buffered = new MemoryStream((int)command.SizeBytes);
-        var buffer = new byte[81920];
-        int read;
-        while ((read = await command.Content.ReadAsync(buffer, cancellationToken)) > 0)
-        {
-            if (buffered.Length + read > MaximumAttachmentSizeBytes)
-                throw new DomainException("Cada anexo pode possuir no máximo 25 MB.");
-            await buffered.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-        }
-        if (buffered.Length != command.SizeBytes)
-            throw new DomainException("O tamanho do arquivo recebido não corresponde ao informado. Envie o arquivo novamente.");
+        await using var buffered = await AttachmentSpool.ReadAsync(command.Content, command.SizeBytes, cancellationToken);
         var storedInS3 = false;
         if (fileStorage is not null)
         {
@@ -1262,7 +1251,10 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         {
             db.TaskAttachments.Add(attachment);
             if (!storedInS3)
-                db.TaskAttachmentContents.Add(new TaskAttachmentContent { AttachmentId = attachment.Id, Content = buffered.ToArray() });
+            {
+                if(command.SizeBytes <= AttachmentSpool.DatabaseFallbackBytes)db.TaskAttachmentContents.Add(new TaskAttachmentContent { AttachmentId = attachment.Id, Content = await AttachmentSpool.BytesAsync(buffered,cancellationToken) });
+                else attachment.StorageKey=await AttachmentSpool.PersistAsync(buffered,cancellationToken);
+            }
             AddHistory(task.Id, user.Id, "attachment_added", $"Anexo incluído: {fileName}",
                 null, new { attachment.Id, attachment.FileName, attachment.SizeBytes });
             await db.SaveChangesAsync(cancellationToken);
@@ -1270,6 +1262,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         }
         catch
         {
+            if(AttachmentSpool.Resolve(attachment.StorageKey) is not null)AttachmentSpool.Delete(attachment.StorageKey);
             if (storedInS3)
             {
                 try { await fileStorage!.DeleteAsync(attachment.StorageKey, cancellationToken); }
@@ -1289,6 +1282,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
             .SingleOrDefaultAsync(x => x.Id == attachmentId, cancellationToken)
             ?? throw new DomainException("Anexo não encontrado.", 404);
         await LoadVisibleTaskAsync(attachment.TaskId, user, actor, cancellationToken);
+        if(AttachmentSpool.Resolve(attachment.StorageKey) is { } path)return new TaskAttachmentDownloadDto(""){FilePath=path,ContentType=attachment.ContentType,FileName=attachment.FileName};
         var content = await db.TaskAttachmentContents.AsNoTracking().Where(x => x.AttachmentId == attachmentId)
             .Select(x => x.Content).SingleOrDefaultAsync(cancellationToken);
         if (content is not null)
@@ -1324,6 +1318,7 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         db.TaskAttachments.Remove(attachment);
         AddHistory(task.Id, user.Id, "attachment_removed", $"Anexo removido: {fileName}", null, new { attachmentId, fileName });
         await db.SaveChangesAsync(cancellationToken);
+        if(AttachmentSpool.Resolve(storageKey) is not null){AttachmentSpool.Delete(storageKey);return;}
         if (databaseContent is null && fileStorage is not null && !Uri.TryCreate(storageKey, UriKind.Absolute, out _))
         {
             try { await fileStorage.DeleteAsync(storageKey, cancellationToken); }

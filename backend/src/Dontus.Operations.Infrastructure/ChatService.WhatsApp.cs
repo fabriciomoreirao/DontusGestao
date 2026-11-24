@@ -126,8 +126,8 @@ public sealed partial class ChatService
         RequireWhatsAppAdmin(actor);
         var number = await NumberAsync(numberId, ct);
         if (!Regex.IsMatch(number.MetaAppId, "^[0-9]+$")) throw new DomainException("Configure o App ID da Meta nesta conexão.");
-        if (bytes.Length is < 1 or > 10_000_000 || contentType is not ("image/jpeg" or "image/png" or "video/mp4" or "application/pdf"))
-            throw new DomainException("Envie JPG, PNG, MP4 ou PDF com até 10 MB.");
+        if (bytes.Length < 1 || contentType is not ("image/jpeg" or "image/png" or "video/mp4" or "application/pdf"))
+            throw new DomainException("Envie JPG, PNG, MP4 ou PDF em formato válido.");
         using var session = await SendMetaAsync(HttpMethod.Post, $"{number.ApiVersion}/{number.MetaAppId}/uploads?file_name={Uri.EscapeDataString(name)}&file_length={bytes.Length}&file_type={Uri.EscapeDataString(contentType)}", Token(number), null, ct);
         var sessionId = Text(session.RootElement, "id");
         if (sessionId == "") throw new DomainException("A Meta não iniciou o upload.", 502);

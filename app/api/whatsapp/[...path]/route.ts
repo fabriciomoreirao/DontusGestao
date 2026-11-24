@@ -16,8 +16,8 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   if (session) headers.set("x-local-session", decodeURIComponent(session));
   try {
     const response = await fetch(`${(process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "")}/api/whatsapp/${route}${new URL(request.url).search}`, {
-      method: request.method, headers, body: request.method === "GET" ? undefined : await request.arrayBuffer(), cache: "no-store", signal: apiRequestSignal(request),
-    });
+      method: request.method, headers, body: request.method === "GET" ? undefined : request.body, cache: "no-store", signal:request.signal,duplex:"half",
+    } as RequestInit);
     return apiResponse(request, response);
   } catch { return Response.json({ detail: "A integração WhatsApp não respondeu. Tente novamente." }, { status: 503 }); }
 }

@@ -9,7 +9,6 @@ public static class CommentFiles
     public static string Validate(string? input, int maximumTextLength = 3000)
     {
         var body=input??"";
-        if(body.Length>22*1024*1024)throw new DomainException("Os anexos do comentário excedem o limite permitido.");
         var encodedBody=body.TrimEnd();
         var index=encodedBody.LastIndexOf(Marker,StringComparison.Ordinal);
         if(index<0||!encodedBody.EndsWith("]]",StringComparison.Ordinal))
@@ -30,18 +29,19 @@ public static class CommentFiles
                 var data=file.GetProperty("dataUrl").GetString()??"";
                 var size=file.GetProperty("size").GetInt64();
                 var mime=file.GetProperty("type").GetString()??"";
+                if(name.Length is <1 or >255||mime.Length>200||size<=0)throw new FormatException();
+                if(System.Text.RegularExpressions.Regex.IsMatch(data,@"^/api/workspace-files/[0-9a-f-]{36}$")&&Guid.TryParse(data[21..],out _))continue;
                 var delimiter=data.IndexOf(";base64,",StringComparison.Ordinal);
-                if(name.Length is <1 or >255||mime.Length>200||!data.StartsWith("data:",StringComparison.Ordinal)||delimiter<5||size is <=0 or >5*1024*1024)throw new FormatException();
+                if(!data.StartsWith("data:",StringComparison.Ordinal)||delimiter<5)throw new FormatException();
                 var content=Convert.FromBase64String(data[(delimiter+8)..]);
                 if(content.Length!=size)throw new FormatException();
                 total+=size;
             }
-            if(total>15*1024*1024)throw new FormatException();
             return encodedBody;
         }
         catch(Exception error) when(error is JsonException or FormatException or InvalidOperationException or KeyNotFoundException or OverflowException)
         {
-            throw new DomainException("Selecione até 10 arquivos válidos de 5 MB, com no máximo 15 MB por comentário.");
+            throw new DomainException("Selecione até 10 arquivos válidos por comentário.");
         }
     }
 }

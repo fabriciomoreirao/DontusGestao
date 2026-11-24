@@ -28,17 +28,19 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 ### Atualização em tempo real
 
-Listas de clientes, registros operacionais, cadastros e tabelas de relatórios usam
-páginas de dez registros, com **Anterior**, **Seguinte** e a posição no total.
-Pesquisa e filtros são aplicados antes da paginação; totais e indicadores mantêm
-o conjunto completo. A navegação também está disponível nos quadros por etapa.
+As listas oferecem o seletor **10 / 30 / 50 / 100** no canto superior esquerdo,
+com dez registros por padrão e retorno a dez ao reabrir a página. Pesquisa, filtros
+e indicadores consideram o conjunto completo antes da paginação. O WhatsApp e o
+histórico de acessos aplicam o tamanho escolhido também na consulta ao servidor.
+Os quadros de cards mantêm sua visualização própria.
 A tela de Clientes inclui a base autorizada completa, além do antigo limite de
 1.000 cadastros. Listas que já consultam páginas no servidor preservam sua navegação.
 
-Agendamentos feitos nos cards de Acompanhamentos usam **Reunião** na etapa de
-acompanhamento e **Treinamento** no onboarding. A migration `JourneyAgendaTypes`
-inclui esses tipos quando ainda não existem, preservando os cadastros atuais.
-Eles precisam continuar ativos nos cadastros da Agenda. Clicar em uma célula vazia do calendário
+Ao clicar em **Agendar** nos cards de Acompanhamentos, o formulário permite
+selecionar o **Tipo** entre os cadastros ativos da Agenda, sem escolher o tipo
+automaticamente pela etapa. Kick off, Treinamento e Alinhamento único também
+pedem essa seleção antes de confirmar. Nenhum novo tipo é criado por essas ações.
+Clicar em uma célula vazia do calendário
 abre o formulário com a data e, nas visões Semana e Dia, o horário selecionados.
 
 Na Fila de espera, **Contato feito** mostra dez registros por página, com
@@ -117,15 +119,16 @@ regras de negócio nem pela auditoria da aplicação e podem ser irreversíveis.
 
 Os protocolos das tarefas são gerados automaticamente no formato `TAA0001` (por exemplo, `T260001`).
 Os anexos usam o bucket S3 privado e links temporários de 10 minutos. Nas tarefas,
-uma indisponibilidade ou recusa de permissão do S3 ativa a contingência na tabela
-`task_attachment_contents`, com o conteúdo e o vínculo salvos na mesma transação.
+uma indisponibilidade ou recusa de permissão do S3 ativa a contingência no banco
+para arquivos pequenos e em disco privado para arquivos grandes.
 Os downloads continuam exigindo acesso à tarefa e permitem leitura por intervalos
 para vídeos. As listas carregam somente metadados; os bytes são lidos ao abrir o
 arquivo. A migration `TaskAttachmentDatabaseFallback` cria a tabela e a exclusão
 do anexo remove também sua cópia no banco. Inclua essa tabela nos backups.
 
 Na criação, no card e nos comentários, selecione imagens, vídeos, planilhas,
-documentos e outros formatos permitidos: até dez arquivos de 25 MB cada. O envio
+documentos e outros formatos permitidos: até dez arquivos por seleção, sem limite
+de tamanho imposto pelo sistema. O envio
 é dividido em lotes, e apenas os arquivos pendentes permanecem selecionados se
 ocorrer uma falha. A tarefa e o comentário já criados são reutilizados na tentativa
 seguinte. Arquivos de tentativas antigas que falharam precisam ser reenviados.
@@ -135,13 +138,27 @@ no `.env`, limitados ao bucket de `AWS_S3_BUCKET`. No ECS, utilize o task role d
 aplicação com permissão para os objetos necessários. Nunca reutilize credenciais
 publicadas em conversas, documentação ou código-fonte.
 
+### Arquivos grandes e armazenamento persistente
+
+Marketing, comentários, RH, cancelamentos, perfis, Portal e currículos usam envio
+em partes de 8 MiB. O tamanho do arquivo completo não recebe um teto artificial.
+Os cards guardam referências privadas em vez de vídeos e documentos em base64.
+Uploads multipart das demais ferramentas atravessam o proxy por streaming;
+Tarefas, Sugestões e formulários LIA usam disco temporário e S3 multipart.
+
+O volume **dontus_workspace_files**, montado em `/app/workspace-files`, precisa
+ser preservado e incluído no backup junto ao banco. Ele guarda os novos arquivos
+e a contingência de anexos grandes quando o S3 está indisponível. Em outro
+ambiente, use armazenamento persistente nesse caminho ou `WorkspaceFiles:Path`.
+O espaço disponível e restrições dos provedores externos continuam se aplicando.
+
 ### Anexos, contatos e metas
 
 Os comentários operacionais oferecem o clipe **Anexar arquivo**. Imagens, vídeos,
 PDFs, Excel e outros formatos ficam vinculados à mensagem e aparecem ao lado do
-texto. Os comentários desses módulos aceitam até dez arquivos de 5 MB, com 15 MB
-no total por comentário. Tarefas, Sugestões e Chat mantêm os limites de seus envios
-próprios no card. Os comentários de Sugestões usam o mesmo clipe e os limites
+texto. Os comentários desses módulos aceitam até dez arquivos por comentário,
+sem teto por arquivo ou total. Tarefas, Sugestões e Chat também aceitam arquivos
+grandes. Os comentários de Sugestões usam o mesmo clipe e as regras
 dos demais comentários operacionais. Arquivos de imagem e mídia podem ser abertos; planilhas e outros tipos
 são baixados com o nome original. Encaminhamentos do Portal e os arquivos de
 Marketing também aceitam outros formatos. Imagens de capa e de perfil mantêm
@@ -201,7 +218,7 @@ A opção **Acesso total ao sistema** concede todas as telas, ações, capacidad
 
 As permissões disponíveis por tela são visualizar, criar, editar, aprovar e administrar. Um usuário em vários grupos recebe a união das permissões. Usuários não cadastrados ou inativos recebem acesso negado pela API.
 
-No menu da conta, **Perfil** abre os dados do próprio colaborador e permite alterar capa, biografia e frase, mesmo sem permissão de Administração ou de escrita no Chat interno. A capa aceita PNG, JPEG e WebP de até 2 MB; a biografia aceita 900 caracteres e a frase, 180. **Salvar perfil** confirma o resultado na própria janela. O conteúdo permanece ao fechar e reabrir, incluindo perfis cadastrados anteriormente. A consulta de colegas pelo chat abre o perfil em modo de leitura; somente o titular pode editar o próprio conteúdo. Falhas de carregamento exibem **Tentar novamente**.
+No menu da conta, **Perfil** abre os dados do próprio colaborador e permite alterar capa, biografia e frase, mesmo sem permissão de Administração ou de escrita no Chat interno. A capa aceita PNG, JPEG e WebP sem limite de tamanho imposto pelo sistema; a biografia aceita 900 caracteres e a frase, 180. **Salvar perfil** confirma o resultado na própria janela. O conteúdo permanece ao fechar e reabrir, incluindo perfis cadastrados anteriormente. A consulta de colegas pelo chat abre o perfil em modo de leitura; somente o titular pode editar o próprio conteúdo. Falhas de carregamento exibem **Tentar novamente**.
 
 Na tela de grupos, o módulo **Tarefas** também oferece permissões específicas para cancelar, alterar status, prioridade ou SLA, encaminhar, assumir, transferir responsabilidade, consultar outros usuários/setores, administrar cadastros e registrar comunicação com o cliente.
 
@@ -338,6 +355,12 @@ percentual; valores fixos antigos não são convertidos automaticamente em perce
 
 Na lista de Comissões, aprove ou reprove cada cliente e informe o motivo. Clique no nome do cliente para consultar dados gerais, utilização e datas de kick off, treinamento e alinhamento único. As regras e os valores são calculados novamente na API ao registrar a decisão; reprovações têm valor a pagar igual a zero.
 
+O filtro **Mês/ano da indicação** fica disponível em **Indicações → Acompanhamento**
+e **Conferência** e considera a data da indicação. Nas abas de decisões, considera
+a data da decisão. Limpe esse campo para consultar todos os meses; a consulta não
+é limitada pelo mês do quadro geral. Em **Comissões**, **Mês/ano (competência)**
+seleciona o período em Comercial, Sucesso do Cliente e LIA.
+
 Em CS, abaixo de 50% de score a comissão é zero; de 50% a menos de 75%, de 75% até 100% (inclusive) e acima de 100% há percentuais editáveis por colaborador, inicialmente 5%, 10% e 15%. Scores de 200% ou mais continuam na última faixa. Configurações antigas mantêm seus três percentuais nas três faixas remuneradas. O valor base usa o lançamento ou a venda vinculada, os produtos contratados e, quando ausentes, a mensalidade do cliente. A supervisão pode revisar a base na aprovação; uma comissão percentual positiva exige valor base informado. PDFs já assinados permanecem preservados; novas assinaturas usam o layout atualizado.
 
 Depois de decidir todos os resultados filtrados, **Enviar confirmação** gera um link por responsável e competência. Em Indicações, a aba **Todas as decisões** reúne aprovadas e reprovadas do mês; busca, responsável, decisão e lembretes são respeitados na geração. O relatório preserva clientes, filtros, score, valores, regras, cálculos e motivos apresentados na geração.
@@ -372,9 +395,9 @@ No **Chat Dontus**, os botões **Editar mensagem** e **Excluir mensagem** ficam 
 
 No **Chat interno**, enviar por Enter ou pelo botão mantém o cursor no campo e permite preparar a próxima mensagem durante o envio. Clicar em outro campo muda o foco normalmente, sem o chat recuperá-lo ao terminar. Rascunhos ficam separados por conversa; em caso de falha, o texto não enviado é preservado junto ao que foi digitado durante a espera. A janela **Avisar cliente**, nas tarefas, apresenta protocolo, cliente e responsável, com orientação em um campo maior e indicação de que o aviso é interno.
 
-No **Chat interno**, cole imagens com **Ctrl+V** no campo de mensagem. As imagens aparecem em uma prévia, podem ser removidas e são enviadas ao clicar em **Enviar mensagem**, com ou sem texto. Cada conversa mantém suas próprias imagens pendentes; uma falha de envio permite tentar novamente. Colar texto continua funcionando normalmente. O limite é de dez imagens por envio, com até 50 MB cada.
+No **Chat interno**, cole imagens com **Ctrl+V** no campo de mensagem. As imagens aparecem em uma prévia, podem ser removidas e são enviadas ao clicar em **Enviar mensagem**, com ou sem texto. Cada conversa mantém suas próprias imagens pendentes; uma falha de envio permite tentar novamente. Colar texto continua funcionando normalmente. O limite é de dez imagens por envio, sem limite de tamanho por arquivo imposto pelo sistema.
 
-O envio de anexos no Chat interno aceita até dez arquivos, incluindo vídeos, com até 50 MB por arquivo. Seleções maiores são divididas automaticamente em lotes de até 50 MB. O servidor web e a rota de upload da API permitem 52 MB por requisição para acomodar os cabeçalhos multipart. Em caso de falha entre lotes, os arquivos já enviados aparecem na conversa e somente as imagens pendentes permanecem na prévia.
+O envio de anexos no Chat interno aceita até dez arquivos, incluindo vídeos, sem limite de tamanho por arquivo imposto pelo sistema. Seleções maiores são distribuídas automaticamente em lotes; um arquivo grande pode ocupar um lote completo. O servidor web encaminha o conteúdo por streaming e a API grava os dados sem carregar o arquivo inteiro na memória. Em caso de falha entre lotes, os arquivos já enviados aparecem na conversa e somente as imagens pendentes permanecem na prévia.
 
 A tela **Atendimento** inclui caixa de entrada em três colunas, pesquisa e filtros,
 histórico de mensagens e transferências, notas internas, atribuição, etiquetas,
@@ -454,7 +477,7 @@ A geração e os testes dos PDFs assinados usam `DejaVuSans.ttf` e `DejaVuSans-B
 
 A navegação oferece **Ctrl+K** (ou **⌘K** no macOS) para localizar ferramentas, favoritos e acessos recentes. O atalho **/** posiciona o cursor na busca de clientes, colaboradores, IDs e protocolos. A busca desconsidera acentos. Favoritos ficam salvos por usuário neste navegador e respeitam as permissões disponíveis na sessão.
 
-O caminho da tela e a navegação rápida ficam na mesma barra da pesquisa, com botões de voltar e avançar nas telas maiores. Em notebooks menores e celulares, o botão ao lado da busca abre o menu sobre o conteúdo, sem reduzir a área de trabalho. Módulos e subáreas mantêm seus endereços ao recarregar e ao percorrer o histórico. **Foco** amplia a área operacional ocultando o menu lateral; **Esc** restaura a navegação. Nos formulários compartilhados, **Tab** permanece dentro da janela e **Esc** fecha o formulário, retornando o foco ao controle que o abriu.
+O caminho da tela e a navegação rápida ficam na mesma barra da pesquisa, com botões de voltar e avançar nas telas maiores. Em notebooks menores e celulares, o botão ao lado da busca abre o menu sobre o conteúdo, sem reduzir a área de trabalho. Módulos e subáreas mantêm seus endereços ao recarregar e ao percorrer o histórico. **Foco** amplia a área operacional ocultando o menu lateral e permanece ativo ao abrir o Chat interno ou trocar de ferramenta; **Esc** restaura a navegação. Nos formulários compartilhados, **Tab** permanece dentro da janela e **Esc** fecha o formulário, retornando o foco ao controle que o abriu.
 
 O **Chat interno** ocupa a altura disponível, com rolagem nas mensagens e campo de envio sempre visível. No celular, selecione uma conversa para abri-la em toda a largura; a seta **Voltar às conversas** retorna à lista. A navegação entre a lista e a conversa preserva o texto ainda não enviado.
 
@@ -464,7 +487,7 @@ Em **Acesso de suporte**, o motivo permite pesquisar pelo nome e pelo setor, des
 
 Metas usam quantidades inteiras para vendas e indicações, reais para valor de vendas e porcentagem para score. Os cards compartilham a apresentação com o painel externo. Links HTTP(S) nas mensagens dos chats abrem em nova guia.
 
-Anexos de sugestões mantêm a sessão no proxy e aceitam até 10 arquivos de 25 MB cada. Quando o armazenamento externo está indisponível, o conteúdo é persistido de forma privada em uma tabela separada no PostgreSQL, sem entrar na carga dos cards. Downloads exigem autenticação e suportam intervalos para reprodução de vídeo. Reenvios preservam apenas os anexos pendentes, sem criar outra sugestão.
+Anexos de sugestões mantêm a sessão no proxy e aceitam até 10 arquivos, sem limite de tamanho por arquivo imposto pelo sistema. Quando o armazenamento externo está indisponível, o conteúdo é persistido de forma privada no PostgreSQL para arquivos pequenos e no volume de arquivos para anexos maiores, sem entrar na carga dos cards. Downloads exigem autenticação e suportam intervalos para reprodução de vídeo. Reenvios preservam apenas os anexos pendentes, sem criar outra sugestão.
 
 Nos detalhes de **Sugestões**, status, prioridade, cliente e responsável ficam em
 uma única linha, acima da descrição. Em telas pequenas, essa linha permite rolagem
@@ -518,6 +541,10 @@ setores envolvidos ou com a administração com gestão de tarefas.
 
 A digitação do chat preserva os rascunhos sem renderizar o histórico por caractere.
 Regras de espaçamento evitam invalidar o estilo do quadro inteiro a cada tecla.
+Os campos também deixam de acionar uma regra global de estilo baseada no nome dos
+inputs. Seletores de clientes reutilizam suas opções, a busca global atualiza
+somente sua área e os comentários de tarefas mantêm a digitação separada dos
+detalhes e históricos. Valores, validação e envio por Enter continuam imediatos.
 Nos atendimentos, a lista completa de clientes é carregada no seletor ao receber
 foco e recolhida ao sair; os textos são lidos diretamente do formulário no envio,
 inclusive ao pressionar Enter sem sair do campo.

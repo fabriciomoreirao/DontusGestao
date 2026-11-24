@@ -159,14 +159,15 @@ public sealed partial class DontusIntegrationService(OperationsDbContext db, Don
         actor.RequirePermission("access", "view");
         var query = FilterAccessHistory(filter);
         var total = await query.CountAsync(ct);
-        var page = Math.Clamp(filter.Page, 1, Math.Max(1, (int)Math.Ceiling(total / 20d)));
+        var pageSize = filter.PageSize is 10 or 30 or 50 or 100 ? filter.PageSize : 10;
+        var page = Math.Clamp(filter.Page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)));
         var entries = await query.OrderByDescending(entry => entry.AccessedAt).ThenByDescending(entry => entry.Id)
-            .Skip((page - 1) * 20).Take(20)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(entry => new SupportAccessLogDto(entry.Id, entry.AccessedAt, entry.ActorEmail, entry.ActorName, entry.Identification,
                 entry.CustomerName, entry.TargetUserId, entry.TargetUserName, entry.ReasonId, entry.ReasonName, entry.Justification)).ToArrayAsync(ct);
         var responsible = await db.SupportAccessLogs.AsNoTracking().GroupBy(entry => entry.ActorEmail)
             .Select(group => new { Email = group.Key, Name = group.Max(entry => entry.ActorName) }).OrderBy(entry => entry.Name).ToArrayAsync(ct);
-        return new { entries, total, page, pageSize = 20, responsible };
+        return new { entries, total, page, pageSize, responsible };
     }
 
     private static DateTimeOffset LocalMidnight(DateOnly date)

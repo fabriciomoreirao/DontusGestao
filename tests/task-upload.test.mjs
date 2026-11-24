@@ -6,12 +6,13 @@ test('aceita documentos, planilhas, imagens e compactados e respeita 25 MB por l
   const files = ['relatorio.pdf','planilha.xlsx','texto.docx','dados.csv','foto.png','backup.zip','arte.svg','pagina.html','arquivo.sem-formato'].map(name => ({ name, size: 10 * 1024 * 1024 }));
   const batches = taskUploadBatches(files);
   assert.deepEqual(batches.flat(), files); assert.equal(batches.length, 5);
+  assert.equal(taskUploadBatches([{name:'grande.mp4',size:10_000_000_000}])[0][0].size,10_000_000_000);
   assert.ok(batches.every(batch => batch.reduce((size,file) => size+file.size,0) <= TASK_FILE_BYTES));
 });
 
-test('recusa arquivos vazios, acima do limite e mais de dez antes de enviar', async t => {
+test('recusa arquivos vazios e excesso de quantidade antes de enviar', async t => {
   const fetch = t.mock.method(globalThis,'fetch',()=>{throw Error('Unexpected upload');});
-  for (const files of [[{name:'vazio.pdf',size:0}], [{name:'grande.pdf',size:TASK_FILE_BYTES+1}],
+  for (const files of [[{name:'vazio.pdf',size:0}],
     Array.from({length:11},()=>({name:'arquivo.pdf',size:10}))])
     await assert.rejects(sendTaskFiles('task',files));
   assert.equal(fetch.mock.callCount(),0);

@@ -17,7 +17,7 @@ export default function useVoiceRecorder(resetKey:string){
    if(session.cancelled||current.current!==session){stream.getTracks().forEach(track=>track.stop());return}
    const mimeType=["audio/webm;codecs=opus","audio/ogg;codecs=opus","audio/webm"].find(type=>MediaRecorder.isTypeSupported(type));
    const recorder=new MediaRecorder(stream,mimeType?{mimeType}:undefined);session.recorder=recorder;
-   recorder.ondataavailable=event=>{if(!session.cancelled&&event.data.size)session.chunks.push(event.data);if(session.chunks.reduce((sum,chunk)=>sum+chunk.size,0)>50*1024*1024){cancel();setError("O áudio ultrapassou o limite de 50 MB.")}};
+   recorder.ondataavailable=event=>{if(!session.cancelled&&event.data.size)session.chunks.push(event.data);};
    recorder.onerror=()=>{cancel();setError("Não foi possível concluir a gravação. Tente novamente.")};
    recorder.onstop=()=>{stream.getTracks().forEach(track=>track.stop());if(session.cancelled||current.current!==session)return;current.current=null;
     const type=recorder.mimeType.split(";")[0]||"audio/webm";const blob=new Blob(session.chunks,{type});

@@ -8,12 +8,12 @@ public static class ChatInboxEndpoints
     {
         var group = app.MapGroup("/api/chat").RequireAuthorization().RequireRateLimiting("operations");
         group.MapGet("/", async (int? page, string? search, string? status, Guid? departmentId,
-            bool? isGroup, Guid? conversationId, ClaimsPrincipal principal, IAccessControlService access,
+            bool? isGroup, Guid? conversationId, int? pageSize, ClaimsPrincipal principal, IAccessControlService access,
             IChatService service, CancellationToken cancellationToken) =>
         {
             var actor = await access.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
             return Results.Ok(await service.GetModuleAsync(actor, cancellationToken,
-                new ChatInboxQuery(page ?? 1, search, status, departmentId, isGroup ?? false, conversationId)));
+                new ChatInboxQuery(page ?? 1, search, status, departmentId, isGroup ?? false, conversationId, pageSize ?? 10)));
         });
         group.MapGet("/messages", async (Guid conversationId, Guid? beforeMessageId,
             ClaimsPrincipal principal, IAccessControlService access, IChatService service, CancellationToken cancellationToken) =>

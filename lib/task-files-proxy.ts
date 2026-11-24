@@ -24,13 +24,14 @@ export async function uploadTaskFiles(request: Request) {
   const taskId = query.get("taskId");
   if (!taskId) return Response.json({ detail: "Tarefa obrigatória." }, { status: 400 });
   try {
-    const form = await request.formData();
+    const headers=authenticationHeaders(request);
+    const contentType=request.headers.get("content-type");if(contentType)headers.set("content-type",contentType);
     const commentId = query.get("commentId");
     const suffix = commentId ? `?commentId=${encodeURIComponent(commentId)}` : "";
     const response = await fetch(`${apiBase()}/api/tasks/${encodeURIComponent(taskId)}/attachments${suffix}`, {
-      method: "POST", headers: authenticationHeaders(request), body: form,
-      cache: "no-store", signal: AbortSignal.timeout(120_000),
-    });
+      method: "POST", headers, body: request.body, duplex:"half",
+      cache: "no-store", signal: request.signal,
+    } as RequestInit);
     return proxyResponse(response);
   } catch {
     return Response.json({ detail: "Não foi possível enviar os anexos para a API." }, { status: 503 });

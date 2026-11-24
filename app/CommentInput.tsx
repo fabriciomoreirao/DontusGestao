@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type TextareaHTMLAttributes } from "react";
+import { forwardRef, memo, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type TextareaHTMLAttributes } from "react";
 import { Paperclip, Send, Smile } from "lucide-react";
 import FilePreview from "@/app/FilePreview";
 import { joinComment, readCommentFiles, splitComment, type CommentFile } from "@/lib/comment-files";
@@ -30,7 +30,7 @@ export default forwardRef<HTMLTextAreaElement,Props>(function CommentInput({valu
   const add=async(event:ChangeEvent<HTMLInputElement>)=>{
     const incoming=Array.from(event.currentTarget.files??[]);event.currentTarget.value="";if(!incoming.length)return;
     const existing=splitComment(latest.current).files;
-    if(existing.length+incoming.length>10||existing.reduce((sum,file)=>sum+file.size,0)+incoming.reduce((sum,file)=>sum+file.size,0)>15*1024*1024){setError("Use até 10 arquivos, totalizando no máximo 15 MB por comentário.");return}
+    if(existing.length+incoming.length>10){setError("Use até 10 arquivos por comentário.");return}
     setReading(true);setError("");
     try{const added=await readCommentFiles(incoming);const state=splitComment(latest.current);emit(joinComment(state.text,[...state.files,...added]))}catch(error){setError(error instanceof Error?error.message:"Não foi possível anexar os arquivos.")}finally{setReading(false)}
   };
@@ -49,15 +49,16 @@ export default forwardRef<HTMLTextAreaElement,Props>(function CommentInput({valu
     requestAnimationFrame(()=>{node.focus();node.setSelectionRange(start+emoji.length,start+emoji.length)});
   };
   const editor=<CommentEditor {...props} required={props.required&&!files.length} ref={input} data-comment-has-files={files.length>0||undefined} value={text} disabled={disabled||reading} readOnly={readOnly} onChange={event=>emit(joinComment(event.target.value,files))}/>;
-  const attachment=<label className="comment-paperclip" title="Anexar arquivos"><Paperclip size={18}/>{!isComposer&&<span>{reading?"Lendo arquivos…":"Anexar arquivo"}</span>}<input aria-label="Anexar arquivos ao comentário" type="file" multiple disabled={disabled||reading||readOnly} onChange={event=>void add(event)}/></label>;
-  return <div className={`comment-input-field${isComposer?" is-chat-composer":""}`} data-comment-uploading={reading||undefined}>{name&&<input type="hidden" name={name} disabled={disabled} value={current}/>}{isComposer?<div className="comment-composer-bar"><button className="comment-emoji-button" type="button" aria-label="Adicionar emoji" disabled={disabled||reading||readOnly} onClick={()=>setEmojis(value=>!value)}><Smile size={18}/></button>{editor}{attachment}<button className="comment-send-button" type="button" aria-label={submitLabel} disabled={disabled||reading||readOnly||nativeDisabled||!text.trim()&&!files.length} onClick={()=>{if(input.current)submitComment(input.current)}}><Send size={18}/></button>{emojis&&<div className="comment-emoji-menu" aria-label="Emojis rápidos">{["😀","👍","✅","🎯","🚨","🙏","📌","💬","📎","🚀"].map(emoji=><button key={emoji} type="button" aria-label={`Inserir ${emoji}`} onClick={()=>insertEmoji(emoji)}>{emoji}</button>)}</div>}</div>:<>{editor}<div className="comment-file-tools">{attachment}<small>Imagens, vídeos, PDF, Excel e outros · até 5 MB por arquivo</small></div></>}{files.length>0&&<div className="comment-attachment-list">{files.map((file,index)=><FilePreview key={`${file.name}-${index}`} url={file.dataUrl} name={file.name} size={file.size} disabled={disabled||reading||readOnly} onRemove={()=>emit(joinComment(text,files.filter((_,i)=>i!==index)))}/>)}</div>}{error&&<p className="form-error" role="alert">{error}</p>}</div>;
+  const attachment=<label className="comment-paperclip" title="Anexar arquivos"><Paperclip size={18}/>{!isComposer&&<span>{reading?"Enviando arquivos…":"Anexar arquivo"}</span>}<input aria-label="Anexar arquivos ao comentário" type="file" multiple disabled={disabled||reading||readOnly} onChange={event=>void add(event)}/></label>;
+  return <div className={`comment-input-field${isComposer?" is-chat-composer":""}`} data-comment-uploading={reading||undefined}>{name&&<input type="hidden" name={name} disabled={disabled} value={current}/>}{isComposer?<div className="comment-composer-bar"><button className="comment-emoji-button" type="button" aria-label="Adicionar emoji" disabled={disabled||reading||readOnly} onClick={()=>setEmojis(value=>!value)}><Smile size={18}/></button>{editor}{attachment}<button className="comment-send-button" type="button" aria-label={submitLabel} disabled={disabled||reading||readOnly||nativeDisabled||!text.trim()&&!files.length} onClick={()=>{if(input.current)submitComment(input.current)}}><Send size={18}/></button>{emojis&&<div className="comment-emoji-menu" aria-label="Emojis rápidos">{["😀","👍","✅","🎯","🚨","🙏","📌","💬","📎","🚀"].map(emoji=><button key={emoji} type="button" aria-label={`Inserir ${emoji}`} onClick={()=>insertEmoji(emoji)}>{emoji}</button>)}</div>}</div>:<>{editor}<div className="comment-file-tools">{attachment}<small>Imagens, vídeos, PDF, Excel e outros · sem limite de tamanho no sistema</small></div></>}{files.length>0&&<div className="comment-attachment-list">{files.map((file,index)=><FilePreview key={`${file.name}-${index}`} url={file.dataUrl} name={file.name} size={file.size} disabled={disabled||reading||readOnly} onRemove={()=>emit(joinComment(text,files.filter((_,i)=>i!==index)))}/>)}</div>}{error&&<p className="form-error" role="alert">{error}</p>}</div>;
 });
 
-export function CommentContent({text}:{text?:string}){
+export const CommentContent = memo(function CommentContent({text}:{text?:string}){
   const content=splitComment(text||"");
   return <span className="comment-content">{content.text&&<span className="comment-text"><FormattedText text={content.text}/></span>}{content.files.length>0&&<span className="comment-attachment-list">{content.files.map((file,index)=><FilePreview key={`${file.name}-${index}`} url={file.dataUrl} name={file.name} size={file.size}/>)}</span>}</span>;
-}
+});
 export function openFile(file:CommentFile){
+  if(file.dataUrl.startsWith('/api/workspace-files/')){window.open(file.dataUrl,'_blank','noopener,noreferrer');return}
   const raw=atob(file.dataUrl.slice(file.dataUrl.indexOf(",")+1));const bytes=Uint8Array.from(raw,char=>char.charCodeAt(0));
   const preview=/^(image\/(png|jpeg|gif|webp|avif)|video\/(mp4|webm|ogg)|audio\/(mpeg|wav|ogg)|application\/pdf)$/.test(file.type);
   const url=URL.createObjectURL(new Blob([bytes],{type:preview?file.type:"application/octet-stream"}));

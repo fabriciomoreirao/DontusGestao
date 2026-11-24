@@ -38,7 +38,7 @@ public sealed record ChatConversationDto(
     IReadOnlyCollection<ChatTransferDto> Transfers);
 public sealed record ChatMetricsDto(int Open, int Waiting, int Unassigned, int ClosedToday, double AverageFirstResponseMinutes, double AverageResolutionMinutes);
 public sealed record ChatInboxQuery(int Page = 1, string? Search = null, string? Status = null,
-    Guid? DepartmentId = null, bool IsGroup = false, Guid? ConversationId = null);
+    Guid? DepartmentId = null, bool IsGroup = false, Guid? ConversationId = null, int PageSize = 10);
 public sealed record ChatInboxPageDto(int Number, int Size, int Total, int Contacts, int Groups);
 public sealed record ChatMessagePageDto(IReadOnlyCollection<ChatMessageDto> Messages, bool HasMore);
 public sealed record ChatModuleDto(

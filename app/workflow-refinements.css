@@ -18,6 +18,8 @@ label:has(> input[type="checkbox"]) > span:not(.profile-avatar) { min-width:0; }
 .commissions-module .commission-filters > strong { margin-left:auto; padding:12px 0; }
 .commissions-module .commission-filters > .confirmation-control { flex:1 0 100%; min-width:0; border-top:1px solid var(--line,#e0e8f4); padding-top:12px; }
 .commissions-module .commission-filters > .confirmation-control button { flex-shrink:0; }
+.app-shell .content :is(.referral-toolbar,.commission-filters) > label.operational-month-filter { display:grid; align-self:end; gap:6px; padding:0; border:0; background:transparent; color:var(--muted); font-size:12px; font-weight:650; }
+.app-shell .content :is(.referral-toolbar,.commission-filters) > .operational-month-filter input { width:100%; min-width:0; min-height:42px; padding:8px 11px; border:1px solid var(--line); border-radius:9px; background:var(--input); color:var(--ink); font:inherit; }
 .customer-summary-v2.modal { width:min(920px,calc(100vw - 32px)); max-width:920px; padding:0; overflow:auto; background:#f5f8fd; border:1px solid #dce7f6; border-radius:22px; box-shadow:0 30px 100px #152c4d40; }
 .customer-summary-hero { display:flex; gap:16px; align-items:center; padding:28px 30px; background:linear-gradient(115deg,#fff,#edf4ff); border-bottom:1px solid #dce7f6; }
 .customer-summary-mark { width:58px; height:58px; display:grid; place-items:center; flex-shrink:0; background:#e6efff; color:#245be3; border:1px solid #c8dcff; border-radius:17px; }

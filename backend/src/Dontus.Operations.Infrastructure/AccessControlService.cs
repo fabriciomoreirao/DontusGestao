@@ -1042,8 +1042,8 @@ public sealed class AccessControlService(
     private static string ValidatePhoto(string? photoDataUrl)
     {
         if (string.IsNullOrWhiteSpace(photoDataUrl)) return "";
-        if (!photoDataUrl.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) || photoDataUrl.Length > 2_800_000)
-            throw new DomainException("Envie uma foto de até 2 MB em formato de imagem.");
+        if (!photoDataUrl.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) && !System.Text.RegularExpressions.Regex.IsMatch(photoDataUrl,@"^/api/workspace-files/[0-9a-f-]{36}$"))
+            throw new DomainException("Envie uma foto em formato de imagem.");
         return photoDataUrl;
     }
 

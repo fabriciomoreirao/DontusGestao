@@ -1,6 +1,6 @@
 "use client";
 
-import PaginatedItems from "@/app/PaginatedItems";
+import PaginatedItems, { RecordPageSize } from "@/app/PaginatedItems";
 
 import SearchableSelect from "./SearchableSelect";
 import SupportAccessFilters from "./SupportAccessFilters";
@@ -52,6 +52,7 @@ export function SupportAccessHistory({ reasons, onBack }: { reasons: SupportAcce
   const [view,setView]=useState<"history"|"indicators">("history");
   const [applied, setApplied] = useState(filters);
   const [page, setPage] = useState(1);
+  const [pageSize,setPageSize]=useState(10);
   const [result, setResult] = useState<HistoryResult | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
@@ -59,11 +60,11 @@ export function SupportAccessHistory({ reasons, onBack }: { reasons: SupportAcce
     if(view!=="history")return;
     const controller = new AbortController();
     setBusy(true); setError("");
-    const query = supportAccessQuery(applied,page);
+    const query = `${supportAccessQuery(applied,page)}&pageSize=${pageSize}`;
     void api<HistoryResult>(`access/history?${query}`, undefined, controller.signal).then(value => { if (!controller.signal.aborted) setResult(value); }).catch(error => { if (!controller.signal.aborted) { setError(errorMessage(error)); setResult(null); } }).finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
-  }, [applied, page, view]);
-  const totalPages = Math.max(1, Math.ceil((result?.total ?? 0) / (result?.pageSize ?? 20)));
+  }, [applied, page, pageSize, view]);
+  const totalPages = Math.max(1, Math.ceil((result?.total ?? 0) / (result?.pageSize ?? 10)));
   const submit = (event: FormEvent) => { event.preventDefault(); if (!validAccessPeriod(filters)) { setError("A data inicial deve ser anterior ou igual à data final."); return; } setError(""); setPage(1); setApplied({ ...filters }); };
   const clear=()=>{setFilters({...emptyAccessFilters});setApplied({...emptyAccessFilters});setPage(1);setError("")};
   const indicators=()=>{if(!validAccessPeriod(filters)){setError("A data inicial deve ser anterior ou igual à data final.");return}setError("");setApplied({...filters});setPage(1);setView("indicators")};
@@ -74,7 +75,7 @@ export function SupportAccessHistory({ reasons, onBack }: { reasons: SupportAcce
       <SupportAccessFilters filters={filters} onChange={setFilters} onApply={submit} onClear={clear} responsible={result?.responsible||[]} reasons={reasons} busy={busy}/>
       {error && <p className="dontus-integration-error" role="alert">{error}</p>}
       <p className="dontus-access-meta" role="status">{busy ? "Consultando histórico…" : `${result?.total ?? 0} acesso(s) encontrado(s)`}</p>
-      <div className="support-access-log-scroll"><table className="support-access-log-table"><thead><tr><th>Data e horário</th><th>Responsável</th><th>Cliente / base</th><th>Usuário acessado</th><th>Motivo e descrição</th></tr></thead><tbody>{!busy && result?.entries.map(entry => <tr key={entry.id}><td>{timestamp(entry.accessedAt)}</td><td><strong>{entry.actorName}</strong><small>{entry.actorEmail}</small></td><td><strong>{entry.customerName || "Cliente Dontus"}</strong><small>ID {entry.identification}</small></td><td>{entry.targetUserName}</td><td><strong>{entry.reasonName}</strong><p>{entry.justification}</p></td></tr>)}</tbody></table></div>
+      <RecordPageSize value={pageSize} onChange={size=>{setPageSize(size);setPage(1)}} label="acessos"/><div className="support-access-log-scroll"><table className="support-access-log-table"><thead><tr><th>Data e horário</th><th>Responsável</th><th>Cliente / base</th><th>Usuário acessado</th><th>Motivo e descrição</th></tr></thead><tbody>{!busy && result?.entries.map(entry => <tr key={entry.id}><td>{timestamp(entry.accessedAt)}</td><td><strong>{entry.actorName}</strong><small>{entry.actorEmail}</small></td><td><strong>{entry.customerName || "Cliente Dontus"}</strong><small>ID {entry.identification}</small></td><td>{entry.targetUserName}</td><td><strong>{entry.reasonName}</strong><p>{entry.justification}</p></td></tr>)}</tbody></table></div>
       {!busy && !error && result?.entries.length === 0 && <p className="support-access-empty">Nenhum acesso registrado para os filtros selecionados.</p>}
       {result && result.total > 0 && <nav className="dontus-users-pagination" aria-label="Páginas do histórico de acesso"><span>Página {result.page} de {totalPages}</span><div><button type="button" className="secondary-button" disabled={busy || result.page <= 1} onClick={() => setPage(result.page - 1)}>Anterior</button><button type="button" className="secondary-button" disabled={busy || result.page >= totalPages} onClick={() => setPage(result.page + 1)}>Próxima</button></div></nav>}
     </section>
