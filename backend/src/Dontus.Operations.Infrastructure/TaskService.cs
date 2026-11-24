@@ -154,7 +154,9 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
         if (missing.Length > 0) await db.SaveChangesAsync(ct);
     }
 
-    public async Task<TaskModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default)
+    public Task<TaskModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default) => GetListModuleAsync(actor, null, cancellationToken);
+
+    internal async Task<(IQueryable<CorporateTask> Query,AppUser User,List<Guid> Departments)> AuthorizedListTasksAsync(ActorContext actor,CancellationToken cancellationToken)
     {
         var canViewTasks = actor.HasPermission("tasks", "view");
         if (!canViewTasks && !actor.HasPermission("ti", "view"))
@@ -196,7 +198,15 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                         || participantTaskIds.Contains(x.Id) || coordinatedDepartments.Contains(x.CurrentDepartmentId) || coordinatedDepartments.Contains(x.SourceDepartmentId) || completedCommentedTaskIds.Contains(x.Id) || developmentParentIds.Contains(x.Id));
         }
 
-        var tasks = await query.OrderByDescending(x => x.UpdatedAt).Take(1000).ToListAsync(cancellationToken);
+        return (query,user,memberDepartments);
+    }
+
+    internal async Task<TaskModuleDto> GetListModuleAsync(ActorContext actor,IReadOnlyCollection<Guid>? selectedIds,CancellationToken cancellationToken)
+    {
+        var scope=await AuthorizedListTasksAsync(actor,cancellationToken);
+        var query=selectedIds is null?scope.Query:scope.Query.Where(task=>selectedIds.Contains(task.Id));
+        var user=scope.User;var memberDepartments=scope.Departments;
+        var tasks = await query.OrderByDescending(x => x.UpdatedAt).ToListAsync(cancellationToken);
         var taskIds = tasks.Select(x => x.Id).ToList();
         var users = await db.Users.AsNoTracking()
             .Select(x => new { x.Id, x.DisplayName, x.Email, x.Phone, x.JobTitle, x.UpdatedAt, x.Active, x.BlockedAt, HasPhoto = x.PhotoDataUrl != "" })

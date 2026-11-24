@@ -11,7 +11,7 @@ public sealed class FollowupAndPortalTests
     [Theory]
     [InlineData("activation", 91)]
     [InlineData("retention", 365)]
-    public async Task Old_followups_stay_in_tracking_and_remain_visible_beyond_the_general_snapshot_limit(string track, int days)
+    public async Task All_authorized_cards_and_old_followups_remain_visible_without_a_snapshot_limit(string track, int days)
     {
         await using var db = Context();
         var service = new OperationsService(db);
@@ -28,7 +28,7 @@ public sealed class FollowupAndPortalTests
         Assert.Equal(old.Id, card.Id);
         Assert.Equal("tracking", JsonDocument.Parse(card.Description).RootElement.GetProperty("phase").GetString());
         Assert.DoesNotContain(snapshot.Items, item => item.Module == "hr");
-        Assert.Equal(1000, snapshot.Items.Count(item => item.Module == "marketing"));
+        Assert.Equal(1001, snapshot.Items.Count(item => item.Module == "marketing"));
         var known = snapshot.Items.ToDictionary(item => item.Id, item => item.Version);
         Assert.Contains((await service.GetSnapshotAsync(actor, knownWorkItemVersions: known)).Items, item => item.Id == old.Id);
         if (track == "activation")
