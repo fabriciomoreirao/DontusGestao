@@ -19,7 +19,7 @@ public static class DontusIntegrationEndpoints
         group.MapGet("/customers/{customerId:guid}/data", async (Guid customerId, ClaimsPrincipal principal, IAccessControlService access, DontusIntegrationService service, CancellationToken ct) =>
             Results.Ok(await service.GetDataAsync(customerId, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct)));
         group.MapPost("/users", async (DontusIdentificationCommand command, ClaimsPrincipal principal, IAccessControlService access, DontusIntegrationService service, CancellationToken ct) =>
-            Results.Ok(await service.ListUsersAsync(command.Identification, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct)));
+            Results.Ok(await service.ListUsersAsync(command.Identification, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct, command.Name, command.Type, command.Page, command.PageSize)));
         group.MapPost("/users/login", async (DontusLoginCommand command, ClaimsPrincipal principal, IAccessControlService access, DontusIntegrationService service, CancellationToken ct) =>
             Results.Ok(await service.LoginAsync(command, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct)));
         group.MapGet("/access/reasons", async (bool? catalog, ClaimsPrincipal principal, IAccessControlService access, DontusIntegrationService service, CancellationToken ct) =>

@@ -1,5 +1,6 @@
 "use client";
 
+import { mergeRecordRows } from "@/lib/record-pages";
 import PaginatedItems, { RecordPageSize } from "@/app/PaginatedItems";
 import MessageText from "@/app/MessageText";
 import ChatMessageComposer from "@/app/ChatMessageComposer";
@@ -429,7 +430,6 @@ function ChatDashboard({ module, busy, has, operate, refreshVersion, onUnauthori
   const [reportLoading, setReportLoading] = useState(true);
   const [reportError, setReportError] = useState("");
   const [reportRevision, setReportRevision] = useState(0);
-  const [reportPage, setReportPage] = useState(1);
   const latestUnauthorized = useRef(onUnauthorized);
   useEffect(() => { latestUnauthorized.current = onUnauthorized; }, [onUnauthorized]);
   useEffect(() => {
@@ -468,9 +468,8 @@ function ChatDashboard({ module, busy, has, operate, refreshVersion, onUnauthori
   }, [report, module.currentUserId, canViewAll, dateFrom, dateTo, assigneeId, subject, clientId]);
 
   const closed = conversations.filter((item) => item.closedAt);
-  const [reportPageSize,setReportPageSize]=useState(10);
-  const currentReportPage = Math.min(reportPage, Math.max(1, Math.ceil(conversations.length / reportPageSize)));
-  const reportRows = conversations.slice((currentReportPage - 1) * reportPageSize, currentReportPage * reportPageSize);
+  const reportEnd = new Date(dateTo + "T00:00:00"); reportEnd.setDate(reportEnd.getDate() + 1);
+  const reportSource = dateFrom && dateTo ? ["chatReport",new Date(dateFrom+"T00:00:00").toISOString(),reportEnd.toISOString()] : undefined;
   const durations = closed.map((item) => Math.max(0, (new Date(item.closedAt!).getTime() - new Date(item.createdAt).getTime()) / 60000));
   const averageDuration = durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0;
   const satisfaction = conversations.filter((item) => item.satisfactionScore !== null);
@@ -525,7 +524,7 @@ function ChatDashboard({ module, busy, has, operate, refreshVersion, onUnauthori
       <article className="panel chat-satisfaction-panel"><header><div><span className="eyebrow">SATISFAÇÃO</span><h3>Avaliação dos atendimentos</h3></div><strong>{satisfaction.length} resposta{satisfaction.length === 1 ? "" : "s"}</strong></header><div className="satisfaction-score"><b>{satisfaction.length ? satisfactionAverage.toFixed(1) : "—"}</b><span>{"★".repeat(Math.round(satisfactionAverage))}{"☆".repeat(5 - Math.round(satisfactionAverage))}</span></div><div className="satisfaction-bars">{[5, 4, 3, 2, 1].map((score) => { const count = satisfaction.filter((item) => item.satisfactionScore === score).length; return <div key={score}><span>{score} estrelas</span><i><b style={{ width: `${satisfaction.length ? count / satisfaction.length * 100 : 0}%` }} /></i><strong>{count}</strong></div>; })}</div></article>
     </div>
 
-    <article className="panel chat-report-table-panel"><header><div><span className="eyebrow">DETALHAMENTO</span><h3>Relatório de atendimentos</h3></div><span>{conversations.length} registro{conversations.length === 1 ? "" : "s"}</span></header><RecordPageSize value={reportPageSize} onChange={size=>{setReportPageSize(size);setReportPage(1)}} label="atendimentos"/><div className="chat-report-table-wrap"><table className="chat-report-table"><thead><tr><th>Protocolo</th><th>Cliente</th><th>Assunto</th><th>Colaborador</th><th>Início</th><th>Término</th><th>Duração</th><th>Transferência</th><th>Satisfação</th>{has("editReports") && <th>Ações</th>}</tr></thead><tbody>{reportRows.map((conversation) => { const duration = conversation.closedAt ? (new Date(conversation.closedAt).getTime() - new Date(conversation.createdAt).getTime()) / 60000 : null; return <tr key={conversation.id}><td><b>{conversation.protocol}</b></td><td>{conversation.contact.companyName || conversation.contact.name}</td><td>{conversation.subject}</td><td>{conversation.assigneeName || "Não atribuído"}</td><td>{formatDate(conversation.createdAt)}</td><td>{conversation.closedAt ? formatDate(conversation.closedAt) : "Em andamento"}</td><td>{duration === null ? "—" : formatDuration(duration)}</td><td>{conversation.transfers.length ? `Sim (${conversation.transfers.length})` : "Não"}</td><td>{conversation.satisfactionScore ? `${conversation.satisfactionScore}/5` : "Pendente"}</td>{has("editReports") && <td><button className="chat-report-edit" onClick={() => setEditing(conversation)}><Pencil size={13} /> Editar</button></td>}</tr>; })}{conversations.length === 0 && <tr><td colSpan={has("editReports") ? 10 : 9}><div className="chat-report-empty">Nenhum atendimento encontrado com estes filtros.</div></td></tr>}</tbody></table></div><ChatPagination pageSize={reportPageSize} page={currentReportPage} total={conversations.length} loading={reportLoading} onPage={setReportPage} /></article>
+    <article className="panel chat-report-table-panel"><header><div><span className="eyebrow">DETALHAMENTO</span><h3>Relatório de atendimentos</h3></div><span>{conversations.length} registro{conversations.length === 1 ? "" : "s"}</span></header><div className="chat-report-table-wrap"><table className="chat-report-table"><thead><tr><th>Protocolo</th><th>Cliente</th><th>Assunto</th><th>Colaborador</th><th>Início</th><th>Término</th><th>Duração</th><th>Transferência</th><th>Satisfação</th>{has("editReports") && <th>Ações</th>}</tr></thead><tbody><PaginatedItems table label="atendimentos do relatório" source={reportSource} resetKey={JSON.stringify([dateFrom,dateTo,assigneeId,subject,clientId])} onRows={rows=>setReport(current=>mergeRecordRows(current,rows))}>{conversations.map((conversation) => { const duration = conversation.closedAt ? (new Date(conversation.closedAt).getTime() - new Date(conversation.createdAt).getTime()) / 60000 : null; return <tr key={conversation.id}><td><b>{conversation.protocol}</b></td><td>{conversation.contact.companyName || conversation.contact.name}</td><td>{conversation.subject}</td><td>{conversation.assigneeName || "Não atribuído"}</td><td>{formatDate(conversation.createdAt)}</td><td>{conversation.closedAt ? formatDate(conversation.closedAt) : "Em andamento"}</td><td>{duration === null ? "—" : formatDuration(duration)}</td><td>{conversation.transfers.length ? `Sim (${conversation.transfers.length})` : "Não"}</td><td>{conversation.satisfactionScore ? `${conversation.satisfactionScore}/5` : "Pendente"}</td>{has("editReports") && <td><button className="chat-report-edit" onClick={() => setEditing(conversation)}><Pencil size={13} /> Editar</button></td>}</tr>; })}</PaginatedItems>{conversations.length === 0 && <tr><td colSpan={has("editReports") ? 10 : 9}><div className="chat-report-empty">Nenhum atendimento encontrado com estes filtros.</div></td></tr>}</tbody></table></div></article>
     {editing && <ReportEditModal conversation={editing} busy={busy} onClose={() => setEditing(null)} onSubmit={async (payload) => {
       const result = await operate({ action: "updateChatConversation", requireConfirmation: true, conversationId: editing.id, version: editing.version, ...payload }, "Dados do relatório atualizados.");
       if (result) { setEditing(null); setReportRevision(value => value + 1); }
@@ -720,7 +719,7 @@ function WhatsAppSettings({ module, busy, allowed, operate }: { module: ChatModu
         <button disabled={busy}>{editing ? <Save size={16} /> : <Plus size={16} />} {editing ? "Salvar alterações" : "Adicionar número"}</button>
       </div>
     </form>}
-    <div className="whatsapp-number-grid">{<PaginatedItems label="conexões">{module.whatsAppNumbers.map((item) => <article className={editingId === item.id ? "editing" : ""} key={item.id}>
+    <div className="whatsapp-number-grid">{<PaginatedItems mode="cards" label="conexões">{module.whatsAppNumbers.map((item) => <article className={editingId === item.id ? "editing" : ""} key={item.id}>
       <span className="whatsapp-icon"><Phone size={19} /></span>
       <div><h3>{item.internalName}</h3><p>{item.displayName} · <PhoneLink phone={item.phoneNumber}/></p><small>{item.departmentName} · {item.connectionMode === "Coexistence" ? "Coexistência" : "Cloud API"} · API {item.apiVersion}</small></div>
       <em className={item.active && item.status === "Configurado" ? "active" : item.coexistenceStatus === "Erro" ? "error" : ""}>{item.connectionMode === "Coexistence" ? item.coexistenceStatus : item.status}</em>

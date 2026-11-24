@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Dontus.Operations.Application;
 
 public sealed record LinkDontusCustomerCommand(string ExternalClientId, long? Version);
-public sealed record DontusIdentificationCommand(string Identification);
+public sealed record DontusIdentificationCommand(string Identification, string Name = "", string Type = "", int Page = 1, int PageSize = 10);
 public sealed record DontusLoginCommand(string Identification, long UserId, Guid? ReasonId = null, string? Justification = null);
 public sealed record SaveSupportAccessReasonCommand(Guid? Id, string Name, bool Active, long? Version = null, Guid? DepartmentId = null);
 public sealed record SupportAccessReasonDto(Guid Id, string Name, bool Active, long Version, Guid? DepartmentId, string DepartmentName);

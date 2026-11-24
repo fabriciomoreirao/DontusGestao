@@ -3,7 +3,7 @@ import { RecordPageSize } from "@/app/PaginatedItems";
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Database, History, Home, RefreshCw, Search, Settings, ShieldCheck } from "lucide-react";
-import { dontusUsersPage } from "@/lib/dontus-users";
+
 import { dontusIntegrationApi as api } from "@/lib/dontus-integration-api";
 import { SupportAccessHistory, SupportAccessReasonModal, SupportAccessSettings, type SupportAccessReason } from "@/app/SupportAccessPanels";
 
@@ -11,7 +11,7 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string
 type Link = { identification: string; externalClientId: number; version: number };
 type CustomerData = { identification: string; externalClientId: number; fetchedAt: string; data: Record<string, JsonValue> };
 type EnvironmentUser = { id: number; name: string; username: string; email: string; isSupervisor: boolean; active: boolean; canAccess: boolean };
-type UsersResult = { identification: string; customerName: string; fetchedAt: string; users: EnvironmentUser[] };
+type UsersResult = { identification: string; customerName: string; fetchedAt: string; users: EnvironmentUser[]; page: number; pageSize: number; total: number; totalPages: number; start: number; end: number };
 
 const message = (error: unknown) => error instanceof Error && error.name === "TimeoutError"
   ? "A consulta demorou para responder. Tente novamente." : error instanceof Error ? error.message : "Não foi possível concluir a consulta.";
@@ -114,11 +114,18 @@ export function DontusSupportAccess({ canManage = false }: { canManage?: boolean
     void Promise.all([available, catalog]).then(([allowed, all]) => { if (!controller.signal.aborted) { setReasons(allowed); setCatalogReasons(all); } }).catch(error => { if (!controller.signal.aborted) { setReasons([]); setError(message(error)); } }).finally(() => { if (!controller.signal.aborted) setReasonsLoading(false); });
     return () => controller.abort();
   }, [canManage, view]);
-  async function search(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError(""); setResult(null); setPage(1);
-    try { setResult(await api<UsersResult>("users", { identification })); }
-    catch (err) { setError(message(err)); }
-    finally { setBusy(false); }
+  const [lookup, setLookup] = useState<{ identification: string; revision: number } | null>(null);
+  useEffect(() => {
+    if (!lookup || view !== "access") return;
+    const controller = new AbortController(); setBusy(true); setError("");
+    void api<UsersResult>("users", { identification: lookup.identification, name, type, page, pageSize }, controller.signal)
+      .then(value => { if (!controller.signal.aborted) setResult(value); })
+      .catch(err => { if (!controller.signal.aborted) { setResult(null); setError(message(err)); } })
+      .finally(() => { if (!controller.signal.aborted) setBusy(false); });
+    return () => controller.abort();
+  }, [lookup, name, type, page, pageSize, view]);
+  function search(event: FormEvent) {
+    event.preventDefault(); setPage(1); setLookup(current => ({ identification, revision: (current?.revision ?? 0) + 1 }));
   }
   async function open(user: EnvironmentUser, reasonId: string, justification: string) {
     if (!result) return;
@@ -135,21 +142,21 @@ export function DontusSupportAccess({ canManage = false }: { canManage?: boolean
     } catch (err) { popup.close(); setAccessError(message(err)); }
     finally { setOpening(null); }
   }
-  const pagination = dontusUsersPage(result?.users ?? [], name, type, page, pageSize);
-  const entries = pagination.items;
+  const pagination = result;
+  const entries = result?.users ?? [];
   if (view === "history") return <SupportAccessHistory reasons={catalogReasons} onBack={() => setView("access")} />;
   if (view === "settings" && canManage) return <SupportAccessSettings onUpdated={saved => setCatalogReasons(current => [...current.filter(reason => reason.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")))} onBack={() => setView("access")} />;
   return <section className="support-access-page" aria-busy={busy}>
     <header className="dontus-integration-heading support-access-heading"><ShieldCheck size={26} /><div><span className="eyebrow">CENTRAL DE SUPORTE</span><h1>Acesso de Suporte</h1><p>Informe a identificação do cliente para consultar os usuários e acessar o sistema Dontus.</p></div><div className="support-access-heading-actions"><button className="secondary-button" type="button" onClick={() => setView("history")}><History size={17} />Histórico de acesso</button>{canManage && <button className="secondary-button" type="button" onClick={() => setView("settings")}><Settings size={17} />Configuração</button>}</div></header>
     <div className="support-access-panel"><div className="support-access-title">Usuários do ambiente Dontus</div>
       <form className="support-access-search" onSubmit={search}>
-        <label>Identificação<input value={identification} inputMode="numeric" pattern="[0-9]+" maxLength={19} required disabled={busy || opening !== null} onChange={event => { setIdentification(event.target.value); setResult(null); setError(""); }} placeholder="ID do cliente no sisteminha" autoFocus /></label>
+        <label>Identificação<input value={identification} inputMode="numeric" pattern="[0-9]+" maxLength={19} required disabled={busy || opening !== null} onChange={event => { setIdentification(event.target.value); setLookup(null); setResult(null); setError(""); }} placeholder="ID do cliente no sisteminha" autoFocus /></label>
         <label>Nome, usuário ou e-mail<input value={name} onChange={event => { setName(event.target.value); setPage(1); }} placeholder="Buscar em todos os usuários" /></label>
         <label>Tipo<select value={type} onChange={event => { setType(event.target.value); setPage(1); }}><option value="">Todos os tipos</option><option value="supervisor">Supervisor</option><option value="common">Comum</option></select></label>
         <button className="primary-button" type="submit" disabled={busy || opening !== null || !identification.trim()}><Search size={16} />{busy ? "Pesquisando…" : "Pesquisar"}</button>
       </form>
       {error && <div className="dontus-integration-error" role="alert">{error}</div>}
-      {result && <p className="dontus-access-meta"><strong>{result.customerName || "Cliente Dontus"}</strong> · Identificação {result.identification} · Exibindo {pagination.start}–{pagination.end} de {pagination.total} usuário(s){pagination.total !== result.users.length ? ` · ${result.users.length} no ambiente` : ""} · {timestamp(result.fetchedAt)} (Brasília)</p>}
+      {result && pagination && <p className="dontus-access-meta"><strong>{result.customerName || "Cliente Dontus"}</strong> · Identificação {result.identification} · Exibindo {pagination.start}–{pagination.end} de {pagination.total} usuário(s) · {timestamp(result.fetchedAt)} (Brasília)</p>}
       <RecordPageSize value={pageSize} onChange={size=>{setPageSize(size);setPage(1)}} label="usuários"/><div className="support-access-table" role="table" aria-label="Usuários do sistema Dontus">
         <div className="support-access-row head" role="row"><span role="columnheader">Nome</span><span role="columnheader">Usuário</span><span role="columnheader">E-mail</span><span role="columnheader">Tipo</span><span role="columnheader">Status</span><span role="columnheader">Acessar</span></div>
         {busy ? <p className="support-access-empty" role="status">Buscando usuários no sistema Dontus…</p> : !result ? <p className="support-access-empty">Informe a identificação do cliente e clique em Pesquisar.</p> : entries.length === 0 ? <p className="support-access-empty">{result.users.length ? "Nenhum usuário corresponde aos filtros." : "Nenhum usuário encontrado para esta identificação."}</p> : entries.map(user => <div className="support-access-row" role="row" key={user.id}>
@@ -157,7 +164,7 @@ export function DontusSupportAccess({ canManage = false }: { canManage?: boolean
           <span role="cell"><button className="dontus-home-access" type="button" disabled={!user.canAccess || opening !== null} title={user.canAccess ? `Acessar Dontus como ${user.name || user.username}` : "Acesso inativo ou endereço indisponível"} aria-label={`Acessar Dontus como ${user.name || user.username}`} onClick={() => { setAccessError(""); setSelectedUser(user); }}><Home size={19} />{opening === user.id ? "Abrindo…" : "Acessar"}</button></span>
         </div>)}
       </div>
-      {result && pagination.total > 0 && <nav className="dontus-users-pagination" aria-label="Páginas de usuários Dontus"><span>Página {pagination.page} de {pagination.totalPages} · {pageSize} por página</span><div><button type="button" className="secondary-button" disabled={pagination.page === 1 || opening !== null} onClick={() => setPage(pagination.page - 1)}>Anterior</button><button type="button" className="secondary-button" disabled={pagination.page === pagination.totalPages || opening !== null} onClick={() => setPage(pagination.page + 1)}>Próxima</button></div></nav>}
+      {result && pagination && pagination.total > 0 && <nav className="dontus-users-pagination" aria-label="Páginas de usuários Dontus"><span>Página {pagination.page} de {pagination.totalPages} · {pageSize} por página</span><div><button type="button" className="secondary-button" disabled={busy || pagination.page === 1 || opening !== null} onClick={() => setPage(pagination.page - 1)}>Anterior</button><button type="button" className="secondary-button" disabled={busy || pagination.page === pagination.totalPages || opening !== null} onClick={() => setPage(pagination.page + 1)}>Próxima</button></div></nav>}
     </div>
     {selectedUser && result && <SupportAccessReasonModal key={selectedUser.id} userName={selectedUser.name || selectedUser.username} customerName={result.customerName} identification={result.identification} reasons={reasons} loading={reasonsLoading} busy={opening !== null} error={accessError} onClose={() => setSelectedUser(null)} onConfirm={(reasonId, justification) => void open(selectedUser, reasonId, justification)} />}
   </section>;

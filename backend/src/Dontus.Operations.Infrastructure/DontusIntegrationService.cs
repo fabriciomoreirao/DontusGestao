@@ -57,7 +57,7 @@ public sealed partial class DontusIntegrationService(OperationsDbContext db, Don
         return DataDto(DontusApiClient.Text(data, "Ident"), data);
     }
 
-    public async Task<object> ListUsersAsync(string identification, ActorContext actor, CancellationToken ct)
+    public async Task<object> ListUsersAsync(string identification, ActorContext actor, CancellationToken ct, string name = "", string type = "", int page = 1, int pageSize = 10)
     {
         actor.RequirePermission("access", "view");
         identification = DontusApiClient.NormalizeIdentification(identification);
@@ -65,8 +65,17 @@ public sealed partial class DontusIntegrationService(OperationsDbContext db, Don
         var users = await api.ListUsersAsync(identification, ct);
         Audit(actor, "ListDontusUsers", "access", identification, new { identification, count = users.Count });
         await db.SaveChangesAsync(ct);
+        var terms = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var compare = System.Globalization.CultureInfo.GetCultureInfo("pt-BR").CompareInfo;
+        var matching = users.Where(u => (string.IsNullOrEmpty(type) || u.IsSupervisor == (type == "supervisor"))
+            && terms.All(term => compare.IndexOf($"{u.Id} {u.Name} {u.Username} {u.Email}", term,
+                System.Globalization.CompareOptions.IgnoreCase | System.Globalization.CompareOptions.IgnoreNonSpace) >= 0)).ToArray();
+        pageSize = pageSize is 10 or 30 or 50 or 100 ? pageSize : 10;
+        var totalPages = Math.Max(1, (int)Math.Ceiling(matching.Length / (double)pageSize));
+        page = Math.Clamp(page, 1, totalPages);
         return new { identification, customerName = DontusApiClient.Text(customer, "NomeFantasia"), fetchedAt = DateTimeOffset.UtcNow,
-            users = users.Select(u => new DontusEnvironmentUserDto(u.Id, u.Name, u.Username, u.Email, u.IsSupervisor, u.Active, u.Active && u.LoginUrl is not null)) };
+            page, pageSize, total = matching.Length, totalPages, start = matching.Length == 0 ? 0 : (page - 1) * pageSize + 1, end = Math.Min(page * pageSize, matching.Length),
+            users = matching.Skip((page - 1) * pageSize).Take(pageSize).Select(u => new DontusEnvironmentUserDto(u.Id, u.Name, u.Username, u.Email, u.IsSupervisor, u.Active, u.Active && u.LoginUrl is not null)) };
     }
 
     public async Task<object> LoginAsync(DontusLoginCommand command, ActorContext actor, CancellationToken ct)
