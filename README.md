@@ -28,6 +28,22 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 ### Atualização em tempo real
 
+Os filtros antes limitados ao mês permitem selecionar **De** e **Até**, incluindo
+os dois dias no horário de Brasília, atravessar meses/anos ou limpar os limites.
+Listas, indicadores, totais e painel público usam o período informado. Em
+Comissões, as faixas continuam sendo calculadas por competência e as confirmações
+são separadas por mês, mesmo quando a consulta abrange vários meses.
+
+Em **Contas estratégicas**, **Abrir acompanhamento** mantém a evolução,
+agendamentos, conferência e finalização dentro da própria unidade, sem criar um
+card em Acompanhamentos. Os vínculos antigos continuam disponíveis pela unidade.
+No **Processo seletivo**, o quadro usa as etapas do processo, com etapas padrão
+quando não houver configuração, e mantém visíveis candidaturas de etapas antigas.
+O card mostra contato, currículo e evolução, com **Agendar entrevista** no topo.
+Na **Agenda**, somente os status **Agendado** e **Concluído** ocupam o horário do
+responsável; os demais liberam esse horário. A troca para um status que ocupa
+horário também verifica conflitos.
+
 As listas oferecem o seletor **10 / 30 / 50 / 100** no canto superior esquerdo,
 com dez registros por padrão e retorno a dez ao reabrir a página. Pesquisa, filtros
 e indicadores consideram o conjunto completo antes da paginação. O WhatsApp e o

@@ -2,6 +2,8 @@ import { customerSuccessScore } from "./commission-rules.ts";
 import { hasTrainingPending } from "./followup-insights.ts";
 
 type UnitIdentity = {
+  followUp?: Tracking;
+  followUpUpdatedAt?: string;
   trainingRequired?: boolean;
   id: string;
   customerId?: string;
@@ -83,6 +85,17 @@ export function strategicUnitJourney(
   networkId: string,
   records: JourneyRecord[],
 ) {
+  if (unit.followUp?.kind === "csJourney") {
+    return {
+      record: {
+        id: networkId,
+        description: JSON.stringify(unit.followUp),
+        updated_at: unit.followUpUpdatedAt || "",
+      },
+      detail: unit.followUp,
+      linked: true,
+    };
+  }
   const lookup = journeyLookup(records);
   const exact = lookup.units.get(`${networkId}:${unit.id}`) ?? [];
   const legacy = [unit.customerId, unit.externalId]

@@ -7,12 +7,13 @@ const apiBase = () =>
 
 export async function GET(request: Request) {
   try {
-    const month = new URL(request.url).searchParams.get("month");
-    const query =
-      month && /^\d{4}-\d{2}$/.test(month)
-        ? `?month=${encodeURIComponent(month)}`
-        : "";
-    const response = await fetch(`${apiBase()}/api/public-overview${query}`, {
+    const params = new URL(request.url).searchParams;
+    const query = new URLSearchParams();
+    for (const key of ["month", "from", "to", "range"]) {
+      const value = params.get(key);
+      if (value !== null) query.set(key, value);
+    }
+    const response = await fetch(`${apiBase()}/api/public-overview?${query}`, {
       headers: { accept: "application/json" },
       cache: "no-store",
       signal: apiRequestSignal(request),

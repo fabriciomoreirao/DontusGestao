@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { inDateRange } from "@/lib/date-range";
 
 import PaginatedItems from "@/app/PaginatedItems";
 
@@ -181,7 +183,7 @@ export default function LiaPromptAdjustmentsModule({
   const visible = records.filter(
     ({ item, detail }) =>
       detail.reviewStatus === tab &&
-      (!month || detail.date.startsWith(month)) &&
+      inDateRange(detail.date, month) &&
       (responsible === "all" || detail.responsible === responsible) &&
       (!query.trim() ||
         `${detail.clientId} ${detail.problem} ${detail.adjustmentType} ${detail.affectedNode} ${item.title}`
@@ -194,7 +196,7 @@ export default function LiaPromptAdjustmentsModule({
       records.filter(
         (record) =>
           record.detail.reviewStatus === entry.id &&
-          (!month || record.detail.date.startsWith(month)),
+          inDateRange(record.detail.date, month),
       ).length,
     ]),
   ) as Record<ReviewStatus, number>;
@@ -299,14 +301,11 @@ export default function LiaPromptAdjustmentsModule({
             placeholder="Pesquisar ID, problema, tipo ou node"
           />
         </label>
-        <label>
-          <span>Mês</span>
-          <input
-            type="month"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-          />
-        </label>
+        <DateRangeFilter
+          value={month}
+          onChange={setMonth}
+          label="Período dos ajustes"
+        />
         <label>
           <span>Responsável pelo ajuste</span>
           <SearchablePeopleSelect

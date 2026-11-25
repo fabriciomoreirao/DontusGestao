@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { overlapsDateRange } from "@/lib/date-range";
 import PaginatedItems from "@/app/PaginatedItems";
 import CsFeaturesIndicators from "@/app/CsFeaturesIndicators";
 import { parseJourney } from "@/app/CustomerSuccessJourneyModule";
@@ -2816,11 +2818,8 @@ function GoalsIndicatorsBoard({
   );
   const periodGoals = goals
     .filter((entry) => fieldAnalysis.matches(entry.item))
-    .filter(
-      ({ goal }) =>
-        !month ||
-        (goal.periodStart.slice(0, 7) <= month &&
-          goal.periodEnd.slice(0, 7) >= month),
+    .filter(({ goal }) =>
+      overlapsDateRange(goal.periodStart, goal.periodEnd, month),
     );
   const departments = [
     ...new Set(periodGoals.map((entry) => entry.department)),
@@ -2933,14 +2932,11 @@ function GoalsIndicatorsBoard({
         />
         <section className="operation-bi-filters goals-bi-filters">
           <Filter />
-          <label>
-            Competência
-            <input
-              type="month"
-              value={month}
-              onChange={(event) => setMonth(event.target.value)}
-            />
-          </label>
+          <DateRangeFilter
+            value={month}
+            onChange={setMonth}
+            label="Período das metas"
+          />
           <label>
             Setor
             <select

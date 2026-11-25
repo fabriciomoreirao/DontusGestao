@@ -40,6 +40,36 @@ public sealed class AgendaServiceTests
         Assert.Contains(await db.AgendaCommitmentParticipants.Where(x => x.CommitmentId == id).ToArrayAsync(), x => x.UserId == command.ResponsibleUserId);
     }
 
+    [Theory]
+    [InlineData("Agendado", true)]
+    [InlineData("Concluído", true)]
+    [InlineData("Concluido", true)]
+    [InlineData("Cancelado", false)]
+    [InlineData("Reagendar", false)]
+    [InlineData("Reservado", false)]
+    [InlineData("Pendente", false)]
+    public async Task Only_scheduled_and_completed_statuses_occupy_the_responsible_time(string name, bool blocked)
+    {
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        var status = new AgendaStatus { Name = name }; db.Add(status);
+        var existing = ExistingSlot(command, actor); existing.AgendaStatusId = status.Id; db.Add(existing);
+        await db.SaveChangesAsync();
+        if (blocked) Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.CreateCommitmentAsync(command, actor))).StatusCode);
+        else Assert.Single(await service.CreateCommitmentAsync(command, actor));
+    }
+
+    [Fact]
+    public async Task Changing_a_free_status_to_scheduled_checks_the_responsible_availability()
+    {
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        await service.CreateCommitmentAsync(command, actor);
+        var free = new AgendaStatus { Name = "Reagendar" }; db.Add(free); await db.SaveChangesAsync();
+        var id = Assert.Single(await service.CreateCommitmentAsync(command with { AgendaStatusId = free.Id }, actor));
+        var error = await Assert.ThrowsAsync<DomainException>(() => service.ChangeCommitmentStatusAsync(new(id, command.AgendaStatusId), actor));
+        Assert.Equal(409, error.StatusCode);
+        Assert.Equal(free.Id, (await db.AgendaCommitments.SingleAsync(entry => entry.Id == id)).AgendaStatusId);
+    }
+
     [Fact]
     public async Task Allows_meeting_room_reservations_only_for_marked_coordinators()
     {

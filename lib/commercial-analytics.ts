@@ -1,3 +1,4 @@
+import { dateRangeBounds, dateRangeLabel } from "./date-range.ts";
 import { crmResponsible } from "./crm-responsibles.ts";
 import {
   commercialIndicatorFlow,
@@ -196,9 +197,13 @@ const day = (date: Date) => date.toISOString().slice(0, 10);
 const short = (value: string) =>
   value.slice(5, 10).split("-").reverse().join("/");
 export function commercialAnalyticsPeriod(
-  mode: "month" | "week",
+  mode: "month" | "week" | "range",
   value: string,
 ): AnalyticsPeriod {
+  if (mode === "range") {
+    const { from, to } = dateRangeBounds(value);
+    return { start: from, end: to, label: dateRangeLabel(value) };
+  }
   const date = new Date(
     `${mode === "month" ? value.slice(0, 7) + "-01" : value.slice(0, 10)}T12:00:00Z`,
   );
@@ -222,8 +227,19 @@ export function commercialAnalyticsPeriod(
 }
 export function previousCommercialPeriod(
   period: AnalyticsPeriod,
-  mode: "month" | "week",
+  mode: "month" | "week" | "range",
 ) {
+  if (mode === "range") {
+    const length = Math.max(
+      1,
+      Math.round(
+        (Date.parse(period.end) - Date.parse(period.start)) / 86400000,
+      ) + 1,
+    );
+    const end = new Date(Date.parse(period.start) - 86400000);
+    const start = new Date(end.getTime() - (length - 1) * 86400000);
+    return commercialAnalyticsPeriod("range", `${day(start)}..${day(end)}`);
+  }
   const date = new Date(`${period.start}T12:00:00Z`);
   if (mode === "week") date.setUTCDate(date.getUTCDate() - 7);
   else date.setUTCMonth(date.getUTCMonth() - 1);

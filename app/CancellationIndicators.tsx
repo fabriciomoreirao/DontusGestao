@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { inDateRange } from "@/lib/date-range";
 
 import PaginatedItems from "@/app/PaginatedItems";
 
@@ -93,7 +95,11 @@ export default function CancellationIndicators({
   );
   const period = scoped.filter(
     (entry) =>
-      (!month || entry.detail.requestMonth === month) &&
+      (!month ||
+        inDateRange(
+          entry.detail.requestDate || entry.detail.requestMonth,
+          month,
+        )) &&
       fieldAnalysis.matches(indicatorRecord(entry)),
   );
   const converted = period.filter(
@@ -125,13 +131,16 @@ export default function CancellationIndicators({
       ).length,
     }))
     .sort((a, b) => b.value - a.value);
-  const year = month ? Number(month.slice(0, 4)) : new Date().getFullYear();
-  const monthly = Array.from({ length: 12 }, (_, index) => {
-    const key = `${year}-${String(index + 1).padStart(2, "0")}`;
-    const rows = scoped.filter(
-      (entry) =>
-        entry.detail.requestMonth === key &&
-        fieldAnalysis.matches(indicatorRecord(entry)),
+  const months = [
+    ...new Set(
+      period.map((entry) =>
+        (entry.detail.requestDate || entry.detail.requestMonth).slice(0, 7),
+      ),
+    ),
+  ].sort();
+  const monthly = months.map((key) => {
+    const rows = period.filter((entry) =>
+      (entry.detail.requestDate || entry.detail.requestMonth).startsWith(key),
     );
     return {
       label: new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(
@@ -155,7 +164,7 @@ export default function CancellationIndicators({
           </span>
           <span className="module-page-copy">
             <span className="eyebrow">BI · CANCELAMENTOS</span>
-            <h1>Controle de Cancelamentos {year}</h1>
+            <h1>Controle de Cancelamentos</h1>
             <p>
               Solicitações, reversões e impacto mensal por vendedor, responsável
               CS e responsável pela reversão.
@@ -175,11 +184,10 @@ export default function CancellationIndicators({
               </option>
             ))}
           </select>
-          <input
-            aria-label="Mês das solicitações"
-            type="month"
+          <DateRangeFilter
             value={month}
-            onChange={(event) => onMonth(event.target.value)}
+            onChange={onMonth}
+            label="Período das solicitações"
           />
           <button className="secondary-button" onClick={onBack}>
             Voltar

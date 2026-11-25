@@ -151,6 +151,7 @@ export function CommissionConfirmationControl({
   filters,
   employee = "all",
   revision = "",
+  periodLabel,
 }: {
   module: "commissions" | "referrals";
   scope: string;
@@ -161,6 +162,7 @@ export function CommissionConfirmationControl({
   filters: Record<string, string>;
   employee?: string;
   revision?: string;
+  periodLabel?: string;
 }) {
   const [confirmations, setConfirmations] = useState<Confirmation[]>([]);
   const [loadedContext, setLoadedContext] = useState("");
@@ -251,7 +253,11 @@ export function CommissionConfirmationControl({
           onClick={() => void generate()}
         >
           <LinkIcon size={15} />
-          {busy ? "Gerando…" : "Enviar confirmação"}
+          {busy
+            ? "Gerando…"
+            : periodLabel
+              ? `Enviar confirmação · ${competence.split("-").reverse().join("/")}`
+              : "Enviar confirmação"}
         </button>
       )}
       {canGenerate && !complete && (

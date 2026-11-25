@@ -1,4 +1,5 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
 import PaginatedItems from "@/app/PaginatedItems";
 
 import CustomerSelect from "@/app/CustomerSelect";
@@ -637,18 +638,11 @@ export default function TasksModule({
           </span>
         </div>
         <div className="tasks-heading-actions module-page-actions">
-          <label className="tasks-competence-filter">
-            <CalendarDays size={16} />
-            <span>Competência</span>
-            <input
-              type="month"
-              aria-label="Filtrar tarefas por competência"
-              value={month}
-              onChange={(event) => {
-                if (event.target.value) onMonthChange(event.target.value);
-              }}
-            />
-          </label>
+          <DateRangeFilter
+            value={month}
+            onChange={onMonthChange}
+            label="Período das tarefas"
+          />
           <button
             type="button"
             className="task-settings-button icon-only"

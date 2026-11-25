@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { inDateRange } from "@/lib/date-range";
 import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import CustomerSelect from "@/app/CustomerSelect";
@@ -430,7 +432,8 @@ export default function CancellationsModule({
         title: detail.customerName,
       }) &&
       item.status === stage &&
-      (!month || detail.requestMonth === month) &&
+      (!month ||
+        inDateRange(detail.requestDate || detail.requestMonth, month)) &&
       (owner === "all" ||
         cancellationReversalOwner(detail, item.owner) === owner ||
         detail.csOwner === owner ||
@@ -1011,11 +1014,15 @@ export default function CancellationsModule({
         <article>
           <AlertTriangle />
           <span>
-            <small>Solicitações no mês</small>
+            <small>Solicitações no período</small>
             <strong>
               {
-                records.filter((entry) => entry.detail.requestMonth === month)
-                  .length
+                records.filter((entry) =>
+                  inDateRange(
+                    entry.detail.requestDate || entry.detail.requestMonth,
+                    month,
+                  ),
+                ).length
               }
             </strong>
           </span>
@@ -1025,9 +1032,13 @@ export default function CancellationsModule({
           <span>
             <small>Taxa de reversão</small>
             <strong>
-              {records.filter((entry) => entry.detail.requestMonth === month)
-                .length
-                ? `${Math.round((records.filter((entry) => entry.detail.requestMonth === month && entry.item.status === "Convertido").length / records.filter((entry) => entry.detail.requestMonth === month).length) * 100)}%`
+              {records.filter((entry) =>
+                inDateRange(
+                  entry.detail.requestDate || entry.detail.requestMonth,
+                  month,
+                ),
+              ).length
+                ? `${Math.round((records.filter((entry) => inDateRange(entry.detail.requestDate || entry.detail.requestMonth, month) && entry.item.status === "Convertido").length / records.filter((entry) => inDateRange(entry.detail.requestDate || entry.detail.requestMonth, month)).length) * 100)}%`
                 : "0%"}
             </strong>
           </span>
@@ -1041,8 +1052,10 @@ export default function CancellationsModule({
                 records
                   .filter(
                     (entry) =>
-                      entry.detail.requestMonth === month &&
-                      entry.item.status === "Convertido",
+                      inDateRange(
+                        entry.detail.requestDate || entry.detail.requestMonth,
+                        month,
+                      ) && entry.item.status === "Convertido",
                   )
                   .reduce(
                     (sum, entry) => sum + entry.detail.monthlyValueCents,
@@ -1061,8 +1074,10 @@ export default function CancellationsModule({
                 records
                   .filter(
                     (entry) =>
-                      entry.detail.requestMonth === month &&
-                      entry.item.status !== "Convertido",
+                      inDateRange(
+                        entry.detail.requestDate || entry.detail.requestMonth,
+                        month,
+                      ) && entry.item.status !== "Convertido",
                   )
                   .reduce(
                     (sum, entry) => sum + entry.detail.monthlyValueCents,
@@ -1130,10 +1145,10 @@ export default function CancellationsModule({
             <option key={name}>{name}</option>
           ))}
         </select>
-        <input
-          type="month"
+        <DateRangeFilter
           value={month}
-          onChange={(event) => setMonth(event.target.value)}
+          onChange={setMonth}
+          label="Período das solicitações"
         />
         <strong>{visible.length} registro(s)</strong>
       </section>

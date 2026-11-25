@@ -108,3 +108,36 @@ test("conta apenas novas unidades e não trata edições internas como interaç�
     "2026-11-15T10:00:00Z",
   );
 });
+
+test("o acompanhamento salvo dentro da unidade prevalece sobre a antiga cópia", () => {
+  const embedded = {
+    ...unit,
+    followUp: {
+      kind: "csJourney",
+      track: "activation",
+      phase: "finished",
+      featuresBase: ["Agenda"],
+      featuresActive: ["Agenda"],
+      usage: "Utilizando",
+      follows: [],
+    },
+    followUpUpdatedAt: "2026-11-25T15:00:00Z",
+  };
+  const legacy = record("legacy", {
+    strategicNetworkId: "network-1",
+    strategicUnitId: "unit-1",
+    featuresBase: ["Agenda"],
+    featuresActive: [],
+  });
+  const match = strategicUnitJourney(embedded, "network-1", [legacy]);
+  assert.equal(match.record.id, "network-1");
+  assert.equal(match.detail.phase, "finished");
+  assert.equal(
+    strategicTracking(embedded, "network-1", [legacy]).trackingScore,
+    100,
+  );
+  assert.equal(
+    strategicTracking(embedded, "network-1", []).usageStatus,
+    "Utilizando",
+  );
+});

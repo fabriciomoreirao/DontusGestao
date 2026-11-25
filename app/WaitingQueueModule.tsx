@@ -740,7 +740,12 @@ function QueueColumn({
         {records.length === 0 ? (
           <p className="waiting-queue-empty">Nenhum cliente nesta coluna.</p>
         ) : (
-          <PaginatedItems mode="cards" label="contatos">
+          <PaginatedItems
+            mode={tone === "contacted" ? "list" : "cards"}
+            source={["items"]}
+            resetKey={tone}
+            label="contatos"
+          >
             {records.map(({ item, detail }) => (
               <article
                 data-reminder-entity-id={item.id}

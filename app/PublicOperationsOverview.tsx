@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { dateRangeBounds } from "@/lib/date-range";
 import GoalProgressCard from "@/app/GoalProgressCard";
 import PublicGoalCharts from "@/app/PublicGoalCharts";
 
@@ -213,7 +215,7 @@ export default function PublicOperationsOverview() {
       if (!silent) setRefreshing(true);
       try {
         const response = await fetch(
-          `/api/public-overview?month=${encodeURIComponent(month)}`,
+          `/api/public-overview?${new URLSearchParams({ ...dateRangeBounds(month), range: "true" })}`,
           { cache: "no-store" },
         );
         const body = await response.json();
@@ -392,18 +394,14 @@ export default function PublicOperationsOverview() {
               Escuro
             </button>
           </div>
-          <label>
-            <CalendarDays />
-            <span>Competência</span>
-            <input
-              type="month"
-              value={month}
-              onChange={(event) => {
-                setMonth(event.target.value);
-                setTab("overview");
-              }}
-            />
-          </label>
+          <DateRangeFilter
+            value={month}
+            onChange={(value) => {
+              setMonth(value);
+              setTab("overview");
+            }}
+            label="Período do painel"
+          />
           <button
             className={autoRotate ? "active" : ""}
             onClick={() => setAutoRotate((current) => !current)}

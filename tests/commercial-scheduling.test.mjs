@@ -11,7 +11,7 @@ const now = Date.parse("2026-10-27T12:00:00Z"); // 09h em Brasília.
 const slot = (fields = {}) => ({
   agendaId: "cs",
   title: "Kick off",
-  statusName: "Reservado",
+  statusName: "Agendado",
   startsAt: "2026-10-27T12:30:00Z",
   endsAt: "2026-10-27T13:30:00Z",
   ...fields,
@@ -107,4 +107,24 @@ test("usa Brasília na virada do dia e ao converter o horário selecionado", () 
     slots({ now: Date.parse("2026-10-27T12:30:00Z") }).includes("09:30"),
     false,
   );
+});
+
+test("capacidade ignora todos os status além de Agendado e Concluído", () => {
+  for (const [statusName, blocked] of [
+    ["Agendado", true],
+    ["Concluído", true],
+    ["Concluido", true],
+    ["Reservado", false],
+    ["Pendente", false],
+    ["Reagendar", false],
+    ["Cancelado", false],
+  ]) {
+    assert.equal(
+      slots({
+        commitments: Array.from({ length: 3 }, () => slot({ statusName })),
+      }).includes("09:30"),
+      !blocked,
+      statusName,
+    );
+  }
 });

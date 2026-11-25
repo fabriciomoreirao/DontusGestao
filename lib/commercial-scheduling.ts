@@ -1,3 +1,5 @@
+import { agendaStatusBlocksTime } from "./agenda-availability.ts";
+
 export const COMMERCIAL_AVAILABILITY_BLOCK_PREFIX = "[BLOQUEIO COMERCIAL]";
 export const COMMERCIAL_SLOT_TIMES = ["09:30", "11:00", "14:00", "16:00"];
 type Commitment = {
@@ -77,7 +79,7 @@ export function availableCommercialSlots({
   const active = commitments.filter(
     (entry) =>
       entry.agendaId === agendaId &&
-      !isCancelled(entry) &&
+      agendaStatusBlocksTime(entry.statusName) &&
       !isCommercialAvailabilityBlock(entry),
   );
   return COMMERCIAL_SLOT_TIMES.filter((slot) => {
