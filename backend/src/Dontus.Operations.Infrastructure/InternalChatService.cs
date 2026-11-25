@@ -21,7 +21,7 @@ public sealed class InternalChatService(
     private readonly string filesRoot = Path.GetFullPath(configuration["InternalChat:FilesPath"]
         ?? Path.Combine(AppContext.BaseDirectory, "internal-chat-files"));
 
-    public async Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30, Guid? roomId = null)
+    public async Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30, Guid? roomId = null, Guid? changedMessageId = null)
     {
         actor.RequirePermission("internalChat", "view");
         var snapshotAt = DateTimeOffset.UtcNow;
@@ -56,8 +56,10 @@ public sealed class InternalChatService(
             .ToListAsync(cancellationToken);
         var historySince = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(historyDays, 30, 36500));
         var messages = await db.InternalChatMessages.AsNoTracking()
-            .Where(message => roomIds.Contains(message.RoomId) && (message.CreatedAt >= historySince || message.UpdatedAt >= historySince || message.EditedAt >= historySince || message.DeletedAt >= historySince || message.Type == "pin"
-                || db.InternalChatMessageReceipts.Any(receipt => receipt.MessageId == message.Id && receipt.ReadAt >= historySince)))
+            .Where(message => roomIds.Contains(message.RoomId) && (changedMessageId.HasValue
+                ? message.Id == changedMessageId.Value
+                : message.CreatedAt >= historySince || message.UpdatedAt >= historySince || message.EditedAt >= historySince || message.DeletedAt >= historySince || message.Type == "pin"
+                    || db.InternalChatMessageReceipts.Any(receipt => receipt.MessageId == message.Id && receipt.ReadAt >= historySince)))
             .OrderByDescending(message => message.CreatedAt)
             .ToListAsync(cancellationToken);
 
@@ -147,7 +149,7 @@ public sealed class InternalChatService(
                 actorMembership.ArchivedAt.HasValue,
                 unreadByRoom.GetValueOrDefault(room.Id),
                 room.LastMessageAt, roomMembers.Select(member => member.UserId).ToArray(), roomMessages)
-            { IsMuted = actorMembership.IsMuted };
+            { IsMuted = actorMembership.IsMuted, MessagesPartial = changedMessageId.HasValue };
         }).ToArray();
 
         return new InternalChatModuleDto(

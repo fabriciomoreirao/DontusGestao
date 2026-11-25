@@ -1,3 +1,4 @@
+import ModalLayoutMarkers from "./ModalLayoutMarkers";
 import type { Metadata } from "next";
 import { Inter, Manrope } from "next/font/google";
 import { headers } from "next/headers";
@@ -88,6 +89,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${inter.variable} ${manrope.variable}`}>
+        <ModalLayoutMarkers />
         <DesktopAppProvider>{children}</DesktopAppProvider>
       </body>
     </html>

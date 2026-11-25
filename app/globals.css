@@ -44229,14 +44229,14 @@ img[src^="data:image"] {
   justify-content: center;
   padding: clamp(12px, 2.5dvh, 28px) !important;
 }
-:is(.modal, .modal-shell):has(.form-grid) {
+:is(.modal, .modal-shell).form-grid-layout {
   width: min(820px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   padding: 0;
   overflow: auto;
 }
-:is(.modal, .modal-shell):has(.form-grid) > .modal-head,
-:is(.modal, .modal-shell):has(.form-grid) > header {
+:is(.modal, .modal-shell).form-grid-layout > .modal-head,
+:is(.modal, .modal-shell).form-grid-layout > header {
   position: sticky;
   top: 0;
   z-index: 3;
@@ -44249,42 +44249,42 @@ img[src^="data:image"] {
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   backdrop-filter: blur(12px);
 }
-:is(.modal, .modal-shell):has(.form-grid) > .form-grid {
+:is(.modal, .modal-shell).form-grid-layout > .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 15px;
   padding: 22px 24px 24px;
 }
-:is(.modal, .modal-shell):has(.form-grid) .wide {
+:is(.modal, .modal-shell).form-grid-layout .wide {
   grid-column: 1/-1;
 }
-:is(.modal, .modal-shell):has(.form-grid) h2 {
+:is(.modal, .modal-shell).form-grid-layout h2 {
   font-size: 1.35rem !important;
   line-height: 1.25;
 }
-:is(.modal, .modal-shell):has(.form-grid) .modal-head p {
+:is(.modal, .modal-shell).form-grid-layout .modal-head p {
   font-size: 0.78rem !important;
   line-height: 1.5;
 }
-:is(.modal, .modal-shell):has(.form-grid) label {
+:is(.modal, .modal-shell).form-grid-layout label {
   display: grid;
   gap: 7px;
   color: var(--ink) !important;
   font-size: 0.78rem !important;
   font-weight: 800;
 }
-:is(.modal, .modal-shell):has(.form-grid)
+:is(.modal, .modal-shell).form-grid-layout
   :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
   min-height: 45px !important;
   padding: 11px 13px !important;
   font-size: 0.88rem !important;
   line-height: 1.35;
 }
-:is(.modal, .modal-shell):has(.form-grid) textarea {
+:is(.modal, .modal-shell).form-grid-layout textarea {
   min-height: 110px;
   resize: vertical;
 }
-:is(.modal, .modal-shell):has(.form-grid) .form-actions {
+:is(.modal, .modal-shell).form-grid-layout .form-actions {
   position: sticky;
   bottom: -24px;
   z-index: 2;
@@ -44296,7 +44296,7 @@ img[src^="data:image"] {
   border-top: 1px solid var(--line);
   background: var(--surface);
 }
-:is(.modal, .modal-shell):has(.form-grid) .form-actions button {
+:is(.modal, .modal-shell).form-grid-layout .form-actions button {
   min-height: 42px;
   padding: 0 17px;
   font-size: 0.8rem;
@@ -44314,18 +44314,18 @@ img[src^="data:image"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 @media (max-width: 700px) {
-  :is(.modal, .modal-shell):has(.form-grid) > .form-grid {
+  :is(.modal, .modal-shell).form-grid-layout > .form-grid {
     grid-template-columns: 1fr;
   }
-  :is(.modal, .modal-shell):has(.form-grid) .wide {
+  :is(.modal, .modal-shell).form-grid-layout .wide {
     grid-column: auto;
   }
-  :is(.modal, .modal-shell):has(.form-grid) .form-actions {
+  :is(.modal, .modal-shell).form-grid-layout .form-actions {
     display: grid;
     grid-template-columns: 1fr;
     margin-inline: -24px;
   }
-  :is(.modal, .modal-shell):has(.form-grid) .form-actions button {
+  :is(.modal, .modal-shell).form-grid-layout .form-actions button {
     width: 100%;
   }
 }
@@ -48693,7 +48693,7 @@ img[src^="data:image"] {
 }
 
 /* Cadastros: padrão único, mais largo e com hierarquia tipográfica leve. */
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   ),
 form:is(.modal, .modal-shell):not(.modal-side-panel):not(
@@ -48705,7 +48705,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(
   overflow: auto;
   border-radius: 18px !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   > :is(.modal-head, .modal-header, header),
@@ -48720,7 +48720,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   background: color-mix(in srgb, var(--surface) 97%, transparent) !important;
   backdrop-filter: blur(12px);
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   :is(.modal-head, .modal-header, header)
@@ -48733,7 +48733,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   font-weight: 800 !important;
   line-height: 1.25 !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   :is(.modal-head, .modal-header, header)
@@ -48743,16 +48743,16 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   :is(.eyebrow, p, small) {
   font-weight: 400 !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   > .form-grid,
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   > form
   > .form-grid,
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   > form.form-grid {
@@ -48761,7 +48761,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   row-gap: 16px !important;
   padding: 22px 26px 26px !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   :is(label, legend),
@@ -48773,7 +48773,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   font-weight: 400 !important;
   line-height: 1.35;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   :is(label, legend)
@@ -48783,7 +48783,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   > :is(span, strong, b, small) {
   font-weight: 400 !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   :is(
@@ -48812,7 +48812,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   font-weight: 400 !important;
   line-height: 1.4 !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   textarea,
@@ -48821,7 +48821,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   min-height: 104px !important;
   resize: vertical;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   select[multiple],
@@ -48831,7 +48831,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   min-height: 116px !important;
   padding: 6px !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   select
@@ -48842,7 +48842,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   padding: 8px;
   font-weight: 400;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   :is(.checkbox-label, .check-row),
@@ -48850,7 +48850,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   :is(.checkbox-label, .check-row) {
   font-weight: 400 !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   :is(.form-actions, .modal-actions),
@@ -48879,7 +48879,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   > label {
   margin: 16px 26px 0 !important;
 }
-:is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+:is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
     .suggestion-side-panel
   )
   :is(.form-actions, .modal-actions)
@@ -48896,7 +48896,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   font-weight: 600 !important;
 }
 @media (max-width: 700px) {
-  :is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+  :is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
       .suggestion-side-panel
     ),
   form:is(.modal, .modal-shell):not(.modal-side-panel):not(
@@ -48905,30 +48905,30 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
     width: calc(100vw - 20px) !important;
     max-height: calc(100dvh - 20px) !important;
   }
-  :is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+  :is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
       .suggestion-side-panel
     )
     > .form-grid,
-  :is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+  :is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
       .suggestion-side-panel
     )
     > form
     > .form-grid,
-  :is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+  :is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
       .suggestion-side-panel
     )
     > form.form-grid {
     grid-template-columns: 1fr;
     padding: 18px !important;
   }
-  :is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+  :is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
       .suggestion-side-panel
     )
     .form-grid
     .wide {
     grid-column: auto;
   }
-  :is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+  :is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
       .suggestion-side-panel
     )
     :is(.form-actions, .modal-actions) {
@@ -48937,7 +48937,7 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
     margin: 14px 0 0 !important;
     padding: 14px 0 max(8px, env(safe-area-inset-bottom)) !important;
   }
-  :is(.modal, .modal-shell):has(.form-grid):not(.modal-side-panel):not(
+  :is(.modal, .modal-shell).form-grid-layout:not(.modal-side-panel):not(
       .suggestion-side-panel
     )
     :is(.form-actions, .modal-actions)
@@ -54267,16 +54267,16 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   }
 }
 
-.main:has(.internal-chat-page) {
+.main.internal-chat-active {
   height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.main:has(.internal-chat-page) > .topbar {
+.main.internal-chat-active > .topbar {
   flex-shrink: 0;
 }
-.content:has(.internal-chat-page) {
+.content.internal-chat-active {
   height: auto;
   flex: 1;
   width: 100%;

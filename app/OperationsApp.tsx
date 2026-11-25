@@ -1239,6 +1239,9 @@ export default function OperationsApp() {
       : (new URLSearchParams(window.location.search).get("room") ?? ""),
   );
   const [kanbanMonth, setKanbanMonth] = useState(() => brasiliaMonthKey());
+  const showFunctionPeriod =
+    kanbanModules.has(active) &&
+    !["tasks", "lia", "referrals", "cancellations"].includes(active);
   const [reminderClock, setReminderClock] = useState(() => Date.now());
   const [locationSearch, setLocationSearch] = useState("");
   const presenceCache = useRef<ChatPresence[]>([]);
@@ -2202,8 +2205,9 @@ export default function OperationsApp() {
     success: string,
   ): Promise<OperationResult> => {
     if (String(payload.action ?? "").includes("InternalChat")) {
+      const backgroundSend = payload.action === "sendInternalChatMessage";
       chatRevision.current += 1;
-      setChatBusy((current) => current + 1);
+      if (!backgroundSend) setChatBusy((current) => current + 1);
       try {
         const response = await fetch("/api/operations", {
           method: "POST",
@@ -2247,7 +2251,7 @@ export default function OperationsApp() {
         });
         return false;
       } finally {
-        setChatBusy((current) => current - 1);
+        if (!backgroundSend) setChatBusy((current) => current - 1);
       }
     }
     const previousSaleItem = dataRef.current?.items.find(
@@ -2500,7 +2504,8 @@ export default function OperationsApp() {
 
   const workItems = data?.items;
   const kanbanItems = useMemo(() => {
-    if (!workItems || !kanbanModules.has(active)) return workItems ?? [];
+    if (!workItems || !kanbanModules.has(active) || active === "cancellations")
+      return workItems ?? [];
     const currentMonth = brasiliaMonthKey();
     const requestedCard = new URLSearchParams(window.location.search).get(
       "card",
@@ -3673,6 +3678,7 @@ export default function OperationsApp() {
           <div
             className={[
               "app-shell",
+              active === "internalChat" ? "internal-chat-active" : "",
               theme === "dark" ? "theme-dark" : "theme-light",
               backgroundImage && active !== "internalChat"
                 ? "has-workspace-background"
@@ -3798,7 +3804,7 @@ export default function OperationsApp() {
             )}
 
             <main
-              className="main"
+              className={`main ${active === "internalChat" ? "internal-chat-active" : ""}`}
               style={
                 active === "internalChat" ? undefined : workspaceBackgroundStyle
               }
@@ -3848,18 +3854,6 @@ export default function OperationsApp() {
                   onSelectResult={selectGlobalSearchResult}
                 />
                 <div className="topbar-actions">
-                  {kanbanModules.has(active) &&
-                    active !== "tasks" &&
-                    active !== "lia" &&
-                    active !== "referrals" &&
-                    !indicatorsOpen && (
-                      <DateRangeFilter
-                        value={kanbanMonth}
-                        onChange={setKanbanMonth}
-                        label="Período do quadro"
-                        className="topbar-period-filter"
-                      />
-                    )}
                   <button
                     className="icon-button background-shortcut"
                     onClick={() =>
@@ -4077,7 +4071,7 @@ export default function OperationsApp() {
               <div
                 id="workspace-content"
                 tabIndex={-1}
-                className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}
+                className={`content ${active === "internalChat" ? "internal-chat-active" : ""} ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}
               >
                 <Suspense
                   fallback={
@@ -4128,13 +4122,20 @@ export default function OperationsApp() {
                     )
                   ) : (
                     <>
-                      {operationContext && canViewOperationIndicators && (
+                      {((operationContext && canViewOperationIndicators) ||
+                        showFunctionPeriod) && (
                         <OperationIndicatorsLauncher
                           pageKey={`${active}:${commercialFlow}:${csFlow}`}
-                          onOpen={() => {
-                            setGeneralIndicators(false);
-                            openIndicatorsPage();
-                          }}
+                          period={showFunctionPeriod ? kanbanMonth : undefined}
+                          onPeriodChange={setKanbanMonth}
+                          onOpen={
+                            canViewOperationIndicators
+                              ? () => {
+                                  setGeneralIndicators(false);
+                                  openIndicatorsPage();
+                                }
+                              : undefined
+                          }
                           onGeneral={
                             active === "cs" && csFlow === "onboarding"
                               ? () => {
@@ -8008,10 +8009,14 @@ function OperationIndicatorsLauncher({
   pageKey,
   onOpen,
   onGeneral,
+  period,
+  onPeriodChange,
 }: {
   pageKey: string;
-  onOpen: () => void;
+  onOpen?: () => void;
   onGeneral?: () => void;
+  period?: string;
+  onPeriodChange: (value: string) => void;
 }) {
   const [target, setTarget] = useState<Element | null>(null);
   useEffect(() => {
@@ -8031,15 +8036,28 @@ function OperationIndicatorsLauncher({
   }, [pageKey]);
   return target
     ? createPortal(
-        <>
-          <button
-            type="button"
-            className="operation-indicators-button"
-            onClick={onOpen}
-          >
-            <ChartNoAxesCombined size={17} />
-            <span>Indicadores</span>
-          </button>
+        <div
+          className="operation-function-tools"
+          role="group"
+          aria-label="Pesquisa e indicadores"
+        >
+          {onOpen && (
+            <button
+              type="button"
+              className="operation-indicators-button"
+              onClick={onOpen}
+            >
+              <ChartNoAxesCombined size={17} />
+              <span>Indicadores</span>
+            </button>
+          )}
+          {period !== undefined && (
+            <DateRangeFilter
+              value={period}
+              onChange={onPeriodChange}
+              label="Período do quadro"
+            />
+          )}
           {onGeneral && (
             <button
               type="button"
@@ -8050,7 +8068,7 @@ function OperationIndicatorsLauncher({
               <span>Indicadores gerais</span>
             </button>
           )}
-        </>,
+        </div>,
         target,
       )
     : null;

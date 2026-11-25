@@ -35,6 +35,28 @@
   background: var(--surface);
   color: var(--ink);
 }
+.app-shell .content .module-page-header:has(.operation-function-tools) {
+  flex-wrap: wrap;
+  height: auto;
+}
+.app-shell .content .module-page-actions:has(.operation-function-tools) {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.operation-function-tools {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  order: -1;
+}
+.app-shell .operation-function-tools .operation-indicators-button {
+  position: static;
+  flex: 0 0 auto;
+}
 @media (max-width: 600px) {
   .date-range-filter {
     width: 100%;
@@ -45,7 +67,7 @@
   .date-range-filter input[type="date"] {
     width: 100%;
   }
-  .topbar-actions:has(.date-range-filter) {
-    flex-wrap: wrap;
+  .operation-function-tools {
+    width: 100%;
   }
 }

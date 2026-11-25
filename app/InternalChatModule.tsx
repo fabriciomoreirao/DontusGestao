@@ -90,6 +90,7 @@ export type InternalChatUser = {
 };
 
 export type InternalChatMessage = {
+  pending?: boolean;
   id: string;
   roomId: string;
   senderUserId: string;
@@ -122,6 +123,7 @@ export type InternalChatMessage = {
 };
 
 export type InternalChatRoom = {
+  messagesPartial?: boolean;
   id: string;
   name: string;
   photoDataUrl: string;
@@ -178,6 +180,21 @@ type Conversation = {
 };
 
 type ImageDraft = { id: string; file: File };
+
+function mergeVisibleMessages(
+  outgoing: InternalChatMessage[],
+  older: InternalChatMessage[],
+  current: InternalChatMessage[],
+) {
+  return [
+    ...new Map(
+      [...outgoing, ...older, ...current].map((message) => [
+        message.id,
+        message,
+      ]),
+    ).values(),
+  ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
 
 const stickers = [
   "😀",
@@ -375,6 +392,11 @@ export default function InternalChatModule({
   >({});
   const [historyDays, setHistoryDays] = useState<Record<string, number>>({});
   const [drafts] = useState(createChatDraftStore);
+  const [outgoing, setOutgoing] = useState<
+    Array<InternalChatMessage & { conversationKey: string }>
+  >([]);
+  const [sending, setSending] = useState(false);
+  const pendingMessageSequence = useRef(0);
   const [replyDrafts, setReplyDrafts] = useState<
     Record<string, InternalChatMessage | undefined>
   >({});
@@ -481,19 +503,15 @@ export default function InternalChatModule({
     canCreate && voice.state !== "recording" && voice.state !== "requesting",
   );
   const pastedImages = imageDrafts[effectiveSelectedKey] ?? [];
-  const visibleMessages = useMemo(
-    () =>
-      [
-        ...new Map(
-          [
-            ...(olderMessages[selectedRoom?.id || ""] || []),
-            ...(selectedRoom?.messages || []),
-          ].map((message) => [message.id, message]),
-        ).values(),
-      ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [olderMessages, selectedRoom?.id, selectedRoom?.messages],
+  const visibleMessages = mergeVisibleMessages(
+    outgoing.filter(
+      (message) => message.conversationKey === effectiveSelectedKey,
+    ),
+    olderMessages[selectedRoom?.id || ""] || [],
+    selectedRoom?.messages || [],
   );
   const messageLimit = messageLimits[selectedRoom?.id || ""] ?? messagePageSize;
+  const latestVisibleMessageId = visibleMessages.at(-1)?.id;
   const displayedMessages = visibleMessages.slice(-messageLimit);
   const firstDisplayedMessageId = displayedMessages[0]?.id;
   const hasEarlierMessages = visibleMessages.length > messageLimit;
@@ -624,7 +642,7 @@ export default function InternalChatModule({
       messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" }),
     );
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedRoom?.id, selectedRoom?.messages.at(-1)?.id]);
+  }, [selectedRoom?.id, latestVisibleMessageId]);
 
   useEffect(() => {
     const container = messagesRef.current;
@@ -738,19 +756,74 @@ export default function InternalChatModule({
       return;
     const conversationKey = effectiveSelectedKey;
     const submittedDraft = message;
-    let roomId = selectedRoom?.id ?? "";
+    const initialRoomId = selectedRoom?.id ?? "";
+    let resolvedRoomId = "";
     let textSent = !body;
     // Focus only at submission; completion must not take focus from another control.
     composerInput.current?.focus({ preventScroll: true });
     if (body) drafts.set(conversationKey, "");
     sendingRef.current = true;
+    setSending(true);
+    const pendingId = body ? `pending:${++pendingMessageSequence.current}` : "";
+    if (body) {
+      const self = module.users.find(
+        (user) => user.id === module.currentUserId,
+      );
+      setOutgoing((current) => [
+        ...current.filter(
+          (message) =>
+            message.pending ||
+            !module.rooms.some((room) =>
+              room.messages.some((saved) => saved.id === message.id),
+            ),
+        ),
+        {
+          id: pendingId,
+          conversationKey,
+          roomId: initialRoomId,
+          senderUserId: module.currentUserId,
+          senderName: self?.name || "Você",
+          senderPhotoDataUrl: self?.photoDataUrl || "",
+          senderIsCoordinator: self?.isCoordinator || false,
+          type: "text",
+          body,
+          mentions,
+          replyTo: replyMessage
+            ? {
+                id: replyMessage.id,
+                senderName: replyMessage.senderName,
+                type: replyMessage.type,
+                body: replyMessage.body,
+                fileName: replyMessage.fileName,
+                deletedAt: replyMessage.deletedAt,
+              }
+            : null,
+          fileName: "",
+          contentType: "",
+          hasAttachment: false,
+          isPinned: false,
+          createdAt: new Date().toISOString(),
+          receiptState: "sent",
+          pending: true,
+        },
+      ]);
+    }
     setSendError("");
     try {
-      roomId = await ensureRoom();
+      const roomId = await ensureRoom();
+      resolvedRoomId = roomId;
       if (!roomId) {
         setSendError("Não foi possível iniciar a conversa. Tente novamente.");
         return;
       }
+      if (body)
+        setOutgoing((current) =>
+          current.map((message) =>
+            message.id === pendingId
+              ? { ...message, roomId, conversationKey: roomId }
+              : message,
+          ),
+        );
       if (pastedImages.length) {
         if (
           !(await uploadAttachments(
@@ -796,6 +869,7 @@ export default function InternalChatModule({
         const result = await operate(
           {
             action: "sendInternalChatMessage",
+            chatMessageDelta: true,
             roomId,
             body,
             mentions,
@@ -805,7 +879,16 @@ export default function InternalChatModule({
           "Mensagem enviada.",
         );
         textSent = Boolean(result);
-        if (result) clearReply(conversationKey, replyToMessageId);
+        if (result) {
+          setOutgoing((current) =>
+            current.map((message) =>
+              message.id === pendingId
+                ? { ...message, id: result.id || pendingId, pending: false }
+                : message,
+            ),
+          );
+          clearReply(conversationKey, replyToMessageId);
+        }
         if (!result)
           setSendError(
             "Não foi possível enviar a mensagem. O texto foi mantido para tentar novamente.",
@@ -814,12 +897,17 @@ export default function InternalChatModule({
     } catch {
       setSendError("Não foi possível enviar a mensagem. Tente novamente.");
     } finally {
-      if (!textSent)
+      if (!textSent) {
+        setOutgoing((current) =>
+          current.filter((message) => message.id !== pendingId),
+        );
         drafts.restore(
-          roomId || conversationKey,
+          resolvedRoomId || conversationKey,
           submittedDraft,
           submittedMentions,
         );
+      }
+      setSending(false);
       sendingRef.current = false;
     }
   };
@@ -1846,7 +1934,7 @@ export default function InternalChatModule({
                   drafts={drafts}
                   conversationKey={effectiveSelectedKey}
                   inputRef={composerInput}
-                  busy={busy}
+                  busy={busy || sending}
                   canCreate={canCreate}
                   recording={
                     voice.state === "recording" || voice.state === "requesting"
@@ -2164,37 +2252,39 @@ const MessageBubble = memo(function MessageBubble({
             {message.senderName}
           </strong>
         )}
-        {!message.deletedAt && (canCreate || (group && canEdit)) && (
-          <div className="internal-chat-message-toolbar">
-            {group && canEdit && (
-              <button
-                type="button"
-                className={message.isPinned ? "active" : ""}
-                disabled={busy}
-                onClick={() => onPin(message)}
-                aria-label={
-                  message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"
-                }
-                title={
-                  message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"
-                }
-              >
-                {message.isPinned ? <PinOff size={11} /> : <Pin size={11} />}
-              </button>
-            )}
-            {canCreate && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onReply(message)}
-                aria-label="Responder mensagem"
-                title="Responder mensagem"
-              >
-                <Reply size={12} />
-              </button>
-            )}
-          </div>
-        )}
+        {!message.pending &&
+          !message.deletedAt &&
+          (canCreate || (group && canEdit)) && (
+            <div className="internal-chat-message-toolbar">
+              {group && canEdit && (
+                <button
+                  type="button"
+                  className={message.isPinned ? "active" : ""}
+                  disabled={busy}
+                  onClick={() => onPin(message)}
+                  aria-label={
+                    message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"
+                  }
+                  title={
+                    message.isPinned ? "Desafixar mensagem" : "Fixar mensagem"
+                  }
+                >
+                  {message.isPinned ? <PinOff size={11} /> : <Pin size={11} />}
+                </button>
+              )}
+              {canCreate && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onReply(message)}
+                  aria-label="Responder mensagem"
+                  title="Responder mensagem"
+                >
+                  <Reply size={12} />
+                </button>
+              )}
+            </div>
+          )}
         <div
           className={`internal-chat-bubble ${message.type === "sticker" ? "sticker" : ""} ${message.type === "poll" ? "poll" : ""}`}
         >
@@ -2334,82 +2424,91 @@ const MessageBubble = memo(function MessageBubble({
           )}
 
           <span className="internal-chat-message-meta">
-            {!own && canCreate && !message.deletedAt && !editing && (
-              <span
-                ref={reactionControl}
-                className="internal-chat-reaction-control"
-              >
-                <button
-                  type="button"
-                  className="internal-chat-react-button"
-                  aria-label="Reagir à mensagem"
-                  aria-expanded={reactionsOpen}
-                  disabled={busy}
-                  onClick={() => setReactionsOpen((value) => !value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      event.stopPropagation();
-                      setReactionsOpen(false);
-                    }
-                  }}
+            {!own &&
+              canCreate &&
+              !message.pending &&
+              !message.deletedAt &&
+              !editing && (
+                <span
+                  ref={reactionControl}
+                  className="internal-chat-reaction-control"
                 >
-                  <SmilePlus size={15} />
-                </button>
-                {reactionsOpen && (
-                  <span
-                    className="internal-chat-reaction-picker"
-                    role="group"
-                    aria-label="Reações disponíveis"
+                  <button
+                    type="button"
+                    className="internal-chat-react-button"
+                    aria-label="Reagir à mensagem"
+                    aria-expanded={reactionsOpen}
+                    disabled={busy}
+                    onClick={() => setReactionsOpen((value) => !value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        setReactionsOpen(false);
+                      }
+                    }}
                   >
-                    {CHAT_REACTIONS.map((emoji) => (
-                      <button
-                        type="button"
-                        key={emoji}
-                        disabled={busy}
-                        aria-label={`Reagir com ${emoji}`}
-                        onClick={() => void react(emoji)}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </span>
-                )}
-              </span>
-            )}
-            {own && canCreate && !message.deletedAt && !editing && (
-              <span className="internal-chat-message-actions">
-                {message.type === "text" && (
+                    <SmilePlus size={15} />
+                  </button>
+                  {reactionsOpen && (
+                    <span
+                      className="internal-chat-reaction-picker"
+                      role="group"
+                      aria-label="Reações disponíveis"
+                    >
+                      {CHAT_REACTIONS.map((emoji) => (
+                        <button
+                          type="button"
+                          key={emoji}
+                          disabled={busy}
+                          aria-label={`Reagir com ${emoji}`}
+                          onClick={() => void react(emoji)}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </span>
+                  )}
+                </span>
+              )}
+            {own &&
+              canCreate &&
+              !message.pending &&
+              !message.deletedAt &&
+              !editing && (
+                <span className="internal-chat-message-actions">
+                  {message.type === "text" && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-label="Editar mensagem"
+                      title="Editar mensagem"
+                      onClick={() => {
+                        setEditBody(message.body);
+                        setEditing(true);
+                      }}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     disabled={busy}
-                    aria-label="Editar mensagem"
-                    title="Editar mensagem"
-                    onClick={() => {
-                      setEditBody(message.body);
-                      setEditing(true);
-                    }}
+                    aria-label="Excluir mensagem"
+                    title="Excluir mensagem para todos"
+                    onClick={() => void onDelete(message)}
                   >
-                    <Pencil size={13} />
+                    <Trash2 size={13} />
                   </button>
-                )}
-                <button
-                  type="button"
-                  disabled={busy}
-                  aria-label="Excluir mensagem"
-                  title="Excluir mensagem para todos"
-                  onClick={() => void onDelete(message)}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </span>
-            )}
+                </span>
+              )}
             {message.editedAt && !message.deletedAt && (
               <small title={new Date(message.editedAt).toLocaleString("pt-BR")}>
                 editada
               </small>
             )}
             <time>{messageTime.format(new Date(message.createdAt))}</time>
-            {own && (
+            {message.pending && <small role="status">Enviando…</small>}
+            {own && !message.pending && (
               <i
                 className={`internal-chat-receipt ${message.receiptState || "sent"}`}
                 title={

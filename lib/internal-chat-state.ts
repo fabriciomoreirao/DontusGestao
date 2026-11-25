@@ -1,4 +1,6 @@
 type Room = {
+  messages?: Array<{ id: string; createdAt: string }>;
+  messagesPartial?: boolean;
   id: string;
   isGroup: boolean;
   isArchived: boolean;
@@ -45,7 +47,34 @@ export function mergeInternalChat<R extends Room, T extends ChatState<R>>(
     }
   for (const room of patch.rooms)
     if (!removed.has(room.id) && isCurrent(room.id)) {
-      rooms.set(room.id, room);
+      const previous = rooms.get(room.id);
+      const oldMessages = new Map(
+        (previous?.messages ?? []).map((message) => [message.id, message]),
+      );
+      const incoming = room.messages?.map((message) => {
+        const old = oldMessages.get(message.id);
+        return old && JSON.stringify(old) === JSON.stringify(message)
+          ? old
+          : message;
+      });
+      rooms.set(
+        room.id,
+        room.messagesPartial && previous
+          ? {
+              ...room,
+              messagesPartial: false,
+              messages: [
+                ...new Map(
+                  [...(previous.messages ?? []), ...(incoming ?? [])].map(
+                    (message) => [message.id, message],
+                  ),
+                ).values(),
+              ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+            }
+          : incoming
+            ? { ...room, messages: incoming }
+            : room,
+      );
       times[room.id] = at;
     }
   return {

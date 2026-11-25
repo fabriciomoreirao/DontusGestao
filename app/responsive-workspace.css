@@ -169,13 +169,13 @@
 }
 
 /* Let messages fill the viewport; the composer never joins the scroll area. */
-.main:has(.internal-chat-page) {
+.main.internal-chat-active {
   min-height: 0;
 }
-.main:has(.internal-chat-page) > .workspace-favorites {
+.main.internal-chat-active > .workspace-favorites {
   flex-shrink: 0;
 }
-.app-shell .content:has(.internal-chat-page) {
+.app-shell .content.internal-chat-active {
   max-width: none;
   padding: 14px 18px 12px;
 }
@@ -249,7 +249,7 @@
   }
 }
 @media (max-width: 700px) {
-  .app-shell .content:has(.internal-chat-page) {
+  .app-shell .content.internal-chat-active {
     padding: 8px 8px max(8px, env(safe-area-inset-bottom));
   }
   .app-shell .internal-chat-page-header {

@@ -738,7 +738,8 @@ test("integra chamados públicos, período selecionável e rolagem do chat", asy
   ]);
   assertCode.match(app, /label: "Chamados"/);
   assertCode.match(app, /label: "Acompanhamento de chamados"/);
-  assertCode.match(app, /topbar-period-filter/);
+  assertCode.match(app, /operation-function-tools/);
+  assertCode.doesNotMatch(app, /topbar-period-filter/);
   assertCode.doesNotMatch(app, /Competência do Kanban/);
   assertCode.match(app, /brasiliaMonthKey/);
   assertCode.match(app, /label: "Chamados", count: serviceRequests\.length/);

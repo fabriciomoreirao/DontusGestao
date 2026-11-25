@@ -30,6 +30,8 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 Os filtros antes limitados ao mês permitem selecionar **De** e **Até**, incluindo
 os dois dias no horário de Brasília, atravessar meses/anos ou limpar os limites.
+O período do quadro fica nas ações da funcionalidade, ao lado de **Indicadores**.
+Os controles quebram linha em telas menores e o cabeçalho global mantém a navegação.
 Listas, indicadores, totais e painel público usam o período informado. Em
 Comissões, as faixas continuam sendo calculadas por competência e as confirmações
 são separadas por mês, mesmo quando a consulta abrange vários meses.
@@ -111,6 +113,11 @@ O workspace mantém uma conexão WebSocket autenticada em `/api/realtime`, na me
 O **Chat interno** oferece contadores vermelhos com a soma das mensagens não lidas em **Conversas**, **Grupos** e **Arquivadas**, sem filtro de lembretes. Arquivar não confirma leitura, e novas mensagens mantêm o arquivamento do destinatário. A leitura exige abrir a conversa com a janela em foco e chegar ao fim das mensagens; confirma somente até a última mensagem exibida. O horário de visualização registra a leitura real.
 
 O campo de mensagem mantém os rascunhos em uma assinatura própria, sem redesenhar o histórico a cada tecla. Ao abrir uma conversa, são exibidas as 100 mensagens mais recentes. **Mostrar mensagens anteriores** revela o histórico já carregado em lotes de 100 e mantém a posição da rolagem; depois, o carregamento busca os períodos anteriores. Trocar de conversa preserva o texto, e uma falha de envio restaura a mensagem junto do que foi digitado enquanto aguardava.
+
+Ao enviar texto, a mensagem aparece imediatamente com **Enviando…** até a confirmação
+do servidor. A confirmação acrescenta somente a mensagem enviada, preserva o histórico
+e evita duplicatas. A digitação também evita recalcular o layout dos formulários e
+dos controles de todas as mensagens a cada tecla.
 
 Em **Acompanhamentos**, os cards de CS permanecem na etapa gravada independentemente dos dias decorridos. O limite da carga geral não remove clientes antigos; usuários com consulta ao módulo veem os cards autorizados e podem filtrar explicitamente o responsável. Ao informar um ID já existente em Ativação, **Abrir card existente** localiza sua etapa, limpa os filtros e abre os detalhes, preservando o histórico. **Tarefas** apresenta o quadro logo após o cabeçalho, sem a faixa de indicadores resumidos.
 

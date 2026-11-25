@@ -1970,7 +1970,8 @@ operations.MapPost("", async (
             ok = true,
             id,
             internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken,
-            roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId)
+            roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId,
+            changedMessageId: request.Action == "sendInternalChatMessage" && request.ChatMessageDelta ? id : null)
         });
     if (request.Action?.Contains("Chat", StringComparison.Ordinal) == true
         || request.Action is "completeWhatsAppCoexistence" or "retryWhatsAppCoexistence")
@@ -2384,6 +2385,7 @@ sealed record ServiceRequestClassification(string Stage, string Priority, string
 
 public sealed class OperationsRequest
 {
+    public bool ChatMessageDelta { get; init; }
     public Dictionary<Guid, long>? KnownWorkItemVersions { get; init; }
     public Guid? CollaboratorId { get; init; }
     public IReadOnlyCollection<ReferralCommissionRuleInput>? ReferralRules { get; init; }

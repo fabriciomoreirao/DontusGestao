@@ -87,7 +87,7 @@
   margin-block: 0;
 }
 
-.app-shell .content .internal-chat-page:has(> .module-page-header) {
+.app-shell .content .internal-chat-page {
   row-gap: var(--workspace-block-gap);
 }
 .app-shell .content .referrals-module > .referral-grid:empty {
