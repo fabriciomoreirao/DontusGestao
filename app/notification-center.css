@@ -1,0 +1,305 @@
+/* Painel de notificações (sino do topo). Usa as variáveis de tema, então vale
+   para os temas claro e escuro sem regras separadas. É um painel compacto: o foco
+   é bater o olho, ler e seguir. */
+.notification-panel {
+  --np-unread-bg: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  --np-hover-bg: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  position: absolute;
+  right: 0;
+  top: 46px;
+  z-index: 90;
+  width: min(390px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 18px 44px rgba(8, 28, 48, 0.2);
+}
+
+.notification-panel > header {
+  display: grid;
+  gap: 3px;
+  padding: 11px 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notification-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-panel-title strong {
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.notification-panel-count {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.notification-panel-close {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.notification-panel-close:hover {
+  background: var(--surface-alt, var(--np-hover-bg));
+  color: var(--ink);
+}
+
+.notification-panel-subtitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notification-panel-subtitle small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.notification-panel-read-all {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notification-panel-read-all:hover {
+  text-decoration: underline;
+}
+
+.notification-panel-read-all:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notification-panel-list {
+  max-height: min(420px, calc(100vh - 150px));
+  overflow-y: auto;
+}
+
+.notification-panel-empty {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.notification-panel-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.4s ease,
+    opacity 0.4s ease;
+}
+
+.notification-panel-item:last-child {
+  border-bottom: 0;
+}
+
+.notification-panel-item.is-unread {
+  background: var(--np-unread-bg);
+}
+
+.notification-panel-item:hover,
+.notification-panel-item:focus-visible {
+  background: var(--np-hover-bg);
+  outline: none;
+}
+
+/* Já lidas: continuam na lista, só com menos destaque. */
+.notification-panel-item:not(.is-unread) .notification-avatar {
+  opacity: 0.6;
+}
+
+.notification-panel-item:not(.is-unread) .notification-panel-body > strong {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.notification-panel-item:not(.is-unread) .notification-status {
+  opacity: 0.75;
+}
+
+.notification-avatar {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  align-self: flex-start;
+  border-radius: 50%;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  --tone: var(--primary);
+  background: color-mix(in srgb, var(--tone) 14%, var(--surface));
+  color: var(--tone);
+}
+
+.notification-avatar.is-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.notification-avatar.tone-blue {
+  --tone: #2f6fe4;
+}
+.notification-avatar.tone-violet {
+  --tone: #7c5ce6;
+}
+.notification-avatar.tone-teal {
+  --tone: #0f9fb0;
+}
+.notification-avatar.tone-amber {
+  --tone: #d18a12;
+}
+.notification-avatar.tone-rose {
+  --tone: #d9466f;
+}
+.notification-avatar.tone-green {
+  --tone: #1f9d61;
+}
+.notification-avatar.category-chat {
+  --tone: #0f9fb0;
+}
+.notification-avatar.category-notice {
+  --tone: #d18a12;
+}
+.notification-avatar.category-reminder {
+  --tone: #d9466f;
+}
+.notification-avatar.category-agenda {
+  --tone: #7c5ce6;
+}
+.notification-avatar.category-comment {
+  --tone: #1f9d61;
+}
+
+.notification-panel-body {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 1px;
+}
+
+.notification-panel-line {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.notification-panel-line b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.notification-panel-body > strong {
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.notification-panel-body > small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.notification-panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.notification-status {
+  --tone: var(--primary);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tone) 15%, var(--surface));
+  color: color-mix(in srgb, var(--tone) 82%, var(--ink));
+  font-weight: 700;
+}
+
+.notification-status.tone-info {
+  --tone: #2f6fe4;
+}
+.notification-status.tone-success {
+  --tone: #1f9d61;
+}
+.notification-status.tone-warning {
+  --tone: #c47c08;
+}
+.notification-status.tone-danger {
+  --tone: #d23c4b;
+}
+.notification-status.tone-neutral {
+  --tone: #6b7688;
+}
+
+.notification-panel-trail {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.notification-panel-trail svg {
+  width: 15px;
+  height: 15px;
+}
+
+.notification-unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+@media (max-width: 600px) {
+  .notification-panel {
+    position: fixed;
+    top: 64px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}

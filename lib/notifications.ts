@@ -1,4 +1,15 @@
 import { waitingQueueNeedsContact } from "./waitingQueue.ts";
+export type NotificationTone =
+  "info" | "success" | "warning" | "danger" | "neutral";
+// Texto já pronto para o painel de notificações: "<actor> <action>", o assunto,
+// a referência (protocolo, cliente) e o selo de situação.
+export type NotificationDisplay = {
+  actor?: string;
+  action: string;
+  subject: string;
+  reference?: string;
+  status?: { label: string; tone: NotificationTone };
+};
 export type AppNotification = {
   id: string;
   title: string;
@@ -12,7 +23,68 @@ export type AppNotification = {
   roomId?: string;
   count?: number;
   messageId?: string;
+  display?: NotificationDisplay;
+  // Só preenchido com includeRead: a notificação já foi lida (marcada no servidor).
+  read?: boolean;
 };
+
+const TASK_EVENT_DISPLAY: Record<
+  string,
+  { action: string; status: NonNullable<NotificationDisplay["status"]> }
+> = {
+  assigned: {
+    action: "atribuiu uma tarefa a você",
+    status: { label: "Atribuída a você", tone: "info" },
+  },
+  transferred: {
+    action: "transferiu uma tarefa para você",
+    status: { label: "Transferida", tone: "info" },
+  },
+  comment_added: {
+    action: "comentou na tarefa",
+    status: { label: "Novo comentário", tone: "neutral" },
+  },
+  client_contact_requested: {
+    action: "pediu para avisar o cliente",
+    status: { label: "Avisar cliente", tone: "warning" },
+  },
+  approval_requested: {
+    action: "enviou para sua aprovação",
+    status: { label: "Aguardando aprovação", tone: "warning" },
+  },
+  task_completed: {
+    action: "concluiu a tarefa",
+    status: { label: "Concluída", tone: "success" },
+  },
+  priority_requested: {
+    action: "pediu prioridade na tarefa",
+    status: { label: "Prioridade", tone: "danger" },
+  },
+};
+
+// Monta o texto do painel para uma notificação de tarefa. Sem tarefa conhecida,
+// mantém a mensagem gravada pelo servidor como assunto.
+export function taskNotificationDisplay(
+  notification: { eventType: string; message: string; actorName?: string },
+  task?: {
+    protocol?: string;
+    title?: string;
+    customerName?: string;
+    customerCode?: string;
+  },
+): NotificationDisplay {
+  const event = TASK_EVENT_DISPLAY[notification.eventType];
+  const customer = task?.customerName?.trim() || task?.customerCode?.trim();
+  return {
+    actor: notification.actorName?.trim() || undefined,
+    action: event?.action ?? "atualizou a tarefa",
+    subject: task?.title?.trim() || notification.message,
+    reference:
+      [task?.protocol?.trim(), customer].filter(Boolean).join(" · ") ||
+      undefined,
+    status: event?.status,
+  };
+}
 type Item = {
   id: string;
   module: string;
@@ -102,11 +174,16 @@ export type NotificationData = {
       message: string;
       read: boolean;
       createdAt: string;
+      actorName?: string;
     }>;
     tasks: Array<{
       id: string;
       assigneeUserId: string | null;
       assigneeName: string;
+      protocol?: string;
+      title?: string;
+      customerName?: string;
+      customerCode?: string;
     }>;
     collaborators: Array<{ id: string; email: string }>;
   } | null;
@@ -196,10 +273,14 @@ function targetUrl(item: Item, detail: Record<string, unknown>) {
   if (item.module === "cancellations") params.set("cancellation", item.id);
   return `/?${params}`;
 }
+// includeRead: também devolve as notificações do servidor que já foram lidas (tarefas,
+// avisos e lembretes), marcadas com read: true, para o histórico do painel.
 export function buildNotifications(
   data: NotificationData,
   now: number,
+  options: { includeRead?: boolean } = {},
 ): AppNotification[] {
+  const includeRead = options.includeRead === true;
   const entries: AppNotification[] = [];
   const self = new Set([
     normalize(data.user.email),
@@ -448,7 +529,7 @@ export function buildNotifications(
       "priority_requested",
     ].includes(notification.eventType);
     if (
-      notification.read ||
+      (notification.read && !includeRead) ||
       ![
         "assigned",
         "transferred",
@@ -476,6 +557,8 @@ export function buildNotifications(
       module: "tasks",
       at: notification.createdAt,
       targetUrl: `/?mod=tasks&task=${encodeURIComponent(notification.taskId)}`,
+      display: taskNotificationDisplay(notification, task),
+      ...(includeRead ? { read: notification.read } : {}),
     });
   }
   for (const room of data.internalChatModule?.rooms ?? []) {
@@ -520,7 +603,7 @@ export function buildNotifications(
     if (
       notice.active &&
       notice.visibleToCurrentUser &&
-      !notice.isRead &&
+      (!notice.isRead || includeRead) &&
       !isSelf(notice.authorUserId)
     )
       add({
@@ -531,6 +614,7 @@ export function buildNotifications(
         meta: notice.kind,
         module: "notices",
         at: notice.publishedAt,
+        ...(includeRead ? { read: notice.isRead } : {}),
       });
   for (const item of data.items.filter((item) => item.module === "reminders")) {
     const detail = parse(item.description),
@@ -538,7 +622,7 @@ export function buildNotifications(
     if (
       detail.kind !== "systemReminder" ||
       !isSelf(detail.recipientEmail) ||
-      detail.seenAt ||
+      (detail.seenAt && !includeRead) ||
       !validDate(at) ||
       Date.parse(at) > now
     )
@@ -551,6 +635,7 @@ export function buildNotifications(
       meta: `Lembrete · ${string(detail.urgency) || "Aviso"}`,
       module: "reminders",
       at,
+      ...(includeRead ? { read: Boolean(detail.seenAt) } : {}),
     });
   }
   for (const commitment of data.agendaModule?.commitments ?? []) {

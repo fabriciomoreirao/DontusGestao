@@ -306,7 +306,8 @@ public sealed class TaskService(OperationsDbContext db, ITaskFileStorage? fileSt
                 userDepartments.Where(m => m.UserId == x.Id).Select(m => m.DepartmentId).ToList(),
                 userDepartments.Where(m => m.UserId == x.Id && m.IsCoordinator).Select(m => m.DepartmentId).ToList())).ToList(),
             notifications.Select(x => new TaskNotificationDto(x.Id, x.TaskId,
-                taskNumbers.GetValueOrDefault(x.TaskId), x.EventType, x.Message, x.Read, x.CreatedAt)).ToList());
+                taskNumbers.GetValueOrDefault(x.TaskId), x.EventType, x.Message, x.Read, x.CreatedAt,
+                users.GetValueOrDefault(x.ActorUserId)?.DisplayName ?? "")).ToList());
     }
 
     public async Task<CreatedCorporateTaskDto> CreateAsync(CreateCorporateTaskCommand command, ActorContext actor, CancellationToken cancellationToken = default)
