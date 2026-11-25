@@ -4,11 +4,14 @@ using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
 namespace Dontus.Operations.Infrastructure;
-public sealed partial class OperationsService {
- internal static bool ListCommissionBelongsTo(string description,string owner,ActorContext actor,Guid? userId)=>CommissionBelongsTo(description,owner,actor,userId);
- internal async Task<(IQueryable<WorkItem> Query,Guid? UserId)> AuthorizedListItemsAsync(ActorContext actor,CancellationToken cancellationToken) {
- var db=ListDatabase;
- if(actor.Permissions?.Any(permission=>permission.CanView)!=true)throw new DomainException("Sem acesso à lista.",403);
+
+public sealed partial class OperationsService
+{
+    internal static bool ListCommissionBelongsTo(string description, string owner, ActorContext actor, Guid? userId) => CommissionBelongsTo(description, owner, actor, userId);
+    internal async Task<(IQueryable<WorkItem> Query, Guid? UserId)> AuthorizedListItemsAsync(ActorContext actor, CancellationToken cancellationToken)
+    {
+        var db = ListDatabase;
+        if (actor.Permissions?.Any(permission => permission.CanView) != true) throw new DomainException("Sem acesso à lista.", 403);
         var visibleModules = actor.Permissions
             .Where(permission => permission.CanView)
             .Select(permission => permission.Screen)
@@ -37,7 +40,7 @@ public sealed partial class OperationsService {
                 catch (JsonException) { }
             }
         }
-        var visibleNoteIds = actor.HasPermission("notes", "view") ? (await GetNotesModuleAsync(actor,cancellationToken)).Notes.Select(note=>note.Id).ToArray() : [];
+        var visibleNoteIds = actor.HasPermission("notes", "view") ? (await GetNotesModuleAsync(actor, cancellationToken)).Notes.Select(note => note.Id).ToArray() : [];
         // Keep authorization and version metadata in SQL, without fetching unchanged embedded files.
         // Commission descriptions still participate in the identity check below.
         var authorizedItems = db.WorkItems.AsNoTracking()
@@ -55,6 +58,6 @@ public sealed partial class OperationsService {
                 && (x.Module != "referrals" || canManageReferrals || x.CreatedBy == actor.Email || x.CreatedBy == "" && x.Owner == actor.DisplayName)
                 && (x.Module != "goals" || canManageGoals || x.Owner == actor.DisplayName || x.Team == actor.Department));
 
- return (authorizedItems,registeredUser?.Id);
- }
+        return (authorizedItems, registeredUser?.Id);
+    }
 }

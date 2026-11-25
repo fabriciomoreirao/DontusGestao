@@ -41,13 +41,15 @@ public sealed partial class LiaFormService
             {
                 var attachment = new LiaFormAttachment
                 {
-                    RequestId = entry.Id, QuestionId = file.QuestionId, FileName = CleanFileName(file.FileName),
+                    RequestId = entry.Id,
+                    QuestionId = file.QuestionId,
+                    FileName = CleanFileName(file.FileName),
                     ContentType = file.ContentType?.Length <= 200 && MediaTypeHeaderValue.TryParse(file.ContentType, out var mediaType)
                         ? mediaType.MediaType ?? "application/octet-stream" : "application/octet-stream",
                     SizeBytes = file.SizeBytes,
                     StorageKey = $"lia-forms/{entry.Id:N}/{Guid.NewGuid():N}",
                 };
-                await using var buffered=await AttachmentSpool.ReadAsync(file.Content,file.SizeBytes,ct);
+                await using var buffered = await AttachmentSpool.ReadAsync(file.Content, file.SizeBytes, ct);
                 var stored = false;
                 if (fileStorage is not null)
                 {
@@ -63,7 +65,7 @@ public sealed partial class LiaFormService
                         logger?.LogWarning(exception, "S3 unavailable for LIA attachment {AttachmentId}; using database storage.", attachment.Id);
                     }
                 }
-                if (!stored) { if(file.SizeBytes<=AttachmentSpool.DatabaseFallbackBytes)attachment.Content=await AttachmentSpool.BytesAsync(buffered,ct);else{attachment.StorageKey=await AttachmentSpool.PersistAsync(buffered,ct);storedKeys.Add(attachment.StorageKey);} }
+                if (!stored) { if (file.SizeBytes <= AttachmentSpool.DatabaseFallbackBytes) attachment.Content = await AttachmentSpool.BytesAsync(buffered, ct); else { attachment.StorageKey = await AttachmentSpool.PersistAsync(buffered, ct); storedKeys.Add(attachment.StorageKey); } }
                 db.LiaFormAttachments.Add(attachment);
             }
             entry.AnswersJson = JsonSerializer.Serialize(answers);
@@ -78,7 +80,7 @@ public sealed partial class LiaFormService
         {
             foreach (var key in storedKeys)
             {
-                try { if(AttachmentSpool.Resolve(key) is not null)AttachmentSpool.Delete(key);else await fileStorage!.DeleteAsync(key, CancellationToken.None); }
+                try { if (AttachmentSpool.Resolve(key) is not null) AttachmentSpool.Delete(key); else await fileStorage!.DeleteAsync(key, CancellationToken.None); }
                 catch (Exception cleanupException) { logger?.LogWarning(cleanupException, "Could not remove uncommitted LIA attachment."); }
             }
             if (exception is DbUpdateConcurrencyException)
@@ -96,7 +98,7 @@ public sealed partial class LiaFormService
             throw new DomainException("Seu acesso não permite visualizar a validação dos acompanhamentos.", 403);
         if (!await db.LiaFormRequests.AnyAsync(x => x.Id == attachment.RequestId && x.SubmittedAt != null, ct))
             throw new DomainException("Resposta do formulário não encontrada.", 404);
-        if(AttachmentSpool.Resolve(attachment.StorageKey) is { } path)return new TaskAttachmentDownloadDto(""){FilePath=path,ContentType=attachment.ContentType,FileName=attachment.FileName};
+        if (AttachmentSpool.Resolve(attachment.StorageKey) is { } path) return new TaskAttachmentDownloadDto("") { FilePath = path, ContentType = attachment.ContentType, FileName = attachment.FileName };
         if (attachment.Content is not null)
             return new TaskAttachmentDownloadDto("") { Content = attachment.Content, FileName = attachment.FileName, ContentType = attachment.ContentType };
         if (fileStorage is null) throw new DomainException("O armazenamento de arquivos está indisponível.", 503);

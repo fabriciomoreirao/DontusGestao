@@ -22,7 +22,7 @@ internal static class ConfiguredRecordFields
         };
         if (detail?["kind"]?.ToString() == "serviceRecord" && (detail["contactTypes"] as JsonArray)?.Count is not > 0
             && (previous is null || (before?["contactTypes"] as JsonArray)?.Count is > 0)
-            && await db.CustomerCatalogOptions.AnyAsync(option=>option.Active&&option.Catalog=="serviceContactType",ct))
+            && await db.CustomerCatalogOptions.AnyAsync(option => option.Active && option.Catalog == "serviceContactType", ct))
             throw new DomainException("Selecione o tipo de contato do atendimento.");
         foreach (var (field, catalog, label) in fields)
         {

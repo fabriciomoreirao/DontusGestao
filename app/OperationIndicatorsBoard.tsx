@@ -12,24 +12,68 @@ import type { GoalScope } from "@/lib/goal-scope";
 import { goalProgress, type PerformanceGoal } from "@/lib/goal-progress";
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
-import { Activity, ArrowLeft, BarChart3, CheckCircle2, Clock3, Filter, Gauge, Lightbulb, Target, TrendingUp, UsersRound, WalletCards } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  BarChart3,
+  CheckCircle2,
+  Clock3,
+  Filter,
+  Gauge,
+  Lightbulb,
+  Target,
+  TrendingUp,
+  UsersRound,
+  WalletCards,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { DistributionChart, TrendChart } from "@/app/AnalyticsCharts";
-import { distributionEntries, percentageChange, isCompletedAnalyticsStatus } from "@/lib/analytics-charts";
+import {
+  distributionEntries,
+  percentageChange,
+  isCompletedAnalyticsStatus,
+} from "@/lib/analytics-charts";
 import { customerSuccessScore } from "@/lib/commission-rules";
 import IndicatorTabs from "@/app/IndicatorTabs";
 import { useFieldIndicatorAnalysis } from "@/app/FieldIndicatorAnalysis";
-import { isCriticalIndicatorRecord, isOverdueIndicatorRecord } from "@/lib/field-indicators";
+import {
+  isCriticalIndicatorRecord,
+  isOverdueIndicatorRecord,
+} from "@/lib/field-indicators";
 import { csOutcome } from "@/lib/cs-journey";
 import { enterpriseUnitScore } from "@/lib/enterprise-score";
 import { scopeCommercialIndicatorItems } from "@/lib/commercial-indicators";
 
 type Item = {
-  id: string; module: string; record_type: string; title: string; customer_name?: string; owner: string; team: string;
-  status: string; priority?: string; amount_cents: number; description?: string; due_at?: string | null; created_at: string; updated_at: string;
+  id: string;
+  module: string;
+  record_type: string;
+  title: string;
+  customer_name?: string;
+  owner: string;
+  team: string;
+  status: string;
+  priority?: string;
+  amount_cents: number;
+  description?: string;
+  due_at?: string | null;
+  created_at: string;
+  updated_at: string;
 };
-type Employee = { id: string; displayName: string; departmentName: string; active: boolean; photoDataUrl?: string };
-type Catalog = { id: string; catalog: string; name: string; description: string; active: boolean };
+type Employee = {
+  id: string;
+  displayName: string;
+  departmentName: string;
+  active: boolean;
+  photoDataUrl?: string;
+};
+type Catalog = {
+  id: string;
+  catalog: string;
+  name: string;
+  description: string;
+  active: boolean;
+};
 type Detail = Record<string, unknown>;
 type Metric = { label: string; value: string | number; note: string };
 type CountEntry = { label: string; count: number };
@@ -46,500 +90,2584 @@ type ChartConfig = {
   categories: CountEntry[];
 };
 
-const clean = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-const money = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(cents / 100);
-const percent = (part: number, total: number) => total ? `${Math.round(part / total * 100)}%` : "0%";
+const clean = (value: unknown) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+const money = (cents: number) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+const percent = (part: number, total: number) =>
+  total ? `${Math.round((part / total) * 100)}%` : "0%";
 const finished = isCompletedAnalyticsStatus;
-const rejected = (status: unknown) => /reprov|cancel|perdid|descart|sem retorno|falta de retorno|sem sucesso/i.test(clean(status));
-const parse = (raw?: string): Detail => { try { const value: unknown = JSON.parse(raw || "{}"); return value && typeof value === "object" && !Array.isArray(value) ? value as Detail : {}; } catch { return {}; } };
-const numberOf = (...values: unknown[]) => { const value = values.find((entry) => entry !== null && entry !== undefined && entry !== "" && Number.isFinite(Number(entry))); return value === undefined ? 0 : Number(value); };
-const stringOf = (...values: unknown[]) => String(values.find((entry) => typeof entry === "string" && entry.trim()) ?? "");
-const arrayOf = (value: unknown) => Array.isArray(value) ? value : [];
+const rejected = (status: unknown) =>
+  /reprov|cancel|perdid|descart|sem retorno|falta de retorno|sem sucesso/i.test(
+    clean(status),
+  );
+const parse = (raw?: string): Detail => {
+  try {
+    const value: unknown = JSON.parse(raw || "{}");
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Detail)
+      : {};
+  } catch {
+    return {};
+  }
+};
+const numberOf = (...values: unknown[]) => {
+  const value = values.find(
+    (entry) =>
+      entry !== null &&
+      entry !== undefined &&
+      entry !== "" &&
+      Number.isFinite(Number(entry)),
+  );
+  return value === undefined ? 0 : Number(value);
+};
+const stringOf = (...values: unknown[]) =>
+  String(
+    values.find((entry) => typeof entry === "string" && entry.trim()) ?? "",
+  );
+const arrayOf = (value: unknown) => (Array.isArray(value) ? value : []);
 const dateKey = (value: string) => value.slice(0, 10);
 const monthKey = (value: string) => value.slice(0, 7);
-const monthLabel = (key: string) => { const [year, month] = key.split("-"); return `${month}/${year.slice(2)}`; };
-const durationDays = (item: Item) => Math.max(0, Math.round((new Date(item.updated_at).getTime() - new Date(item.created_at).getTime()) / 86_400_000));
+const monthLabel = (key: string) => {
+  const [year, month] = key.split("-");
+  return `${month}/${year.slice(2)}`;
+};
+const durationDays = (item: Item) =>
+  Math.max(
+    0,
+    Math.round(
+      (new Date(item.updated_at).getTime() -
+        new Date(item.created_at).getTime()) /
+        86_400_000,
+    ),
+  );
 
 function scoreOf(detail: Detail) {
-  if (Array.isArray(detail.featuresBase) || Array.isArray(detail.featuresActive)) return customerSuccessScore(detail);
-  if (Array.isArray(detail.features) && !detail.featuresBase && !detail.featuresActive && detail.features.every(feature => feature && typeof feature === "object" && "name" in feature)) {
-    return enterpriseUnitScore({ features: detail.features.map(feature => ({ name: String(feature.name || ""), status: String(feature.status || ""), category: String(feature.category || "") })) });
+  if (
+    Array.isArray(detail.featuresBase) ||
+    Array.isArray(detail.featuresActive)
+  )
+    return customerSuccessScore(detail);
+  if (
+    Array.isArray(detail.features) &&
+    !detail.featuresBase &&
+    !detail.featuresActive &&
+    detail.features.every(
+      (feature) => feature && typeof feature === "object" && "name" in feature,
+    )
+  ) {
+    return enterpriseUnitScore({
+      features: detail.features.map((feature) => ({
+        name: String(feature.name || ""),
+        status: String(feature.status || ""),
+        category: String(feature.category || ""),
+      })),
+    });
   }
-  const explicit = numberOf(detail.healthScore, detail.health_score, detail.usageScore, detail.usagePercent, detail.percentage, detail.score);
+  const explicit = numberOf(
+    detail.healthScore,
+    detail.health_score,
+    detail.usageScore,
+    detail.usagePercent,
+    detail.percentage,
+    detail.score,
+  );
   if (explicit > 0) return explicit <= 1 ? explicit * 100 : explicit;
-  const base = arrayOf(detail.featuresBase ?? detail.baseFeatures ?? detail.features);
-  const active = arrayOf(detail.featuresActive ?? detail.activeFeatures ?? detail.featuresInUse);
+  const base = arrayOf(
+    detail.featuresBase ?? detail.baseFeatures ?? detail.features,
+  );
+  const active = arrayOf(
+    detail.featuresActive ?? detail.activeFeatures ?? detail.featuresInUse,
+  );
   if (!base.length) return 0;
-  const names = new Set(active.map((entry) => clean(typeof entry === "object" && entry ? (entry as Detail).name : entry)));
-  const baseKeys = new Set(base.map((entry) => clean(typeof entry === "object" && entry ? (entry as Detail).name : entry)));
-  const plus = arrayOf(detail.featuresPlus ?? detail.plusFeatures).map((entry) => clean(typeof entry === "object" && entry ? (entry as Detail).name : entry)).filter((entry) => entry && !baseKeys.has(entry));
-  return Math.round((base.filter((entry) => names.has(clean(typeof entry === "object" && entry ? (entry as Detail).name : entry))).length + new Set(plus).size) / base.length * 100);
+  const names = new Set(
+    active.map((entry) =>
+      clean(
+        typeof entry === "object" && entry ? (entry as Detail).name : entry,
+      ),
+    ),
+  );
+  const baseKeys = new Set(
+    base.map((entry) =>
+      clean(
+        typeof entry === "object" && entry ? (entry as Detail).name : entry,
+      ),
+    ),
+  );
+  const plus = arrayOf(detail.featuresPlus ?? detail.plusFeatures)
+    .map((entry) =>
+      clean(
+        typeof entry === "object" && entry ? (entry as Detail).name : entry,
+      ),
+    )
+    .filter((entry) => entry && !baseKeys.has(entry));
+  return Math.round(
+    ((base.filter((entry) =>
+      names.has(
+        clean(
+          typeof entry === "object" && entry ? (entry as Detail).name : entry,
+        ),
+      ),
+    ).length +
+      new Set(plus).size) /
+      base.length) *
+      100,
+  );
 }
 
 function scopeItems(items: Item[], module: string, contextKey: string) {
-  if (module === "recruitment") return items.filter((item) => item.module === "admin" && /processo seletivo|candidato/i.test(item.record_type));
-  if (module === "commercial") return scopeCommercialIndicatorItems(items, contextKey);
-  if (module === "cs") return items.filter((item) => {
-    if (item.module !== "cs") return false;
-    const detail = parse(item.description);
-    const kind = clean(detail.kind);
-    if (contextKey.includes("general")) return Boolean(parseJourney(item.description||""));
-    if (contextKey.includes("enterprise")) return /enterprise/.test(kind) || /rede|unidade/.test(clean(item.record_type));
-    if (contextKey.includes("evolution")) return /retention|retencao/.test(clean(detail.track ?? detail.flow ?? item.record_type));
-    return !/enterprise|retention|retencao/.test(clean(`${kind} ${detail.track ?? ""}`));
-  });
-  if (module === "lia") return items.filter((item) => item.module === "lia" && item.record_type !== "Ajuste de Prompt");
+  if (module === "recruitment")
+    return items.filter(
+      (item) =>
+        item.module === "admin" &&
+        /processo seletivo|candidato/i.test(item.record_type),
+    );
+  if (module === "commercial")
+    return scopeCommercialIndicatorItems(items, contextKey);
+  if (module === "cs")
+    return items.filter((item) => {
+      if (item.module !== "cs") return false;
+      const detail = parse(item.description);
+      const kind = clean(detail.kind);
+      if (contextKey.includes("general"))
+        return Boolean(parseJourney(item.description || ""));
+      if (contextKey.includes("enterprise"))
+        return (
+          /enterprise/.test(kind) ||
+          /rede|unidade/.test(clean(item.record_type))
+        );
+      if (contextKey.includes("evolution"))
+        return /retention|retencao/.test(
+          clean(detail.track ?? detail.flow ?? item.record_type),
+        );
+      return !/enterprise|retention|retencao/.test(
+        clean(`${kind} ${detail.track ?? ""}`),
+      );
+    });
+  if (module === "lia")
+    return items.filter(
+      (item) =>
+        item.module === "lia" && item.record_type !== "Ajuste de Prompt",
+    );
   return items.filter((item) => item.module === module);
 }
 
 function topValue(values: string[]) {
   const counts = new Map<string, number>();
-  values.filter(Boolean).forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Sem dados";
+  values
+    .filter(Boolean)
+    .forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+  return (
+    [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Sem dados"
+  );
 }
 
 function counted(values: string[], limit = 6): CountEntry[] {
   const counts = new Map<string, number>();
-  values.map((value) => value.trim()).filter(Boolean).forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
-  return distributionEntries([...counts.entries()].map(([label, count]) => ({ label, count })), limit);
+  values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+  return distributionEntries(
+    [...counts.entries()].map(([label, count]) => ({ label, count })),
+    limit,
+  );
 }
 
 function normalizedStage(value: unknown, fallback = "Sem status") {
   const raw = stringOf(value) || fallback;
   const key = clean(raw);
   const known: Record<string, string> = {
-    onboarding:"Onboarding",finished:"Finalizados",unsuccessful:"Finalizados sem sucesso",cancelledwithouttraining:"Cancelado sem treinamento",validation:"Validação",cancelled:"Cancelados",
-    waiting: "Em espera", contacted: "Contato feito", approved: "Aprovada", rejected: "Reprovada",
-    pending: "Pendente", tracking: "Em acompanhamento", conference: "Conferência", active: "Ativa", inactive: "Inativa",
+    onboarding: "Onboarding",
+    finished: "Finalizados",
+    unsuccessful: "Finalizados sem sucesso",
+    cancelledwithouttraining: "Cancelado sem treinamento",
+    validation: "Validação",
+    cancelled: "Cancelados",
+    waiting: "Em espera",
+    contacted: "Contato feito",
+    approved: "Aprovada",
+    rejected: "Reprovada",
+    pending: "Pendente",
+    tracking: "Em acompanhamento",
+    conference: "Conferência",
+    active: "Ativa",
+    inactive: "Inativa",
   };
   return known[key] || raw;
 }
 
-function chartConfigFor(module: string, contextKey: string, rows: Item[]): ChartConfig {
-  const details = rows.map((item) => ({ item, detail: parse(item.description) }));
+function chartConfigFor(
+  module: string,
+  contextKey: string,
+  rows: Item[],
+): ChartConfig {
+  const details = rows.map((item) => ({
+    item,
+    detail: parse(item.description),
+  }));
   const defaults: ChartConfig = {
-    trendTitle: "Movimentação mensal (6 meses)", statusTitle: "Distribuição por status", statusUnit: "etapas",
-    ownerTitle: "Movimentação por responsável", ownerUnit: "responsáveis", categoryTitle: "Participação por setor", categoryUnit: "setores",
+    trendTitle: "Movimentação mensal (6 meses)",
+    statusTitle: "Distribuição por status",
+    statusUnit: "etapas",
+    ownerTitle: "Movimentação por responsável",
+    ownerUnit: "responsáveis",
+    categoryTitle: "Participação por setor",
+    categoryUnit: "setores",
     statuses: counted(rows.map((item) => item.status || "Sem status")),
     owners: counted(rows.map((item) => item.owner || "Não atribuído")),
     categories: counted(rows.map((item) => item.team || "Sem setor")),
   };
-  if (module === "waitingQueue") return {
-    ...defaults, trendTitle: "Clientes encaminhados por mês", statusTitle: "Conversão de contatos", statusUnit: "situações",
-    ownerTitle: "Contatos por responsável", ownerUnit: "responsáveis do contato", categoryTitle: "Clientes por setor", categoryUnit: "setores",
-    statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.state, /espera|aguard/i.test(item.status) ? "Em espera" : "Contato feito"))),
-    owners: counted(details.map(({ detail }) => stringOf(detail.contactedByName, detail.contactOwner, detail.responsibleName) || "Sem responsável")),
-    categories: counted(details.map(({ item, detail }) => stringOf(detail.departmentName, detail.department, detail.destinationSector, item.team) || "Sem setor")),
-  };
-  if (module === "support") return {
-    ...defaults, trendTitle: "Atendimentos por mês", statusTitle: "Solução dos atendimentos", statusUnit: "situações",
-    ownerTitle: "Atendimentos por responsável", ownerUnit: "responsáveis", categoryTitle: "Problemas e situações", categoryUnit: "categorias",
-    statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.solutionStatus ?? detail.status, item.status || "Sem status"))),
-    owners: counted(rows.map((item) => item.owner || "Não atribuído")),
-    categories: counted(details.map(({ item, detail }) => stringOf(detail.problem, detail.situation, detail.requestType, detail.subject, item.record_type) || "Não informado")),
-  };
-  if (module === "commercial") return {
-    ...defaults, trendTitle: "Vendas e oportunidades por mês", statusTitle: "Funil comercial", statusUnit: "etapas",
-    ownerTitle: "Vendas por colaborador", ownerUnit: "vendedores", categoryTitle: "Produtos e planos", categoryUnit: "produtos",
-    statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.stage, item.status || "Sem etapa"))),
-    owners: counted(details.map(({ item, detail }) => stringOf(detail.sellerName, detail.seller, item.owner) || "Não atribuído")),
-    categories: counted(details.flatMap(({ item, detail }) => {
-      const products = arrayOf(detail.products).map((product) => typeof product === "object" && product ? stringOf((product as Detail).name, (product as Detail).productName, (product as Detail).planName) : stringOf(product)).filter(Boolean);
-      return products.length ? products : [stringOf(detail.productName, detail.planName, item.record_type) || "Não informado"];
-    })),
-  };
-  if (module === "cs" && contextKey.includes("enterprise")) {
-    const networks = details.filter(({ item, detail }) => /enterprise/.test(clean(detail.kind)) || /rede/.test(clean(item.record_type)));
-    const units = networks.flatMap(({ item, detail }) => arrayOf(detail.units).map((unit) => ({ network: item.title, unit: (typeof unit === "object" && unit ? unit : {}) as Detail })));
+  if (module === "waitingQueue")
     return {
-      ...defaults, trendTitle: "Redes cadastradas por mês", statusTitle: "Unidades por status", statusUnit: "status",
-      ownerTitle: "Redes por responsável", ownerUnit: "responsáveis", categoryTitle: "Unidades por rede", categoryUnit: "redes",
-      statuses: counted(units.map(({ unit }) => normalizedStage(unit.status, "Sem status"))),
-      owners: counted(networks.map(({ item }) => item.owner || "Não atribuído")),
-      categories: networks.map(({ item, detail }) => ({ label: item.title, count: arrayOf(detail.units).length })).sort((a, b) => b.count - a.count).slice(0, 6),
+      ...defaults,
+      trendTitle: "Clientes encaminhados por mês",
+      statusTitle: "Conversão de contatos",
+      statusUnit: "situações",
+      ownerTitle: "Contatos por responsável",
+      ownerUnit: "responsáveis do contato",
+      categoryTitle: "Clientes por setor",
+      categoryUnit: "setores",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          normalizedStage(
+            detail.state,
+            /espera|aguard/i.test(item.status) ? "Em espera" : "Contato feito",
+          ),
+        ),
+      ),
+      owners: counted(
+        details.map(
+          ({ detail }) =>
+            stringOf(
+              detail.contactedByName,
+              detail.contactOwner,
+              detail.responsibleName,
+            ) || "Sem responsável",
+        ),
+      ),
+      categories: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(
+              detail.departmentName,
+              detail.department,
+              detail.destinationSector,
+              item.team,
+            ) || "Sem setor",
+        ),
+      ),
+    };
+  if (module === "support")
+    return {
+      ...defaults,
+      trendTitle: "Atendimentos por mês",
+      statusTitle: "Solução dos atendimentos",
+      statusUnit: "situações",
+      ownerTitle: "Atendimentos por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Problemas e situações",
+      categoryUnit: "categorias",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          normalizedStage(
+            detail.solutionStatus ?? detail.status,
+            item.status || "Sem status",
+          ),
+        ),
+      ),
+      owners: counted(rows.map((item) => item.owner || "Não atribuído")),
+      categories: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(
+              detail.problem,
+              detail.situation,
+              detail.requestType,
+              detail.subject,
+              item.record_type,
+            ) || "Não informado",
+        ),
+      ),
+    };
+  if (module === "commercial")
+    return {
+      ...defaults,
+      trendTitle: "Vendas e oportunidades por mês",
+      statusTitle: "Funil comercial",
+      statusUnit: "etapas",
+      ownerTitle: "Vendas por colaborador",
+      ownerUnit: "vendedores",
+      categoryTitle: "Produtos e planos",
+      categoryUnit: "produtos",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          normalizedStage(detail.stage, item.status || "Sem etapa"),
+        ),
+      ),
+      owners: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(detail.sellerName, detail.seller, item.owner) ||
+            "Não atribuído",
+        ),
+      ),
+      categories: counted(
+        details.flatMap(({ item, detail }) => {
+          const products = arrayOf(detail.products)
+            .map((product) =>
+              typeof product === "object" && product
+                ? stringOf(
+                    (product as Detail).name,
+                    (product as Detail).productName,
+                    (product as Detail).planName,
+                  )
+                : stringOf(product),
+            )
+            .filter(Boolean);
+          return products.length
+            ? products
+            : [
+                stringOf(
+                  detail.productName,
+                  detail.planName,
+                  item.record_type,
+                ) || "Não informado",
+              ];
+        }),
+      ),
+    };
+  if (module === "cs" && contextKey.includes("enterprise")) {
+    const networks = details.filter(
+      ({ item, detail }) =>
+        /enterprise/.test(clean(detail.kind)) ||
+        /rede/.test(clean(item.record_type)),
+    );
+    const units = networks.flatMap(({ item, detail }) =>
+      arrayOf(detail.units).map((unit) => ({
+        network: item.title,
+        unit: (typeof unit === "object" && unit ? unit : {}) as Detail,
+      })),
+    );
+    return {
+      ...defaults,
+      trendTitle: "Redes cadastradas por mês",
+      statusTitle: "Unidades por status",
+      statusUnit: "status",
+      ownerTitle: "Redes por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Unidades por rede",
+      categoryUnit: "redes",
+      statuses: counted(
+        units.map(({ unit }) => normalizedStage(unit.status, "Sem status")),
+      ),
+      owners: counted(
+        networks.map(({ item }) => item.owner || "Não atribuído"),
+      ),
+      categories: networks
+        .map(({ item, detail }) => ({
+          label: item.title,
+          count: arrayOf(detail.units).length,
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6),
     };
   }
-  if (module === "cs" || module === "lia") return {
-    ...defaults, trendTitle: module === "lia" ? "Entradas no acompanhamento LIA" : "Clientes iniciados por mês",
-    statusTitle: module === "lia" ? "Clientes por etapa LIA" : "Distribuição de status final", statusUnit: "etapas",
-    ownerTitle: "Carteira por colaborador", ownerUnit: "responsáveis",
-    categoryTitle: module === "lia" ? "Origem e tipo da solicitação" : "Clientes por versão", categoryUnit: module === "lia" ? "origens" : "versões",
-    statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.finalStatus ?? detail.phase ?? detail.stage, item.status || "Sem status"))),
-    owners: counted(rows.map((item) => item.owner || "Não atribuído")),
-    categories: counted(details.flatMap(({ item, detail }) => module === "lia"
-      ? [stringOf(detail.requestType, detail.origin, detail.source, item.team, item.record_type) || "Não informado"]
-      : (arrayOf(detail.follows).map((entry) => typeof entry === "object" && entry ? stringOf((entry as Detail).kind, (entry as Detail).type) : "").filter(Boolean).length
-        ? arrayOf(detail.follows).map((entry) => typeof entry === "object" && entry ? stringOf((entry as Detail).kind, (entry as Detail).type) : "").filter(Boolean)
-        : [stringOf(detail.versionName, detail.version, detail.planName, item.record_type) || "Não informada"])
-    )),
-  };
-  if (module === "recruitment") return {
-    ...defaults, trendTitle: "Candidatos recebidos por mês", statusTitle: "Candidatos por etapa", statusUnit: "etapas",
-    ownerTitle: "Processos por responsável", ownerUnit: "responsáveis", categoryTitle: "Candidatos por vaga", categoryUnit: "vagas",
-    statuses: counted(details.filter(({ item }) => /candidato/i.test(item.record_type)).map(({ item, detail }) => normalizedStage(detail.stage, item.status || "Sem etapa"))),
-    owners: counted(rows.filter((item) => /processo seletivo/i.test(item.record_type)).map((item) => item.owner || "Não atribuído")),
-    categories: counted(details.filter(({ item }) => /candidato/i.test(item.record_type)).map(({ item, detail }) => stringOf(detail.vacancyName, detail.processTitle, detail.position, item.team) || "Vaga não informada")),
-  };
-  if (module === "commissions") return {
-    ...defaults, trendTitle: "Comissões lançadas por mês", statusTitle: "Resultado da conferência", statusUnit: "decisões",
-    ownerTitle: "Comissões por colaborador", ownerUnit: "colaboradores", categoryTitle: "Comissões por origem", categoryUnit: "origens",
-    statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.decision, item.status || "Pendente"))),
-    owners: counted(details.map(({ item, detail }) => stringOf(detail.collaboratorName, detail.employeeName, item.owner) || "Não atribuído")),
-    categories: counted(details.map(({ detail }) => {
-      const scope = clean(detail.scope);
-      return scope === "lia" ? "LIA" : /success|sucesso|customer/.test(scope) ? "Sucesso do Cliente" : "Comercial";
-    })),
-  };
-  if (module === "goals") return {
-    ...defaults, trendTitle: "Metas criadas por mês", statusTitle: "Situação das metas", statusUnit: "situações",
-    ownerTitle: "Metas por colaborador", ownerUnit: "colaboradores", categoryTitle: "Metas por periodicidade", categoryUnit: "periodicidades",
-    statuses: counted(details.map(({ item, detail }) => Boolean(detail.active ?? true) && !finished(item.status) ? "Em andamento" : "Concluída")),
-    owners: counted(rows.map((item) => item.owner || "Não atribuído")),
-    categories: counted(details.map(({ detail }) => normalizedStage(detail.cadence ?? detail.frequency ?? detail.period, "Sem periodicidade"))),
-  };
-  if (module === "referrals") return {
-    ...defaults, trendTitle: "Indicações enviadas por mês", statusTitle: "Etapa das indicações", statusUnit: "etapas",
-    ownerTitle: "Indicações por colaborador", ownerUnit: "colaboradores", categoryTitle: "Indicações por módulo", categoryUnit: "módulos",
-    statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.phase, item.status || "Em acompanhamento"))),
-    owners: counted(details.map(({ item, detail }) => stringOf(detail.referrerName, detail.senderName, item.owner) || "Não atribuído")),
-    categories: counted(details.map(({ item, detail }) => stringOf(detail.moduleName, detail.productName, item.record_type) || "Não informado")),
-  };
-  if (module === "diary") return {
-    ...defaults, trendTitle: "Atividades do diário por mês", statusTitle: "Conclusão das atividades", statusUnit: "status",
-    ownerTitle: "Atividades por responsável", ownerUnit: "responsáveis", categoryTitle: "Origem das atividades", categoryUnit: "origens",
-    statuses: counted(rows.map((item) => normalizedStage(item.status))), categories: counted(details.map(({ item, detail }) => stringOf(detail.source, item.record_type) || "Manual")),
-  };
-  if (module === "tasks") return {
-    ...defaults, trendTitle: "Tarefas criadas por mês", statusTitle: "Status das tarefas", statusUnit: "status",
-    ownerTitle: "Tarefas por responsável", ownerUnit: "responsáveis", categoryTitle: "Tarefas por tipo", categoryUnit: "tipos",
-    statuses: counted(rows.map((item) => normalizedStage(item.status))), categories: counted(rows.map((item) => item.record_type || "Sem tipo")),
-  };
-  if (module === "work") return {
-    ...defaults, trendTitle: "Compromissos por mês", statusTitle: "Status da agenda", statusUnit: "status",
-    ownerTitle: "Compromissos por responsável", ownerUnit: "responsáveis", categoryTitle: "Tipos de compromisso", categoryUnit: "tipos",
-    statuses: counted(rows.map((item) => normalizedStage(item.status))), categories: counted(rows.map((item) => item.record_type || "Sem tipo")),
-  };
-  if (module === "suggestions") return {
-    ...defaults, trendTitle: "Sugestões recebidas por mês", statusTitle: "Aprovação das sugestões", statusUnit: "decisões",
-    ownerTitle: "Sugestões por responsável", ownerUnit: "responsáveis", categoryTitle: "Prioridades e riscos", categoryUnit: "categorias",
-    statuses: counted(rows.map((item) => normalizedStage(item.status))), categories: counted(details.map(({ item, detail }) => Boolean(detail.cancellationRisk) ? "Risco de cancelamento" : Boolean(detail.strategicClient) ? "Cliente estratégico" : item.priority || "Normal")),
-  };
-  if (module === "access") return {
-    ...defaults, trendTitle: "Acessos externos por mês", statusTitle: "Resultado dos acessos", statusUnit: "resultados",
-    ownerTitle: "Acessos por colaborador", ownerUnit: "colaboradores", categoryTitle: "Sistemas e recursos acessados", categoryUnit: "sistemas",
-    statuses: counted(rows.map((item) => normalizedStage(item.status))), categories: counted(rows.map((item) => item.record_type || item.team || "Sistema externo")),
-  };
-  if (module === "marketing") return {
-    ...defaults, trendTitle: "Solicitações de marketing por mês", statusTitle: "Etapas do kanban", statusUnit: "etapas",
-    ownerTitle: "Demandas por responsável", ownerUnit: "responsáveis", categoryTitle: "Demandas por canal", categoryUnit: "canais",
-    statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.stage, item.status || "Sem etapa"))),
-    categories: counted(details.map(({ item, detail }) => stringOf(detail.channel, detail.type, detail.requestType, item.record_type) || "Não informado")),
-  };
-  if (module === "ti") return {
-    ...defaults, trendTitle: "Demandas de desenvolvimento por mês", statusTitle: "Etapas de desenvolvimento", statusUnit: "etapas",
-    ownerTitle: "Demandas por responsável", ownerUnit: "responsáveis", categoryTitle: "Demandas por tipo", categoryUnit: "tipos",
-    statuses: counted(details.map(({ item, detail }) => normalizedStage(detail.processStage ?? detail.stage, item.status || "Sem etapa"))),
-    categories: counted(details.map(({ item, detail }) => stringOf(detail.developmentType, detail.type, item.record_type) || "Não informado")),
-  };
+  if (module === "cs" || module === "lia")
+    return {
+      ...defaults,
+      trendTitle:
+        module === "lia"
+          ? "Entradas no acompanhamento LIA"
+          : "Clientes iniciados por mês",
+      statusTitle:
+        module === "lia"
+          ? "Clientes por etapa LIA"
+          : "Distribuição de status final",
+      statusUnit: "etapas",
+      ownerTitle: "Carteira por colaborador",
+      ownerUnit: "responsáveis",
+      categoryTitle:
+        module === "lia"
+          ? "Origem e tipo da solicitação"
+          : "Clientes por versão",
+      categoryUnit: module === "lia" ? "origens" : "versões",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          normalizedStage(
+            detail.finalStatus ?? detail.phase ?? detail.stage,
+            item.status || "Sem status",
+          ),
+        ),
+      ),
+      owners: counted(rows.map((item) => item.owner || "Não atribuído")),
+      categories: counted(
+        details.flatMap(({ item, detail }) =>
+          module === "lia"
+            ? [
+                stringOf(
+                  detail.requestType,
+                  detail.origin,
+                  detail.source,
+                  item.team,
+                  item.record_type,
+                ) || "Não informado",
+              ]
+            : arrayOf(detail.follows)
+                  .map((entry) =>
+                    typeof entry === "object" && entry
+                      ? stringOf((entry as Detail).kind, (entry as Detail).type)
+                      : "",
+                  )
+                  .filter(Boolean).length
+              ? arrayOf(detail.follows)
+                  .map((entry) =>
+                    typeof entry === "object" && entry
+                      ? stringOf((entry as Detail).kind, (entry as Detail).type)
+                      : "",
+                  )
+                  .filter(Boolean)
+              : [
+                  stringOf(
+                    detail.versionName,
+                    detail.version,
+                    detail.planName,
+                    item.record_type,
+                  ) || "Não informada",
+                ],
+        ),
+      ),
+    };
+  if (module === "recruitment")
+    return {
+      ...defaults,
+      trendTitle: "Candidatos recebidos por mês",
+      statusTitle: "Candidatos por etapa",
+      statusUnit: "etapas",
+      ownerTitle: "Processos por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Candidatos por vaga",
+      categoryUnit: "vagas",
+      statuses: counted(
+        details
+          .filter(({ item }) => /candidato/i.test(item.record_type))
+          .map(({ item, detail }) =>
+            normalizedStage(detail.stage, item.status || "Sem etapa"),
+          ),
+      ),
+      owners: counted(
+        rows
+          .filter((item) => /processo seletivo/i.test(item.record_type))
+          .map((item) => item.owner || "Não atribuído"),
+      ),
+      categories: counted(
+        details
+          .filter(({ item }) => /candidato/i.test(item.record_type))
+          .map(
+            ({ item, detail }) =>
+              stringOf(
+                detail.vacancyName,
+                detail.processTitle,
+                detail.position,
+                item.team,
+              ) || "Vaga não informada",
+          ),
+      ),
+    };
+  if (module === "commissions")
+    return {
+      ...defaults,
+      trendTitle: "Comissões lançadas por mês",
+      statusTitle: "Resultado da conferência",
+      statusUnit: "decisões",
+      ownerTitle: "Comissões por colaborador",
+      ownerUnit: "colaboradores",
+      categoryTitle: "Comissões por origem",
+      categoryUnit: "origens",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          normalizedStage(detail.decision, item.status || "Pendente"),
+        ),
+      ),
+      owners: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(
+              detail.collaboratorName,
+              detail.employeeName,
+              item.owner,
+            ) || "Não atribuído",
+        ),
+      ),
+      categories: counted(
+        details.map(({ detail }) => {
+          const scope = clean(detail.scope);
+          return scope === "lia"
+            ? "LIA"
+            : /success|sucesso|customer/.test(scope)
+              ? "Sucesso do Cliente"
+              : "Comercial";
+        }),
+      ),
+    };
+  if (module === "goals")
+    return {
+      ...defaults,
+      trendTitle: "Metas criadas por mês",
+      statusTitle: "Situação das metas",
+      statusUnit: "situações",
+      ownerTitle: "Metas por colaborador",
+      ownerUnit: "colaboradores",
+      categoryTitle: "Metas por periodicidade",
+      categoryUnit: "periodicidades",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          Boolean(detail.active ?? true) && !finished(item.status)
+            ? "Em andamento"
+            : "Concluída",
+        ),
+      ),
+      owners: counted(rows.map((item) => item.owner || "Não atribuído")),
+      categories: counted(
+        details.map(({ detail }) =>
+          normalizedStage(
+            detail.cadence ?? detail.frequency ?? detail.period,
+            "Sem periodicidade",
+          ),
+        ),
+      ),
+    };
+  if (module === "referrals")
+    return {
+      ...defaults,
+      trendTitle: "Indicações enviadas por mês",
+      statusTitle: "Etapa das indicações",
+      statusUnit: "etapas",
+      ownerTitle: "Indicações por colaborador",
+      ownerUnit: "colaboradores",
+      categoryTitle: "Indicações por módulo",
+      categoryUnit: "módulos",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          normalizedStage(detail.phase, item.status || "Em acompanhamento"),
+        ),
+      ),
+      owners: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(detail.referrerName, detail.senderName, item.owner) ||
+            "Não atribuído",
+        ),
+      ),
+      categories: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(detail.moduleName, detail.productName, item.record_type) ||
+            "Não informado",
+        ),
+      ),
+    };
+  if (module === "diary")
+    return {
+      ...defaults,
+      trendTitle: "Atividades do diário por mês",
+      statusTitle: "Conclusão das atividades",
+      statusUnit: "status",
+      ownerTitle: "Atividades por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Origem das atividades",
+      categoryUnit: "origens",
+      statuses: counted(rows.map((item) => normalizedStage(item.status))),
+      categories: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(detail.source, item.record_type) || "Manual",
+        ),
+      ),
+    };
+  if (module === "tasks")
+    return {
+      ...defaults,
+      trendTitle: "Tarefas criadas por mês",
+      statusTitle: "Status das tarefas",
+      statusUnit: "status",
+      ownerTitle: "Tarefas por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Tarefas por tipo",
+      categoryUnit: "tipos",
+      statuses: counted(rows.map((item) => normalizedStage(item.status))),
+      categories: counted(rows.map((item) => item.record_type || "Sem tipo")),
+    };
+  if (module === "work")
+    return {
+      ...defaults,
+      trendTitle: "Compromissos por mês",
+      statusTitle: "Status da agenda",
+      statusUnit: "status",
+      ownerTitle: "Compromissos por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Tipos de compromisso",
+      categoryUnit: "tipos",
+      statuses: counted(rows.map((item) => normalizedStage(item.status))),
+      categories: counted(rows.map((item) => item.record_type || "Sem tipo")),
+    };
+  if (module === "suggestions")
+    return {
+      ...defaults,
+      trendTitle: "Sugestões recebidas por mês",
+      statusTitle: "Aprovação das sugestões",
+      statusUnit: "decisões",
+      ownerTitle: "Sugestões por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Prioridades e riscos",
+      categoryUnit: "categorias",
+      statuses: counted(rows.map((item) => normalizedStage(item.status))),
+      categories: counted(
+        details.map(({ item, detail }) =>
+          Boolean(detail.cancellationRisk)
+            ? "Risco de cancelamento"
+            : Boolean(detail.strategicClient)
+              ? "Cliente estratégico"
+              : item.priority || "Normal",
+        ),
+      ),
+    };
+  if (module === "access")
+    return {
+      ...defaults,
+      trendTitle: "Acessos externos por mês",
+      statusTitle: "Resultado dos acessos",
+      statusUnit: "resultados",
+      ownerTitle: "Acessos por colaborador",
+      ownerUnit: "colaboradores",
+      categoryTitle: "Sistemas e recursos acessados",
+      categoryUnit: "sistemas",
+      statuses: counted(rows.map((item) => normalizedStage(item.status))),
+      categories: counted(
+        rows.map((item) => item.record_type || item.team || "Sistema externo"),
+      ),
+    };
+  if (module === "marketing")
+    return {
+      ...defaults,
+      trendTitle: "Solicitações de marketing por mês",
+      statusTitle: "Etapas do kanban",
+      statusUnit: "etapas",
+      ownerTitle: "Demandas por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Demandas por canal",
+      categoryUnit: "canais",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          normalizedStage(detail.stage, item.status || "Sem etapa"),
+        ),
+      ),
+      categories: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(
+              detail.channel,
+              detail.type,
+              detail.requestType,
+              item.record_type,
+            ) || "Não informado",
+        ),
+      ),
+    };
+  if (module === "ti")
+    return {
+      ...defaults,
+      trendTitle: "Demandas de desenvolvimento por mês",
+      statusTitle: "Etapas de desenvolvimento",
+      statusUnit: "etapas",
+      ownerTitle: "Demandas por responsável",
+      ownerUnit: "responsáveis",
+      categoryTitle: "Demandas por tipo",
+      categoryUnit: "tipos",
+      statuses: counted(
+        details.map(({ item, detail }) =>
+          normalizedStage(
+            detail.processStage ?? detail.stage,
+            item.status || "Sem etapa",
+          ),
+        ),
+      ),
+      categories: counted(
+        details.map(
+          ({ item, detail }) =>
+            stringOf(detail.developmentType, detail.type, item.record_type) ||
+            "Não informado",
+        ),
+      ),
+    };
   return defaults;
 }
 
-function metricsFor(module: string, contextKey: string, rows: Item[]): Metric[] {
-  const details = rows.map((item) => ({ item, detail: parse(item.description) }));
+function metricsFor(
+  module: string,
+  contextKey: string,
+  rows: Item[],
+): Metric[] {
+  const details = rows.map((item) => ({
+    item,
+    detail: parse(item.description),
+  }));
   const done = rows.filter((item) => finished(item.status));
-  const values = rows.reduce((sum, item) => sum + numberOf(item.amount_cents), 0);
+  const values = rows.reduce(
+    (sum, item) => sum + numberOf(item.amount_cents),
+    0,
+  );
   const owners = new Set(rows.map((item) => item.owner).filter(Boolean)).size;
   const teams = new Set(rows.map((item) => item.team).filter(Boolean)).size;
   const generic: Metric[] = [
-    { label: "Volume total", value: rows.length, note: `${done.length} concluído(s)` },
-    { label: "Taxa de conclusão", value: percent(done.length, rows.length), note: "sobre os registros filtrados" },
-    { label: "Em andamento", value: rows.length - done.length, note: "aguardando evolução" },
+    {
+      label: "Volume total",
+      value: rows.length,
+      note: `${done.length} concluído(s)`,
+    },
+    {
+      label: "Taxa de conclusão",
+      value: percent(done.length, rows.length),
+      note: "sobre os registros filtrados",
+    },
+    {
+      label: "Em andamento",
+      value: rows.length - done.length,
+      note: "aguardando evolução",
+    },
     { label: "Responsáveis", value: owners, note: `${teams} setor(es)` },
     { label: "Movimentação", value: money(values), note: "valor no período" },
-    { label: "Ticket médio", value: rows.length ? money(Math.round(values / rows.length)) : money(0), note: "média por registro" },
-    { label: "Ciclo médio", value: `${rows.length ? Math.round(rows.reduce((sum, item) => sum + durationDays(item), 0) / rows.length) : 0}d`, note: "entre criação e atualização" },
-    { label: "Sem atribuição", value: rows.filter((item) => !item.owner).length, note: "itens sem responsável" },
+    {
+      label: "Ticket médio",
+      value: rows.length ? money(Math.round(values / rows.length)) : money(0),
+      note: "média por registro",
+    },
+    {
+      label: "Ciclo médio",
+      value: `${rows.length ? Math.round(rows.reduce((sum, item) => sum + durationDays(item), 0) / rows.length) : 0}d`,
+      note: "entre criação e atualização",
+    },
+    {
+      label: "Sem atribuição",
+      value: rows.filter((item) => !item.owner).length,
+      note: "itens sem responsável",
+    },
   ];
   if (module === "waitingQueue") {
-    const waiting = details.filter(({ item, detail }) => clean(detail.state || item.status) === "waiting" || /espera|aguard/.test(clean(item.status))).length;
+    const waiting = details.filter(
+      ({ item, detail }) =>
+        clean(detail.state || item.status) === "waiting" ||
+        /espera|aguard/.test(clean(item.status)),
+    ).length;
     const contacted = rows.length - waiting;
-    const senders = new Set(details.map(({ item, detail }) => stringOf(detail.senderName, detail.sentBy, item.owner)).filter(Boolean)).size;
-    const contacts = new Set(details.map(({ detail }) => stringOf(detail.contactedByName, detail.contactOwner, detail.responsibleName)).filter(Boolean)).size;
+    const senders = new Set(
+      details
+        .map(({ item, detail }) =>
+          stringOf(detail.senderName, detail.sentBy, item.owner),
+        )
+        .filter(Boolean),
+    ).size;
+    const contacts = new Set(
+      details
+        .map(({ detail }) =>
+          stringOf(
+            detail.contactedByName,
+            detail.contactOwner,
+            detail.responsibleName,
+          ),
+        )
+        .filter(Boolean),
+    ).size;
     return [
-      { label: "Encaminhados", value: rows.length, note: "clientes no período" }, { label: "Em espera", value: waiting, note: "aguardando contato" },
-      { label: "Contato realizado", value: contacted, note: percent(contacted, rows.length) }, { label: "% de contatos", value: percent(contacted, rows.length), note: `${contacted} de ${rows.length}` },
-      { label: "Responsáveis do envio", value: senders, note: "colaboradores distintos" }, { label: "Responsáveis do contato", value: contacts, note: "quem concluiu o contato" },
-      { label: "Setores", value: teams, note: "filas com movimentação" }, { label: "Clientes estratégicos", value: details.filter(({ detail }) => Boolean(detail.strategic || detail.isStrategic)).length, note: "prioridade especial" },
+      {
+        label: "Encaminhados",
+        value: rows.length,
+        note: "clientes no período",
+      },
+      { label: "Em espera", value: waiting, note: "aguardando contato" },
+      {
+        label: "Contato realizado",
+        value: contacted,
+        note: percent(contacted, rows.length),
+      },
+      {
+        label: "% de contatos",
+        value: percent(contacted, rows.length),
+        note: `${contacted} de ${rows.length}`,
+      },
+      {
+        label: "Responsáveis do envio",
+        value: senders,
+        note: "colaboradores distintos",
+      },
+      {
+        label: "Responsáveis do contato",
+        value: contacts,
+        note: "quem concluiu o contato",
+      },
+      { label: "Setores", value: teams, note: "filas com movimentação" },
+      {
+        label: "Clientes estratégicos",
+        value: details.filter(({ detail }) =>
+          Boolean(detail.strategic || detail.isStrategic),
+        ).length,
+        note: "prioridade especial",
+      },
     ];
   }
   if (module === "support") {
-    const solved = details.filter(({ item, detail }) => finished(detail.solutionStatus ?? detail.status ?? item.status)).length;
-    const unique = new Set(rows.map((item) => item.customer_name || item.title).filter(Boolean)).size;
-    const calls = details.filter(({ detail }) => /ligacao|telefone|phone/.test(clean(`${detail.contactType ?? ""} ${detail.channel ?? ""}`))).length;
-    const avgMinutes = details.length ? Math.round(details.reduce((sum, { detail }) => sum + numberOf(detail.durationMinutes, detail.duration), 0) / details.length) : 0;
+    const solved = details.filter(({ item, detail }) =>
+      finished(detail.solutionStatus ?? detail.status ?? item.status),
+    ).length;
+    const unique = new Set(
+      rows.map((item) => item.customer_name || item.title).filter(Boolean),
+    ).size;
+    const calls = details.filter(({ detail }) =>
+      /ligacao|telefone|phone/.test(
+        clean(`${detail.contactType ?? ""} ${detail.channel ?? ""}`),
+      ),
+    ).length;
+    const avgMinutes = details.length
+      ? Math.round(
+          details.reduce(
+            (sum, { detail }) =>
+              sum + numberOf(detail.durationMinutes, detail.duration),
+            0,
+          ) / details.length,
+        )
+      : 0;
     return [
-      { label: "Total atendimentos", value: rows.length, note: `${(rows.length / Math.max(1, new Set(rows.map((item) => dateKey(item.created_at))).size)).toFixed(1)}/dia` },
-      { label: "Clientes únicos", value: unique, note: "clientes distintos no período" }, { label: "Solucionados", value: solved, note: percent(solved, rows.length) },
-      { label: "% de solução", value: percent(solved, rows.length), note: `${solved} atendimentos concluídos` }, { label: "Setores", value: teams, note: "setores envolvidos" },
-      { label: "Ligações", value: calls, note: percent(calls, rows.length) }, { label: "Duração média", value: `${avgMinutes} min`, note: "média registrada" }, { label: "Responsáveis", value: owners, note: "colaboradores ativos" },
+      {
+        label: "Total atendimentos",
+        value: rows.length,
+        note: `${(rows.length / Math.max(1, new Set(rows.map((item) => dateKey(item.created_at))).size)).toFixed(1)}/dia`,
+      },
+      {
+        label: "Clientes únicos",
+        value: unique,
+        note: "clientes distintos no período",
+      },
+      {
+        label: "Solucionados",
+        value: solved,
+        note: percent(solved, rows.length),
+      },
+      {
+        label: "% de solução",
+        value: percent(solved, rows.length),
+        note: `${solved} atendimentos concluídos`,
+      },
+      { label: "Setores", value: teams, note: "setores envolvidos" },
+      { label: "Ligações", value: calls, note: percent(calls, rows.length) },
+      {
+        label: "Duração média",
+        value: `${avgMinutes} min`,
+        note: "média registrada",
+      },
+      { label: "Responsáveis", value: owners, note: "colaboradores ativos" },
     ];
   }
   if (module === "commercial") {
-    const sales = details.filter(({ item, detail }) => detail.kind === "directSale" || /ganho|venda|contrat/.test(clean(item.status)));
-    const saleValue = sales.reduce((sum, { item, detail }) => sum + numberOf(detail.totalCents, detail.valueCents, item.amount_cents), 0);
-    const products = details.flatMap(({ detail }) => arrayOf(detail.products).map((product) => stringOf(typeof product === "object" && product ? (product as Detail).name : product, typeof product === "object" && product ? (product as Detail).productName : ""))).filter(Boolean);
-    const direct = details.filter(({ detail }) => detail.kind === "directSale").length;
-    const routed = details.filter(({ detail }) => Boolean(detail.followUpTrack || detail.onboarding || detail.routedTo)).length;
+    const sales = details.filter(
+      ({ item, detail }) =>
+        detail.kind === "directSale" ||
+        /ganho|venda|contrat/.test(clean(item.status)),
+    );
+    const saleValue = sales.reduce(
+      (sum, { item, detail }) =>
+        sum + numberOf(detail.totalCents, detail.valueCents, item.amount_cents),
+      0,
+    );
+    const products = details
+      .flatMap(({ detail }) =>
+        arrayOf(detail.products).map((product) =>
+          stringOf(
+            typeof product === "object" && product
+              ? (product as Detail).name
+              : product,
+            typeof product === "object" && product
+              ? (product as Detail).productName
+              : "",
+          ),
+        ),
+      )
+      .filter(Boolean);
+    const direct = details.filter(
+      ({ detail }) => detail.kind === "directSale",
+    ).length;
+    const routed = details.filter(({ detail }) =>
+      Boolean(detail.followUpTrack || detail.onboarding || detail.routedTo),
+    ).length;
     return [
-      { label: "Total de vendas", value: sales.length, note: money(saleValue) }, { label: "Ticket médio", value: sales.length ? money(Math.round(saleValue / sales.length)) : money(0), note: "por venda aprovada" },
-      { label: "Plano mais contratado", value: topValue(products), note: `${products.length} produto(s) vendidos` }, { label: "Venda direta", value: direct, note: percent(direct, Math.max(1, sales.length)) },
-      { label: "Vendas novas", value: Math.max(0, sales.length - direct), note: "originadas no CRM" }, { label: "Encaminhados", value: routed, note: "para acompanhamento" },
-      { label: "Conversão", value: percent(sales.length, rows.length), note: `${sales.length} de ${rows.length} oportunidades` }, { label: "Vendedores", value: owners, note: "com movimentação no período" },
+      { label: "Total de vendas", value: sales.length, note: money(saleValue) },
+      {
+        label: "Ticket médio",
+        value: sales.length
+          ? money(Math.round(saleValue / sales.length))
+          : money(0),
+        note: "por venda aprovada",
+      },
+      {
+        label: "Plano mais contratado",
+        value: topValue(products),
+        note: `${products.length} produto(s) vendidos`,
+      },
+      {
+        label: "Venda direta",
+        value: direct,
+        note: percent(direct, Math.max(1, sales.length)),
+      },
+      {
+        label: "Vendas novas",
+        value: Math.max(0, sales.length - direct),
+        note: "originadas no CRM",
+      },
+      { label: "Encaminhados", value: routed, note: "para acompanhamento" },
+      {
+        label: "Conversão",
+        value: percent(sales.length, rows.length),
+        note: `${sales.length} de ${rows.length} oportunidades`,
+      },
+      {
+        label: "Vendedores",
+        value: owners,
+        note: "com movimentação no período",
+      },
     ];
   }
   if (module === "cs" || module === "lia") {
     if (module === "cs" && contextKey.includes("enterprise")) {
-      const networks = details.filter(({ detail, item }) => /enterprise/.test(clean(detail.kind)) || /rede/.test(clean(item.record_type)));
+      const networks = details.filter(
+        ({ detail, item }) =>
+          /enterprise/.test(clean(detail.kind)) ||
+          /rede/.test(clean(item.record_type)),
+      );
       const units = networks.flatMap(({ detail }) => arrayOf(detail.units));
-      const unitScores = units.filter(unit => (unit as Detail).active !== false).map((unit) => scoreOf((typeof unit === "object" && unit ? unit : {}) as Detail));
-      const interactions = networks.reduce((sum, { detail }) => sum + arrayOf(detail.history).length, 0) + units.reduce((sum, unit) => sum + arrayOf(typeof unit === "object" && unit ? (unit as Detail).interactions : []).length, 0);
-      const avg = unitScores.length ? Math.round(unitScores.reduce((sum, score) => sum + score, 0) / unitScores.length) : 0;
+      const unitScores = units
+        .filter((unit) => (unit as Detail).active !== false)
+        .map((unit) =>
+          scoreOf((typeof unit === "object" && unit ? unit : {}) as Detail),
+        );
+      const interactions =
+        networks.reduce(
+          (sum, { detail }) => sum + arrayOf(detail.history).length,
+          0,
+        ) +
+        units.reduce(
+          (sum, unit) =>
+            sum +
+            arrayOf(
+              typeof unit === "object" && unit
+                ? (unit as Detail).interactions
+                : [],
+            ).length,
+          0,
+        );
+      const avg = unitScores.length
+        ? Math.round(
+            unitScores.reduce((sum, score) => sum + score, 0) /
+              unitScores.length,
+          )
+        : 0;
       return [
-        { label: "Total de redes", value: networks.length, note: "redes cadastradas" }, { label: "Total de unidades", value: units.length, note: "vinculadas às redes" },
-        { label: "Em acompanhamento", value: units.filter((unit) => !finished((unit as Detail).status)).length, note: percent(units.filter((unit) => !finished((unit as Detail).status)).length, units.length) },
-        { label: "Finalizadas", value: units.filter((unit) => finished((unit as Detail).status)).length, note: "unidades concluídas" }, { label: "Health score médio", value: `${avg}%`, note: "média das unidades" },
-        { label: "Interações registradas", value: interactions, note: "em todas as unidades" }, { label: "Redes c/ responsável", value: networks.filter(({ item }) => item.owner).length, note: percent(networks.filter(({ item }) => item.owner).length, networks.length) },
-        { label: "Unidades sem interação", value: units.filter((unit) => arrayOf((unit as Detail).interactions).length === 0).length, note: "pedem atenção" },
+        {
+          label: "Total de redes",
+          value: networks.length,
+          note: "redes cadastradas",
+        },
+        {
+          label: "Total de unidades",
+          value: units.length,
+          note: "vinculadas às redes",
+        },
+        {
+          label: "Em acompanhamento",
+          value: units.filter((unit) => !finished((unit as Detail).status))
+            .length,
+          note: percent(
+            units.filter((unit) => !finished((unit as Detail).status)).length,
+            units.length,
+          ),
+        },
+        {
+          label: "Finalizadas",
+          value: units.filter((unit) => finished((unit as Detail).status))
+            .length,
+          note: "unidades concluídas",
+        },
+        {
+          label: "Health score médio",
+          value: `${avg}%`,
+          note: "média das unidades",
+        },
+        {
+          label: "Interações registradas",
+          value: interactions,
+          note: "em todas as unidades",
+        },
+        {
+          label: "Redes c/ responsável",
+          value: networks.filter(({ item }) => item.owner).length,
+          note: percent(
+            networks.filter(({ item }) => item.owner).length,
+            networks.length,
+          ),
+        },
+        {
+          label: "Unidades sem interação",
+          value: units.filter(
+            (unit) => arrayOf((unit as Detail).interactions).length === 0,
+          ).length,
+          note: "pedem atenção",
+        },
       ];
     }
     const scores = details.map(({ detail }) => scoreOf(detail));
-    const avg = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
-    const complete = details.filter(({item, detail}) => csOutcome(detail.phase, detail.status ?? item.status) === "success").length;
-    const failures = details.filter(({item, detail}) => csOutcome(detail.phase, detail.status ?? item.status) === "failure").length;
+    const avg = scores.length
+      ? Math.round(
+          scores.reduce((sum, score) => sum + score, 0) / scores.length,
+        )
+      : 0;
+    const complete = details.filter(
+      ({ item, detail }) =>
+        csOutcome(detail.phase, detail.status ?? item.status) === "success",
+    ).length;
+    const failures = details.filter(
+      ({ item, detail }) =>
+        csOutcome(detail.phase, detail.status ?? item.status) === "failure",
+    ).length;
     const active = rows.length - complete - failures;
-    const interactions = details.flatMap(({ detail }) => arrayOf(detail.follows ?? detail.history));
-    const interactionKinds = interactions.map((entry) => typeof entry === "object" && entry ? clean((entry as Detail).kind ?? (entry as Detail).type ?? (entry as Detail).text) : clean(entry));
-    const kickOffs = details.filter(({ detail }) => Boolean(detail.firstMeetingAt || detail.firstMeetingCompletedAt)).length;
-    const trainings = details.filter(({ detail }) => Boolean(detail.trainingAt || detail.trainingCompletedAt)).length;
-    const singleAlignments = details.filter(({ detail }) => Boolean(detail.singleAlignmentAt || detail.singleAlignmentCompletedAt)).length;
+    const interactions = details.flatMap(({ detail }) =>
+      arrayOf(detail.follows ?? detail.history),
+    );
+    const interactionKinds = interactions.map((entry) =>
+      typeof entry === "object" && entry
+        ? clean(
+            (entry as Detail).kind ??
+              (entry as Detail).type ??
+              (entry as Detail).text,
+          )
+        : clean(entry),
+    );
+    const kickOffs = details.filter(({ detail }) =>
+      Boolean(detail.firstMeetingAt || detail.firstMeetingCompletedAt),
+    ).length;
+    const trainings = details.filter(({ detail }) =>
+      Boolean(detail.trainingAt || detail.trainingCompletedAt),
+    ).length;
+    const singleAlignments = details.filter(({ detail }) =>
+      Boolean(detail.singleAlignmentAt || detail.singleAlignmentCompletedAt),
+    ).length;
     return [
-      { label: "Total de clientes", value: rows.length, note: `${active} em acompanhamento` }, { label: "Em acompanhamento", value: active, note: percent(active, rows.length) },
-      { label: "Finalizados", value: complete, note: percent(complete, rows.length) }, { label: "Concluídos c/ sucesso", value: complete, note: "resultado positivo" },
-      { label: "Finalizados sem sucesso", value: failures, note: "sem retorno ou cancelados" },
-      { label: "Kick offs", value: kickOffs, note: `${details.filter(({ detail }) => Boolean(detail.firstMeetingCompletedAt)).length} concluído(s)` },
-      { label: "Treinamentos", value: trainings, note: `${details.filter(({ detail }) => Boolean(detail.trainingCompletedAt)).length} concluído(s)` },
-      { label: "Alinhamentos únicos", value: singleAlignments, note: `${details.filter(({ detail }) => Boolean(detail.singleAlignmentCompletedAt)).length} concluído(s)` },
-      { label: "Health score médio", value: `${avg}%`, note: `${scores.filter((score) => score > 0).length} com score` }, { label: "Health alto (≥75%)", value: scores.filter((score) => score >= 75).length, note: "utilização saudável" },
-      { label: "Health baixo (<50%)", value: scores.filter((score) => score < 50).length, note: "clientes em risco" }, { label: module === "lia" ? "Etapas ativas" : "Dias médios", value: module === "lia" ? new Set(rows.map((item) => item.status)).size : `${rows.length ? Math.round(rows.reduce((sum, item) => sum + durationDays(item), 0) / rows.length) : 0}d`, note: module === "lia" ? "no fluxo LIA" : "em acompanhamento" },
-      { label: "Interações", value: interactions.length, note: "opções registradas no acompanhamento" },
-      { label: "Ligações", value: interactionKinds.filter((kind) => /ligacao|telefone|chamada/.test(kind)).length, note: "registradas nas tratativas" },
-      { label: "Follow-ups", value: interactionKinds.filter((kind) => /follow|retorno|acompanhamento/.test(kind)).length, note: "registrados nas tratativas" },
+      {
+        label: "Total de clientes",
+        value: rows.length,
+        note: `${active} em acompanhamento`,
+      },
+      {
+        label: "Em acompanhamento",
+        value: active,
+        note: percent(active, rows.length),
+      },
+      {
+        label: "Finalizados",
+        value: complete,
+        note: percent(complete, rows.length),
+      },
+      {
+        label: "Concluídos c/ sucesso",
+        value: complete,
+        note: "resultado positivo",
+      },
+      {
+        label: "Finalizados sem sucesso",
+        value: failures,
+        note: "sem retorno ou cancelados",
+      },
+      {
+        label: "Kick offs",
+        value: kickOffs,
+        note: `${details.filter(({ detail }) => Boolean(detail.firstMeetingCompletedAt)).length} concluído(s)`,
+      },
+      {
+        label: "Treinamentos",
+        value: trainings,
+        note: `${details.filter(({ detail }) => Boolean(detail.trainingCompletedAt)).length} concluído(s)`,
+      },
+      {
+        label: "Alinhamentos únicos",
+        value: singleAlignments,
+        note: `${details.filter(({ detail }) => Boolean(detail.singleAlignmentCompletedAt)).length} concluído(s)`,
+      },
+      {
+        label: "Health score médio",
+        value: `${avg}%`,
+        note: `${scores.filter((score) => score > 0).length} com score`,
+      },
+      {
+        label: "Health alto (≥75%)",
+        value: scores.filter((score) => score >= 75).length,
+        note: "utilização saudável",
+      },
+      {
+        label: "Health baixo (<50%)",
+        value: scores.filter((score) => score < 50).length,
+        note: "clientes em risco",
+      },
+      {
+        label: module === "lia" ? "Etapas ativas" : "Dias médios",
+        value:
+          module === "lia"
+            ? new Set(rows.map((item) => item.status)).size
+            : `${rows.length ? Math.round(rows.reduce((sum, item) => sum + durationDays(item), 0) / rows.length) : 0}d`,
+        note: module === "lia" ? "no fluxo LIA" : "em acompanhamento",
+      },
+      {
+        label: "Interações",
+        value: interactions.length,
+        note: "opções registradas no acompanhamento",
+      },
+      {
+        label: "Ligações",
+        value: interactionKinds.filter((kind) =>
+          /ligacao|telefone|chamada/.test(kind),
+        ).length,
+        note: "registradas nas tratativas",
+      },
+      {
+        label: "Follow-ups",
+        value: interactionKinds.filter((kind) =>
+          /follow|retorno|acompanhamento/.test(kind),
+        ).length,
+        note: "registrados nas tratativas",
+      },
     ];
   }
   if (module === "recruitment") {
-    const processes = rows.filter((item) => /processo seletivo/i.test(item.record_type)); const candidates = rows.filter((item) => /candidato/i.test(item.record_type));
-    const hired = candidates.filter((item) => /contrat|aprov/.test(clean(item.status))).length; const rejectedCount = candidates.filter((item) => rejected(item.status)).length;
+    const processes = rows.filter((item) =>
+      /processo seletivo/i.test(item.record_type),
+    );
+    const candidates = rows.filter((item) =>
+      /candidato/i.test(item.record_type),
+    );
+    const hired = candidates.filter((item) =>
+      /contrat|aprov/.test(clean(item.status)),
+    ).length;
+    const rejectedCount = candidates.filter((item) =>
+      rejected(item.status),
+    ).length;
     return [
-      { label: "Processos ativos", value: processes.filter((item) => !finished(item.status)).length, note: `${processes.length} no total` }, { label: "Processos finalizados", value: processes.filter((item) => finished(item.status)).length, note: percent(processes.filter((item) => finished(item.status)).length, processes.length) },
-      { label: "Candidatos", value: candidates.length, note: "nos processos filtrados" }, { label: "Contratações", value: hired, note: percent(hired, candidates.length) },
-      { label: "Taxa de contratação", value: percent(hired, candidates.length), note: "candidatos convertidos" }, { label: "Reprovados", value: rejectedCount, note: percent(rejectedCount, candidates.length) },
-      { label: "Média por processo", value: processes.length ? (candidates.length / processes.length).toFixed(1) : "0", note: "candidatos por vaga" }, { label: "Etapas ocupadas", value: new Set(candidates.map((item) => item.status)).size, note: "fases com candidatos" },
+      {
+        label: "Processos ativos",
+        value: processes.filter((item) => !finished(item.status)).length,
+        note: `${processes.length} no total`,
+      },
+      {
+        label: "Processos finalizados",
+        value: processes.filter((item) => finished(item.status)).length,
+        note: percent(
+          processes.filter((item) => finished(item.status)).length,
+          processes.length,
+        ),
+      },
+      {
+        label: "Candidatos",
+        value: candidates.length,
+        note: "nos processos filtrados",
+      },
+      {
+        label: "Contratações",
+        value: hired,
+        note: percent(hired, candidates.length),
+      },
+      {
+        label: "Taxa de contratação",
+        value: percent(hired, candidates.length),
+        note: "candidatos convertidos",
+      },
+      {
+        label: "Reprovados",
+        value: rejectedCount,
+        note: percent(rejectedCount, candidates.length),
+      },
+      {
+        label: "Média por processo",
+        value: processes.length
+          ? (candidates.length / processes.length).toFixed(1)
+          : "0",
+        note: "candidatos por vaga",
+      },
+      {
+        label: "Etapas ocupadas",
+        value: new Set(candidates.map((item) => item.status)).size,
+        note: "fases com candidatos",
+      },
     ];
   }
   if (module === "commissions") {
-    const approved = details.filter(({ detail, item }) => clean(detail.decision || item.status) === "approved" || /aprov/.test(clean(item.status)));
-    const denied = details.filter(({ detail, item }) => clean(detail.decision || item.status) === "rejected" || /reprov/.test(clean(item.status)));
-    const value = (list: typeof details) => list.reduce((sum, { detail, item }) => sum + numberOf(detail.commissionCents, detail.proposedCents, item.amount_cents), 0);
+    const approved = details.filter(
+      ({ detail, item }) =>
+        clean(detail.decision || item.status) === "approved" ||
+        /aprov/.test(clean(item.status)),
+    );
+    const denied = details.filter(
+      ({ detail, item }) =>
+        clean(detail.decision || item.status) === "rejected" ||
+        /reprov/.test(clean(item.status)),
+    );
+    const value = (list: typeof details) =>
+      list.reduce(
+        (sum, { detail, item }) =>
+          sum +
+          numberOf(
+            detail.commissionCents,
+            detail.proposedCents,
+            item.amount_cents,
+          ),
+        0,
+      );
     return [
-      { label: "Valor aprovado", value: money(value(approved)), note: `${approved.length} lançamento(s)` }, { label: "Valor reprovado", value: money(value(denied)), note: `${denied.length} lançamento(s)` },
-      { label: "Aprovações", value: approved.length, note: percent(approved.length, rows.length) }, { label: "Reprovações", value: denied.length, note: percent(denied.length, rows.length) },
-      { label: "Pendentes", value: Math.max(0, rows.length - approved.length - denied.length), note: "aguardando análise" }, { label: "Média aprovada", value: approved.length ? money(Math.round(value(approved) / approved.length)) : money(0), note: "por acompanhamento" },
-      { label: "Colaboradores", value: owners, note: "com comissão no período" }, { label: "Comissões LIA", value: details.filter(({ detail }) => clean(detail.scope) === "lia").length, note: "clientes da carteira LIA" },
+      {
+        label: "Valor aprovado",
+        value: money(value(approved)),
+        note: `${approved.length} lançamento(s)`,
+      },
+      {
+        label: "Valor reprovado",
+        value: money(value(denied)),
+        note: `${denied.length} lançamento(s)`,
+      },
+      {
+        label: "Aprovações",
+        value: approved.length,
+        note: percent(approved.length, rows.length),
+      },
+      {
+        label: "Reprovações",
+        value: denied.length,
+        note: percent(denied.length, rows.length),
+      },
+      {
+        label: "Pendentes",
+        value: Math.max(0, rows.length - approved.length - denied.length),
+        note: "aguardando análise",
+      },
+      {
+        label: "Média aprovada",
+        value: approved.length
+          ? money(Math.round(value(approved) / approved.length))
+          : money(0),
+        note: "por acompanhamento",
+      },
+      {
+        label: "Colaboradores",
+        value: owners,
+        note: "com comissão no período",
+      },
+      {
+        label: "Comissões LIA",
+        value: details.filter(({ detail }) => clean(detail.scope) === "lia")
+          .length,
+        note: "clientes da carteira LIA",
+      },
     ];
   }
   if (module === "goals") {
-    const progress = details.map(({ detail, item }) => Math.min(100, numberOf(detail.progress, detail.progressPercent, item.status === "Concluída" ? 100 : 0))); const achieved = progress.filter((value) => value >= 100).length;
+    const progress = details.map(({ detail, item }) =>
+      Math.min(
+        100,
+        numberOf(
+          detail.progress,
+          detail.progressPercent,
+          item.status === "Concluída" ? 100 : 0,
+        ),
+      ),
+    );
+    const achieved = progress.filter((value) => value >= 100).length;
     return [
-      { label: "Metas criadas", value: rows.length, note: "no período filtrado" }, { label: "Metas batidas", value: achieved, note: percent(achieved, rows.length) },
-      { label: "Em progresso", value: rows.length - achieved, note: "ainda ativas" }, { label: "Progresso médio", value: `${progress.length ? Math.round(progress.reduce((sum, value) => sum + value, 0) / progress.length) : 0}%`, note: "realização consolidada" },
-      { label: "Metas diárias", value: details.filter(({ detail }) => /daily|diaria/.test(clean(detail.frequency ?? detail.period))).length, note: "cadastros ativos" }, { label: "Metas semanais", value: details.filter(({ detail }) => /weekly|semanal/.test(clean(detail.frequency ?? detail.period))).length, note: "cadastros ativos" },
-      { label: "Metas mensais", value: details.filter(({ detail }) => /monthly|mensal/.test(clean(detail.frequency ?? detail.period))).length, note: "cadastros ativos" }, { label: "Colaboradores", value: owners, note: "com metas vinculadas" },
+      {
+        label: "Metas criadas",
+        value: rows.length,
+        note: "no período filtrado",
+      },
+      {
+        label: "Metas batidas",
+        value: achieved,
+        note: percent(achieved, rows.length),
+      },
+      {
+        label: "Em progresso",
+        value: rows.length - achieved,
+        note: "ainda ativas",
+      },
+      {
+        label: "Progresso médio",
+        value: `${progress.length ? Math.round(progress.reduce((sum, value) => sum + value, 0) / progress.length) : 0}%`,
+        note: "realização consolidada",
+      },
+      {
+        label: "Metas diárias",
+        value: details.filter(({ detail }) =>
+          /daily|diaria/.test(clean(detail.frequency ?? detail.period)),
+        ).length,
+        note: "cadastros ativos",
+      },
+      {
+        label: "Metas semanais",
+        value: details.filter(({ detail }) =>
+          /weekly|semanal/.test(clean(detail.frequency ?? detail.period)),
+        ).length,
+        note: "cadastros ativos",
+      },
+      {
+        label: "Metas mensais",
+        value: details.filter(({ detail }) =>
+          /monthly|mensal/.test(clean(detail.frequency ?? detail.period)),
+        ).length,
+        note: "cadastros ativos",
+      },
+      { label: "Colaboradores", value: owners, note: "com metas vinculadas" },
     ];
   }
   if (module === "referrals") {
-    const phases = (phase: string) => details.filter(({ detail }) => clean(detail.phase) === phase); const approved = phases("approved"); const denied = phases("rejected");
+    const phases = (phase: string) =>
+      details.filter(({ detail }) => clean(detail.phase) === phase);
+    const approved = phases("approved");
+    const denied = phases("rejected");
     return [
-      { label: "Indicações enviadas", value: rows.length, note: "total no período" }, { label: "Em acompanhamento", value: phases("tracking").length, note: "aguardando evolução" },
-      { label: "Em conferência", value: phases("conference").length, note: "aguardando decisão" }, { label: "Aprovadas", value: approved.length, note: percent(approved.length, rows.length) },
-      { label: "Reprovadas", value: denied.length, note: percent(denied.length, rows.length) }, { label: "Clientes contrataram", value: details.filter(({ detail }) => Boolean(detail.hired)).length, note: "flag de contratação" },
-      { label: "Configurados", value: details.filter(({ detail }) => Boolean(detail.configured)).length, note: "implantação concluída" }, { label: "Comissões aprovadas", value: money(approved.reduce((sum, { detail }) => sum + numberOf(detail.commissionCents), 0)), note: "valor consolidado" },
+      {
+        label: "Indicações enviadas",
+        value: rows.length,
+        note: "total no período",
+      },
+      {
+        label: "Em acompanhamento",
+        value: phases("tracking").length,
+        note: "aguardando evolução",
+      },
+      {
+        label: "Em conferência",
+        value: phases("conference").length,
+        note: "aguardando decisão",
+      },
+      {
+        label: "Aprovadas",
+        value: approved.length,
+        note: percent(approved.length, rows.length),
+      },
+      {
+        label: "Reprovadas",
+        value: denied.length,
+        note: percent(denied.length, rows.length),
+      },
+      {
+        label: "Clientes contrataram",
+        value: details.filter(({ detail }) => Boolean(detail.hired)).length,
+        note: "flag de contratação",
+      },
+      {
+        label: "Configurados",
+        value: details.filter(({ detail }) => Boolean(detail.configured))
+          .length,
+        note: "implantação concluída",
+      },
+      {
+        label: "Comissões aprovadas",
+        value: money(
+          approved.reduce(
+            (sum, { detail }) => sum + numberOf(detail.commissionCents),
+            0,
+          ),
+        ),
+        note: "valor consolidado",
+      },
     ];
   }
   if (module === "diary") {
-    const completed = rows.filter((item) => finished(item.status)).length; const agenda = details.filter(({ detail }) => clean(detail.source) === "agenda").length;
-    return [{ label: "Atividades", value: rows.length, note: "no período" }, { label: "Concluídas", value: completed, note: percent(completed, rows.length) }, { label: "Pendentes", value: rows.length - completed, note: "aguardando execução" }, { label: "Vindas da agenda", value: agenda, note: percent(agenda, rows.length) }, { label: "Manuais", value: rows.length - agenda, note: "registradas no diário" }, { label: "Taxa de conclusão", value: percent(completed, rows.length), note: "atividades finalizadas" }, { label: "Dias com atividade", value: new Set(rows.map((item) => dateKey(item.created_at))).size, note: "dias movimentados" }, { label: "Tipos", value: new Set(rows.map((item) => item.record_type)).size, note: "categorias distintas" }];
+    const completed = rows.filter((item) => finished(item.status)).length;
+    const agenda = details.filter(
+      ({ detail }) => clean(detail.source) === "agenda",
+    ).length;
+    return [
+      { label: "Atividades", value: rows.length, note: "no período" },
+      {
+        label: "Concluídas",
+        value: completed,
+        note: percent(completed, rows.length),
+      },
+      {
+        label: "Pendentes",
+        value: rows.length - completed,
+        note: "aguardando execução",
+      },
+      {
+        label: "Vindas da agenda",
+        value: agenda,
+        note: percent(agenda, rows.length),
+      },
+      {
+        label: "Manuais",
+        value: rows.length - agenda,
+        note: "registradas no diário",
+      },
+      {
+        label: "Taxa de conclusão",
+        value: percent(completed, rows.length),
+        note: "atividades finalizadas",
+      },
+      {
+        label: "Dias com atividade",
+        value: new Set(rows.map((item) => dateKey(item.created_at))).size,
+        note: "dias movimentados",
+      },
+      {
+        label: "Tipos",
+        value: new Set(rows.map((item) => item.record_type)).size,
+        note: "categorias distintas",
+      },
+    ];
   }
   if (module === "tasks") {
-    const completed = rows.filter((item) => finished(item.status)).length; const cancelled = details.filter(({ detail }) => Boolean(detail.cancelled)).length; const overdue = rows.filter(item => isOverdueIndicatorRecord(item)).length;
-    return [{ label: "Total de tarefas", value: rows.length, note: "no período" }, { label: "Concluídas", value: completed, note: percent(completed, rows.length) }, { label: "Em andamento", value: rows.length - completed - cancelled, note: "tarefas ativas" }, { label: "Atrasadas", value: overdue, note: "fora do SLA" }, { label: "Canceladas", value: cancelled, note: percent(cancelled, rows.length) }, { label: "Responsáveis", value: owners, note: "com tarefas" }, { label: "Protocolos", value: details.filter(({ detail }) => Boolean(detail.protocol)).length, note: "protocolos emitidos" }, { label: "Ciclo médio", value: `${rows.length ? Math.round(rows.reduce((sum, item) => sum + durationDays(item), 0) / rows.length) : 0}d`, note: "criação até atualização" }];
+    const completed = rows.filter((item) => finished(item.status)).length;
+    const cancelled = details.filter(({ detail }) =>
+      Boolean(detail.cancelled),
+    ).length;
+    const overdue = rows.filter((item) =>
+      isOverdueIndicatorRecord(item),
+    ).length;
+    return [
+      { label: "Total de tarefas", value: rows.length, note: "no período" },
+      {
+        label: "Concluídas",
+        value: completed,
+        note: percent(completed, rows.length),
+      },
+      {
+        label: "Em andamento",
+        value: rows.length - completed - cancelled,
+        note: "tarefas ativas",
+      },
+      { label: "Atrasadas", value: overdue, note: "fora do SLA" },
+      {
+        label: "Canceladas",
+        value: cancelled,
+        note: percent(cancelled, rows.length),
+      },
+      { label: "Responsáveis", value: owners, note: "com tarefas" },
+      {
+        label: "Protocolos",
+        value: details.filter(({ detail }) => Boolean(detail.protocol)).length,
+        note: "protocolos emitidos",
+      },
+      {
+        label: "Ciclo médio",
+        value: `${rows.length ? Math.round(rows.reduce((sum, item) => sum + durationDays(item), 0) / rows.length) : 0}d`,
+        note: "criação até atualização",
+      },
+    ];
   }
   if (module === "work") {
-    const completed = rows.filter((item) => finished(item.status)).length; const kickoff = rows.filter((item) => /kick off|kickoff/i.test(item.title)).length; const training = rows.filter((item) => /treinamento/i.test(item.title)).length;
-    return [{ label: "Compromissos", value: rows.length, note: "no período" }, { label: "Concluídos", value: completed, note: percent(completed, rows.length) }, { label: "Agendados", value: rows.length - completed, note: "agenda futura/ativa" }, { label: "Kick offs", value: kickoff, note: "originados do Comercial" }, { label: "Treinamentos", value: training, note: "agendados pelo acompanhamento" }, { label: "Responsáveis", value: owners, note: "com agenda" }, { label: "Setores", value: teams, note: "calendários movimentados" }, { label: "Tipos", value: new Set(rows.map((item) => item.record_type)).size, note: "categorias distintas" }];
+    const completed = rows.filter((item) => finished(item.status)).length;
+    const kickoff = rows.filter((item) =>
+      /kick off|kickoff/i.test(item.title),
+    ).length;
+    const training = rows.filter((item) =>
+      /treinamento/i.test(item.title),
+    ).length;
+    return [
+      { label: "Compromissos", value: rows.length, note: "no período" },
+      {
+        label: "Concluídos",
+        value: completed,
+        note: percent(completed, rows.length),
+      },
+      {
+        label: "Agendados",
+        value: rows.length - completed,
+        note: "agenda futura/ativa",
+      },
+      { label: "Kick offs", value: kickoff, note: "originados do Comercial" },
+      {
+        label: "Treinamentos",
+        value: training,
+        note: "agendados pelo acompanhamento",
+      },
+      { label: "Responsáveis", value: owners, note: "com agenda" },
+      { label: "Setores", value: teams, note: "calendários movimentados" },
+      {
+        label: "Tipos",
+        value: new Set(rows.map((item) => item.record_type)).size,
+        note: "categorias distintas",
+      },
+    ];
   }
   if (module === "suggestions") {
-    const approved = rows.filter((item) => /aprov|aceit|conclu/.test(clean(item.status))).length; const denied = rows.filter((item) => rejected(item.status)).length;
-    return [{ label: "Sugestões recebidas", value: rows.length, note: "no período" }, { label: "Aprovadas", value: approved, note: percent(approved, rows.length) }, { label: "Reprovadas", value: denied, note: percent(denied, rows.length) }, { label: "Em análise", value: Math.max(0, rows.length - approved - denied), note: "aguardando decisão" }, { label: "Clientes estratégicos", value: details.filter(({ detail }) => Boolean(detail.strategicClient)).length, note: "sugestões prioritárias" }, { label: "Risco de cancelamento", value: details.filter(({ detail }) => Boolean(detail.cancellationRisk)).length, note: "pedem atenção" }, { label: "Comentários", value: details.reduce((sum, { detail }) => sum + numberOf(detail.comments), 0), note: "interações registradas" }, { label: "Responsáveis", value: owners, note: "avaliadores" }];
+    const approved = rows.filter((item) =>
+      /aprov|aceit|conclu/.test(clean(item.status)),
+    ).length;
+    const denied = rows.filter((item) => rejected(item.status)).length;
+    return [
+      { label: "Sugestões recebidas", value: rows.length, note: "no período" },
+      {
+        label: "Aprovadas",
+        value: approved,
+        note: percent(approved, rows.length),
+      },
+      {
+        label: "Reprovadas",
+        value: denied,
+        note: percent(denied, rows.length),
+      },
+      {
+        label: "Em análise",
+        value: Math.max(0, rows.length - approved - denied),
+        note: "aguardando decisão",
+      },
+      {
+        label: "Clientes estratégicos",
+        value: details.filter(({ detail }) => Boolean(detail.strategicClient))
+          .length,
+        note: "sugestões prioritárias",
+      },
+      {
+        label: "Risco de cancelamento",
+        value: details.filter(({ detail }) => Boolean(detail.cancellationRisk))
+          .length,
+        note: "pedem atenção",
+      },
+      {
+        label: "Comentários",
+        value: details.reduce(
+          (sum, { detail }) => sum + numberOf(detail.comments),
+          0,
+        ),
+        note: "interações registradas",
+      },
+      { label: "Responsáveis", value: owners, note: "avaliadores" },
+    ];
   }
   if (module === "access") {
-    const success = rows.filter((item) => finished(item.status) || /success|sucesso|ok/.test(clean(item.status))).length; const failed = rows.filter((item) => /fail|erro|negad|bloque/.test(clean(item.status))).length;
-    return [{ label: "Acessos realizados", value: rows.length, note: "sistemas externos" }, { label: "Com sucesso", value: success, note: percent(success, rows.length) }, { label: "Falhas", value: failed, note: percent(failed, rows.length) }, { label: "Colaboradores", value: owners, note: "com movimentação" }, { label: "Sistemas externos", value: new Set(rows.map((item) => item.record_type)).size, note: "recursos distintos" }, { label: "Setores", value: teams, note: "origens dos acessos" }, { label: "Média por colaborador", value: owners ? (rows.length / owners).toFixed(1) : "0", note: "acessos por pessoa" }, { label: "Dias com acesso", value: new Set(rows.map((item) => dateKey(item.created_at))).size, note: "atividade registrada" }];
+    const success = rows.filter(
+      (item) =>
+        finished(item.status) || /success|sucesso|ok/.test(clean(item.status)),
+    ).length;
+    const failed = rows.filter((item) =>
+      /fail|erro|negad|bloque/.test(clean(item.status)),
+    ).length;
+    return [
+      {
+        label: "Acessos realizados",
+        value: rows.length,
+        note: "sistemas externos",
+      },
+      {
+        label: "Com sucesso",
+        value: success,
+        note: percent(success, rows.length),
+      },
+      { label: "Falhas", value: failed, note: percent(failed, rows.length) },
+      { label: "Colaboradores", value: owners, note: "com movimentação" },
+      {
+        label: "Sistemas externos",
+        value: new Set(rows.map((item) => item.record_type)).size,
+        note: "recursos distintos",
+      },
+      { label: "Setores", value: teams, note: "origens dos acessos" },
+      {
+        label: "Média por colaborador",
+        value: owners ? (rows.length / owners).toFixed(1) : "0",
+        note: "acessos por pessoa",
+      },
+      {
+        label: "Dias com acesso",
+        value: new Set(rows.map((item) => dateKey(item.created_at))).size,
+        note: "atividade registrada",
+      },
+    ];
   }
   if (module === "marketing") {
-    const stageOf = ({ item, detail }: { item: Item; detail: Detail }) => clean(detail.stage ?? item.status);
-    const backlog = details.filter((entry) => /solicit|backlog|aguard|pendente/.test(stageOf(entry))).length;
-    const producing = details.filter((entry) => /produ[cç][aã]o|fazendo|andamento|execu[cç][aã]o/.test(stageOf(entry))).length;
-    const reviewing = details.filter((entry) => /revis|aprova[cç][aã]o|ajuste/.test(stageOf(entry))).length;
-    const completed = details.filter(({ item, detail }) => finished(detail.stage ?? item.status)).length;
-    const comments = details.reduce((sum, { detail }) => sum + arrayOf(detail.comments ?? detail.history).length, 0);
-    const channels = new Set(details.map(({ detail }) => stringOf(detail.channel, detail.media, detail.campaignType)).filter(Boolean)).size;
+    const stageOf = ({ item, detail }: { item: Item; detail: Detail }) =>
+      clean(detail.stage ?? item.status);
+    const backlog = details.filter((entry) =>
+      /solicit|backlog|aguard|pendente/.test(stageOf(entry)),
+    ).length;
+    const producing = details.filter((entry) =>
+      /produ[cç][aã]o|fazendo|andamento|execu[cç][aã]o/.test(stageOf(entry)),
+    ).length;
+    const reviewing = details.filter((entry) =>
+      /revis|aprova[cç][aã]o|ajuste/.test(stageOf(entry)),
+    ).length;
+    const completed = details.filter(({ item, detail }) =>
+      finished(detail.stage ?? item.status),
+    ).length;
+    const comments = details.reduce(
+      (sum, { detail }) =>
+        sum + arrayOf(detail.comments ?? detail.history).length,
+      0,
+    );
+    const channels = new Set(
+      details
+        .map(({ detail }) =>
+          stringOf(detail.channel, detail.media, detail.campaignType),
+        )
+        .filter(Boolean),
+    ).size;
     return [
-      { label: "Solicitações", value: rows.length, note: "demandas no período" }, { label: "Backlog", value: backlog, note: "aguardando produção" },
-      { label: "Em produção", value: producing, note: percent(producing, rows.length) }, { label: "Em revisão", value: reviewing, note: "aguardando validação" },
-      { label: "Concluídas", value: completed, note: percent(completed, rows.length) }, { label: "Comentários", value: comments, note: "interações registradas" },
-      { label: "Canais ativos", value: channels, note: "origens de demanda" }, { label: "Responsáveis", value: owners, note: "equipe com movimentação" },
+      {
+        label: "Solicitações",
+        value: rows.length,
+        note: "demandas no período",
+      },
+      { label: "Backlog", value: backlog, note: "aguardando produção" },
+      {
+        label: "Em produção",
+        value: producing,
+        note: percent(producing, rows.length),
+      },
+      { label: "Em revisão", value: reviewing, note: "aguardando validação" },
+      {
+        label: "Concluídas",
+        value: completed,
+        note: percent(completed, rows.length),
+      },
+      { label: "Comentários", value: comments, note: "interações registradas" },
+      { label: "Canais ativos", value: channels, note: "origens de demanda" },
+      { label: "Responsáveis", value: owners, note: "equipe com movimentação" },
     ];
   }
   if (module === "ti") {
-    const stageOf = ({ item, detail }: { item: Item; detail: Detail }) => clean(detail.processStage ?? detail.triageStage ?? detail.stage ?? item.status);
-    const triage = details.filter((entry) => /triagem|recebid|an[aá]lise/.test(stageOf(entry))).length;
-    const processing = details.filter((entry) => /processo|desenvolvimento|andamento|execu[cç][aã]o/.test(stageOf(entry))).length;
-    const version = details.filter((entry) => /vers[aã]o|homologa|teste|libera/.test(stageOf(entry))).length;
-    const completed = details.filter(({ item, detail }) => finished(detail.processStage ?? detail.stage ?? item.status)).length;
-    const blocked = details.filter((entry) => /bloque|imped|erro/.test(stageOf(entry))).length;
-    const history = details.reduce((sum, { detail }) => sum + arrayOf(detail.history ?? detail.comments).length, 0);
+    const stageOf = ({ item, detail }: { item: Item; detail: Detail }) =>
+      clean(
+        detail.processStage ??
+          detail.triageStage ??
+          detail.stage ??
+          item.status,
+      );
+    const triage = details.filter((entry) =>
+      /triagem|recebid|an[aá]lise/.test(stageOf(entry)),
+    ).length;
+    const processing = details.filter((entry) =>
+      /processo|desenvolvimento|andamento|execu[cç][aã]o/.test(stageOf(entry)),
+    ).length;
+    const version = details.filter((entry) =>
+      /vers[aã]o|homologa|teste|libera/.test(stageOf(entry)),
+    ).length;
+    const completed = details.filter(({ item, detail }) =>
+      finished(detail.processStage ?? detail.stage ?? item.status),
+    ).length;
+    const blocked = details.filter((entry) =>
+      /bloque|imped|erro/.test(stageOf(entry)),
+    ).length;
+    const history = details.reduce(
+      (sum, { detail }) =>
+        sum + arrayOf(detail.history ?? detail.comments).length,
+      0,
+    );
     return [
-      { label: "Demandas", value: rows.length, note: "itens no período" }, { label: "Em triagem", value: triage, note: percent(triage, rows.length) },
-      { label: "Em processo", value: processing, note: percent(processing, rows.length) }, { label: "Em versão", value: version, note: "teste, homologação ou liberação" },
-      { label: "Concluídas", value: completed, note: percent(completed, rows.length) }, { label: "Bloqueadas", value: blocked, note: "pedem intervenção" },
-      { label: "Interações técnicas", value: history, note: "histórico registrado" }, { label: "Responsáveis", value: owners, note: "equipe envolvida" },
+      { label: "Demandas", value: rows.length, note: "itens no período" },
+      {
+        label: "Em triagem",
+        value: triage,
+        note: percent(triage, rows.length),
+      },
+      {
+        label: "Em processo",
+        value: processing,
+        note: percent(processing, rows.length),
+      },
+      {
+        label: "Em versão",
+        value: version,
+        note: "teste, homologação ou liberação",
+      },
+      {
+        label: "Concluídas",
+        value: completed,
+        note: percent(completed, rows.length),
+      },
+      { label: "Bloqueadas", value: blocked, note: "pedem intervenção" },
+      {
+        label: "Interações técnicas",
+        value: history,
+        note: "histórico registrado",
+      },
+      { label: "Responsáveis", value: owners, note: "equipe envolvida" },
     ];
   }
   return generic;
 }
 
-function supplementaryMetricsFor(module: string, contextKey: string, rows: Item[]): Metric[] {
-  const details = rows.map((item) => ({ item, detail: parse(item.description) }));
+function supplementaryMetricsFor(
+  module: string,
+  contextKey: string,
+  rows: Item[],
+): Metric[] {
+  const details = rows.map((item) => ({
+    item,
+    detail: parse(item.description),
+  }));
   const today = new Date().toLocaleDateString("en-CA");
-  const updatedToday = rows.filter((item) => dateKey(item.updated_at) === today).length;
-  const withCustomer = rows.filter((item) => Boolean(item.customer_name)).length;
-  const overdue = rows.filter((item) => item.due_at && new Date(item.due_at).getTime() < Date.now() && !finished(item.status)).length;
+  const updatedToday = rows.filter(
+    (item) => dateKey(item.updated_at) === today,
+  ).length;
+  const withCustomer = rows.filter((item) =>
+    Boolean(item.customer_name),
+  ).length;
+  const overdue = rows.filter(
+    (item) =>
+      item.due_at &&
+      new Date(item.due_at).getTime() < Date.now() &&
+      !finished(item.status),
+  ).length;
   const base = [
-    { label: "Atualizados hoje", value: updatedToday, note: "movimentação no dia" },
-    { label: "Com cliente vinculado", value: withCustomer, note: percent(withCustomer, rows.length) },
+    {
+      label: "Atualizados hoje",
+      value: updatedToday,
+      note: "movimentação no dia",
+    },
+    {
+      label: "Com cliente vinculado",
+      value: withCustomer,
+      note: percent(withCustomer, rows.length),
+    },
     { label: "Fora do prazo", value: overdue, note: "itens ativos vencidos" },
-    { label: "Tipos distintos", value: new Set(rows.map((item) => item.record_type).filter(Boolean)).size, note: "categorias no filtro" },
+    {
+      label: "Tipos distintos",
+      value: new Set(rows.map((item) => item.record_type).filter(Boolean)).size,
+      note: "categorias no filtro",
+    },
   ];
   if (module === "waitingQueue") {
-    const contactedToday = details.filter(({ item, detail }) => /contacted|contato feito/.test(clean(detail.state ?? item.status)) && dateKey(item.updated_at) === today).length;
-    const withPhone = details.filter(({ item, detail }) => Boolean(stringOf(detail.phone, detail.whatsapp, detail.mobile, item.customer_name))).length;
-    const waitingLong = details.filter(({ item, detail }) => /waiting|espera|aguard/.test(clean(detail.state ?? item.status)) && durationDays(item) >= 1).length;
-    return [{ label: "Contatos hoje", value: contactedToday, note: "concluídos no dia" }, { label: "Com WhatsApp", value: withPhone, note: percent(withPhone, rows.length) }, { label: "Espera acima de 1 dia", value: waitingLong, note: "pedem prioridade" }, base[3]];
+    const contactedToday = details.filter(
+      ({ item, detail }) =>
+        /contacted|contato feito/.test(clean(detail.state ?? item.status)) &&
+        dateKey(item.updated_at) === today,
+    ).length;
+    const withPhone = details.filter(({ item, detail }) =>
+      Boolean(
+        stringOf(
+          detail.phone,
+          detail.whatsapp,
+          detail.mobile,
+          item.customer_name,
+        ),
+      ),
+    ).length;
+    const waitingLong = details.filter(
+      ({ item, detail }) =>
+        /waiting|espera|aguard/.test(clean(detail.state ?? item.status)) &&
+        durationDays(item) >= 1,
+    ).length;
+    return [
+      {
+        label: "Contatos hoje",
+        value: contactedToday,
+        note: "concluídos no dia",
+      },
+      {
+        label: "Com WhatsApp",
+        value: withPhone,
+        note: percent(withPhone, rows.length),
+      },
+      {
+        label: "Espera acima de 1 dia",
+        value: waitingLong,
+        note: "pedem prioridade",
+      },
+      base[3],
+    ];
   }
   if (module === "support") {
-    const text = details.map(({ item, detail }) => clean(`${item.status} ${JSON.stringify(detail)}`));
-    return [{ label: "1º contato", value: text.filter((value) => /1.? contato|primeiro contato/.test(value)).length, note: "marcadores registrados" }, { label: "2º contato", value: text.filter((value) => /2.? contato|segundo contato/.test(value)).length, note: "retornos realizados" }, { label: "Cancelamentos", value: text.filter((value) => /cancel/.test(value)).length, note: "no período" }, { label: "Mal uso", value: text.filter((value) => /mal uso|bad.?usage/.test(value)).length, note: "ocorrências identificadas" }];
+    const text = details.map(({ item, detail }) =>
+      clean(`${item.status} ${JSON.stringify(detail)}`),
+    );
+    return [
+      {
+        label: "1º contato",
+        value: text.filter((value) =>
+          /1.? contato|primeiro contato/.test(value),
+        ).length,
+        note: "marcadores registrados",
+      },
+      {
+        label: "2º contato",
+        value: text.filter((value) => /2.? contato|segundo contato/.test(value))
+          .length,
+        note: "retornos realizados",
+      },
+      {
+        label: "Cancelamentos",
+        value: text.filter((value) => /cancel/.test(value)).length,
+        note: "no período",
+      },
+      {
+        label: "Mal uso",
+        value: text.filter((value) => /mal uso|bad.?usage/.test(value)).length,
+        note: "ocorrências identificadas",
+      },
+    ];
   }
   if (module === "cs" && contextKey.includes("enterprise")) {
-    const units = details.flatMap(({ detail }) => arrayOf(detail.units).map((unit) => (typeof unit === "object" && unit ? unit : {}) as Detail));
+    const units = details.flatMap(({ detail }) =>
+      arrayOf(detail.units).map(
+        (unit) => (typeof unit === "object" && unit ? unit : {}) as Detail,
+      ),
+    );
     const scores = units.map(scoreOf);
-    return [{ label: "Unidades ativas", value: units.filter((unit) => unit.active !== false && !/inativ|cancel/.test(clean(unit.status))).length, note: "em operação" }, { label: "Unidades inativas", value: units.filter((unit) => unit.active === false || /inativ|cancel/.test(clean(unit.status))).length, note: "fora de operação" }, { label: "Score alto", value: scores.filter((score) => score >= 75).length, note: "unidades ≥ 75%" }, { label: "Score crítico", value: scores.filter((score) => score < 50).length, note: "unidades abaixo de 50%" }];
+    return [
+      {
+        label: "Unidades ativas",
+        value: units.filter(
+          (unit) =>
+            unit.active !== false && !/inativ|cancel/.test(clean(unit.status)),
+        ).length,
+        note: "em operação",
+      },
+      {
+        label: "Unidades inativas",
+        value: units.filter(
+          (unit) =>
+            unit.active === false || /inativ|cancel/.test(clean(unit.status)),
+        ).length,
+        note: "fora de operação",
+      },
+      {
+        label: "Score alto",
+        value: scores.filter((score) => score >= 75).length,
+        note: "unidades ≥ 75%",
+      },
+      {
+        label: "Score crítico",
+        value: scores.filter((score) => score < 50).length,
+        note: "unidades abaixo de 50%",
+      },
+    ];
   }
   if (module === "cs" || module === "lia") {
-    const phases = details.map(({ item, detail }) => clean(detail.phase ?? detail.stage ?? item.status));
+    const phases = details.map(({ item, detail }) =>
+      clean(detail.phase ?? detail.stage ?? item.status),
+    );
     const conference = phases.filter((phase) => /confer/.test(phase)).length;
-    const onboarding = phases.filter((phase) => /onboarding|kick.?off|teste/.test(phase)).length;
-    const noReturn = details.filter(({ item, detail }) => /sem retorno|falta de retorno|no.?return/.test(clean(detail.finalStatus ?? detail.status ?? item.status))).length;
-    const featureUse = details.reduce((sum, { detail }) => sum + arrayOf(detail.featuresActive ?? detail.featuresInUse).length, 0);
-    return [{ label: module === "lia" ? "Kick off / testes" : "Em onboarding", value: onboarding, note: "etapas iniciais" }, { label: "Em conferência", value: conference, note: "aguardando validação" }, { label: "Sem retorno", value: noReturn, note: "clientes que pedem atenção" }, { label: "Features em uso", value: featureUse, note: "adoções registradas" }];
+    const onboarding = phases.filter((phase) =>
+      /onboarding|kick.?off|teste/.test(phase),
+    ).length;
+    const noReturn = details.filter(({ item, detail }) =>
+      /sem retorno|falta de retorno|no.?return/.test(
+        clean(detail.finalStatus ?? detail.status ?? item.status),
+      ),
+    ).length;
+    const featureUse = details.reduce(
+      (sum, { detail }) =>
+        sum + arrayOf(detail.featuresActive ?? detail.featuresInUse).length,
+      0,
+    );
+    return [
+      {
+        label: module === "lia" ? "Kick off / testes" : "Em onboarding",
+        value: onboarding,
+        note: "etapas iniciais",
+      },
+      {
+        label: "Em conferência",
+        value: conference,
+        note: "aguardando validação",
+      },
+      {
+        label: "Sem retorno",
+        value: noReturn,
+        note: "clientes que pedem atenção",
+      },
+      {
+        label: "Features em uso",
+        value: featureUse,
+        note: "adoções registradas",
+      },
+    ];
   }
   if (module === "commissions") {
-    const pending = details.filter(({ item, detail }) => !/aprov|reprov/.test(clean(detail.decision ?? item.status)));
-    const pendingValue = pending.reduce((sum, { item, detail }) => sum + numberOf(detail.commissionCents, detail.proposedCents, item.amount_cents), 0);
-    const viewed = details.filter(({ detail }) => Boolean(detail.viewedAt ?? detail.acknowledgedAt ?? detail.agreedAt)).length;
-    const accepted = details.filter(({ detail }) => Boolean(detail.agreedAt ?? detail.acceptedAt)).length;
-    return [{ label: "Valor pendente", value: money(pendingValue), note: `${pending.length} lançamento(s)` }, { label: "Visualizadas", value: viewed, note: "pelo colaborador" }, { label: "Aceites", value: accepted, note: "marcadas como concordo" }, { label: "Competências", value: new Set(rows.map((item) => monthKey(item.created_at))).size, note: "meses com lançamentos" }];
+    const pending = details.filter(
+      ({ item, detail }) =>
+        !/aprov|reprov/.test(clean(detail.decision ?? item.status)),
+    );
+    const pendingValue = pending.reduce(
+      (sum, { item, detail }) =>
+        sum +
+        numberOf(
+          detail.commissionCents,
+          detail.proposedCents,
+          item.amount_cents,
+        ),
+      0,
+    );
+    const viewed = details.filter(({ detail }) =>
+      Boolean(detail.viewedAt ?? detail.acknowledgedAt ?? detail.agreedAt),
+    ).length;
+    const accepted = details.filter(({ detail }) =>
+      Boolean(detail.agreedAt ?? detail.acceptedAt),
+    ).length;
+    return [
+      {
+        label: "Valor pendente",
+        value: money(pendingValue),
+        note: `${pending.length} lançamento(s)`,
+      },
+      { label: "Visualizadas", value: viewed, note: "pelo colaborador" },
+      { label: "Aceites", value: accepted, note: "marcadas como concordo" },
+      {
+        label: "Competências",
+        value: new Set(rows.map((item) => monthKey(item.created_at))).size,
+        note: "meses com lançamentos",
+      },
+    ];
   }
   if (module === "goals") {
-    const progress = details.map(({ detail }) => numberOf(detail.progress, detail.progressPercent));
-    return [{ label: "Acima de 75%", value: progress.filter((value) => value >= 75).length, note: "próximas da conclusão" }, { label: "Abaixo de 50%", value: progress.filter((value) => value < 50).length, note: "pedem atenção" }, { label: "Metas de valor", value: details.filter(({ detail }) => /valor|receita|salesvalue/.test(clean(detail.metric))).length, note: "indicadores financeiros" }, { label: "Metas de quantidade", value: details.filter(({ detail }) => /quant|count|cliente|atendimento/.test(clean(detail.metric))).length, note: "indicadores de volume" }];
+    const progress = details.map(({ detail }) =>
+      numberOf(detail.progress, detail.progressPercent),
+    );
+    return [
+      {
+        label: "Acima de 75%",
+        value: progress.filter((value) => value >= 75).length,
+        note: "próximas da conclusão",
+      },
+      {
+        label: "Abaixo de 50%",
+        value: progress.filter((value) => value < 50).length,
+        note: "pedem atenção",
+      },
+      {
+        label: "Metas de valor",
+        value: details.filter(({ detail }) =>
+          /valor|receita|salesvalue/.test(clean(detail.metric)),
+        ).length,
+        note: "indicadores financeiros",
+      },
+      {
+        label: "Metas de quantidade",
+        value: details.filter(({ detail }) =>
+          /quant|count|cliente|atendimento/.test(clean(detail.metric)),
+        ).length,
+        note: "indicadores de volume",
+      },
+    ];
   }
   if (module === "referrals") {
-    const sold = details.filter(({ detail }) => Boolean(detail.hired ?? detail.contracted));
-    const soldValue = sold.reduce((sum, { detail }) => sum + numberOf(detail.valueCents, detail.saleValueCents, detail.value) * (numberOf(detail.valueCents, detail.saleValueCents) ? 1 : 100), 0);
-    return [{ label: "Encaminhadas com sucesso", value: details.filter(({ detail }) => Boolean(detail.forwardedSuccessfully ?? detail.forwarded)).length, note: "flag confirmada" }, { label: "Com contratação", value: sold.length, note: percent(sold.length, rows.length) }, { label: "Valor contratado", value: money(soldValue), note: "indicações convertidas" }, { label: "Módulos indicados", value: new Set(details.map(({ detail }) => stringOf(detail.moduleName, detail.productName)).filter(Boolean)).size, note: "produtos distintos" }];
+    const sold = details.filter(({ detail }) =>
+      Boolean(detail.hired ?? detail.contracted),
+    );
+    const soldValue = sold.reduce(
+      (sum, { detail }) =>
+        sum +
+        numberOf(detail.valueCents, detail.saleValueCents, detail.value) *
+          (numberOf(detail.valueCents, detail.saleValueCents) ? 1 : 100),
+      0,
+    );
+    return [
+      {
+        label: "Encaminhadas com sucesso",
+        value: details.filter(({ detail }) =>
+          Boolean(detail.forwardedSuccessfully ?? detail.forwarded),
+        ).length,
+        note: "flag confirmada",
+      },
+      {
+        label: "Com contratação",
+        value: sold.length,
+        note: percent(sold.length, rows.length),
+      },
+      {
+        label: "Valor contratado",
+        value: money(soldValue),
+        note: "indicações convertidas",
+      },
+      {
+        label: "Módulos indicados",
+        value: new Set(
+          details
+            .map(({ detail }) =>
+              stringOf(detail.moduleName, detail.productName),
+            )
+            .filter(Boolean),
+        ).size,
+        note: "produtos distintos",
+      },
+    ];
   }
   if (module === "tasks") {
-    return [{ label: "Alta prioridade", value: rows.filter(isCriticalIndicatorRecord).length, note: "tarefas críticas" }, { label: "Com comentários", value: details.filter(({ detail }) => numberOf(detail.comments) > 0).length, note: "tarefas discutidas" }, { label: "Com protocolo", value: details.filter(({ detail }) => Boolean(detail.protocol)).length, note: "rastreabilidade ativa" }, { label: "Sem prazo", value: rows.filter((item) => !item.due_at).length, note: "sem vencimento definido" }];
+    return [
+      {
+        label: "Alta prioridade",
+        value: rows.filter(isCriticalIndicatorRecord).length,
+        note: "tarefas críticas",
+      },
+      {
+        label: "Com comentários",
+        value: details.filter(({ detail }) => numberOf(detail.comments) > 0)
+          .length,
+        note: "tarefas discutidas",
+      },
+      {
+        label: "Com protocolo",
+        value: details.filter(({ detail }) => Boolean(detail.protocol)).length,
+        note: "rastreabilidade ativa",
+      },
+      {
+        label: "Sem prazo",
+        value: rows.filter((item) => !item.due_at).length,
+        note: "sem vencimento definido",
+      },
+    ];
   }
   if (module === "work") {
     const nextWeek = Date.now() + 7 * 86_400_000;
-    return [{ label: "Compromissos hoje", value: rows.filter((item) => dateKey(item.created_at) === today).length, note: "agenda do dia" }, { label: "Próximos 7 dias", value: rows.filter((item) => { const at = new Date(item.created_at).getTime(); return at >= Date.now() && at <= nextWeek; }).length, note: "agenda futura" }, { label: "Cancelados", value: rows.filter((item) => /cancel/.test(clean(item.status))).length, note: "no recorte" }, { label: "Com participantes", value: details.filter(({ detail }) => numberOf(detail.participants) > 0).length, note: "compromissos compartilhados" }];
+    return [
+      {
+        label: "Compromissos hoje",
+        value: rows.filter((item) => dateKey(item.created_at) === today).length,
+        note: "agenda do dia",
+      },
+      {
+        label: "Próximos 7 dias",
+        value: rows.filter((item) => {
+          const at = new Date(item.created_at).getTime();
+          return at >= Date.now() && at <= nextWeek;
+        }).length,
+        note: "agenda futura",
+      },
+      {
+        label: "Cancelados",
+        value: rows.filter((item) => /cancel/.test(clean(item.status))).length,
+        note: "no recorte",
+      },
+      {
+        label: "Com participantes",
+        value: details.filter(({ detail }) => numberOf(detail.participants) > 0)
+          .length,
+        note: "compromissos compartilhados",
+      },
+    ];
   }
   if (module === "marketing") {
-    return [{ label: "Com cliente", value: withCustomer, note: percent(withCustomer, rows.length) }, { label: "Atualizadas hoje", value: updatedToday, note: "movimentação recente" }, { label: "Prazo vencido", value: overdue, note: "demandas atrasadas" }, { label: "Tipos de peça", value: new Set(rows.map((item) => item.record_type)).size, note: "formatos solicitados" }];
+    return [
+      {
+        label: "Com cliente",
+        value: withCustomer,
+        note: percent(withCustomer, rows.length),
+      },
+      {
+        label: "Atualizadas hoje",
+        value: updatedToday,
+        note: "movimentação recente",
+      },
+      { label: "Prazo vencido", value: overdue, note: "demandas atrasadas" },
+      {
+        label: "Tipos de peça",
+        value: new Set(rows.map((item) => item.record_type)).size,
+        note: "formatos solicitados",
+      },
+    ];
   }
   if (module === "ti") {
-    const sourcedFromTask = details.filter(({ detail }) => Boolean(detail.sourceTaskId)).length;
-    const attachments = details.reduce((sum, { detail }) => sum + arrayOf(detail.attachments ?? (detail.sourceSnapshot as Detail | undefined)?.attachments).length, 0);
-    return [{ label: "Vindas de tarefas", value: sourcedFromTask, note: percent(sourcedFromTask, rows.length) }, { label: "Com anexos", value: attachments, note: "evidências técnicas" }, { label: "Atualizadas hoje", value: updatedToday, note: "movimentação recente" }, { label: "Prazo vencido", value: overdue, note: "demandas atrasadas" }];
+    const sourcedFromTask = details.filter(({ detail }) =>
+      Boolean(detail.sourceTaskId),
+    ).length;
+    const attachments = details.reduce(
+      (sum, { detail }) =>
+        sum +
+        arrayOf(
+          detail.attachments ??
+            (detail.sourceSnapshot as Detail | undefined)?.attachments,
+        ).length,
+      0,
+    );
+    return [
+      {
+        label: "Vindas de tarefas",
+        value: sourcedFromTask,
+        note: percent(sourcedFromTask, rows.length),
+      },
+      { label: "Com anexos", value: attachments, note: "evidências técnicas" },
+      {
+        label: "Atualizadas hoje",
+        value: updatedToday,
+        note: "movimentação recente",
+      },
+      { label: "Prazo vencido", value: overdue, note: "demandas atrasadas" },
+    ];
   }
   return base;
 }
 
-function GenericOperationIndicatorsBoard({ title, module, contextKey = "", items, employees, catalogs = [], customers = [], onClose }: { title: string; module: string; contextKey?: string; items: Item[]; employees: Employee[]; catalogs?: Catalog[]; customers?: {id:string;document_masked?:string;product_version?:string}[]; onClose: () => void }) {
-  const rawBase = useMemo(() => scopeItems(items, module, contextKey).map(item => { const detail = parse(item.description); return ["cs", "lia"].includes(module) && detail.status ? { ...item, status: String(detail.status) } : item; }), [items, module, contextKey]);
-  const [track,setTrack] = useState("all");
-  const trackBase=rawBase.filter(item=>track==="all"||parseJourney(item.description||"")?.track===track);
+function GenericOperationIndicatorsBoard({
+  title,
+  module,
+  contextKey = "",
+  items,
+  employees,
+  catalogs = [],
+  customers = [],
+  onClose,
+}: {
+  title: string;
+  module: string;
+  contextKey?: string;
+  items: Item[];
+  employees: Employee[];
+  catalogs?: Catalog[];
+  customers?: {
+    id: string;
+    document_masked?: string;
+    product_version?: string;
+  }[];
+  onClose: () => void;
+}) {
+  const rawBase = useMemo(
+    () =>
+      scopeItems(items, module, contextKey).map((item) => {
+        const detail = parse(item.description);
+        return ["cs", "lia"].includes(module) && detail.status
+          ? { ...item, status: String(detail.status) }
+          : item;
+      }),
+    [items, module, contextKey],
+  );
+  const [track, setTrack] = useState("all");
+  const trackBase = rawBase.filter(
+    (item) =>
+      track === "all" || parseJourney(item.description || "")?.track === track,
+  );
   const fieldAnalysis = useFieldIndicatorAnalysis(trackBase);
   const base = trackBase.filter(fieldAnalysis.matches);
   const [tab, setTab] = useState<string>("overview");
-  const [from, setFrom] = useState(""); const [to, setTo] = useState(""); const [owner, setOwner] = useState("all"); const [team, setTeam] = useState("all"); const [status, setStatus] = useState("all");
-  const scoped = useMemo(() => base.filter((item) => (!from || dateKey(item.created_at) >= from) && (!to || dateKey(item.created_at) <= to) && (owner === "all" || (item.owner || "Não atribuído") === owner) && (team === "all" || (item.team || "Sem setor") === team) && (status === "all" || (item.status || "Sem status") === status)), [base, from, to, owner, team, status]);
-  const primaryMetrics = useMemo(() => metricsFor(module, contextKey, scoped), [module, contextKey, scoped]);
-  const activityMetrics = useMemo(() => supplementaryMetricsFor(module, contextKey, scoped), [module, contextKey, scoped]);
-  const metrics = tab === "overview" ? primaryMetrics.slice(0, 4) : tab === "results" ? primaryMetrics.slice(4) : tab === "activity" ? activityMetrics : [{ label: "Responsáveis", value: new Set(scoped.map(item => item.owner).filter(Boolean)).size, note: "com registros no recorte" }, { label: "Sem responsável", value: scoped.filter(item => !item.owner || item.owner === "Não atribuído").length, note: "registros aguardando direcionamento" }];
-  const charts = useMemo(() => chartConfigFor(module, contextKey, scoped), [module, contextKey, scoped]);
-  const statuses = charts.statuses; const categories = charts.categories; const collaborators = charts.owners;
-  const maxStatus = Math.max(1, ...statuses.map((entry) => entry.count)); const maxCategory = Math.max(1, ...categories.map((entry) => entry.count));
-  const months = Array.from({ length: 6 }, (_, index) => { const date = to ? new Date(to+"T12:00:00") : new Date(); date.setDate(1); date.setMonth(date.getMonth() - (5 - index)); const key = date.toLocaleDateString("en-CA").slice(0, 7); return { key, label: monthLabel(key), count: scoped.filter((item) => monthKey(item.created_at) === key).length }; });
-  const maxMonth = Math.max(1, ...months.map((entry) => entry.count)); const completion = scoped.filter((item) => finished(item.status)).length;
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [owner, setOwner] = useState("all");
+  const [team, setTeam] = useState("all");
+  const [status, setStatus] = useState("all");
+  const scoped = useMemo(
+    () =>
+      base.filter(
+        (item) =>
+          (!from || dateKey(item.created_at) >= from) &&
+          (!to || dateKey(item.created_at) <= to) &&
+          (owner === "all" || (item.owner || "Não atribuído") === owner) &&
+          (team === "all" || (item.team || "Sem setor") === team) &&
+          (status === "all" || (item.status || "Sem status") === status),
+      ),
+    [base, from, to, owner, team, status],
+  );
+  const primaryMetrics = useMemo(
+    () => metricsFor(module, contextKey, scoped),
+    [module, contextKey, scoped],
+  );
+  const activityMetrics = useMemo(
+    () => supplementaryMetricsFor(module, contextKey, scoped),
+    [module, contextKey, scoped],
+  );
+  const metrics =
+    tab === "overview"
+      ? primaryMetrics.slice(0, 4)
+      : tab === "results"
+        ? primaryMetrics.slice(4)
+        : tab === "activity"
+          ? activityMetrics
+          : [
+              {
+                label: "Responsáveis",
+                value: new Set(scoped.map((item) => item.owner).filter(Boolean))
+                  .size,
+                note: "com registros no recorte",
+              },
+              {
+                label: "Sem responsável",
+                value: scoped.filter(
+                  (item) => !item.owner || item.owner === "Não atribuído",
+                ).length,
+                note: "registros aguardando direcionamento",
+              },
+            ];
+  const charts = useMemo(
+    () => chartConfigFor(module, contextKey, scoped),
+    [module, contextKey, scoped],
+  );
+  const statuses = charts.statuses;
+  const categories = charts.categories;
+  const collaborators = charts.owners;
+  const maxStatus = Math.max(1, ...statuses.map((entry) => entry.count));
+  const maxCategory = Math.max(1, ...categories.map((entry) => entry.count));
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = to ? new Date(to + "T12:00:00") : new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() - (5 - index));
+    const key = date.toLocaleDateString("en-CA").slice(0, 7);
+    return {
+      key,
+      label: monthLabel(key),
+      count: scoped.filter((item) => monthKey(item.created_at) === key).length,
+    };
+  });
+  const maxMonth = Math.max(1, ...months.map((entry) => entry.count));
+  const completion = scoped.filter((item) => finished(item.status)).length;
   const insights = [
-    scoped.length ? `${scoped.length} registro(s) compõem o recorte atual; ${percent(completion, scoped.length)} estão concluídos.` : "Nenhum registro corresponde aos filtros selecionados.",
-    collaborators[0] ? `${collaborators[0].label} lidera o volume com ${collaborators[0].count} registro(s).` : "Ainda não há responsável com movimentação neste recorte.",
-    categories[0] ? `${categories[0].label} lidera em ${charts.categoryTitle.toLowerCase()} com ${categories[0].count} registro(s).` : `Ainda não há dados para ${charts.categoryTitle.toLowerCase()}.`,
+    scoped.length
+      ? `${scoped.length} registro(s) compõem o recorte atual; ${percent(completion, scoped.length)} estão concluídos.`
+      : "Nenhum registro corresponde aos filtros selecionados.",
+    collaborators[0]
+      ? `${collaborators[0].label} lidera o volume com ${collaborators[0].count} registro(s).`
+      : "Ainda não há responsável com movimentação neste recorte.",
+    categories[0]
+      ? `${categories[0].label} lidera em ${charts.categoryTitle.toLowerCase()} com ${categories[0].count} registro(s).`
+      : `Ainda não há dados para ${charts.categoryTitle.toLowerCase()}.`,
   ];
-  return <main className="operation-bi-page cancellation-bi-style" aria-labelledby="operation-bi-title"><section className="operation-bi-board">
-    <header><div><span className="operation-bi-mark"><BarChart3 /></span><span><small>INDICADORES · OPERAÇÃO</small><h1 id="operation-bi-title">{title}</h1><p>Métricas calculadas com os registros reais e filtros desta funcionalidade.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para a funcionalidade"><ArrowLeft /><span>Voltar</span></button></header>
-    {module==="cs"&&contextKey.includes("general")&&<div className="analytics-filter-row"><label>Acompanhamento<select aria-label="Filtrar acompanhamento" value={track} onChange={event=>setTrack(event.target.value)}><option value="all">Ativação e Retenção</option><option value="activation">Ativação</option><option value="retention">Retenção</option></select></label></div>}
-    {tab!=="prompts"&&<section className="operation-bi-filters"><Filter /><label>De<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>Até<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label><label>Responsável<SearchablePeopleSelect searchLabel="Responsável" value={owner} onChange={(event) => setOwner(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.owner || "Não atribuído"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</SearchablePeopleSelect></label><label>Setor<select value={team} onChange={(event) => setTeam(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.team || "Sem setor"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos</option>{[...new Set(base.map((item) => item.status || "Sem status"))].sort().map((entry) => <option key={entry}>{entry}</option>)}</select></label><button onClick={() => { setFrom(""); setTo(""); setOwner("all"); setTeam("all"); setStatus("all"); }}>Limpar</button><strong>{scoped.length} registro(s)</strong></section>}
-    <IndicatorTabs value={tab} onChange={setTab} tabs={[{id:"overview",label:"Visão geral"},{id:"results",label:"Resultados e qualidade"},{id:"activity",label:"Atividade"},{id:"team",label:"Equipe"},{id:"fields",label:"Campos preenchidos"},...(module==="cs"&&!contextKey.includes("enterprise")?[{id:"features",label:"Features"},{id:"critical",label:"Clientes críticos"},...(!contextKey.includes("evolution")?[{id:"training",label:"Treinamentos em haver"}]:[])]:[]),...(module==="lia"?[{id:"prompts",label:"Ajustes de prompts"}]:[])]} />
-    <section role="tabpanel" id={`indicator-panel-${tab}`} aria-labelledby={`indicator-tab-${tab}`} className="indicator-panel">
-    {tab === "features" ? <CsFeaturesIndicators items={scoped} catalogs={catalogs}/> : tab === "critical" || tab === "training" ? <FollowupRiskIndicators records={scoped} items={items} customers={customers} catalogs={catalogs} mode={tab === "critical" ? "critical" : "training"}/> : tab === "prompts" ? <LiaPromptIndicators items={items}/> : tab === "fields" ? fieldAnalysis.panel(scoped) : <>
-    <section className="operation-bi-kpis">{metrics.map((metric, index) => <article key={metric.label}>{index % 4 === 0 ? <Activity /> : index % 4 === 1 ? <CheckCircle2 /> : index % 4 === 2 ? <Gauge /> : <WalletCards />}<span><small>{metric.label}</small><strong>{metric.value}</strong><em>{metric.note}</em></span></article>)}</section>
-    <div className="operation-bi-grid">
-      {tab === "overview" && <section className="operation-bi-panel trend-panel"><header><span><TrendingUp />{charts.trendTitle}</span><b>ÚLTIMOS 6 MESES</b></header><TrendChart title={charts.trendTitle} entries={months.map(entry=>({label:entry.label,value:entry.count}))}/></section>}
-      {tab === "overview" && <section className="operation-bi-panel status-panel"><header><span><BarChart3 />{charts.statusTitle}</span><b>DISTRIBUIÇÃO</b></header><DistributionChart title={charts.statusTitle} entries={statuses} donut /></section>}
-      {tab === "team" && <section className="operation-bi-panel team-panel"><header><span><UsersRound />{charts.ownerTitle}</span><b>{collaborators.length} {charts.ownerUnit}</b></header><div className="operation-team-list">{collaborators.length ? collaborators.map((entry) => { const employee = employees.find((candidate) => candidate.displayName === entry.label); return <article key={entry.label}><i className={employee?.photoDataUrl ? "has-photo" : ""} style={employee?.photoDataUrl ? { backgroundImage: `url("${employee.photoDataUrl}")` } : undefined}>{!employee?.photoDataUrl && entry.label.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><span><strong>{entry.label}</strong><small>{employee?.departmentName || "Sem setor informado"}</small></span><b>{entry.count}</b><em>{percent(entry.count, scoped.length)}</em></article>; }) : <p>Sem responsáveis vinculados.</p>}</div></section>}
-      {tab === "results" && <section className="operation-bi-panel category-panel"><header><span><Clock3 />{charts.categoryTitle}</span><b>VOLUME E PARTICIPAÇÃO</b></header><DistributionChart title={charts.categoryTitle} entries={categories}/></section>}
-    </div>
-    {tab === "overview" && <section className="operation-bi-insights"><Lightbulb /><strong>Insights estratégicos</strong>{insights.map((entry) => <span key={entry}>{entry}</span>)}</section>}
-    {tab === "activity" && <section className="indicator-records"><header><h2>Registros recentes</h2><small>Todos os registros, conforme os filtros acima</small></header><div className="indicator-record-list"><PaginatedItems label="registros">{scoped.slice().sort((a,b) => b.updated_at.localeCompare(a.updated_at)).map(item => <article key={item.id}><span><strong>{item.title}</strong><small>{item.owner || "Não atribuído"}</small></span><b>{item.status || "Sem status"}</b><time>{new Date(item.updated_at).toLocaleDateString("pt-BR")}</time></article>)}</PaginatedItems>{!scoped.length && <p>Nenhum registro neste recorte.</p>}</div></section>}
-    </>}
-    </section>
-  </section></main>;
+  return (
+    <main
+      className="operation-bi-page cancellation-bi-style"
+      aria-labelledby="operation-bi-title"
+    >
+      <section className="operation-bi-board">
+        <header>
+          <div>
+            <span className="operation-bi-mark">
+              <BarChart3 />
+            </span>
+            <span>
+              <small>INDICADORES · OPERAÇÃO</small>
+              <h1 id="operation-bi-title">{title}</h1>
+              <p>
+                Métricas calculadas com os registros reais e filtros desta
+                funcionalidade.
+              </p>
+            </span>
+          </div>
+          <button
+            className="operation-bi-back"
+            onClick={onClose}
+            aria-label="Voltar para a funcionalidade"
+          >
+            <ArrowLeft />
+            <span>Voltar</span>
+          </button>
+        </header>
+        {module === "cs" && contextKey.includes("general") && (
+          <div className="analytics-filter-row">
+            <label>
+              Acompanhamento
+              <select
+                aria-label="Filtrar acompanhamento"
+                value={track}
+                onChange={(event) => setTrack(event.target.value)}
+              >
+                <option value="all">Ativação e Retenção</option>
+                <option value="activation">Ativação</option>
+                <option value="retention">Retenção</option>
+              </select>
+            </label>
+          </div>
+        )}
+        {tab !== "prompts" && (
+          <section className="operation-bi-filters">
+            <Filter />
+            <label>
+              De
+              <input
+                type="date"
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+              />
+            </label>
+            <label>
+              Até
+              <input
+                type="date"
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+              />
+            </label>
+            <label>
+              Responsável
+              <SearchablePeopleSelect
+                searchLabel="Responsável"
+                value={owner}
+                onChange={(event) => setOwner(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {[...new Set(base.map((item) => item.owner || "Não atribuído"))]
+                  .sort()
+                  .map((entry) => (
+                    <option key={entry}>{entry}</option>
+                  ))}
+              </SearchablePeopleSelect>
+            </label>
+            <label>
+              Setor
+              <select
+                value={team}
+                onChange={(event) => setTeam(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {[...new Set(base.map((item) => item.team || "Sem setor"))]
+                  .sort()
+                  .map((entry) => (
+                    <option key={entry}>{entry}</option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              Status
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {[...new Set(base.map((item) => item.status || "Sem status"))]
+                  .sort()
+                  .map((entry) => (
+                    <option key={entry}>{entry}</option>
+                  ))}
+              </select>
+            </label>
+            <button
+              onClick={() => {
+                setFrom("");
+                setTo("");
+                setOwner("all");
+                setTeam("all");
+                setStatus("all");
+              }}
+            >
+              Limpar
+            </button>
+            <strong>{scoped.length} registro(s)</strong>
+          </section>
+        )}
+        <IndicatorTabs
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { id: "overview", label: "Visão geral" },
+            { id: "results", label: "Resultados e qualidade" },
+            { id: "activity", label: "Atividade" },
+            { id: "team", label: "Equipe" },
+            { id: "fields", label: "Campos preenchidos" },
+            ...(module === "cs" && !contextKey.includes("enterprise")
+              ? [
+                  { id: "features", label: "Features" },
+                  { id: "critical", label: "Clientes críticos" },
+                  ...(!contextKey.includes("evolution")
+                    ? [{ id: "training", label: "Treinamentos em haver" }]
+                    : []),
+                ]
+              : []),
+            ...(module === "lia"
+              ? [{ id: "prompts", label: "Ajustes de prompts" }]
+              : []),
+          ]}
+        />
+        <section
+          role="tabpanel"
+          id={`indicator-panel-${tab}`}
+          aria-labelledby={`indicator-tab-${tab}`}
+          className="indicator-panel"
+        >
+          {tab === "features" ? (
+            <CsFeaturesIndicators items={scoped} catalogs={catalogs} />
+          ) : tab === "critical" || tab === "training" ? (
+            <FollowupRiskIndicators
+              records={scoped}
+              items={items}
+              customers={customers}
+              catalogs={catalogs}
+              mode={tab === "critical" ? "critical" : "training"}
+            />
+          ) : tab === "prompts" ? (
+            <LiaPromptIndicators items={items} />
+          ) : tab === "fields" ? (
+            fieldAnalysis.panel(scoped)
+          ) : (
+            <>
+              <section className="operation-bi-kpis">
+                {metrics.map((metric, index) => (
+                  <article key={metric.label}>
+                    {index % 4 === 0 ? (
+                      <Activity />
+                    ) : index % 4 === 1 ? (
+                      <CheckCircle2 />
+                    ) : index % 4 === 2 ? (
+                      <Gauge />
+                    ) : (
+                      <WalletCards />
+                    )}
+                    <span>
+                      <small>{metric.label}</small>
+                      <strong>{metric.value}</strong>
+                      <em>{metric.note}</em>
+                    </span>
+                  </article>
+                ))}
+              </section>
+              <div className="operation-bi-grid">
+                {tab === "overview" && (
+                  <section className="operation-bi-panel trend-panel">
+                    <header>
+                      <span>
+                        <TrendingUp />
+                        {charts.trendTitle}
+                      </span>
+                      <b>ÚLTIMOS 6 MESES</b>
+                    </header>
+                    <TrendChart
+                      title={charts.trendTitle}
+                      entries={months.map((entry) => ({
+                        label: entry.label,
+                        value: entry.count,
+                      }))}
+                    />
+                  </section>
+                )}
+                {tab === "overview" && (
+                  <section className="operation-bi-panel status-panel">
+                    <header>
+                      <span>
+                        <BarChart3 />
+                        {charts.statusTitle}
+                      </span>
+                      <b>DISTRIBUIÇÃO</b>
+                    </header>
+                    <DistributionChart
+                      title={charts.statusTitle}
+                      entries={statuses}
+                      donut
+                    />
+                  </section>
+                )}
+                {tab === "team" && (
+                  <section className="operation-bi-panel team-panel">
+                    <header>
+                      <span>
+                        <UsersRound />
+                        {charts.ownerTitle}
+                      </span>
+                      <b>
+                        {collaborators.length} {charts.ownerUnit}
+                      </b>
+                    </header>
+                    <div className="operation-team-list">
+                      {collaborators.length ? (
+                        collaborators.map((entry) => {
+                          const employee = employees.find(
+                            (candidate) =>
+                              candidate.displayName === entry.label,
+                          );
+                          return (
+                            <article key={entry.label}>
+                              <i
+                                className={
+                                  employee?.photoDataUrl ? "has-photo" : ""
+                                }
+                                style={
+                                  employee?.photoDataUrl
+                                    ? {
+                                        backgroundImage: `url("${employee.photoDataUrl}")`,
+                                      }
+                                    : undefined
+                                }
+                              >
+                                {!employee?.photoDataUrl &&
+                                  entry.label
+                                    .split(" ")
+                                    .map((part) => part[0])
+                                    .slice(0, 2)
+                                    .join("")}
+                              </i>
+                              <span>
+                                <strong>{entry.label}</strong>
+                                <small>
+                                  {employee?.departmentName ||
+                                    "Sem setor informado"}
+                                </small>
+                              </span>
+                              <b>{entry.count}</b>
+                              <em>{percent(entry.count, scoped.length)}</em>
+                            </article>
+                          );
+                        })
+                      ) : (
+                        <p>Sem responsáveis vinculados.</p>
+                      )}
+                    </div>
+                  </section>
+                )}
+                {tab === "results" && (
+                  <section className="operation-bi-panel category-panel">
+                    <header>
+                      <span>
+                        <Clock3 />
+                        {charts.categoryTitle}
+                      </span>
+                      <b>VOLUME E PARTICIPAÇÃO</b>
+                    </header>
+                    <DistributionChart
+                      title={charts.categoryTitle}
+                      entries={categories}
+                    />
+                  </section>
+                )}
+              </div>
+              {tab === "overview" && (
+                <section className="operation-bi-insights">
+                  <Lightbulb />
+                  <strong>Insights estratégicos</strong>
+                  {insights.map((entry) => (
+                    <span key={entry}>{entry}</span>
+                  ))}
+                </section>
+              )}
+              {tab === "activity" && (
+                <section className="indicator-records">
+                  <header>
+                    <h2>Registros recentes</h2>
+                    <small>Todos os registros, conforme os filtros acima</small>
+                  </header>
+                  <div className="indicator-record-list">
+                    <PaginatedItems label="registros">
+                      {scoped
+                        .slice()
+                        .sort((a, b) =>
+                          b.updated_at.localeCompare(a.updated_at),
+                        )
+                        .map((item) => (
+                          <article key={item.id}>
+                            <span>
+                              <strong>{item.title}</strong>
+                              <small>{item.owner || "Não atribuído"}</small>
+                            </span>
+                            <b>{item.status || "Sem status"}</b>
+                            <time>
+                              {new Date(item.updated_at).toLocaleDateString(
+                                "pt-BR",
+                              )}
+                            </time>
+                          </article>
+                        ))}
+                    </PaginatedItems>
+                    {!scoped.length && <p>Nenhum registro neste recorte.</p>}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+        </section>
+      </section>
+    </main>
+  );
 }
-
 
 type GoalDetail = GoalScope & {
   kind: "performanceGoal";
@@ -554,12 +2682,36 @@ type GoalDetail = GoalScope & {
   periodEnd: string;
   active?: boolean;
 };
-type GoalMetricConfig = { kind?: string; sourceModule?: string; recordType?: string; statusFilter?: string; aggregation?: "count" | "amount" | "averageScore" };
-type GoalProgress = { item: Item; goal: GoalDetail; current: number; percent: number; department: string };
+type GoalMetricConfig = {
+  kind?: string;
+  sourceModule?: string;
+  recordType?: string;
+  statusFilter?: string;
+  aggregation?: "count" | "amount" | "averageScore";
+};
+type GoalProgress = {
+  item: Item;
+  goal: GoalDetail;
+  current: number;
+  percent: number;
+  department: string;
+};
 
-const goalCadenceLabel: Record<string, string> = { daily: "Diária", weekly: "Semanal", monthly: "Mensal", annual: "Anual" };
-const goalMetricLabel: Record<string, string> = { salesValue: "Valor de vendas", salesCount: "Quantidade de vendas", clientCount: "Quantidade de clientes (legado)", referralCount: "Quantidade de indicações", usageScore: "Médias de score" };
-const goalDate = (item: Item) => stringOf(parse(item.description).saleDate, item.created_at).slice(0, 10);
+const goalCadenceLabel: Record<string, string> = {
+  daily: "Diária",
+  weekly: "Semanal",
+  monthly: "Mensal",
+  annual: "Anual",
+};
+const goalMetricLabel: Record<string, string> = {
+  salesValue: "Valor de vendas",
+  salesCount: "Quantidade de vendas",
+  clientCount: "Quantidade de clientes (legado)",
+  referralCount: "Quantidade de indicações",
+  usageScore: "Médias de score",
+};
+const goalDate = (item: Item) =>
+  stringOf(parse(item.description).saleDate, item.created_at).slice(0, 10);
 const isGoalSale = (item: Item) => {
   if (item.module !== "commercial") return false;
   const detail = parse(item.description);
@@ -577,9 +2729,14 @@ const parseGoalDetail = (item: Item): GoalDetail | null => {
     target: numberOf(detail.target),
     employeeName: stringOf(detail.employeeName),
     departmentName: stringOf(detail.departmentName),
-    funnels: Array.isArray(detail.funnels) ? detail.funnels as GoalScope["funnels"] : undefined,
-    modules: Array.isArray(detail.modules) ? detail.modules as GoalScope["modules"] : undefined,
-    moduleScope: detail.moduleScope === "moduleFunnels" ? "moduleFunnels" : undefined,
+    funnels: Array.isArray(detail.funnels)
+      ? (detail.funnels as GoalScope["funnels"])
+      : undefined,
+    modules: Array.isArray(detail.modules)
+      ? (detail.modules as GoalScope["modules"])
+      : undefined,
+    moduleScope:
+      detail.moduleScope === "moduleFunnels" ? "moduleFunnels" : undefined,
     funnelId: stringOf(detail.funnelId),
     funnelName: stringOf(detail.funnelName),
     periodStart: stringOf(detail.periodStart),
@@ -588,56 +2745,527 @@ const parseGoalDetail = (item: Item): GoalDetail | null => {
   };
 };
 
-function calculateGoalProgress(goal: GoalDetail, items: Item[], catalogs: Catalog[]) {
-  const defaults=catalogs.filter(entry=>entry.active&&(entry.catalog==="csFeatureBase"||["csFeature","csFeatureActive","csFeaturePlus"].includes(entry.catalog)&&parse(entry.description).featureBase===true)).map(entry=>entry.name);
-  return goalProgress(goal as PerformanceGoal,items.map(item=>({...item,description:item.description||""})),defaults,catalogs);
+function calculateGoalProgress(
+  goal: GoalDetail,
+  items: Item[],
+  catalogs: Catalog[],
+) {
+  const defaults = catalogs
+    .filter(
+      (entry) =>
+        entry.active &&
+        (entry.catalog === "csFeatureBase" ||
+          (["csFeature", "csFeatureActive", "csFeaturePlus"].includes(
+            entry.catalog,
+          ) &&
+            parse(entry.description).featureBase === true)),
+    )
+    .map((entry) => entry.name);
+  return goalProgress(
+    goal as PerformanceGoal,
+    items.map((item) => ({ ...item, description: item.description || "" })),
+    defaults,
+    catalogs,
+  );
 }
 
-function GoalsIndicatorsBoard({ title, items, catalogs, onClose }: { title: string; items: Item[]; catalogs: Catalog[]; onClose: () => void }) {
-  const [tab, setTab] = useState<"overview" | "tracking" | "fields">("overview");
-  const [month, setMonth] = useState(new Date().toLocaleDateString("en-CA").slice(0, 7));
+function GoalsIndicatorsBoard({
+  title,
+  items,
+  catalogs,
+  onClose,
+}: {
+  title: string;
+  items: Item[];
+  catalogs: Catalog[];
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"overview" | "tracking" | "fields">(
+    "overview",
+  );
+  const [month, setMonth] = useState(
+    new Date().toLocaleDateString("en-CA").slice(0, 7),
+  );
   const [department, setDepartment] = useState("all");
-  const [state, setState] = useState<"all" | "active" | "achieved" | "attention">("active");
-  const goals = useMemo(() => items.filter((item) => item.module === "goals").flatMap((item) => {
-    const goal = parseGoalDetail(item);
-    if (!goal) return [];
-    const current = calculateGoalProgress(goal, items, catalogs);
-    return [{ item, goal, current, percent: goal.target > 0 ? Math.round(current / goal.target * 100) : 0, department: goal.departmentName || item.team || "Sem setor" } satisfies GoalProgress];
-  }), [items, catalogs]);
-  const fieldAnalysis = useFieldIndicatorAnalysis(goals.map(entry => entry.item));
-  const periodGoals = goals.filter(entry => fieldAnalysis.matches(entry.item)).filter(({ goal }) => (!month || goal.periodStart.slice(0, 7) <= month && goal.periodEnd.slice(0, 7) >= month));
-  const departments = [...new Set(periodGoals.map((entry) => entry.department))].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  const scoped = periodGoals.filter((entry) => (department === "all" || entry.department === department)
-    && (state === "all" || state === "active" && entry.goal.active !== false || state === "achieved" && entry.percent >= 100 || state === "attention" && entry.percent < 75));
+  const [state, setState] = useState<
+    "all" | "active" | "achieved" | "attention"
+  >("active");
+  const goals = useMemo(
+    () =>
+      items
+        .filter((item) => item.module === "goals")
+        .flatMap((item) => {
+          const goal = parseGoalDetail(item);
+          if (!goal) return [];
+          const current = calculateGoalProgress(goal, items, catalogs);
+          return [
+            {
+              item,
+              goal,
+              current,
+              percent:
+                goal.target > 0 ? Math.round((current / goal.target) * 100) : 0,
+              department: goal.departmentName || item.team || "Sem setor",
+            } satisfies GoalProgress,
+          ];
+        }),
+    [items, catalogs],
+  );
+  const fieldAnalysis = useFieldIndicatorAnalysis(
+    goals.map((entry) => entry.item),
+  );
+  const periodGoals = goals
+    .filter((entry) => fieldAnalysis.matches(entry.item))
+    .filter(
+      ({ goal }) =>
+        !month ||
+        (goal.periodStart.slice(0, 7) <= month &&
+          goal.periodEnd.slice(0, 7) >= month),
+    );
+  const departments = [
+    ...new Set(periodGoals.map((entry) => entry.department)),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const scoped = periodGoals.filter(
+    (entry) =>
+      (department === "all" || entry.department === department) &&
+      (state === "all" ||
+        (state === "active" && entry.goal.active !== false) ||
+        (state === "achieved" && entry.percent >= 100) ||
+        (state === "attention" && entry.percent < 75)),
+  );
   const activeGoals = scoped.filter((entry) => entry.goal.active !== false);
   const achieved = activeGoals.filter((entry) => entry.percent >= 100).length;
-  const averageReach = activeGoals.length ? Math.round(activeGoals.reduce((sum, entry) => sum + entry.percent, 0) / activeGoals.length) : 0;
-  const closeToTarget = activeGoals.filter((entry) => entry.percent >= 75 && entry.percent < 100).length;
-  const departmentRows = departments.map((name) => {
-    const rows = activeGoals.filter((entry) => entry.department === name);
-    return { name, count: rows.length, achieved: rows.filter((entry) => entry.percent >= 100).length, average: rows.length ? Math.round(rows.reduce((sum, entry) => sum + entry.percent, 0) / rows.length) : 0 };
-  }).sort((a, b) => b.average - a.average || b.count - a.count);
-  const metricName = (metric: string) => metric.startsWith("custom:") ? catalogs.find((entry) => entry.id === metric.slice(7))?.name || "Meta personalizada" : goalMetricLabel[metric] || metric;
-  const isCurrency = (metric: string) => metric === "salesValue" || (() => { const catalog = catalogs.find((entry) => entry.id === metric.slice(7)); return catalog ? (parse(catalog.description) as GoalMetricConfig).aggregation === "amount" : false; })();
-  const isScore = (metric: string) => metric === "usageScore" || (() => { const catalog = catalogs.find((entry) => entry.id === metric.slice(7)); return catalog ? (parse(catalog.description) as GoalMetricConfig).aggregation === "averageScore" : false; })();
-  const formattedValue = (value: number, metric: string) => isCurrency(metric) ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value) : isScore(metric) ? `${Math.round(value)}%` : value.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-  return <main className="operation-bi-page cancellation-bi-style" aria-labelledby="operation-bi-title"><section className="operation-bi-board goals-bi-board">
-    <header><div><span className="operation-bi-mark"><Target /></span><span><small>INDICADORES · DESEMPENHO</small><h1 id="operation-bi-title">{title} e alcance</h1><p>Acompanhe metas ativas, evolução por setor e a margem que falta para cada objetivo.</p></span></div><button className="operation-bi-back" onClick={onClose} aria-label="Voltar para metas"><ArrowLeft /><span>Voltar</span></button></header>
-    <IndicatorTabs id="goals" value={tab} onChange={setTab} tabs={[{id:"overview",label:"Visão geral"},{id:"tracking",label:`Acompanhar metas (${scoped.length})`},{id:"fields",label:"Campos preenchidos"}]} />
-    <section className="operation-bi-filters goals-bi-filters"><Filter /><label>Competência<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><label>Setor<select value={department} onChange={(event) => setDepartment(event.target.value)}><option value="all">Todos</option>{departments.map((entry) => <option key={entry}>{entry}</option>)}</select></label><label>Situação<select value={state} onChange={(event) => setState(event.target.value as typeof state)}><option value="all">Todas</option><option value="active">Ativas</option><option value="achieved">Atingidas</option><option value="attention">Abaixo de 75%</option></select></label><button onClick={() => { setDepartment("all"); setState("active"); }}>Limpar</button><strong>{scoped.length} meta(s)</strong></section>
-    <section role="tabpanel" id={`goals-panel-${tab}`} aria-labelledby={`goals-tab-${tab}`} className="indicator-panel">
-    {tab === "fields" ? fieldAnalysis.panel(scoped.map(entry => entry.item)) : <>
-    <section className="goals-bi-kpis"><article><Target /><span><small>Metas ativas</small><strong>{activeGoals.length}</strong><em>na competência</em></span></article><article className="success"><CheckCircle2 /><span><small>Metas atingidas</small><strong>{achieved}</strong><em>{percent(achieved, activeGoals.length)} das ativas</em></span></article><article><UsersRound /><span><small>Setores com metas</small><strong>{departmentRows.length}</strong><em>áreas acompanhadas</em></span></article><article className={averageReach >= 100 ? "success" : "progress"}><Gauge /><span><small>Alcance médio</small><strong>{averageReach}%</strong><em>{averageReach >= 100 ? `margem +${averageReach - 100} p.p.` : `faltam ${100 - averageReach} p.p.`}</em></span></article><article className="warning"><TrendingUp /><span><small>Próximas da meta</small><strong>{closeToTarget}</strong><em>entre 75% e 99%</em></span></article></section>
-    {tab === "overview" ? <section className="goals-bi-overview"><article className="goals-bi-sector-panel"><header><span><UsersRound />Alcance por setor</span><b>{departmentRows.length} setor(es)</b></header><div>{departmentRows.length ? departmentRows.map((entry) => <section key={entry.name}><span><strong>{entry.name}</strong><small>{entry.achieved} de {entry.count} atingida(s)</small></span><i><em style={{ width: `${Math.min(100, entry.average)}%` }} /></i><b>{entry.average}%</b></section>) : <p>Nenhuma meta ativa nesta competência.</p>}</div></article><article className="goals-bi-distribution"><header><span><BarChart3 />Distribuição do alcance</span></header><div><span className="success"><b>{achieved}</b><small>Atingidas</small></span><span className="near"><b>{closeToTarget}</b><small>Entre 75% e 99%</small></span><span className="attention"><b>{activeGoals.filter((entry) => entry.percent < 75).length}</b><small>Abaixo de 75%</small></span></div><p>{activeGoals.length ? `${Math.max(0, 100 - averageReach)} ponto(s) percentual(is) separam, em média, as metas ativas do objetivo.` : "Cadastre e ative metas para iniciar o acompanhamento."}</p></article></section> : <section className="goals-bi-tracking">{scoped.length ? scoped.sort((a, b) => a.percent - b.percent).map((entry) => { const margin = entry.current - entry.goal.target; return <article key={entry.item.id} className={entry.percent >= 100 ? "achieved" : entry.percent < 75 ? "attention" : "near"}><header><span><small>{goalCadenceLabel[entry.goal.cadence] || entry.goal.cadence} · {entry.department}</small><strong>{entry.item.title}</strong><em>{metricName(entry.goal.metric)} · {entry.goal.employeeName || "Todo o setor"}</em></span><b>{entry.percent}%</b></header><div className="goals-bi-values"><span><small>Realizado</small><strong>{formattedValue(entry.current, entry.goal.metric)}</strong></span><span><small>Meta</small><strong>{formattedValue(entry.goal.target, entry.goal.metric)}</strong></span><span className={margin >= 0 ? "positive" : "negative"}><small>Margem de alcance</small><strong>{margin >= 0 ? "+" : "−"}{formattedValue(Math.abs(margin), entry.goal.metric)}</strong></span></div><div className="goals-bi-progress"><i style={{ width: `${Math.min(100, entry.percent)}%` }} /></div><footer><span>{entry.goal.periodStart.split("-").reverse().join("/")} a {entry.goal.periodEnd.split("-").reverse().join("/")}</span><strong>{margin >= 0 ? "Meta batida" : `Faltam ${formattedValue(Math.abs(margin), entry.goal.metric)}`}</strong></footer></article>; }) : <p className="goals-bi-empty">Nenhuma meta corresponde aos filtros selecionados.</p>}</section>}
-    </>}
-    </section>
-  </section></main>;
+  const averageReach = activeGoals.length
+    ? Math.round(
+        activeGoals.reduce((sum, entry) => sum + entry.percent, 0) /
+          activeGoals.length,
+      )
+    : 0;
+  const closeToTarget = activeGoals.filter(
+    (entry) => entry.percent >= 75 && entry.percent < 100,
+  ).length;
+  const departmentRows = departments
+    .map((name) => {
+      const rows = activeGoals.filter((entry) => entry.department === name);
+      return {
+        name,
+        count: rows.length,
+        achieved: rows.filter((entry) => entry.percent >= 100).length,
+        average: rows.length
+          ? Math.round(
+              rows.reduce((sum, entry) => sum + entry.percent, 0) / rows.length,
+            )
+          : 0,
+      };
+    })
+    .sort((a, b) => b.average - a.average || b.count - a.count);
+  const metricName = (metric: string) =>
+    metric.startsWith("custom:")
+      ? catalogs.find((entry) => entry.id === metric.slice(7))?.name ||
+        "Meta personalizada"
+      : goalMetricLabel[metric] || metric;
+  const isCurrency = (metric: string) =>
+    metric === "salesValue" ||
+    (() => {
+      const catalog = catalogs.find((entry) => entry.id === metric.slice(7));
+      return catalog
+        ? (parse(catalog.description) as GoalMetricConfig).aggregation ===
+            "amount"
+        : false;
+    })();
+  const isScore = (metric: string) =>
+    metric === "usageScore" ||
+    (() => {
+      const catalog = catalogs.find((entry) => entry.id === metric.slice(7));
+      return catalog
+        ? (parse(catalog.description) as GoalMetricConfig).aggregation ===
+            "averageScore"
+        : false;
+    })();
+  const formattedValue = (value: number, metric: string) =>
+    isCurrency(metric)
+      ? new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+          maximumFractionDigits: 0,
+        }).format(value)
+      : isScore(metric)
+        ? `${Math.round(value)}%`
+        : value.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  return (
+    <main
+      className="operation-bi-page cancellation-bi-style"
+      aria-labelledby="operation-bi-title"
+    >
+      <section className="operation-bi-board goals-bi-board">
+        <header>
+          <div>
+            <span className="operation-bi-mark">
+              <Target />
+            </span>
+            <span>
+              <small>INDICADORES · DESEMPENHO</small>
+              <h1 id="operation-bi-title">{title} e alcance</h1>
+              <p>
+                Acompanhe metas ativas, evolução por setor e a margem que falta
+                para cada objetivo.
+              </p>
+            </span>
+          </div>
+          <button
+            className="operation-bi-back"
+            onClick={onClose}
+            aria-label="Voltar para metas"
+          >
+            <ArrowLeft />
+            <span>Voltar</span>
+          </button>
+        </header>
+        <IndicatorTabs
+          id="goals"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { id: "overview", label: "Visão geral" },
+            { id: "tracking", label: `Acompanhar metas (${scoped.length})` },
+            { id: "fields", label: "Campos preenchidos" },
+          ]}
+        />
+        <section className="operation-bi-filters goals-bi-filters">
+          <Filter />
+          <label>
+            Competência
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => setMonth(event.target.value)}
+            />
+          </label>
+          <label>
+            Setor
+            <select
+              value={department}
+              onChange={(event) => setDepartment(event.target.value)}
+            >
+              <option value="all">Todos</option>
+              {departments.map((entry) => (
+                <option key={entry}>{entry}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Situação
+            <select
+              value={state}
+              onChange={(event) => setState(event.target.value as typeof state)}
+            >
+              <option value="all">Todas</option>
+              <option value="active">Ativas</option>
+              <option value="achieved">Atingidas</option>
+              <option value="attention">Abaixo de 75%</option>
+            </select>
+          </label>
+          <button
+            onClick={() => {
+              setDepartment("all");
+              setState("active");
+            }}
+          >
+            Limpar
+          </button>
+          <strong>{scoped.length} meta(s)</strong>
+        </section>
+        <section
+          role="tabpanel"
+          id={`goals-panel-${tab}`}
+          aria-labelledby={`goals-tab-${tab}`}
+          className="indicator-panel"
+        >
+          {tab === "fields" ? (
+            fieldAnalysis.panel(scoped.map((entry) => entry.item))
+          ) : (
+            <>
+              <section className="goals-bi-kpis">
+                <article>
+                  <Target />
+                  <span>
+                    <small>Metas ativas</small>
+                    <strong>{activeGoals.length}</strong>
+                    <em>na competência</em>
+                  </span>
+                </article>
+                <article className="success">
+                  <CheckCircle2 />
+                  <span>
+                    <small>Metas atingidas</small>
+                    <strong>{achieved}</strong>
+                    <em>{percent(achieved, activeGoals.length)} das ativas</em>
+                  </span>
+                </article>
+                <article>
+                  <UsersRound />
+                  <span>
+                    <small>Setores com metas</small>
+                    <strong>{departmentRows.length}</strong>
+                    <em>áreas acompanhadas</em>
+                  </span>
+                </article>
+                <article
+                  className={averageReach >= 100 ? "success" : "progress"}
+                >
+                  <Gauge />
+                  <span>
+                    <small>Alcance médio</small>
+                    <strong>{averageReach}%</strong>
+                    <em>
+                      {averageReach >= 100
+                        ? `margem +${averageReach - 100} p.p.`
+                        : `faltam ${100 - averageReach} p.p.`}
+                    </em>
+                  </span>
+                </article>
+                <article className="warning">
+                  <TrendingUp />
+                  <span>
+                    <small>Próximas da meta</small>
+                    <strong>{closeToTarget}</strong>
+                    <em>entre 75% e 99%</em>
+                  </span>
+                </article>
+              </section>
+              {tab === "overview" ? (
+                <section className="goals-bi-overview">
+                  <article className="goals-bi-sector-panel">
+                    <header>
+                      <span>
+                        <UsersRound />
+                        Alcance por setor
+                      </span>
+                      <b>{departmentRows.length} setor(es)</b>
+                    </header>
+                    <div>
+                      {departmentRows.length ? (
+                        departmentRows.map((entry) => (
+                          <section key={entry.name}>
+                            <span>
+                              <strong>{entry.name}</strong>
+                              <small>
+                                {entry.achieved} de {entry.count} atingida(s)
+                              </small>
+                            </span>
+                            <i>
+                              <em
+                                style={{
+                                  width: `${Math.min(100, entry.average)}%`,
+                                }}
+                              />
+                            </i>
+                            <b>{entry.average}%</b>
+                          </section>
+                        ))
+                      ) : (
+                        <p>Nenhuma meta ativa nesta competência.</p>
+                      )}
+                    </div>
+                  </article>
+                  <article className="goals-bi-distribution">
+                    <header>
+                      <span>
+                        <BarChart3 />
+                        Distribuição do alcance
+                      </span>
+                    </header>
+                    <div>
+                      <span className="success">
+                        <b>{achieved}</b>
+                        <small>Atingidas</small>
+                      </span>
+                      <span className="near">
+                        <b>{closeToTarget}</b>
+                        <small>Entre 75% e 99%</small>
+                      </span>
+                      <span className="attention">
+                        <b>
+                          {
+                            activeGoals.filter((entry) => entry.percent < 75)
+                              .length
+                          }
+                        </b>
+                        <small>Abaixo de 75%</small>
+                      </span>
+                    </div>
+                    <p>
+                      {activeGoals.length
+                        ? `${Math.max(0, 100 - averageReach)} ponto(s) percentual(is) separam, em média, as metas ativas do objetivo.`
+                        : "Cadastre e ative metas para iniciar o acompanhamento."}
+                    </p>
+                  </article>
+                </section>
+              ) : (
+                <section className="goals-bi-tracking">
+                  {scoped.length ? (
+                    scoped
+                      .sort((a, b) => a.percent - b.percent)
+                      .map((entry) => {
+                        const margin = entry.current - entry.goal.target;
+                        return (
+                          <article
+                            key={entry.item.id}
+                            className={
+                              entry.percent >= 100
+                                ? "achieved"
+                                : entry.percent < 75
+                                  ? "attention"
+                                  : "near"
+                            }
+                          >
+                            <header>
+                              <span>
+                                <small>
+                                  {goalCadenceLabel[entry.goal.cadence] ||
+                                    entry.goal.cadence}{" "}
+                                  · {entry.department}
+                                </small>
+                                <strong>{entry.item.title}</strong>
+                                <em>
+                                  {metricName(entry.goal.metric)} ·{" "}
+                                  {entry.goal.employeeName || "Todo o setor"}
+                                </em>
+                              </span>
+                              <b>{entry.percent}%</b>
+                            </header>
+                            <div className="goals-bi-values">
+                              <span>
+                                <small>Realizado</small>
+                                <strong>
+                                  {formattedValue(
+                                    entry.current,
+                                    entry.goal.metric,
+                                  )}
+                                </strong>
+                              </span>
+                              <span>
+                                <small>Meta</small>
+                                <strong>
+                                  {formattedValue(
+                                    entry.goal.target,
+                                    entry.goal.metric,
+                                  )}
+                                </strong>
+                              </span>
+                              <span
+                                className={
+                                  margin >= 0 ? "positive" : "negative"
+                                }
+                              >
+                                <small>Margem de alcance</small>
+                                <strong>
+                                  {margin >= 0 ? "+" : "−"}
+                                  {formattedValue(
+                                    Math.abs(margin),
+                                    entry.goal.metric,
+                                  )}
+                                </strong>
+                              </span>
+                            </div>
+                            <div className="goals-bi-progress">
+                              <i
+                                style={{
+                                  width: `${Math.min(100, entry.percent)}%`,
+                                }}
+                              />
+                            </div>
+                            <footer>
+                              <span>
+                                {entry.goal.periodStart
+                                  .split("-")
+                                  .reverse()
+                                  .join("/")}{" "}
+                                a{" "}
+                                {entry.goal.periodEnd
+                                  .split("-")
+                                  .reverse()
+                                  .join("/")}
+                              </span>
+                              <strong>
+                                {margin >= 0
+                                  ? "Meta batida"
+                                  : `Faltam ${formattedValue(Math.abs(margin), entry.goal.metric)}`}
+                              </strong>
+                            </footer>
+                          </article>
+                        );
+                      })
+                  ) : (
+                    <p className="goals-bi-empty">
+                      Nenhuma meta corresponde aos filtros selecionados.
+                    </p>
+                  )}
+                </section>
+              )}
+            </>
+          )}
+        </section>
+      </section>
+    </main>
+  );
 }
 
-function originGradient(entries: CountEntry[], total: number) { let cursor = 0; const parts = entries.map((entry, index) => { const start = cursor; cursor += entry.count / total * 100; return `hsl(${215 - index * 31} 78% ${45 + index * 3}%) ${start}% ${cursor}%`; }); return `conic-gradient(${parts.length ? parts.join(",") : "var(--surface-alt) 0 100%"})`; }
+function originGradient(entries: CountEntry[], total: number) {
+  let cursor = 0;
+  const parts = entries.map((entry, index) => {
+    const start = cursor;
+    cursor += (entry.count / total) * 100;
+    return `hsl(${215 - index * 31} 78% ${45 + index * 3}%) ${start}% ${cursor}%`;
+  });
+  return `conic-gradient(${parts.length ? parts.join(",") : "var(--surface-alt) 0 100%"})`;
+}
 
-export default function OperationIndicatorsBoard(props: { title: string; module: string; contextKey?: string; items: Item[]; employees: Employee[]; catalogs?: Catalog[]; customers?: {id:string;document_masked?:string;product_version?:string}[]; onClose: () => void }) {
-  if (props.module === "commercial" && (props.contextKey ?? "").includes("retention")) return <RetentionIndicatorsBoard title={props.title} contextKey={props.contextKey ?? ""} items={props.items} onClose={props.onClose} />;
-  if (props.module === "goals") return <GoalsIndicatorsBoard title={props.title} items={props.items} catalogs={props.catalogs ?? []} onClose={props.onClose} />;
-  return props.module === "commercial" ? <CommercialAnalyticsBoard key={props.contextKey} title={props.title} contextKey={props.contextKey ?? ""} items={props.items} catalogs={props.catalogs} onClose={props.onClose} /> : <GenericOperationIndicatorsBoard {...props} />;
+export default function OperationIndicatorsBoard(props: {
+  title: string;
+  module: string;
+  contextKey?: string;
+  items: Item[];
+  employees: Employee[];
+  catalogs?: Catalog[];
+  customers?: {
+    id: string;
+    document_masked?: string;
+    product_version?: string;
+  }[];
+  onClose: () => void;
+}) {
+  if (
+    props.module === "commercial" &&
+    (props.contextKey ?? "").includes("retention")
+  )
+    return (
+      <RetentionIndicatorsBoard
+        title={props.title}
+        contextKey={props.contextKey ?? ""}
+        items={props.items}
+        onClose={props.onClose}
+      />
+    );
+  if (props.module === "goals")
+    return (
+      <GoalsIndicatorsBoard
+        title={props.title}
+        items={props.items}
+        catalogs={props.catalogs ?? []}
+        onClose={props.onClose}
+      />
+    );
+  return props.module === "commercial" ? (
+    <CommercialAnalyticsBoard
+      key={props.contextKey}
+      title={props.title}
+      contextKey={props.contextKey ?? ""}
+      items={props.items}
+      catalogs={props.catalogs}
+      onClose={props.onClose}
+    />
+  ) : (
+    <GenericOperationIndicatorsBoard {...props} />
+  );
 }

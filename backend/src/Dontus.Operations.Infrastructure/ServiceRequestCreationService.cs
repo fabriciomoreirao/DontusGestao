@@ -54,11 +54,31 @@ public sealed class ServiceRequestCreationService(OperationsDbContext db, TimePr
             item.Description = detail.ToJsonString();
             db.WorkItems.Add(item);
             await ServiceRequestWorkflow.SynchronizeAsync(db, item, detail, detail["aiClassification"]?.ToString() ?? "", now, "Triagem inteligente", ct);
-            db.Activities.Add(new Activity { EntityType = "work_item", EntityId = item.Id, Module = item.Module,
-                Kind = "Chamado recebido", Summary = $"{protocol} · {detail["aiClassification"]}", Actor = "Integração externa" });
-            db.AuditEvents.Add(new AuditEvent { ActorEmail = "integracao-chamados", Action = "Create", Resource = "work_item",
-                ResourceId = item.Id.ToString(), Module = item.Module, DetailsJson = JsonSerializer.Serialize(new {
-                    protocol, clientId = detail["clientId"]?.ToString(), selectedType = detail["selectedType"]?.ToString(), classification = detail["aiClassification"]?.ToString() }), Result = "Sucesso" });
+            db.Activities.Add(new Activity
+            {
+                EntityType = "work_item",
+                EntityId = item.Id,
+                Module = item.Module,
+                Kind = "Chamado recebido",
+                Summary = $"{protocol} · {detail["aiClassification"]}",
+                Actor = "Integração externa"
+            });
+            db.AuditEvents.Add(new AuditEvent
+            {
+                ActorEmail = "integracao-chamados",
+                Action = "Create",
+                Resource = "work_item",
+                ResourceId = item.Id.ToString(),
+                Module = item.Module,
+                DetailsJson = JsonSerializer.Serialize(new
+                {
+                    protocol,
+                    clientId = detail["clientId"]?.ToString(),
+                    selectedType = detail["selectedType"]?.ToString(),
+                    classification = detail["aiClassification"]?.ToString()
+                }),
+                Result = "Sucesso"
+            });
             await db.SaveChangesAsync(ct);
             if (transaction is not null) await transaction.CommitAsync(ct);
             return protocol;

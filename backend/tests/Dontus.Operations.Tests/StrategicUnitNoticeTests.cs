@@ -11,8 +11,15 @@ public sealed class StrategicUnitNoticeTests
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ActorContext Viewer => new("cs@test", "CS", "Colaborador", "CS", [new EffectivePermission("cs", true, false, false, false, false)]);
-    private static WorkItem Network() => new() { Module = "cs", Title = "Rede", Status = "Ativo", RecordType = "Conta estratégica", CreatedBy = "tests",
-        Description = """{"kind":"enterpriseNetwork","units":[{"id":"one","pendingFollowUp":true},{"id":"two","pendingFollowUp":true}],"history":[{"type":"Reunião","text":"Preservar"}]}""" };
+    private static WorkItem Network() => new()
+    {
+        Module = "cs",
+        Title = "Rede",
+        Status = "Ativo",
+        RecordType = "Conta estratégica",
+        CreatedBy = "tests",
+        Description = """{"kind":"enterpriseNetwork","units":[{"id":"one","pendingFollowUp":true},{"id":"two","pendingFollowUp":true}],"history":[{"type":"Reunião","text":"Preservar"}]}"""
+    };
 
     [Fact]
     public async Task Opening_one_unit_persists_only_its_notice_and_does_not_create_an_interaction()

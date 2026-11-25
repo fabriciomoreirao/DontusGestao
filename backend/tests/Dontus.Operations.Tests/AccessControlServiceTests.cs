@@ -18,7 +18,8 @@ public sealed class AccessControlServiceTests
         const string token = "legacy-session-token";
         db.LocalAuthSessions.Add(new LocalAuthSession
         {
-            UserId = user.Id, ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+            UserId = user.Id,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
             TokenHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant(),
         });
         await db.SaveChangesAsync();
@@ -381,9 +382,9 @@ public sealed class AccessControlServiceTests
         Assert.DoesNotContain(module.Calendars, entry => entry.DepartmentId == primaryId);
         Assert.Contains(module.Calendars, entry => entry.DepartmentId == additionalId);
         Assert.DoesNotContain(module.Calendars, entry => entry.DepartmentId == hiddenId);
-        await access.UpdateEmployeeAsync(new(employee.Id,saved.DisplayName,saved.Email,saved.BirthDate,saved.StartedAt,[hiddenId],levelId,null,"Analista",false,[],true,AgendaCalendarIds:[allowedCalendar.Id]),admin);
-        Assert.Equal(allowedCalendar.Id,Assert.Single((await new AgendaService(db).GetModuleAsync(actor)).Calendars).Id);
-        await access.UpdateEmployeeAsync(new(employee.Id,saved.DisplayName,saved.Email,saved.BirthDate,saved.StartedAt,[hiddenId],levelId,null,"Analista",false,[],true,AgendaCalendarIds:[]),admin);
+        await access.UpdateEmployeeAsync(new(employee.Id, saved.DisplayName, saved.Email, saved.BirthDate, saved.StartedAt, [hiddenId], levelId, null, "Analista", false, [], true, AgendaCalendarIds: [allowedCalendar.Id]), admin);
+        Assert.Equal(allowedCalendar.Id, Assert.Single((await new AgendaService(db).GetModuleAsync(actor)).Calendars).Id);
+        await access.UpdateEmployeeAsync(new(employee.Id, saved.DisplayName, saved.Email, saved.BirthDate, saved.StartedAt, [hiddenId], levelId, null, "Analista", false, [], true, AgendaCalendarIds: []), admin);
         Assert.Empty((await new AgendaService(db).GetModuleAsync(actor)).Calendars);
     }
 

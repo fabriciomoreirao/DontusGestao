@@ -113,11 +113,15 @@ public sealed class DontusIntegrationTests
             Assert.Equal(150001, payload.GetProperty("identificacao").GetInt64());
             Assert.Equal("s150001", payload.GetProperty("schema").GetString());
             Assert.Equal("users-secret", payload.GetProperty("token").GetString());
-            return Json(new { mensagemDeErro = false, usuarios = new[] {
+            return Json(new
+            {
+                mensagemDeErro = false,
+                usuarios = new[] {
                 new { id = 1, nome = "Supervisor", usuario = "super", email = "super@test.local", superUsuario = true, usuarioAtivo = true, senha = "never-expose", urlLogin = "https://sistema.dontus.com.br/login?token=login-secret" },
                 new { id = 2, nome = "Comum", usuario = "comum", email = "comum@test.local", superUsuario = false, usuarioAtivo = false, senha = "never-expose", urlLogin = "https://sistema.dontus.com.br/login" },
                 new { id = 3, nome = "URL inválida", usuario = "url", email = "url@test.local", superUsuario = false, usuarioAtivo = true, senha = "never-expose", urlLogin = "https://sistema.dontus.com.br.evil.example/login" }
-            }});
+            }
+            });
         });
         var service = new DontusIntegrationService(db, api);
         var result = JsonSerializer.SerializeToElement(await service.ListUsersAsync("150001", Admin, default));
@@ -151,12 +155,23 @@ public sealed class DontusIntegrationTests
     {
         await using var db = Context();
         var calls = 0;
-        var api = Client(request => {
+        var api = Client(request =>
+        {
             if (request.Method == HttpMethod.Get) return Task.FromResult(Json(CustomerResponse()));
             calls++;
-            return Task.FromResult(Json(new { mensagemDeErro = false, usuarios = Enumerable.Range(1, 65).Select(n => new {
-                id = n, nome = $"Usuário {n}", usuario = $"user{n}", email = $"user{n}@test.local", superUsuario = n % 2 == 0, usuarioAtivo = true
-            }) }));
+            return Task.FromResult(Json(new
+            {
+                mensagemDeErro = false,
+                usuarios = Enumerable.Range(1, 65).Select(n => new
+                {
+                    id = n,
+                    nome = $"Usuário {n}",
+                    usuario = $"user{n}",
+                    email = $"user{n}@test.local",
+                    superUsuario = n % 2 == 0,
+                    usuarioAtivo = true
+                })
+            }));
         });
         var service = new DontusIntegrationService(db, api);
         var first = JsonSerializer.SerializeToElement(await service.ListUsersAsync("150001", Admin, default));
@@ -194,11 +209,33 @@ public sealed class DontusIntegrationTests
         var department = LinkDepartment(db, "Suporte"); await db.SaveChangesAsync();
         var reason = await service.SaveAccessReasonAsync(new(null, "Suporte", true, DepartmentId: department.Id), manager, default);
         Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.SaveAccessReasonAsync(new(null, "suporte", true, DepartmentId: department.Id), manager, default))).StatusCode);
-        var log = new SupportAccessLog { AccessedAt = DateTimeOffset.Parse("2026-11-06T02:59:59Z"), ActorEmail = Admin.Email, ActorName = Admin.DisplayName,
-            Identification = "150001", CustomerName = "Clínica", TargetUserId = 1, TargetUserName = "Supervisor", ReasonId = reason.Id, ReasonName = reason.Name, Justification = "Atendimento inicial" };
+        var log = new SupportAccessLog
+        {
+            AccessedAt = DateTimeOffset.Parse("2026-11-06T02:59:59Z"),
+            ActorEmail = Admin.Email,
+            ActorName = Admin.DisplayName,
+            Identification = "150001",
+            CustomerName = "Clínica",
+            TargetUserId = 1,
+            TargetUserName = "Supervisor",
+            ReasonId = reason.Id,
+            ReasonName = reason.Name,
+            Justification = "Atendimento inicial"
+        };
         db.SupportAccessLogs.Add(log);
-        db.SupportAccessLogs.Add(new SupportAccessLog { AccessedAt = DateTimeOffset.Parse("2026-11-06T03:00:00Z"), ActorEmail = "outro@test.local", ActorName = "Outro responsável",
-            Identification = "150002", CustomerName = "Outra clínica", TargetUserId = 2, TargetUserName = "Comum", ReasonId = reason.Id, ReasonName = reason.Name, Justification = "Outro atendimento" });
+        db.SupportAccessLogs.Add(new SupportAccessLog
+        {
+            AccessedAt = DateTimeOffset.Parse("2026-11-06T03:00:00Z"),
+            ActorEmail = "outro@test.local",
+            ActorName = "Outro responsável",
+            Identification = "150002",
+            CustomerName = "Outra clínica",
+            TargetUserId = 2,
+            TargetUserName = "Comum",
+            ReasonId = reason.Id,
+            ReasonName = reason.Name,
+            Justification = "Outro atendimento"
+        });
         await db.SaveChangesAsync();
         await service.SaveAccessReasonAsync(new(reason.Id, "Novo nome", false, reason.Version, department.Id), manager, default);
         Assert.Equal("Suporte", log.ReasonName);
@@ -270,7 +307,8 @@ public sealed class DontusIntegrationTests
         await using var db = Context();
         var department = LinkDepartment(db, "Suporte");
         var reason = new SupportAccessReason { Name = "Atendimento", DepartmentId = department.Id }; db.SupportAccessReasons.Add(reason); await db.SaveChangesAsync();
-        var service = new DontusIntegrationService(db, Client(async request => {
+        var service = new DontusIntegrationService(db, Client(async request =>
+        {
             if (request.Method == HttpMethod.Get) return Json(CustomerResponse());
             db.UserDepartments.Remove(await db.UserDepartments.SingleAsync()); await db.SaveChangesAsync();
             return Json(new { mensagemDeErro = false, usuarios = new[] { new { id = 1, nome = "Teste", usuario = "teste", usuarioAtivo = true, urlLogin = "https://sistema.dontus.com.br/login" } } });

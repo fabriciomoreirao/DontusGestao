@@ -3,28 +3,44 @@ import { apiResponse } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
 
-const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
+const apiBase = () =>
+  (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
 const headerValue = (value: string) => encodeURIComponent(value);
 
 export async function GET(request: Request) {
   const headers = new Headers({
-    "accept": "application/json",
-    "x-user-email": headerValue(request.headers.get("oai-authenticated-user-email") ?? process.env.LOCAL_USER_EMAIL ?? "gestor@dontus.local"),
+    accept: "application/json",
+    "x-user-email": headerValue(
+      request.headers.get("oai-authenticated-user-email") ??
+        process.env.LOCAL_USER_EMAIL ??
+        "gestor@dontus.local",
+    ),
     "x-user-name": headerValue(process.env.LOCAL_USER_NAME ?? "Gestor Dontus"),
-    "x-user-role": headerValue(process.env.LOCAL_USER_ROLE ?? "Administrador técnico"),
+    "x-user-role": headerValue(
+      process.env.LOCAL_USER_ROLE ?? "Administrador técnico",
+    ),
   });
-  const localSession = request.headers.get("cookie")?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
-  if (localSession) headers.set("x-local-session", decodeURIComponent(localSession));
+  const localSession = request.headers
+    .get("cookie")
+    ?.match(/(?:^|;\s*)dontus_session=([^;]+)/)?.[1];
+  if (localSession)
+    headers.set("x-local-session", decodeURIComponent(localSession));
   try {
     const query = new URL(request.url).searchParams;
     const roomId = query.get("roomId");
-    const response = await fetch(`${apiBase()}/api/internal-chats?historyDays=${Math.max(30, Math.min(36500, Number(query.get("historyDays")) || 30))}${roomId ? `&roomId=${encodeURIComponent(roomId)}` : ""}`, {
-      headers,
-      cache: "no-store",
-      signal: apiRequestSignal(request),
-    });
+    const response = await fetch(
+      `${apiBase()}/api/internal-chats?historyDays=${Math.max(30, Math.min(36500, Number(query.get("historyDays")) || 30))}${roomId ? `&roomId=${encodeURIComponent(roomId)}` : ""}`,
+      {
+        headers,
+        cache: "no-store",
+        signal: apiRequestSignal(request),
+      },
+    );
     return apiResponse(request, response);
   } catch {
-    return Response.json({ detail: "O Chat interno está temporariamente indisponível." }, { status: 503 });
+    return Response.json(
+      { detail: "O Chat interno está temporariamente indisponível." },
+      { status: 503 },
+    );
   }
 }

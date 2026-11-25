@@ -37,11 +37,11 @@ internal static class CsJourneyTimeline
             detail[field] = !string.IsNullOrWhiteSpace(start) ? $"{start}T00:00:00-03:00"
                 : old?[field]?.ToString() ?? (unchangedPhase ? previous!.CreatedAt : now).ToString("O");
         }
-        if(field == "trackingStartedAt")
+        if (field == "trackingStartedAt")
         {
-            var trackingDate=ReadDate(detail[field]?.ToString());
-            var today=DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(now,"America/Sao_Paulo").DateTime);
-            if(trackingDate is null || trackingDate>today)throw new DomainException("Informe uma data de início do acompanhamento válida, igual ou anterior a hoje.");
+            var trackingDate = ReadDate(detail[field]?.ToString());
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(now, "America/Sao_Paulo").DateTime);
+            if (trackingDate is null || trackingDate > today) throw new DomainException("Informe uma data de início do acompanhamento válida, igual ou anterior a hoje.");
         }
         if (detail["phase"]?.ToString() is "finished" or "unsuccessful" or "cancelled" or "cancelledWithoutTraining"
             && string.IsNullOrWhiteSpace(detail["conferenceConfirmedAt"]?.ToString()) && string.IsNullOrWhiteSpace(detail["cancellationResolvedAt"]?.ToString()))

@@ -107,8 +107,11 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
         await RequestPasswordRecoveryAsync(user.Email, cancellationToken);
         db.AuditEvents.Add(new AuditEvent
         {
-            ActorEmail = actor.Email, Action = "ResetPassword", Resource = "employee",
-            ResourceId = user.Id.ToString(), Module = "admin",
+            ActorEmail = actor.Email,
+            Action = "ResetPassword",
+            Resource = "employee",
+            ResourceId = user.Id.ToString(),
+            Module = "admin",
         });
         await db.SaveChangesAsync(cancellationToken);
     }

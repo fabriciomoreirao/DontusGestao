@@ -73,9 +73,19 @@ public sealed partial class DontusIntegrationService(OperationsDbContext db, Don
         pageSize = pageSize is 10 or 30 or 50 or 100 ? pageSize : 10;
         var totalPages = Math.Max(1, (int)Math.Ceiling(matching.Length / (double)pageSize));
         page = Math.Clamp(page, 1, totalPages);
-        return new { identification, customerName = DontusApiClient.Text(customer, "NomeFantasia"), fetchedAt = DateTimeOffset.UtcNow,
-            page, pageSize, total = matching.Length, totalPages, start = matching.Length == 0 ? 0 : (page - 1) * pageSize + 1, end = Math.Min(page * pageSize, matching.Length),
-            users = matching.Skip((page - 1) * pageSize).Take(pageSize).Select(u => new DontusEnvironmentUserDto(u.Id, u.Name, u.Username, u.Email, u.IsSupervisor, u.Active, u.Active && u.LoginUrl is not null)) };
+        return new
+        {
+            identification,
+            customerName = DontusApiClient.Text(customer, "NomeFantasia"),
+            fetchedAt = DateTimeOffset.UtcNow,
+            page,
+            pageSize,
+            total = matching.Length,
+            totalPages,
+            start = matching.Length == 0 ? 0 : (page - 1) * pageSize + 1,
+            end = Math.Min(page * pageSize, matching.Length),
+            users = matching.Skip((page - 1) * pageSize).Take(pageSize).Select(u => new DontusEnvironmentUserDto(u.Id, u.Name, u.Username, u.Email, u.IsSupervisor, u.Active, u.Active && u.LoginUrl is not null))
+        };
     }
 
     public async Task<object> LoginAsync(DontusLoginCommand command, ActorContext actor, CancellationToken ct)
@@ -100,11 +110,17 @@ public sealed partial class DontusIntegrationService(OperationsDbContext db, Don
         if (!await db.SupportAccessReasons.AnyAsync(entry => entry.Id == reason.Id && entry.Active
                 && entry.DepartmentId == departmentId && accessibleDepartments.Contains(departmentId), ct))
             throw new DomainException("O motivo ou seu vínculo com o setor foi alterado. Atualize os motivos antes de acessar.", 403);
-        var log = new SupportAccessLog {
-            ActorEmail = actor.Email, ActorName = actor.DisplayName, Identification = identification,
-            CustomerName = DontusApiClient.Text(customer, "NomeFantasia"), TargetUserId = user.Id,
+        var log = new SupportAccessLog
+        {
+            ActorEmail = actor.Email,
+            ActorName = actor.DisplayName,
+            Identification = identification,
+            CustomerName = DontusApiClient.Text(customer, "NomeFantasia"),
+            TargetUserId = user.Id,
             TargetUserName = string.IsNullOrWhiteSpace(user.Name) ? user.Username : user.Name,
-            ReasonId = reason.Id, ReasonName = reason.Name, Justification = justification,
+            ReasonId = reason.Id,
+            ReasonName = reason.Name,
+            Justification = justification,
         };
         db.SupportAccessLogs.Add(log);
         Audit(actor, "OpenDontusAccess", "access", identification, new { identification, userId = user.Id, reasonId = reason.Id, reason = reason.Name, justification, accessLogId = log.Id });

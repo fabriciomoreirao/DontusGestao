@@ -33,14 +33,34 @@ public static class ServiceRequestWorkflow
             copy.Remove("followupId");
             if (copy["routedTo"]?.ToString() is "Reclamação" or "Elogio") { copy.Remove("routedTo"); copy.Remove("routedId"); copy.Remove("routedAt"); }
             AddHistory(copy, $"Chamado classificado como {classification} e encaminhado ao setor {sector}.", at, by);
-            followup = new WorkItem { Module = "serviceFollowup", RecordType = "Acompanhamento de chamado",
-                Title = $"{detail["protocol"]} · {detail["fullName"]}", CustomerId = source.CustomerId,
-                CustomerName = source.CustomerName, Owner = source.Owner, Team = sector, Status = copy["routedId"] is null ? "Em espera" : "Em processo",
-                Priority = source.Priority, OriginType = "serviceRequests", OriginId = source.Id,
-                Description = copy.ToJsonString(), CreatedBy = source.CreatedBy, CreatedAt = at, UpdatedAt = at };
+            followup = new WorkItem
+            {
+                Module = "serviceFollowup",
+                RecordType = "Acompanhamento de chamado",
+                Title = $"{detail["protocol"]} · {detail["fullName"]}",
+                CustomerId = source.CustomerId,
+                CustomerName = source.CustomerName,
+                Owner = source.Owner,
+                Team = sector,
+                Status = copy["routedId"] is null ? "Em espera" : "Em processo",
+                Priority = source.Priority,
+                OriginType = "serviceRequests",
+                OriginId = source.Id,
+                Description = copy.ToJsonString(),
+                CreatedBy = source.CreatedBy,
+                CreatedAt = at,
+                UpdatedAt = at
+            };
             db.WorkItems.Add(followup);
-            db.Activities.Add(new Activity { EntityType = "work_item", EntityId = followup.Id, Module = followup.Module,
-                Kind = "Encaminhado ao setor", Summary = $"{detail["protocol"]} · {sector}", Actor = by });
+            db.Activities.Add(new Activity
+            {
+                EntityType = "work_item",
+                EntityId = followup.Id,
+                Module = followup.Module,
+                Kind = "Encaminhado ao setor",
+                Summary = $"{detail["protocol"]} · {sector}",
+                Actor = by
+            });
         }
         else
         {

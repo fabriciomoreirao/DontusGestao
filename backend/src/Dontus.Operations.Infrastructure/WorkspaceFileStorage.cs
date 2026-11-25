@@ -99,9 +99,9 @@ public sealed class WorkspaceFileStorage(IConfiguration configuration, Operation
             if (entry.Module == "tasks" && taskService is not null)
             {
                 var taskIds = await db.TaskComments.AsNoTracking().Where(comment => comment.Body.Contains(reference)).Select(comment => comment.TaskId).ToListAsync(ct);
-                if(taskIds.Count>0)allowed=(await taskService.GetModuleAsync(actor,ct)).Tasks.Any(task=>taskIds.Contains(task.Id));
+                if (taskIds.Count > 0) allowed = (await taskService.GetModuleAsync(actor, ct)).Tasks.Any(task => taskIds.Contains(task.Id));
             }
-            if(entry.Module=="internalChat")allowed=await db.InternalChatMessages.AsNoTracking().AnyAsync(message=>message.DeletedAt==null&&message.Body.Contains(reference)&&db.InternalChatRoomMembers.Any(member=>member.RoomId==message.RoomId&&db.Users.Any(user=>user.Id==member.UserId&&user.Email==actor.Email)&&message.CreatedAt>=member.JoinedAt),ct);
+            if (entry.Module == "internalChat") allowed = await db.InternalChatMessages.AsNoTracking().AnyAsync(message => message.DeletedAt == null && message.Body.Contains(reference) && db.InternalChatRoomMembers.Any(member => member.RoomId == message.RoomId && db.Users.Any(user => user.Id == member.UserId && user.Email == actor.Email) && message.CreatedAt >= member.JoinedAt), ct);
             foreach (var source in sources)
             {
                 try { await RequireSourceAsync(entry with { SourceId = source }, actor, ct); allowed = true; break; }

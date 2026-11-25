@@ -29,8 +29,16 @@ public sealed class ServiceRequestRoutingService(OperationsDbContext db, IOperat
                 return existing;
             }
             if (source.Version != version) throw new DomainException("O chamado foi alterado. Atualize a tela e tente novamente.", 409);
-            var module = target switch { "Desenvolvimento" => "ti", "Tarefa" => "tasks", "Sugestão" => "suggestions",
-                "Cancelamento" => "cancellations", "Nova contratação" => "commercial", "Acompanhamento" => "cs", _ => "" };
+            var module = target switch
+            {
+                "Desenvolvimento" => "ti",
+                "Tarefa" => "tasks",
+                "Sugestão" => "suggestions",
+                "Cancelamento" => "cancellations",
+                "Nova contratação" => "commercial",
+                "Acompanhamento" => "cs",
+                _ => ""
+            };
             if (module.Length == 0) throw new DomainException("Selecione uma funcionalidade válida.");
             actor.RequirePermission(module, "create");
             var at = DateTimeOffset.UtcNow;
@@ -46,17 +54,28 @@ public sealed class ServiceRequestRoutingService(OperationsDbContext db, IOperat
             if (target == "Tarefa")
             {
                 if (task is null) throw new DomainException("Preencha os dados da tarefa.");
-                var result = await tasks.CreateAsync(task with { CustomerId = source.CustomerId, CustomerCode = code,
-                    CustomerName = source.CustomerName, ClientWhatsApp = phone, ExternalLink = sourceUrl,
-                    Description = $"{task.Description}\n\n{linkedSummary}" }, actor, ct);
+                var result = await tasks.CreateAsync(task with
+                {
+                    CustomerId = source.CustomerId,
+                    CustomerCode = code,
+                    CustomerName = source.CustomerName,
+                    ClientWhatsApp = phone,
+                    ExternalLink = sourceUrl,
+                    Description = $"{task.Description}\n\n{linkedSummary}"
+                }, actor, ct);
                 destination = result.Id;
                 var uploader = await db.Users.Where(x => x.Email == actor.Email).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
                 if (uploader.HasValue)
                     foreach (var attachment in (detail["attachments"] as JsonArray ?? new JsonArray()).OfType<JsonObject>())
                         if (Guid.TryParse(attachment["id"]?.ToString(), out var fileId) && Guid.TryParse(sourceId, out var requestId))
-                            db.TaskAttachments.Add(new() { TaskId = destination, UploadedByUserId = uploader.Value,
+                            db.TaskAttachments.Add(new()
+                            {
+                                TaskId = destination,
+                                UploadedByUserId = uploader.Value,
                                 FileName = attachment["name"]?.ToString() ?? "Anexo do chamado",
-                                ContentType = "text/uri-list", StorageKey = $"/api/service-request-files/{requestId}/{fileId}" });
+                                ContentType = "text/uri-list",
+                                StorageKey = $"/api/service-request-files/{requestId}/{fileId}"
+                            });
             }
             else if (target == "Sugestão")
             {
@@ -66,8 +85,14 @@ public sealed class ServiceRequestRoutingService(OperationsDbContext db, IOperat
             }
             else
             {
-                var payload = new JsonObject { ["sourceModule"] = "serviceFollowup", ["sourceItemId"] = source.Id.ToString(),
-                    ["sourceRequestId"] = sourceId, ["sourceProtocol"] = protocol, ["clientId"] = code };
+                var payload = new JsonObject
+                {
+                    ["sourceModule"] = "serviceFollowup",
+                    ["sourceItemId"] = source.Id.ToString(),
+                    ["sourceRequestId"] = sourceId,
+                    ["sourceProtocol"] = protocol,
+                    ["clientId"] = code
+                };
                 var type = ""; var owner = "Não atribuído"; var team = source.Team; var status = "Novo";
                 switch (target)
                 {
@@ -75,10 +100,15 @@ public sealed class ServiceRequestRoutingService(OperationsDbContext db, IOperat
                         type = "Tarefa de desenvolvimento"; team = "TI"; status = "Nova";
                         payload["kind"] = "developmentTask"; payload["sourceTaskId"] = source.Id.ToString();
                         payload["sourceDepartment"] = source.Team; payload["triageStage"] = "Recebida"; payload["processStage"] = "Aguardando triagem";
-                        payload["sourceSnapshot"] = new JsonObject { ["description"] = summary, ["status"] = source.Status,
-                            ["type"] = detail["selectedType"]?.DeepClone(), ["responsible"] = source.Owner,
+                        payload["sourceSnapshot"] = new JsonObject
+                        {
+                            ["description"] = summary,
+                            ["status"] = source.Status,
+                            ["type"] = detail["selectedType"]?.DeepClone(),
+                            ["responsible"] = source.Owner,
                             ["attachments"] = new JsonArray((detail["attachments"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(x => (JsonNode)new JsonObject { ["fileName"] = x["name"]?.DeepClone(), ["url"] = $"/api/service-request-files/{sourceId}/{x["id"]}" }).ToArray()),
-                            ["comments"] = new JsonArray((detail["comments"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(x => (JsonNode)new JsonObject { ["authorName"] = x["by"]?.DeepClone(), ["body"] = x["text"]?.DeepClone(), ["createdAt"] = x["at"]?.DeepClone() }).ToArray()) };
+                            ["comments"] = new JsonArray((detail["comments"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(x => (JsonNode)new JsonObject { ["authorName"] = x["by"]?.DeepClone(), ["body"] = x["text"]?.DeepClone(), ["createdAt"] = x["at"]?.DeepClone() }).ToArray())
+                        };
                         break;
                     case "Cancelamento":
                         type = "Solicitação de cancelamento"; team = "Comercial"; status = "Fila de espera";
@@ -113,8 +143,16 @@ public sealed class ServiceRequestRoutingService(OperationsDbContext db, IOperat
             detail["routedId"] = destination.ToString(); detail["routedTo"] = target; detail["routedAt"] = at.ToString("O"); detail["routedBy"] = actor.DisplayName;
             ServiceRequestWorkflow.AddHistory(detail, $"Encaminhado para {target}.", at, actor.DisplayName);
             source.Description = detail.ToJsonString(); source.Status = "Em processo"; source.UpdatedAt = at; source.Version++;
-            db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = "Route", Resource = "work_item", ResourceId = source.Id.ToString(),
-                Module = source.Module, DetailsJson = JsonSerializer.Serialize(new { target, destination, at, by = actor.DisplayName }), Result = "Sucesso" });
+            db.AuditEvents.Add(new AuditEvent
+            {
+                ActorEmail = actor.Email,
+                Action = "Route",
+                Resource = "work_item",
+                ResourceId = source.Id.ToString(),
+                Module = source.Module,
+                DetailsJson = JsonSerializer.Serialize(new { target, destination, at, by = actor.DisplayName }),
+                Result = "Sucesso"
+            });
             await db.SaveChangesAsync(ct);
             if (transaction is not null) await transaction.CommitAsync(ct);
             return destination;

@@ -12,10 +12,12 @@ public static class WhatsAppWebhookSecurity
     public static bool VerifySignature(string payload, string signature, string secret)
     {
         if (string.IsNullOrWhiteSpace(secret) || !signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase)) return false;
-        try {
+        try
+        {
             var received = Convert.FromHexString(signature[7..]);
             var expected = HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(payload));
             return CryptographicOperations.FixedTimeEquals(expected, received);
-        } catch (FormatException) { return false; }
+        }
+        catch (FormatException) { return false; }
     }
 }

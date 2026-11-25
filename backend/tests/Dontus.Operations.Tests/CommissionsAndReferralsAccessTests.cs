@@ -22,8 +22,15 @@ public sealed class CommissionsAndReferralsAccessTests
         var other = new AppUser { Email = "other@test.local", DisplayName = user.DisplayName, Department = "CS", CreatedBy = "system" };
         var group = new AccessGroup { Name = "Coordenador apenas no nome do grupo", CreatedBy = "system" };
         foreach (var module in new[] { "commissions", "referrals" })
-            group.Permissions.Add(new GroupPermission { GroupId = group.Id, Screen = module, CanView = true,
-                CanCreate = module == "referrals", CanEdit = true, CanApprove = supervisor });
+            group.Permissions.Add(new GroupPermission
+            {
+                GroupId = group.Id,
+                Screen = module,
+                CanView = true,
+                CanCreate = module == "referrals",
+                CanEdit = true,
+                CanApprove = supervisor
+            });
         user.Groups.Add(new UserAccessGroup { UserId = user.Id, GroupId = group.Id });
         db.AccessGroups.Add(group); db.Users.AddRange(user, other); await db.SaveChangesAsync();
         return (await Access(db).ResolveActorAsync(new(user.Email, user.DisplayName)), user, other);
@@ -31,15 +38,32 @@ public sealed class CommissionsAndReferralsAccessTests
 
     private static WorkItem Referral(AppUser user) => new()
     {
-        Module = "referrals", RecordType = "Indicação", Title = "Profissional", Owner = user.DisplayName,
-        CreatedBy = user.Email, Status = "Em acompanhamento",
-        Description = JsonSerializer.Serialize(new { kind = "referral", phase = "tracking", senderName = user.DisplayName,
-            senderDepartment = user.Department, reviewer = "", decisionAt = "", decisionReason = "" }),
+        Module = "referrals",
+        RecordType = "Indicação",
+        Title = "Profissional",
+        Owner = user.DisplayName,
+        CreatedBy = user.Email,
+        Status = "Em acompanhamento",
+        Description = JsonSerializer.Serialize(new
+        {
+            kind = "referral",
+            phase = "tracking",
+            senderName = user.DisplayName,
+            senderDepartment = user.Department,
+            reviewer = "",
+            decisionAt = "",
+            decisionReason = ""
+        }),
     };
     private static WorkItem Commission(AppUser user) => new()
     {
-        Module = "commissions", RecordType = "Comissão", Title = "Comissão", Owner = user.DisplayName,
-        CreatedBy = "supervisor@test.local", Status = "Aprovada", AmountCents = 1000,
+        Module = "commissions",
+        RecordType = "Comissão",
+        Title = "Comissão",
+        Owner = user.DisplayName,
+        CreatedBy = "supervisor@test.local",
+        Status = "Aprovada",
+        AmountCents = 1000,
         Description = JsonSerializer.Serialize(new { kind = "commissionRecord", employeeId = user.Id, decision = "approved", commissionCents = 1000 }),
     };
     private static UpdateWorkItemCommand Update(WorkItem item, string? description = null) =>
@@ -108,10 +132,18 @@ public sealed class CommissionsAndReferralsAccessTests
         db.WorkItems.AddRange(ownReferral, otherReferral, ownCommission, otherCommission);
         foreach (var employee in new[] { user, other })
         {
-            db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog = "commissionRule", Name = employee.Email,
-                Description = JsonSerializer.Serialize(new { employeeId = employee.Id, employeeName = employee.DisplayName }) });
-            db.CustomerCatalogOptions.Add(new CustomerCatalogOption { Catalog = "referralCommission", Name = employee.Email,
-                Description = JsonSerializer.Serialize(new { collaboratorId = employee.Id, collaboratorName = employee.DisplayName }) });
+            db.CustomerCatalogOptions.Add(new CustomerCatalogOption
+            {
+                Catalog = "commissionRule",
+                Name = employee.Email,
+                Description = JsonSerializer.Serialize(new { employeeId = employee.Id, employeeName = employee.DisplayName })
+            });
+            db.CustomerCatalogOptions.Add(new CustomerCatalogOption
+            {
+                Catalog = "referralCommission",
+                Name = employee.Email,
+                Description = JsonSerializer.Serialize(new { collaboratorId = employee.Id, collaboratorName = employee.DisplayName })
+            });
         }
         await db.SaveChangesAsync(); var service = new OperationsService(db);
         var snapshot = await service.GetSnapshotAsync(actor);

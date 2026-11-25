@@ -34,6 +34,13 @@ export const businessMessages = [
 ] as const;
 
 export function dashboardMessage(at: number | Date = Date.now()) {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
-  return businessMessages[Math.floor(Date.parse(day) / 86_400_000) % businessMessages.length];
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at);
+  return businessMessages[
+    Math.floor(Date.parse(day) / 86_400_000) % businessMessages.length
+  ];
 }

@@ -41,8 +41,16 @@ public sealed class PublicRecruitmentService(OperationsDbContext db, IOperations
         var actor = new ActorContext("candidatura-publica@dontus.local", "Candidatura pública", "Público", process.Team,
             [new("admin", false, true, false, false, false)]);
         return await operations.CreateWorkItemAsync(new("admin", "Candidato", name, null, email, phone, process.Team, "P3", null, null, 0,
-            JsonSerializer.Serialize(new { processId = process.Id, vacancy = vacancy.Vacancy, sector = vacancy.Sector, notes = input.Notes?.Trim() ?? "",
-                curriculumName = file.Name, curriculumData = input.CurriculumUrl, comments = Array.Empty<object>() }), null, "publicRecruitment", process.Id, stage ?? "Currículo"), actor, ct);
+            JsonSerializer.Serialize(new
+            {
+                processId = process.Id,
+                vacancy = vacancy.Vacancy,
+                sector = vacancy.Sector,
+                notes = input.Notes?.Trim() ?? "",
+                curriculumName = file.Name,
+                curriculumData = input.CurriculumUrl,
+                comments = Array.Empty<object>()
+            }), null, "publicRecruitment", process.Id, stage ?? "Currículo"), actor, ct);
     }
 
     private async Task<WorkItem> ProcessAsync(Guid id, CancellationToken ct) =>

@@ -12,12 +12,12 @@
 
 ## Permissões por tela
 
-| Permissão | Efeito |
-| --- | --- |
-| Visualizar | Exibe a tela e permite consultar seus dados |
-| Criar | Permite novos registros e implica visualização |
-| Editar | Permite transições e alterações e implica visualização |
-| Aprovar | Permite decisões de aprovação e implica visualização |
+| Permissão   | Efeito                                                     |
+| ----------- | ---------------------------------------------------------- |
+| Visualizar  | Exibe a tela e permite consultar seus dados                |
+| Criar       | Permite novos registros e implica visualização             |
+| Editar      | Permite transições e alterações e implica visualização     |
+| Aprovar     | Permite decisões de aprovação e implica visualização       |
 | Administrar | Permite configuração administrativa e implica visualização |
 
 ## Telas controladas
@@ -37,15 +37,15 @@ cada conversa aos setores associados ao colaborador.
 
 ## Perfis sugeridos
 
-| Grupo | Telas sugeridas | Restrições |
-| --- | --- | --- |
-| Gestão | Visão geral e Indicadores | Leitura executiva |
-| Comercial | Customer 360 e Comercial | Sem acesso financeiro |
-| Customer Success | Customer 360, CS, LIA e Agenda | Sem aprovações financeiras |
-| Suporte | Customer 360, Suporte e Agenda | Sem prioridade de TI |
-| TI | Demandas de TI e Suporte | Deploy sensível continua sujeito às regras do workflow |
-| Financeiro | Financeiro e Aprovações | Aprovar deve ser concedido somente a aprovadores |
-| Compras | Compras, Patrimônio e Aprovações | Respeitar alçadas |
-| Auditoria | Indicadores e Administração em leitura | Sem criação, edição ou aprovação |
+| Grupo            | Telas sugeridas                        | Restrições                                             |
+| ---------------- | -------------------------------------- | ------------------------------------------------------ |
+| Gestão           | Visão geral e Indicadores              | Leitura executiva                                      |
+| Comercial        | Customer 360 e Comercial               | Sem acesso financeiro                                  |
+| Customer Success | Customer 360, CS, LIA e Agenda         | Sem aprovações financeiras                             |
+| Suporte          | Customer 360, Suporte e Agenda         | Sem prioridade de TI                                   |
+| TI               | Demandas de TI e Suporte               | Deploy sensível continua sujeito às regras do workflow |
+| Financeiro       | Financeiro e Aprovações                | Aprovar deve ser concedido somente a aprovadores       |
+| Compras          | Compras, Patrimônio e Aprovações       | Respeitar alçadas                                      |
+| Auditoria        | Indicadores e Administração em leitura | Sem criação, edição ou aprovação                       |
 
 A ocultação do menu é apenas uma conveniência visual. Toda operação é novamente autorizada pela API C#.

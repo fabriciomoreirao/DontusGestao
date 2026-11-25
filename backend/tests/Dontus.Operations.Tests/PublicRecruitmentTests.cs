@@ -12,18 +12,26 @@ public sealed class PublicRecruitmentTests : IDisposable
     private readonly OperationsDbContext db = new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private readonly string root = Path.Combine(Path.GetTempPath(), $"dontus-recruitment-{Guid.NewGuid():N}");
     private readonly ActorContext uploader = new("public-upload:test", "Candidato", "Público", "", [new("admin", false, true, false, false, false)]);
-    private WorkspaceFileStorage Files => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["WorkspaceFiles:Path"] = root }).Build(), db);
+    private WorkspaceFileStorage Files => new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["WorkspaceFiles:Path"] = root }).Build(), db);
     private PublicRecruitmentService Service => new(db, new OperationsService(db), Files);
     private async Task<WorkItem> Process(string status = "Ativo")
     {
-        var process = new WorkItem { Module = "admin", RecordType = "Processo seletivo", Title = "Seleção CS", Team = "Sucesso do Cliente", Status = status, CreatedBy = "admin@test",
-            Description = JsonSerializer.Serialize(new { vacancy = "Analista CS", description = "Atendimento **humanizado**.", requirements = "Experiência", responsibilities = "Acompanhar clientes", benefits = "Vale alimentação", stages = new[] { "Triagem inicial", "Entrevista" }, internalNote = "Dado interno" }) };
+        var process = new WorkItem
+        {
+            Module = "admin",
+            RecordType = "Processo seletivo",
+            Title = "Seleção CS",
+            Team = "Sucesso do Cliente",
+            Status = status,
+            CreatedBy = "admin@test",
+            Description = JsonSerializer.Serialize(new { vacancy = "Analista CS", description = "Atendimento **humanizado**.", requirements = "Experiência", responsibilities = "Acompanhar clientes", benefits = "Vale alimentação", stages = new[] { "Triagem inicial", "Entrevista" }, internalNote = "Dado interno" })
+        };
         db.WorkItems.Add(process); await db.SaveChangesAsync(); return process;
     }
     private async Task<string> Curriculum(Guid id)
     {
         var entry = await Files.BeginAsync(new("curriculo.pdf", "application/pdf", 4, "admin", id), uploader, default);
-        await Files.AppendAsync(entry.Id, 0, new MemoryStream([1,2,3,4]), uploader, default); await Files.CompleteAsync(entry.Id, uploader, default);
+        await Files.AppendAsync(entry.Id, 0, new MemoryStream([1, 2, 3, 4]), uploader, default); await Files.CompleteAsync(entry.Id, uploader, default);
         return $"/api/workspace-files/{entry.Id}";
     }
     [Fact]
@@ -53,7 +61,7 @@ public sealed class PublicRecruitmentTests : IDisposable
         var input = new PublicRecruitmentSubmission("Pessoa de teste", "pessoa@example.test", "11999991234", "", url);
         Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => Service.SubmitAsync(closed.Id, input, default))).StatusCode);
         await Assert.ThrowsAsync<DomainException>(() => Service.SubmitAsync(open.Id, input, default));
-        await Assert.ThrowsAsync<DomainException>(() => Service.SubmitAsync(open.Id, input with {CurriculumUrl = "https://example.test/cv.pdf"}, default));
+        await Assert.ThrowsAsync<DomainException>(() => Service.SubmitAsync(open.Id, input with { CurriculumUrl = "https://example.test/cv.pdf" }, default));
         Assert.DoesNotContain(db.WorkItems, item => item.RecordType == "Candidato");
     }
     [Theory]

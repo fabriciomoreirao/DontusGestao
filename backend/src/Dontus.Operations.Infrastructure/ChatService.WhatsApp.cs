@@ -40,16 +40,41 @@ public sealed partial class ChatService
         var campaignIds = campaigns.Select(x => x.Id).ToArray();
         var stats = await db.WhatsAppCampaignDeliveries.AsNoTracking().Where(x => campaignIds.Contains(x.CampaignId))
             .Select(x => new { x.CampaignId, x.TemplateId, x.Phone, x.Status }).ToListAsync(ct);
-        return new {
+        return new
+        {
             module,
-            templates = templates.Select(x => new { x.Id, x.NumberId, x.Name, x.Language, x.Purpose, x.Category, x.Body, x.HeaderType, x.MediaUrl,
-                variables = ReadArray<TemplateVariable>(x.VariablesJson), buttons = ReadArray<TemplateButton>(x.ButtonsJson), x.Status, x.RejectionReason, x.SyncedAt }),
-            campaigns = campaigns.Select(x => new { x.Id, x.NumberId, x.Name, x.Category, x.Status, x.ScheduledAt, x.FinishedAt,
+            templates = templates.Select(x => new
+            {
+                x.Id,
+                x.NumberId,
+                x.Name,
+                x.Language,
+                x.Purpose,
+                x.Category,
+                x.Body,
+                x.HeaderType,
+                x.MediaUrl,
+                variables = ReadArray<TemplateVariable>(x.VariablesJson),
+                buttons = ReadArray<TemplateButton>(x.ButtonsJson),
+                x.Status,
+                x.RejectionReason,
+                x.SyncedAt
+            }),
+            campaigns = campaigns.Select(x => new
+            {
+                x.Id,
+                x.NumberId,
+                x.Name,
+                x.Category,
+                x.Status,
+                x.ScheduledAt,
+                x.FinishedAt,
                 templateCount = stats.Where(d => d.CampaignId == x.Id).Select(d => d.TemplateId).Distinct().Count(),
                 recipientCount = stats.Where(d => d.CampaignId == x.Id).Select(d => d.Phone).Distinct().Count(),
                 total = stats.Count(d => d.CampaignId == x.Id && d.Status != "Pendente" && d.Status != "Cancelada"),
                 successful = stats.Count(d => d.CampaignId == x.Id && (d.Status == "Aceita pela Meta" || d.Status == "Entregue" || d.Status == "Lida")),
-                errors = stats.Count(d => d.CampaignId == x.Id && (d.Status == "Erro" || d.Status == "Incerta")) }),
+                errors = stats.Count(d => d.CampaignId == x.Id && (d.Status == "Erro" || d.Status == "Incerta"))
+            }),
             numbers = await db.ChatWhatsAppNumbers.AsNoTracking().Where(x => numberIds.Contains(x.Id)).Select(x => new { x.Id, x.SuiteStatus, x.SuiteClinicId, x.SuiteDontusId, x.SuiteBase }).ToListAsync(ct),
             suiteConfigured = !string.IsNullOrWhiteSpace(Suite.ChatwootApiKey) && !string.IsNullOrWhiteSpace(Suite.SecurityId) && !string.IsNullOrWhiteSpace(Suite.ChatwootBaseUrl) && !string.IsNullOrWhiteSpace(Suite.MeowBaseUrl),
             contacts = admin ? await db.ChatContacts.AsNoTracking().Select(x => new { x.Id, x.Name, x.Phone }).ToArrayAsync(ct) : [],
@@ -92,9 +117,23 @@ public sealed partial class ChatService
         if (c.Buttons.Length > 0) components.Add(new { type = "BUTTONS", buttons = c.Buttons.Select(x => x.Type == "URL" ? (object)new { type = x.Type, text = x.Text, url = x.Url } : new { type = x.Type, text = x.Text }) });
         using var result = await SendMetaAsync(HttpMethod.Post, $"{number.ApiVersion}/{number.WabaId}/message_templates", Token(number),
             JsonContent.Create(new { name = c.Name, language = c.Language, category = c.Category, components }), ct);
-        var entity = new WhatsAppTemplate { NumberId = number.Id, Name = c.Name, Language = c.Language, Purpose = c.Purpose, Category = c.Category, Body = c.Body.Trim(),
-            HeaderType = c.HeaderType, HeaderHandle = c.HeaderHandle, MediaUrl = c.MediaUrl, VariablesJson = JsonSerializer.Serialize(c.Variables, WaJson), ButtonsJson = JsonSerializer.Serialize(c.Buttons, WaJson),
-            MetaId = Text(result.RootElement, "id"), Status = Text(result.RootElement, "status", "PENDING"), SyncedAt = DateTimeOffset.UtcNow };
+        var entity = new WhatsAppTemplate
+        {
+            NumberId = number.Id,
+            Name = c.Name,
+            Language = c.Language,
+            Purpose = c.Purpose,
+            Category = c.Category,
+            Body = c.Body.Trim(),
+            HeaderType = c.HeaderType,
+            HeaderHandle = c.HeaderHandle,
+            MediaUrl = c.MediaUrl,
+            VariablesJson = JsonSerializer.Serialize(c.Variables, WaJson),
+            ButtonsJson = JsonSerializer.Serialize(c.Buttons, WaJson),
+            MetaId = Text(result.RootElement, "id"),
+            Status = Text(result.RootElement, "status", "PENDING"),
+            SyncedAt = DateTimeOffset.UtcNow
+        };
         if (entity.MetaId == "") throw new DomainException("A Meta não retornou o identificador do template.", 502);
         db.WhatsAppTemplates.Add(entity);
         Audit(actor, "whatsapp.template.submitted", "whatsapp_template", entity.Id, new { entity.Name, entity.MetaId });
@@ -181,7 +220,8 @@ public sealed partial class ChatService
         if (c.TemplateIds.Length is < 1 or > 10 || c.Recipients.Length is < 1 or > 5000) throw new DomainException("Selecione de 1 a 10 templates e de 1 a 5.000 destinatários.");
         var templates = await db.WhatsAppTemplates.Where(x => c.TemplateIds.Contains(x.Id) && x.NumberId == c.NumberId).ToListAsync(ct);
         if (templates.Count != c.TemplateIds.Distinct().Count()) throw new DomainException("Os templates devem pertencer à conexão selecionada.");
-        foreach (var t in templates) {
+        foreach (var t in templates)
+        {
             await RefreshTemplateAsync(number, t, ct);
             if (t.Status != "APPROVED" || t.Category != c.Category) throw new DomainException("Utilize somente templates aprovados da categoria selecionada.");
         }
@@ -197,11 +237,12 @@ public sealed partial class ChatService
         if (!c.Id.HasValue) db.WhatsAppCampaigns.Add(campaign);
         else { db.WhatsAppCampaignDeliveries.RemoveRange(await db.WhatsAppCampaignDeliveries.Where(x => x.CampaignId == campaign.Id).ToListAsync(ct)); Touch(campaign); }
         foreach (var recipient in recipients)
-        foreach (var template in templates) {
-            var parameters = ReadArray<TemplateVariable>(template.VariablesJson).Select(v => v.Key is "destinatario" or "paciente" ? recipient.Name : recipient.Values?.GetValueOrDefault(v.Key)?.Trim() ?? "").ToArray();
-            if (parameters.Any(string.IsNullOrWhiteSpace)) throw new DomainException($"Preencha os valores das variáveis para {recipient.Name} no template {template.Name}.");
-            db.WhatsAppCampaignDeliveries.Add(new WhatsAppCampaignDelivery { CampaignId = campaign.Id, TemplateId = template.Id, Name = recipient.Name.Trim(), Phone = recipient.Phone, ParametersJson = JsonSerializer.Serialize(parameters) });
-        }
+            foreach (var template in templates)
+            {
+                var parameters = ReadArray<TemplateVariable>(template.VariablesJson).Select(v => v.Key is "destinatario" or "paciente" ? recipient.Name : recipient.Values?.GetValueOrDefault(v.Key)?.Trim() ?? "").ToArray();
+                if (parameters.Any(string.IsNullOrWhiteSpace)) throw new DomainException($"Preencha os valores das variáveis para {recipient.Name} no template {template.Name}.");
+                db.WhatsAppCampaignDeliveries.Add(new WhatsAppCampaignDelivery { CampaignId = campaign.Id, TemplateId = template.Id, Name = recipient.Name.Trim(), Phone = recipient.Phone, ParametersJson = JsonSerializer.Serialize(parameters) });
+            }
         Audit(actor, "whatsapp.campaign.saved", "whatsapp_campaign", campaign.Id, new { campaign.Name, recipients = recipients.Length, templates = templates.Count, campaign.ConsentSource });
         await db.SaveChangesAsync(ct);
         return campaign.Id;
@@ -211,18 +252,24 @@ public sealed partial class ChatService
     {
         RequireWhatsAppAdmin(actor);
         var campaign = await db.WhatsAppCampaigns.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new DomainException("Campanha não encontrada.", 404);
-        if (action == "schedule") {
+        if (action == "schedule")
+        {
             if (campaign.Status != "Aprovada") throw new DomainException("A campanha já foi agendada ou encerrada.", 409);
             campaign.ScheduledAt = scheduledAt?.ToUniversalTime() ?? DateTimeOffset.UtcNow;
             if (campaign.ScheduledAt < DateTimeOffset.UtcNow.AddMinutes(-1)) throw new DomainException("Escolha um horário futuro.");
             campaign.Status = "Agendada";
-        } else if (action == "cancel") {
+        }
+        else if (action == "cancel")
+        {
             if (campaign.Status is "Concluída" or "Concluída com erros" or "Cancelada") throw new DomainException("A campanha já foi encerrada.", 409);
             campaign.Status = "Cancelada"; campaign.FinishedAt = DateTimeOffset.UtcNow;
-        } else if (action == "delete") {
+        }
+        else if (action == "delete")
+        {
             if (campaign.Status is not ("Aprovada" or "Cancelada")) throw new DomainException("Cancele a campanha antes de excluir.", 409);
             db.WhatsAppCampaigns.Remove(campaign);
-        } else throw new DomainException("Ação inválida.");
+        }
+        else throw new DomainException("Ação inválida.");
         Touch(campaign);
         Audit(actor, $"whatsapp.campaign.{action}", "whatsapp_campaign", campaign.Id, new { campaign.ScheduledAt });
         await db.SaveChangesAsync(ct);
@@ -274,18 +321,21 @@ public sealed partial class ChatService
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { db.ChangeTracker.Clear(); return; }
         ChatWhatsAppNumber number;
         try { number = await NumberAsync(campaign.NumberId, ct); }
-        catch (DomainException) {
+        catch (DomainException)
+        {
             var pending = await db.WhatsAppCampaignDeliveries.Where(x => x.CampaignId == campaign.Id && x.Status == "Pendente").ToListAsync(ct);
             foreach (var item in pending) { item.Status = "Erro"; item.Error = "A conexão foi desativada antes do disparo."; }
             campaign.Status = "Concluída com erros"; campaign.FinishedAt = now; campaign.LeaseUntil = null; Touch(campaign); await db.SaveChangesAsync(ct); return;
         }
         var deliveries = await db.WhatsAppCampaignDeliveries.Where(x => x.CampaignId == campaign.Id && (x.Status == "Pendente" || x.Status == "Processando")).OrderBy(x => x.CreatedAt).Take(30).ToListAsync(ct);
-        foreach (var delivery in deliveries) {
+        foreach (var delivery in deliveries)
+        {
             var current = await db.WhatsAppCampaigns.AsNoTracking().Where(x => x.Id == campaign.Id).Select(x => x.Status).SingleOrDefaultAsync(ct);
             if (current != "Enviando") break;
             if (delivery.Status == "Processando") { delivery.Status = "Incerta"; delivery.Error = "Execução interrompida após iniciar o envio. Confira no provedor; não há reenvio automático."; await db.SaveChangesAsync(ct); continue; }
             delivery.Status = "Processando"; campaign.LeaseUntil = DateTimeOffset.UtcNow.AddMinutes(3); Touch(campaign); await db.SaveChangesAsync(ct);
-            try {
+            try
+            {
                 var template = await db.WhatsAppTemplates.SingleAsync(x => x.Id == delivery.TemplateId, ct);
                 await RefreshTemplateAsync(number, template, ct);
                 if (template.Category != campaign.Category) throw new DomainException("A Meta alterou a categoria do template. Revise a campanha.");
@@ -299,16 +349,19 @@ public sealed partial class ChatService
                     delivery.Phone, delivery.Name, "Saida", "Template", text, DateTimeOffset.UtcNow, false, "{}"), ct);
                 var sentMessage = await db.ChatMessages.FirstOrDefaultAsync(x => x.ExternalId == delivery.ExternalId, ct);
                 if (sentMessage is not null) { sentMessage.Status = "Aceita pela Meta"; sentMessage.SenderName = "Campanha · " + campaign.Name; }
-            } catch (OperationCanceledException) { throw; }
-              catch (Exception ex) {
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
                 if (delivery.ExternalId != "") delivery.Error = "Envio aceito pela Meta. Não foi possível concluir a atualização do histórico do chat.";
                 else { delivery.Status = ex is HttpRequestException ? "Incerta" : "Erro"; delivery.Error = ex is DomainException ? ex.Message : "Falha no envio. Verifique o provedor antes de reenviar."; }
-              }
+            }
             Touch(delivery); await db.SaveChangesAsync(ct);
             await Task.Delay(150, ct);
         }
         await db.Entry(campaign).ReloadAsync(ct);
-        if (campaign.Status == "Enviando" && !await db.WhatsAppCampaignDeliveries.AnyAsync(x => x.CampaignId == campaign.Id && (x.Status == "Pendente" || x.Status == "Processando"), ct)) {
+        if (campaign.Status == "Enviando" && !await db.WhatsAppCampaignDeliveries.AnyAsync(x => x.CampaignId == campaign.Id && (x.Status == "Pendente" || x.Status == "Processando"), ct))
+        {
             campaign.Status = await db.WhatsAppCampaignDeliveries.AnyAsync(x => x.CampaignId == campaign.Id && (x.Status == "Erro" || x.Status == "Incerta"), ct) ? "Concluída com erros" : "Concluída";
             campaign.FinishedAt = DateTimeOffset.UtcNow;
         }
@@ -317,19 +370,22 @@ public sealed partial class ChatService
 
     public async Task ProcessWhatsAppStatusAsync(JsonElement value, CancellationToken ct)
     {
-        if (value.TryGetProperty("message_template_id", out var templateId)) {
+        if (value.TryGetProperty("message_template_id", out var templateId))
+        {
             var metaId = templateId.ValueKind == JsonValueKind.String ? templateId.GetString() : templateId.GetRawText();
             var templates = await db.WhatsAppTemplates.Where(x => x.MetaId == metaId).ToListAsync(ct);
             foreach (var template in templates) { template.Status = Text(value, "event", template.Status); template.RejectionReason = Text(value, "reason"); template.SyncedAt = DateTimeOffset.UtcNow; Touch(template); }
             await db.SaveChangesAsync(ct);
         }
         if (!value.TryGetProperty("statuses", out var statuses)) return;
-        foreach (var status in statuses.EnumerateArray()) {
+        foreach (var status in statuses.EnumerateArray())
+        {
             var externalId = Text(status, "id"); var state = Text(status, "status");
             var mapped = state switch { "delivered" => "Entregue", "read" => "Lida", "failed" => "Erro", "sent" => "Aceita pela Meta", _ => "" };
             if (externalId == "" || mapped == "") continue;
             var delivery = await db.WhatsAppCampaignDeliveries.SingleOrDefaultAsync(x => x.ExternalId == externalId, ct);
-            if (delivery is not null && (mapped == "Erro" || delivery.Status != "Lida" && (delivery.Status != "Entregue" || mapped == "Lida"))) {
+            if (delivery is not null && (mapped == "Erro" || delivery.Status != "Lida" && (delivery.Status != "Entregue" || mapped == "Lida")))
+            {
                 delivery.Status = mapped; delivery.Error = mapped == "Erro" ? "A Meta informou falha na entrega." : ""; Touch(delivery);
             }
             var message = await db.ChatMessages.SingleOrDefaultAsync(x => x.ExternalId == externalId, ct);
@@ -340,13 +396,15 @@ public sealed partial class ChatService
 
     private async Task<ChatWhatsAppNumber> NumberAsync(Guid id, CancellationToken ct) =>
         await db.ChatWhatsAppNumbers.SingleOrDefaultAsync(x => x.Id == id && x.Active, ct) ?? throw new DomainException("Conexão ativa não encontrada.", 404);
-    private async Task RequireCustomerWindowAsync(Guid conversationId, CancellationToken ct) {
+    private async Task RequireCustomerWindowAsync(Guid conversationId, CancellationToken ct)
+    {
         if (!await db.ChatMessages.AnyAsync(x => x.ConversationId == conversationId && x.Direction == "Entrada" && x.ExternalId != "" && x.Status != "Importada" && x.CreatedAt > DateTimeOffset.UtcNow.AddHours(-24), ct))
             throw new DomainException("A janela de atendimento de 24 horas está fechada. Envie um template aprovado para iniciar o contato.");
     }
     private string Token(ChatWhatsAppNumber number) => SafeUnprotect(number.AccessTokenProtected) is { Length: > 0 } token ? token : throw new DomainException("Conecte este número à Meta antes de continuar.");
     private static bool HttpsUrl(string? url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https" && string.IsNullOrEmpty(uri.UserInfo);
-    public static string CampaignPhone(string? phone) {
+    public static string CampaignPhone(string? phone)
+    {
         var digits = new string((phone ?? "").Where(char.IsDigit).ToArray());
         if (digits.StartsWith("00")) digits = digits[2..];
         if (digits.Length is 10 or 11 && !(phone ?? "").TrimStart().StartsWith('+')) digits = "55" + digits;

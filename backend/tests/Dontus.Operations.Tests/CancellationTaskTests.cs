@@ -19,8 +19,18 @@ public sealed class CancellationTaskTests
         var tasks = new TaskService(db); await tasks.InitializeAsync();
         var department = await db.TaskDepartments.SingleAsync(entry => entry.Name == "Suporte");
         var type = await db.TaskTypes.SingleAsync();
-        var source = new WorkItem { Module = "cancellations", RecordType = "Solicitação de cancelamento", Title = "Clínica", CustomerId = customer.Id, CustomerName = "Clínica", Owner = "Reversão", Status = "Em processo", CreatedBy = Actor.Email,
-            Description = """{"kind":"cancellationJourney","protocol":"C260002","clientId":"250105","customerName":"Clínica","seller":"Vendedor","csOwner":"CS","reversalOwner":"Reversão","history":[{"id":"original","text":"Solicitação registrada"}]}""" };
+        var source = new WorkItem
+        {
+            Module = "cancellations",
+            RecordType = "Solicitação de cancelamento",
+            Title = "Clínica",
+            CustomerId = customer.Id,
+            CustomerName = "Clínica",
+            Owner = "Reversão",
+            Status = "Em processo",
+            CreatedBy = Actor.Email,
+            Description = """{"kind":"cancellationJourney","protocol":"C260002","clientId":"250105","customerName":"Clínica","seller":"Vendedor","csOwner":"CS","reversalOwner":"Reversão","history":[{"id":"original","text":"Solicitação registrada"}]}"""
+        };
         db.WorkItems.Add(source); await db.SaveChangesAsync();
         var draft = new CreateCorporateTaskCommand("Verificar migração", "Analisar solicitação", type.Id, null, null, department.Id, department.Id, null,
             Guid.NewGuid(), "outro-id", "Outro cliente", "83999999999", null, null, null, null, false, [], []);

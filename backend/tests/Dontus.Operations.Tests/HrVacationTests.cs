@@ -12,10 +12,20 @@ public sealed class HrVacationTests
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static WorkItem Employee(JsonArray? vacations = null) => new()
     {
-        Module = "hr", RecordType = "Colaborador", Title = "Pessoa de teste", Status = "Ativos", CreatedBy = Actor.Email,
-        Description = new JsonObject { ["kind"] = "hrEmployee", ["employeeId"] = Guid.NewGuid().ToString(),
-            ["fullName"] = "Pessoa de teste", ["startedAt"] = DateTime.UtcNow.AddYears(-4).ToString("yyyy-MM-dd"),
-            ["comments"] = new JsonArray(new JsonObject { ["text"] = "Histórico preservado" }), ["vacations"] = vacations ?? new JsonArray() }.ToJsonString()
+        Module = "hr",
+        RecordType = "Colaborador",
+        Title = "Pessoa de teste",
+        Status = "Ativos",
+        CreatedBy = Actor.Email,
+        Description = new JsonObject
+        {
+            ["kind"] = "hrEmployee",
+            ["employeeId"] = Guid.NewGuid().ToString(),
+            ["fullName"] = "Pessoa de teste",
+            ["startedAt"] = DateTime.UtcNow.AddYears(-4).ToString("yyyy-MM-dd"),
+            ["comments"] = new JsonArray(new JsonObject { ["text"] = "Histórico preservado" }),
+            ["vacations"] = vacations ?? new JsonArray()
+        }.ToJsonString()
     };
 
     [Fact]
@@ -48,8 +58,14 @@ public sealed class HrVacationTests
     public async Task Past_planned_vacations_are_counted_when_completing_the_acquisition_period()
     {
         await using var db = Context();
-        var item = Employee(new JsonArray(new JsonObject { ["entitlementYear"] = 1, ["days"] = 15, ["status"] = "Planejada",
-            ["startDate"] = DateTime.UtcNow.AddDays(-20).ToString("yyyy-MM-dd"), ["endDate"] = DateTime.UtcNow.AddDays(-6).ToString("yyyy-MM-dd") }));
+        var item = Employee(new JsonArray(new JsonObject
+        {
+            ["entitlementYear"] = 1,
+            ["days"] = 15,
+            ["status"] = "Planejada",
+            ["startDate"] = DateTime.UtcNow.AddDays(-20).ToString("yyyy-MM-dd"),
+            ["endDate"] = DateTime.UtcNow.AddDays(-6).ToString("yyyy-MM-dd")
+        }));
         db.WorkItems.Add(item); await db.SaveChangesAsync();
         await new OperationsService(db).CompleteHrVacationPeriodAsync(item.Id, 1, 1, null, Actor);
         var rows = JsonNode.Parse(item.Description)!["vacations"]!.AsArray();

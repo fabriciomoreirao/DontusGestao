@@ -39,7 +39,12 @@ public sealed class CsDistributionTests
     }
     private static WorkItem Journey(string version = "Essencial", string phase = "validation", string track = "activation", string owner = "Comercial") => new()
     {
-        Module = "cs", RecordType = "Acompanhamento", Title = "Cliente " + Guid.NewGuid(), Owner = owner, CreatedBy = "system", Status = "Pendente",
+        Module = "cs",
+        RecordType = "Acompanhamento",
+        Title = "Cliente " + Guid.NewGuid(),
+        Owner = owner,
+        CreatedBy = "system",
+        Status = "Pendente",
         Description = JsonSerializer.Serialize(new { kind = "csJourney", phase, track, productVersion = version, clientId = Guid.NewGuid(), checkedAt = "2026-10-26T12:00:00Z" }),
     };
     private static async Task<CsDistributionDto> Board(Fixture f, string track = "activation") =>

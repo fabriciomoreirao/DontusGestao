@@ -8,13 +8,13 @@ O frontend não acessa o banco: a rota `/api/operations` atua como BFF e encamin
 
 ## Camadas do backend
 
-| Projeto | Responsabilidade |
-| --- | --- |
-| Domain | Entidades, exceções e políticas de transição |
-| Application | Contratos, comandos, DTOs e portas de aplicação |
-| Infrastructure | EF Core, PostgreSQL, migrations, consultas e serviços |
-| Api | HTTP, autenticação, rate limit, Problem Details, OpenAPI e health checks |
-| Tests | Testes de domínio e integração de serviços com banco em memória |
+| Projeto        | Responsabilidade                                                         |
+| -------------- | ------------------------------------------------------------------------ |
+| Domain         | Entidades, exceções e políticas de transição                             |
+| Application    | Contratos, comandos, DTOs e portas de aplicação                          |
+| Infrastructure | EF Core, PostgreSQL, migrations, consultas e serviços                    |
+| Api            | HTTP, autenticação, rate limit, Problem Details, OpenAPI e health checks |
+| Tests          | Testes de domínio e integração de serviços com banco em memória          |
 
 ## Módulos
 

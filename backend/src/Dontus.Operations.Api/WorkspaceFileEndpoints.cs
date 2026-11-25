@@ -13,27 +13,27 @@ public static class WorkspaceFileEndpoints
         var publicFiles = app.MapGroup("/api/public-workspace-files");
         publicFiles.MapPost("/", async (WorkspaceUpload upload, HttpRequest request, IConfiguration configuration, OperationsDbContext db, WorkspaceFileStorage storage, CancellationToken ct) =>
         {
-            RequireGateway(request,configuration);
-            if(upload.Module=="admin")
+            RequireGateway(request, configuration);
+            if (upload.Module == "admin")
             {
-                if(!upload.SourceId.HasValue||!await db.WorkItems.AnyAsync(item=>item.Id==upload.SourceId&&item.Module=="admin"&&item.RecordType=="Processo seletivo"&&item.Status=="Ativo",ct))throw new DomainException("Processo seletivo indisponível.",404);
+                if (!upload.SourceId.HasValue || !await db.WorkItems.AnyAsync(item => item.Id == upload.SourceId && item.Module == "admin" && item.RecordType == "Processo seletivo" && item.Status == "Ativo", ct)) throw new DomainException("Processo seletivo indisponível.", 404);
             }
-            else if(upload.Module!="waitingQueue"||upload.SourceId.HasValue)throw new DomainException("Destino de envio inválido.");
-            var token=Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-            var actor=PublicActor(token) with {Permissions=[new(upload.Module,true,true,true,false,false)]};
-            var entry=await storage.BeginAsync(upload,actor,ct);
-            return Results.Ok(new {entry.Id,token});
+            else if (upload.Module != "waitingQueue" || upload.SourceId.HasValue) throw new DomainException("Destino de envio inválido.");
+            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            var actor = PublicActor(token) with { Permissions = [new(upload.Module, true, true, true, false, false)] };
+            var entry = await storage.BeginAsync(upload, actor, ct);
+            return Results.Ok(new { entry.Id, token });
         }).RequireRateLimiting("public-service-requests");
-        publicFiles.MapPut("/{id:guid}",async(Guid id,long offset,HttpRequest request,IConfiguration configuration,WorkspaceFileStorage storage,CancellationToken ct)=>
+        publicFiles.MapPut("/{id:guid}", async (Guid id, long offset, HttpRequest request, IConfiguration configuration, WorkspaceFileStorage storage, CancellationToken ct) =>
         {
-            RequireGateway(request,configuration);
-            return Results.Ok(new {offset=await storage.AppendAsync(id,offset,request.Body,PublicActor(request.Headers["X-Upload-Token"].ToString()),ct)});
-        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(9L*1024*1024));
-        publicFiles.MapPost("/{id:guid}/complete",async(Guid id,HttpRequest request,IConfiguration configuration,WorkspaceFileStorage storage,CancellationToken ct)=>
+            RequireGateway(request, configuration);
+            return Results.Ok(new { offset = await storage.AppendAsync(id, offset, request.Body, PublicActor(request.Headers["X-Upload-Token"].ToString()), ct) });
+        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(9L * 1024 * 1024));
+        publicFiles.MapPost("/{id:guid}/complete", async (Guid id, HttpRequest request, IConfiguration configuration, WorkspaceFileStorage storage, CancellationToken ct) =>
         {
-            RequireGateway(request,configuration);
-            var entry=await storage.CompleteAsync(id,PublicActor(request.Headers["X-Upload-Token"].ToString()),ct);
-            return Results.Ok(new {entry.Id,entry.Name,type=entry.ContentType,entry.Size,url=$"/api/workspace-files/{id}"});
+            RequireGateway(request, configuration);
+            var entry = await storage.CompleteAsync(id, PublicActor(request.Headers["X-Upload-Token"].ToString()), ct);
+            return Results.Ok(new { entry.Id, entry.Name, type = entry.ContentType, entry.Size, url = $"/api/workspace-files/{id}" });
         });
         var group = app.MapGroup("/api/workspace-files").RequireAuthorization();
         group.MapPost("/", async (WorkspaceUpload upload, ClaimsPrincipal principal, IAccessControlService access, WorkspaceFileStorage storage, CancellationToken ct) =>
@@ -56,14 +56,14 @@ public static class WorkspaceFileEndpoints
             return Results.File(path, file.ContentType, enableRangeProcessing: true);
         });
     }
-    private static void RequireGateway(HttpRequest request,IConfiguration configuration)
+    private static void RequireGateway(HttpRequest request, IConfiguration configuration)
     {
-        var expected=configuration["PublicServiceRequests:ApiKey"];
-        if(string.IsNullOrWhiteSpace(expected)||request.Headers["X-API-Key"]!=expected)throw new DomainException("Integração não autorizada.",401);
+        var expected = configuration["PublicServiceRequests:ApiKey"];
+        if (string.IsNullOrWhiteSpace(expected) || request.Headers["X-API-Key"] != expected) throw new DomainException("Integração não autorizada.", 401);
     }
     private static ActorContext PublicActor(string token)
     {
-        if(token.Length!=64||!token.All(Uri.IsHexDigit))throw new DomainException("Envio não autorizado.",403);
-        return new("public-upload:"+Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))),"Envio público","Público","");
+        if (token.Length != 64 || !token.All(Uri.IsHexDigit)) throw new DomainException("Envio não autorizado.", 403);
+        return new("public-upload:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))), "Envio público", "Público", "");
     }
 }

@@ -24,7 +24,7 @@ public static class LiaFormEndpoints
             var file = await service.GetAttachmentAsync(id, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct);
             response.Headers.CacheControl = "private, no-store";
             response.Headers.XContentTypeOptions = "nosniff";
-            if(file.FilePath is not null)return Results.File(file.FilePath,file.ContentType,file.FileName,enableRangeProcessing:true);
+            if (file.FilePath is not null) return Results.File(file.FilePath, file.ContentType, file.FileName, enableRangeProcessing: true);
             return file.Content is not null ? Results.File(file.Content, file.ContentType, file.FileName) : Results.Redirect(file.Url);
         });
         app.MapGet("/api/public-lia-forms/{token}", async (string token, HttpResponse response, LiaFormService service, CancellationToken ct) =>

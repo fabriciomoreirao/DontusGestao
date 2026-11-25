@@ -325,13 +325,13 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
     public async Task DeleteAttachmentAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         await RequireCoordinatorEditAsync(actor, cancellationToken);
-        var attachment=await db.SuggestionAttachments.SingleOrDefaultAsync(entry=>entry.Id==attachmentId,cancellationToken) ?? throw new DomainException("Anexo não encontrado.",404);
-        var content=await db.SuggestionAttachmentContents.SingleOrDefaultAsync(entry=>entry.AttachmentId==attachmentId,cancellationToken);
-        if(content is not null) db.SuggestionAttachmentContents.Remove(content);
+        var attachment = await db.SuggestionAttachments.SingleOrDefaultAsync(entry => entry.Id == attachmentId, cancellationToken) ?? throw new DomainException("Anexo não encontrado.", 404);
+        var content = await db.SuggestionAttachmentContents.SingleOrDefaultAsync(entry => entry.AttachmentId == attachmentId, cancellationToken);
+        if (content is not null) db.SuggestionAttachmentContents.Remove(content);
         db.SuggestionAttachments.Remove(attachment);
-        var suggestion=await db.Suggestions.SingleAsync(entry=>entry.Id==attachment.SuggestionId,cancellationToken);suggestion.UpdatedAt=DateTimeOffset.UtcNow;suggestion.Version++;
-        AddAudit(actor,"DeleteAttachment","suggestion",suggestion.Id,new{attachment.Id,attachment.FileName});await db.SaveChangesAsync(cancellationToken);
-        if(content is null && fileStorage is not null)try{await fileStorage.DeleteAsync(attachment.StorageKey,cancellationToken);}catch(Exception error){logger?.LogWarning(error,"Could not remove suggestion attachment {Id} from storage.",attachmentId);}
+        var suggestion = await db.Suggestions.SingleAsync(entry => entry.Id == attachment.SuggestionId, cancellationToken); suggestion.UpdatedAt = DateTimeOffset.UtcNow; suggestion.Version++;
+        AddAudit(actor, "DeleteAttachment", "suggestion", suggestion.Id, new { attachment.Id, attachment.FileName }); await db.SaveChangesAsync(cancellationToken);
+        if (content is null && fileStorage is not null) try { await fileStorage.DeleteAsync(attachment.StorageKey, cancellationToken); } catch (Exception error) { logger?.LogWarning(error, "Could not remove suggestion attachment {Id} from storage.", attachmentId); }
     }
 
     public async Task<TaskAttachmentDownloadDto> GetAttachmentDownloadAsync(Guid attachmentId, ActorContext actor, CancellationToken cancellationToken = default)
@@ -340,7 +340,7 @@ public sealed partial class SuggestionService(OperationsDbContext db, ITaskFileS
         var attachment = await db.SuggestionAttachments.AsNoTracking()
             .SingleOrDefaultAsync(entry => entry.Id == attachmentId, cancellationToken)
             ?? throw new DomainException("Anexo não encontrado.", 404);
-        if(AttachmentSpool.Resolve(attachment.StorageKey) is { } path)return new TaskAttachmentDownloadDto(""){FilePath=path,ContentType=attachment.ContentType,FileName=attachment.FileName};
+        if (AttachmentSpool.Resolve(attachment.StorageKey) is { } path) return new TaskAttachmentDownloadDto("") { FilePath = path, ContentType = attachment.ContentType, FileName = attachment.FileName };
         var content = await db.SuggestionAttachmentContents.AsNoTracking().Where(entry => entry.AttachmentId == attachmentId)
             .Select(entry => entry.Content).SingleOrDefaultAsync(cancellationToken);
         if (content is not null)

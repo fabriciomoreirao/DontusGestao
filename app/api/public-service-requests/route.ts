@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
-const apiBase = () => (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
+const apiBase = () =>
+  (process.env.API_INTERNAL_URL ?? "http://localhost:8080").replace(/\/$/, "");
 
 async function proxy(request: Request) {
   const headers = new Headers(request.headers);
@@ -9,15 +10,35 @@ async function proxy(request: Request) {
   headers.delete("host");
   headers.delete("content-length");
   const clientId = new URL(request.url).searchParams.get("clientId");
-  const query = request.method === "GET" && clientId !== null ? `?clientId=${encodeURIComponent(clientId)}` : "";
-  const response = await fetch(`${apiBase()}/api/public-service-requests${query}`, {
-    method: request.method,
-    headers,
-    body: request.method === "POST" ? request.body : undefined,
-    duplex:"half",signal:request.signal,cache: "no-store",
-  } as RequestInit);
-  return new Response(response.body, { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json; charset=utf-8", "cache-control": "no-store" } });
+  const query =
+    request.method === "GET" && clientId !== null
+      ? `?clientId=${encodeURIComponent(clientId)}`
+      : "";
+  const response = await fetch(
+    `${apiBase()}/api/public-service-requests${query}`,
+    {
+      method: request.method,
+      headers,
+      body: request.method === "POST" ? request.body : undefined,
+      duplex: "half",
+      signal: request.signal,
+      cache: "no-store",
+    } as RequestInit,
+  );
+  return new Response(response.body, {
+    status: response.status,
+    headers: {
+      "content-type":
+        response.headers.get("content-type") ??
+        "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
 }
 
-export async function GET(request: Request) { return proxy(request); }
-export async function POST(request: Request) { return proxy(request); }
+export async function GET(request: Request) {
+  return proxy(request);
+}
+export async function POST(request: Request) {
+  return proxy(request);
+}

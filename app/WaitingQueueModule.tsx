@@ -3,130 +3,1248 @@
 import PaginatedItems from "@/app/PaginatedItems";
 import MediaUploadField from "@/app/MediaUploadField";
 import FilePreview from "@/app/FilePreview";
-import {readCommentFiles} from "@/lib/comment-files";
-import {openFile} from "@/app/CommentInput";
+import { readCommentFiles } from "@/lib/comment-files";
+import { openFile } from "@/app/CommentInput";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
-
-import { BadgeCheck, CheckCircle2, Clock3, Eye, Headphones, Link2, Pencil, Save, Search, Settings, Trash2, UserRound, X } from "lucide-react";
+import {
+  BadgeCheck,
+  CheckCircle2,
+  Clock3,
+  Eye,
+  Headphones,
+  Link2,
+  Pencil,
+  Save,
+  Search,
+  Settings,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
-import { belongsToWaitingQueueDepartment, waitingQueueSectorKey, waitingQueueSectorOptions, cleanDepartmentDescription, departmentQueueMode, type DepartmentQueueMode } from "@/lib/waitingQueue";
+import {
+  belongsToWaitingQueueDepartment,
+  waitingQueueSectorKey,
+  waitingQueueSectorOptions,
+  cleanDepartmentDescription,
+  departmentQueueMode,
+  type DepartmentQueueMode,
+} from "@/lib/waitingQueue";
 
-type WorkItem = { created_by?: string; id:string; module:string; record_type:string; title:string; customer_name:string; owner:string; team:string; status:string; priority:string; description:string; version:number; created_at:string; updated_at:string; amount_cents:number };
-type Employee = { id:string; displayName:string; email:string; departmentId:string|null; departmentName:string; departmentIds:string[]; departmentNames:string[]; active:boolean; photoDataUrl?:string; isCoordinator?:boolean };
-type Department = { id:string; name:string; description:string; active:boolean };
-export type WaitingQueueDirectory = {employees:Employee[];departments:Department[]};
-type Permission = { screen:string; canView:boolean; canCreate:boolean; canEdit:boolean };
-type CurrentUser = { email:string; displayName:string; role:string; department:string; isCoordinator:boolean; permissions:Permission[] };
-type OperationResult = { id?:string } | false;
+type WorkItem = {
+  created_by?: string;
+  id: string;
+  module: string;
+  record_type: string;
+  title: string;
+  customer_name: string;
+  owner: string;
+  team: string;
+  status: string;
+  priority: string;
+  description: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  amount_cents: number;
+};
+type Employee = {
+  id: string;
+  displayName: string;
+  email: string;
+  departmentId: string | null;
+  departmentName: string;
+  departmentIds: string[];
+  departmentNames: string[];
+  active: boolean;
+  photoDataUrl?: string;
+  isCoordinator?: boolean;
+};
+type Department = {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+};
+export type WaitingQueueDirectory = {
+  employees: Employee[];
+  departments: Department[];
+};
+type Permission = {
+  screen: string;
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+};
+type CurrentUser = {
+  email: string;
+  displayName: string;
+  role: string;
+  department: string;
+  isCoordinator: boolean;
+  permissions: Permission[];
+};
+type OperationResult = { id?: string } | false;
 
 export type WaitingQueueDetail = {
-  kind:"waitingQueue"; clientName:string; whatsapp:string; clientCode:string; requestType:string; summary:string;
-  imageDataUrl:string; fileName?:string; strategic:boolean; departmentId:string; departmentName:string; responsibleUserId:string;
-  responsibleName:string; senderName:string; senderEmail:string; sentAt:string; queueMode:DepartmentQueueMode;
-  state:"waiting"|"contacted"; contactedAt?:string; contactedById?:string; contactedByName?:string;
-  destinationId?:string; destinationLabel?:string; linkedWorkItemId?:string;
+  kind: "waitingQueue";
+  clientName: string;
+  whatsapp: string;
+  clientCode: string;
+  requestType: string;
+  summary: string;
+  imageDataUrl: string;
+  fileName?: string;
+  strategic: boolean;
+  departmentId: string;
+  departmentName: string;
+  responsibleUserId: string;
+  responsibleName: string;
+  senderName: string;
+  senderEmail: string;
+  sentAt: string;
+  queueMode: DepartmentQueueMode;
+  state: "waiting" | "contacted";
+  contactedAt?: string;
+  contactedById?: string;
+  contactedByName?: string;
+  destinationId?: string;
+  destinationLabel?: string;
+  linkedWorkItemId?: string;
 };
 
-export function parseWaitingQueue(raw:string):WaitingQueueDetail|null {
+export function parseWaitingQueue(raw: string): WaitingQueueDetail | null {
   try {
-    const value=JSON.parse(raw) as Partial<WaitingQueueDetail>;
-    if(value.kind!=="waitingQueue")return null;
-    return {kind:"waitingQueue",clientName:value.clientName??"",whatsapp:value.whatsapp??"",clientCode:value.clientCode??"",requestType:value.requestType??"",summary:value.summary??"",imageDataUrl:value.imageDataUrl??"",fileName:value.fileName,strategic:Boolean(value.strategic),departmentId:value.departmentId??"",departmentName:value.departmentName??"",responsibleUserId:value.responsibleUserId??"",responsibleName:value.responsibleName??"",senderName:value.senderName??"",senderEmail:value.senderEmail??"",sentAt:value.sentAt??"",queueMode:value.queueMode==="linked"?"linked":"conventional",state:value.state==="contacted"?"contacted":"waiting",contactedAt:value.contactedAt,contactedById:value.contactedById,contactedByName:value.contactedByName,destinationId:value.destinationId,destinationLabel:value.destinationLabel,linkedWorkItemId:value.linkedWorkItemId};
-  } catch { return null; }
+    const value = JSON.parse(raw) as Partial<WaitingQueueDetail>;
+    if (value.kind !== "waitingQueue") return null;
+    return {
+      kind: "waitingQueue",
+      clientName: value.clientName ?? "",
+      whatsapp: value.whatsapp ?? "",
+      clientCode: value.clientCode ?? "",
+      requestType: value.requestType ?? "",
+      summary: value.summary ?? "",
+      imageDataUrl: value.imageDataUrl ?? "",
+      fileName: value.fileName,
+      strategic: Boolean(value.strategic),
+      departmentId: value.departmentId ?? "",
+      departmentName: value.departmentName ?? "",
+      responsibleUserId: value.responsibleUserId ?? "",
+      responsibleName: value.responsibleName ?? "",
+      senderName: value.senderName ?? "",
+      senderEmail: value.senderEmail ?? "",
+      sentAt: value.sentAt ?? "",
+      queueMode: value.queueMode === "linked" ? "linked" : "conventional",
+      state: value.state === "contacted" ? "contacted" : "waiting",
+      contactedAt: value.contactedAt,
+      contactedById: value.contactedById,
+      contactedByName: value.contactedByName,
+      destinationId: value.destinationId,
+      destinationLabel: value.destinationLabel,
+      linkedWorkItemId: value.linkedWorkItemId,
+    };
+  } catch {
+    return null;
+  }
 }
 
-const dt=(value?:string)=>value?new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short"}).format(new Date(value)):"—";
-const normalize=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-const destinations=[
-  {id:"commercial-crm",label:"CRM comercial",module:"commercial"},
-  {id:"commercial-retention",label:"CRM retenção",module:"commercial"},
-  {id:"cs-activation",label:"Acompanhamento — Ativação",module:"cs"},
-  {id:"cs-retention",label:"Acompanhamento — Retenção",module:"cs"},
-  {id:"enterprise",label:"Contas estratégicas",module:"cs"},
-  {id:"lia",label:"Acompanhamento LIA",module:"lia"},
-  {id:"support",label:"Atendimentos",module:"support"},
-  {id:"marketing",label:"Gestão de Marketing",module:"marketing"},
-  {id:"ti",label:"Desenvolvimento",module:"ti"},
-  {id:"recruitment",label:"Processo seletivo",module:"admin"},
+const dt = (value?: string) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(new Date(value))
+    : "—";
+const normalize = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+const destinations = [
+  { id: "commercial-crm", label: "CRM comercial", module: "commercial" },
+  { id: "commercial-retention", label: "CRM retenção", module: "commercial" },
+  { id: "cs-activation", label: "Acompanhamento — Ativação", module: "cs" },
+  { id: "cs-retention", label: "Acompanhamento — Retenção", module: "cs" },
+  { id: "enterprise", label: "Contas estratégicas", module: "cs" },
+  { id: "lia", label: "Acompanhamento LIA", module: "lia" },
+  { id: "support", label: "Atendimentos", module: "support" },
+  { id: "marketing", label: "Gestão de Marketing", module: "marketing" },
+  { id: "ti", label: "Desenvolvimento", module: "ti" },
+  { id: "recruitment", label: "Processo seletivo", module: "admin" },
 ] as const;
 
-function destinationPayload(destinationId:string, detail:WaitingQueueDetail, owner:string) {
-  const common={action:"createWorkItem",title:detail.clientName,customerName:detail.clientName,owner,priority:detail.strategic?"P1":"P3",amountCents:0,originType:"waitingQueue"};
-  if(destinationId==="cs-activation"||destinationId==="cs-retention"){
-    const track=destinationId==="cs-retention"?"retention":"activation";
-    return {...common,module:"cs",recordType:track==="activation"?"Acompanhamento de ativação":"Acompanhamento de retenção",team:track==="activation"?"Sucesso do Cliente · Ativação":"Sucesso do Cliente · Retenção",description:JSON.stringify({kind:"csJourney",track,phase:"validation",clientId:detail.clientCode,commerciallyApproved:true,status:"Pendente",featuresBase:[],featuresActive:[],featuresPlus:[],labels:[],follows:[{kind:"Fila de espera",text:detail.summary,createdAt:new Date().toISOString(),actor:detail.senderName}]})};
-  }
-  if(destinationId==="lia")return {...common,module:"lia",recordType:"Projeto LIA",team:"LIA",description:JSON.stringify({kind:"liaJourney",clientId:detail.clientCode,whatsapp:detail.whatsapp,requestType:detail.requestType,sector:detail.departmentName,startDate:new Date().toISOString(),history:[{id:crypto.randomUUID(),text:detail.summary,at:new Date().toISOString(),author:detail.senderName}]})};
-  if(destinationId==="support")return {...common,module:"support",recordType:"Atendimento",team:detail.departmentName,description:JSON.stringify({kind:"serviceRecord",clientCode:detail.clientCode,customerName:detail.clientName,date:new Date().toLocaleDateString("en-CA"),responsibleId:detail.contactedById??"",responsible:owner,sector:detail.departmentName,origin:"Fila de espera",version:"",startTime:new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),endTime:"",problem:detail.requestType,status:"Pendente",contactTypes:["1º Contato"],tool:"",notes:detail.summary,solution:""})};
-  if(destinationId==="commercial-crm"||destinationId==="commercial-retention")return {...common,module:"commercial",recordType:destinationId==="commercial-retention"?"CRM retenção":"CRM comercial",team:destinationId==="commercial-retention"?"Retenção":"Comercial",description:JSON.stringify({phone:detail.whatsapp,customer:detail.clientName,seller:owner,temperature:"",stage:"Novo",source:"Fila de espera",products:[],labels:[],score:detail.strategic?5:1,follows:[{text:detail.summary,createdAt:new Date().toISOString(),author:detail.senderName}]})};
-  if(destinationId==="enterprise")return {...common,module:"cs",recordType:"Conta estratégica",team:"CS",description:JSON.stringify({kind:"enterpriseNetwork",contact:detail.clientName,phone:detail.whatsapp,email:"",status:"Em acompanhamento",notes:detail.summary,startedAt:new Date().toLocaleDateString("en-CA"),units:[],history:[{id:crypto.randomUUID(),createdAt:new Date().toISOString(),user:detail.senderName,type:"Fila de espera",text:detail.summary}]})};
-  if(destinationId==="marketing")return {...common,module:"marketing",recordType:"Solicitação",team:"Marketing",description:JSON.stringify({kind:"marketingRequest",type:"Solicitação",campaign:"",channel:"Interno",dueDate:"",summary:detail.summary,createdAt:new Date().toISOString()})};
-  if(destinationId==="recruitment")return {...common,module:"admin",recordType:"Candidato",team:detail.departmentName,status:"Currículo",description:JSON.stringify({vacancy:detail.requestType,notes:detail.summary,comments:[]})};
-  return {...common,module:"ti",recordType:"Tarefa de desenvolvimento",team:"Desenvolvimento",description:JSON.stringify({kind:"developmentTask",sourceDepartment:detail.departmentName,triageStage:"Recebida",processStage:"Aguardando triagem",sourceSnapshot:{description:detail.summary,responsible:owner},history:[{text:`Encaminhado pela fila de espera por ${detail.senderName}.`,at:new Date().toISOString(),by:detail.senderName}]})};
-}
-
-export default function WaitingQueueModule({items,employees,departments,currentUser,busy,operate,onOpenSettings}:{items:WorkItem[];employees:Employee[];departments:Department[];currentUser:CurrentUser;busy:boolean;operate:(payload:Record<string,unknown>,success:string)=>Promise<OperationResult>;onOpenSettings?:()=>void}){
-  const reminderFilter = useReminderFilter("waitingQueue");
-  const [query,setQuery]=useState("");
-  const [sector,setSector]=useState("all");
-  const [selected,setSelected]=useState<WorkItem|null>(null);
-  const [editing,setEditing]=useState<WorkItem|null>(null);
-  const [contacting,setContacting]=useState<WorkItem|null>(null);
-  const [tab,setTab]=useState<"waiting"|"contacted">("waiting");
-  const userEmployee=employees.find(employee=>normalize(employee.email)===normalize(currentUser.email));
-  const elevated=currentUser.isCoordinator||/admin|gestor|coordenador/i.test(currentUser.role);
-  const canEdit=currentUser.permissions.some(permission=>permission.screen==="waitingQueue"&&permission.canEdit);
-
-  const records=items.filter(item=>item.module==="waitingQueue").map(item=>({item,detail:parseWaitingQueue(item.description)})).filter((entry):entry is {item:WorkItem;detail:WaitingQueueDetail}=>Boolean(entry.detail)).filter(({item,detail})=>elevated||item.created_by===currentUser.email||detail.senderEmail===currentUser.email||belongsToWaitingQueueDepartment(userEmployee??{departmentName:currentUser.department},detail));
-  const sectorOptions=waitingQueueSectorOptions(records.map(({detail})=>detail));
-  const visible=records.filter(({item,detail})=>(sector==="all"||waitingQueueSectorKey(detail)===sector)&&reminderFilter.matches({entityId:item.id,clientId:detail.clientCode,title:detail.clientName})&&(!query.trim()||normalize(`${item.title} ${detail.clientCode} ${detail.whatsapp} ${detail.summary} ${detail.requestType} ${detail.responsibleName}`).includes(normalize(query.trim()))));
-  const claim=async(item:WorkItem)=>{
-    const detail=parseWaitingQueue(item.description);
-    if(!canEdit||!detail||!userEmployee||!belongsToWaitingQueueDepartment(userEmployee,detail)||detail.responsibleUserId)return;
-    await operate({action:"updateWorkItem",id:item.id,title:item.title,owner:userEmployee.displayName,customerName:item.customer_name,amountCents:item.amount_cents,version:item.version,description:JSON.stringify({...detail,responsibleUserId:userEmployee.id,responsibleName:userEmployee.displayName})},"Você assumiu o contato. O cliente continua em espera até o contato ser realizado.");
+function destinationPayload(
+  destinationId: string,
+  detail: WaitingQueueDetail,
+  owner: string,
+) {
+  const common = {
+    action: "createWorkItem",
+    title: detail.clientName,
+    customerName: detail.clientName,
+    owner,
+    priority: detail.strategic ? "P1" : "P3",
+    amountCents: 0,
+    originType: "waitingQueue",
   };
-  const waiting=visible.filter(entry=>entry.detail.state==="waiting");
-  const contacted=visible.filter(entry=>entry.detail.state==="contacted");
-  return <section className="waiting-queue-module">
-    <header className="module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><Clock3 size={21}/></span><span className="module-page-copy"><span className="eyebrow">OPERAÇÃO · ATENDIMENTO</span><h1>Fila de Espera</h1><p>Encaminhamentos recebidos pelo Portal Dontus, organizados por setor e responsável.</p></span></div><div className="module-page-actions">{onOpenSettings && <button className="icon-button" onClick={onOpenSettings} title="Configurar tipos de solicitação"><Settings size={18}/></button>}</div></header>
-    <section className="waiting-queue-metrics"><article><Clock3/><span><strong>{waiting.length}</strong><small>Em espera</small></span></article><article><CheckCircle2/><span><strong>{contacted.length}</strong><small>Contato feito</small></span></article><article><Headphones/><span><strong>{visible.length}</strong><small>Total visível</small></span></article></section>
-    <nav className="waiting-queue-tabs" aria-label="Situação da fila"><button className={tab==="waiting"?"active":""} onClick={()=>setTab("waiting")}><Clock3 size={15}/> Em espera <b>{waiting.length}</b></button><button className={tab==="contacted"?"active":""} onClick={()=>setTab("contacted")}><CheckCircle2 size={15}/> Contato feito <b>{contacted.length}</b></button></nav>
-    <div className="reminder-filter-toolbar waiting-queue-filters"><label className="waiting-queue-search"><Search size={17}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Buscar cliente, ID, WhatsApp, solicitação ou resumo"/></label><label className="waiting-queue-sector">Setor de destino<select aria-label="Filtrar por setor de destino" value={sector} onChange={event=>setSector(event.target.value)}><option value="all">Todos os setores</option>{sectorOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>{reminderFilter.control}</div>
-    <div className="waiting-queue-columns single">{tab==="waiting"?<QueueColumn title="Em espera" tone="waiting" records={waiting} canEdit={canEdit} onOpen={setSelected} onEdit={setEditing} onDelete={item=>{void operate({action:"deleteWorkItem",id:item.id},"Registro excluído da fila.")}} busy={busy} currentEmployee={userEmployee} onClaim={item=>void claim(item)} onContact={canEdit?setContacting:undefined}/>:<QueueColumn title="Contato feito" tone="contacted" records={contacted} totalCount={contacted.length} canEdit={canEdit} onOpen={setSelected} onEdit={setEditing} onDelete={item=>{void operate({action:"deleteWorkItem",id:item.id},"Registro excluído da fila.")}}/>}</div>
-    {editing&&canEdit&&<QueueEditModal departments={departments} canChangeDepartment={(editing.created_by || parseWaitingQueue(editing.description)?.senderEmail) === currentUser.email} detail={parseWaitingQueue(editing.description)!} busy={busy} onClose={()=>setEditing(null)} onSave={async(detail)=>{const result=await operate({action:"updateWorkItem",requireConfirmation:true,id:editing.id,title:detail.clientName,customerName:detail.clientName,owner:editing.owner,amountCents:editing.amount_cents,version:editing.version,description:JSON.stringify(detail)},"Registro da fila atualizado.");if(result)setEditing(null)}}/>}
-    {selected&&<QueueDetail item={selected} detail={parseWaitingQueue(selected.description)!} onClose={()=>setSelected(null)}/>} 
-    {contacting&&<ContactModal detail={parseWaitingQueue(contacting.description)!} employees={employees.filter(employee=>employee.active)} departments={departments} currentUserEmail={currentUser.email} permissions={currentUser.permissions} busy={busy} onClose={()=>setContacting(null)} onConfirm={async(responsibleId)=>{const detail=parseWaitingQueue(contacting.description)!;const responsible=employees.find(employee=>employee.id===responsibleId);if(!responsible)return;const next={...detail,state:"contacted" as const,responsibleUserId:responsible.id,responsibleName:responsible.displayName,contactedAt:new Date().toISOString(),contactedById:responsible.id,contactedByName:responsible.displayName};const updated=await operate({action:"updateWorkItem",id:contacting.id,title:contacting.title,owner:responsible.displayName,customerName:contacting.customer_name,amountCents:contacting.amount_cents,version:contacting.version,description:JSON.stringify(next)},"Contato registrado na Fila de Espera.");if(updated)setContacting(null);}}/>}
-  </section>;
+  if (destinationId === "cs-activation" || destinationId === "cs-retention") {
+    const track = destinationId === "cs-retention" ? "retention" : "activation";
+    return {
+      ...common,
+      module: "cs",
+      recordType:
+        track === "activation"
+          ? "Acompanhamento de ativação"
+          : "Acompanhamento de retenção",
+      team:
+        track === "activation"
+          ? "Sucesso do Cliente · Ativação"
+          : "Sucesso do Cliente · Retenção",
+      description: JSON.stringify({
+        kind: "csJourney",
+        track,
+        phase: "validation",
+        clientId: detail.clientCode,
+        commerciallyApproved: true,
+        status: "Pendente",
+        featuresBase: [],
+        featuresActive: [],
+        featuresPlus: [],
+        labels: [],
+        follows: [
+          {
+            kind: "Fila de espera",
+            text: detail.summary,
+            createdAt: new Date().toISOString(),
+            actor: detail.senderName,
+          },
+        ],
+      }),
+    };
+  }
+  if (destinationId === "lia")
+    return {
+      ...common,
+      module: "lia",
+      recordType: "Projeto LIA",
+      team: "LIA",
+      description: JSON.stringify({
+        kind: "liaJourney",
+        clientId: detail.clientCode,
+        whatsapp: detail.whatsapp,
+        requestType: detail.requestType,
+        sector: detail.departmentName,
+        startDate: new Date().toISOString(),
+        history: [
+          {
+            id: crypto.randomUUID(),
+            text: detail.summary,
+            at: new Date().toISOString(),
+            author: detail.senderName,
+          },
+        ],
+      }),
+    };
+  if (destinationId === "support")
+    return {
+      ...common,
+      module: "support",
+      recordType: "Atendimento",
+      team: detail.departmentName,
+      description: JSON.stringify({
+        kind: "serviceRecord",
+        clientCode: detail.clientCode,
+        customerName: detail.clientName,
+        date: new Date().toLocaleDateString("en-CA"),
+        responsibleId: detail.contactedById ?? "",
+        responsible: owner,
+        sector: detail.departmentName,
+        origin: "Fila de espera",
+        version: "",
+        startTime: new Date().toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        endTime: "",
+        problem: detail.requestType,
+        status: "Pendente",
+        contactTypes: ["1º Contato"],
+        tool: "",
+        notes: detail.summary,
+        solution: "",
+      }),
+    };
+  if (
+    destinationId === "commercial-crm" ||
+    destinationId === "commercial-retention"
+  )
+    return {
+      ...common,
+      module: "commercial",
+      recordType:
+        destinationId === "commercial-retention"
+          ? "CRM retenção"
+          : "CRM comercial",
+      team: destinationId === "commercial-retention" ? "Retenção" : "Comercial",
+      description: JSON.stringify({
+        phone: detail.whatsapp,
+        customer: detail.clientName,
+        seller: owner,
+        temperature: "",
+        stage: "Novo",
+        source: "Fila de espera",
+        products: [],
+        labels: [],
+        score: detail.strategic ? 5 : 1,
+        follows: [
+          {
+            text: detail.summary,
+            createdAt: new Date().toISOString(),
+            author: detail.senderName,
+          },
+        ],
+      }),
+    };
+  if (destinationId === "enterprise")
+    return {
+      ...common,
+      module: "cs",
+      recordType: "Conta estratégica",
+      team: "CS",
+      description: JSON.stringify({
+        kind: "enterpriseNetwork",
+        contact: detail.clientName,
+        phone: detail.whatsapp,
+        email: "",
+        status: "Em acompanhamento",
+        notes: detail.summary,
+        startedAt: new Date().toLocaleDateString("en-CA"),
+        units: [],
+        history: [
+          {
+            id: crypto.randomUUID(),
+            createdAt: new Date().toISOString(),
+            user: detail.senderName,
+            type: "Fila de espera",
+            text: detail.summary,
+          },
+        ],
+      }),
+    };
+  if (destinationId === "marketing")
+    return {
+      ...common,
+      module: "marketing",
+      recordType: "Solicitação",
+      team: "Marketing",
+      description: JSON.stringify({
+        kind: "marketingRequest",
+        type: "Solicitação",
+        campaign: "",
+        channel: "Interno",
+        dueDate: "",
+        summary: detail.summary,
+        createdAt: new Date().toISOString(),
+      }),
+    };
+  if (destinationId === "recruitment")
+    return {
+      ...common,
+      module: "admin",
+      recordType: "Candidato",
+      team: detail.departmentName,
+      status: "Currículo",
+      description: JSON.stringify({
+        vacancy: detail.requestType,
+        notes: detail.summary,
+        comments: [],
+      }),
+    };
+  return {
+    ...common,
+    module: "ti",
+    recordType: "Tarefa de desenvolvimento",
+    team: "Desenvolvimento",
+    description: JSON.stringify({
+      kind: "developmentTask",
+      sourceDepartment: detail.departmentName,
+      triageStage: "Recebida",
+      processStage: "Aguardando triagem",
+      sourceSnapshot: { description: detail.summary, responsible: owner },
+      history: [
+        {
+          text: `Encaminhado pela fila de espera por ${detail.senderName}.`,
+          at: new Date().toISOString(),
+          by: detail.senderName,
+        },
+      ],
+    }),
+  };
 }
 
-function QueueColumn({title,tone,records,totalCount=records.length,canEdit,onOpen,onEdit,onDelete,onContact,onClaim,currentEmployee,busy}:{title:string;tone:string;totalCount?:number;records:Array<{item:WorkItem;detail:WaitingQueueDetail}>;canEdit:boolean;onOpen:(item:WorkItem)=>void;onEdit:(item:WorkItem)=>void;onDelete:(item:WorkItem)=>void;onContact?:(item:WorkItem)=>void;onClaim?:(item:WorkItem)=>void;currentEmployee?:Employee;busy?:boolean}){return <section className={`waiting-queue-column ${tone}`}><header><span><i/>{title}</span><b>{totalCount}</b></header><div>{records.length===0?<p className="waiting-queue-empty">Nenhum cliente nesta coluna.</p>:<PaginatedItems mode="cards" label="contatos">{records.map(({item,detail})=><article data-reminder-entity-id={item.id} className="waiting-queue-row" key={item.id}><div className="waiting-queue-client"><span className="waiting-avatar">{detail.clientName.slice(0,2).toUpperCase()}</span><span><strong>{detail.clientName}</strong><small>ID {detail.clientCode||item.id.slice(0,8)} · <PhoneLink phone={detail.whatsapp}/></small></span>{detail.strategic&&<b title="Cliente estratégico"><BadgeCheck size={15}/>Estratégico</b>}</div><div className="waiting-queue-summary"><strong>{detail.requestType}</strong><p>{detail.summary}</p><small>Enviado por {detail.senderName} · {dt(detail.sentAt)}</small></div><div className="waiting-queue-owner" data-collaborator-name={detail.responsibleName}><UserRound size={14}/><span><small>Responsável</small><strong>{detail.responsibleName||"Fila compartilhada"}</strong></span></div><div className="waiting-queue-actions"><button onClick={()=>onOpen(item)} title="Visualizar informações"><Eye size={16}/></button>{canEdit&&<><button onClick={()=>onEdit(item)} title="Editar registro" aria-label="Editar registro"><Pencil size={15}/></button><button onClick={()=>onDelete(item)} title="Excluir registro" aria-label="Excluir registro" className="delete"><Trash2 size={15}/></button></>}{canEdit&&onClaim&&currentEmployee&&!detail.responsibleUserId&&belongsToWaitingQueueDepartment(currentEmployee,detail)&&<button className="contact" disabled={busy} onClick={()=>onClaim(item)}><UserRound size={15}/> Assumir contato</button>}{onContact&&<button className="contact" disabled={busy} onClick={()=>onContact(item)}><CheckCircle2 size={15}/> Contato feito</button>}</div></article>)}</PaginatedItems>}</div></section>}
+export default function WaitingQueueModule({
+  items,
+  employees,
+  departments,
+  currentUser,
+  busy,
+  operate,
+  onOpenSettings,
+}: {
+  items: WorkItem[];
+  employees: Employee[];
+  departments: Department[];
+  currentUser: CurrentUser;
+  busy: boolean;
+  operate: (
+    payload: Record<string, unknown>,
+    success: string,
+  ) => Promise<OperationResult>;
+  onOpenSettings?: () => void;
+}) {
+  const reminderFilter = useReminderFilter("waitingQueue");
+  const [query, setQuery] = useState("");
+  const [sector, setSector] = useState("all");
+  const [selected, setSelected] = useState<WorkItem | null>(null);
+  const [editing, setEditing] = useState<WorkItem | null>(null);
+  const [contacting, setContacting] = useState<WorkItem | null>(null);
+  const [tab, setTab] = useState<"waiting" | "contacted">("waiting");
+  const userEmployee = employees.find(
+    (employee) => normalize(employee.email) === normalize(currentUser.email),
+  );
+  const elevated =
+    currentUser.isCoordinator ||
+    /admin|gestor|coordenador/i.test(currentUser.role);
+  const canEdit = currentUser.permissions.some(
+    (permission) => permission.screen === "waitingQueue" && permission.canEdit,
+  );
 
-function QueueEditModal({detail,busy,onClose,onSave,departments,canChangeDepartment}:{departments:Department[];canChangeDepartment:boolean;detail:WaitingQueueDetail;busy:boolean;onClose:()=>void;onSave:(detail:WaitingQueueDetail)=>Promise<void>}){
-  const [attachment,setAttachment]=useState({dataUrl:detail.imageDataUrl,name:detail.fileName||"Arquivo anexado"});
-  const [fileError,setFileError]=useState("");
-  const selectFile=async(file?:File)=>{if(!file)return;try{const [entry]=await readCommentFiles([file]);setAttachment({dataUrl:entry.dataUrl,name:entry.name});setFileError("");}catch(error){setFileError(error instanceof Error?error.message:"Não foi possível ler o arquivo.");}};
-
-  const submit=(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();const form=new FormData(event.currentTarget);const department=departments.find(entry=>entry.id===String(form.get("departmentId")||detail.departmentId));if(fileError)return;void onSave({...detail,imageDataUrl:attachment.dataUrl,fileName:attachment.name,...(department?{departmentId:department.id,departmentName:department.name,queueMode:departmentQueueMode(department.description),...(department.id!==detail.departmentId?{responsibleUserId:"",responsibleName:""}:{})}:{}),clientName:String(form.get("clientName")||"").trim(),clientCode:String(form.get("clientCode")||"").trim(),whatsapp:String(form.get("whatsapp")||"").trim(),requestType:String(form.get("requestType")||"").trim(),summary:String(form.get("summary")||"").trim(),strategic:form.get("strategic")==="on"})};
-  return <div className="modal-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><section className="modal waiting-detail-modal"><header className="modal-head"><div><span className="eyebrow">FILA DE ESPERA</span><h2>Editar registro</h2><p>Atualize os dados sem alterar o histórico de contato.</p></div><button className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18}/></button></header><form className="form-grid" onSubmit={submit}>{canChangeDepartment&&<label className="wide">Setor de destino *<select name="departmentId" required defaultValue={detail.departmentId}>{departments.filter(department=>department.active).map(department=><option key={department.id} value={department.id}>{department.name}</option>)}</select></label>}<label>Cliente *<input name="clientName" required defaultValue={detail.clientName}/></label><label>ID do cliente<input name="clientCode" defaultValue={detail.clientCode}/></label><label>WhatsApp *<PhoneInput name="whatsapp" required type="tel" defaultValue={detail.whatsapp}/></label><label>Tipo de solicitação<input name="requestType" defaultValue={detail.requestType}/></label><label className="wide">Resumo<textarea name="summary" rows={4} defaultValue={detail.summary}/></label><div className="wide">{attachment.dataUrl&&<FilePreview url={attachment.dataUrl} name={attachment.name} onRemove={()=>setAttachment({dataUrl:"",name:""})}/>}<MediaUploadField label="Adicionar ou substituir arquivo" hint="Até 5 MB por arquivo." onChange={event=>void selectFile(event.target.files?.[0])}/>{fileError&&<p role="alert" className="form-error">{fileError}</p>}</div><label className="wide checkbox-label"><input name="strategic" type="checkbox" defaultChecked={detail.strategic}/>Cliente estratégico</label><div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}><Save size={15}/>Salvar alterações</button></div></form></section></div>;
+  const records = items
+    .filter((item) => item.module === "waitingQueue")
+    .map((item) => ({ item, detail: parseWaitingQueue(item.description) }))
+    .filter((entry): entry is { item: WorkItem; detail: WaitingQueueDetail } =>
+      Boolean(entry.detail),
+    )
+    .filter(
+      ({ item, detail }) =>
+        elevated ||
+        item.created_by === currentUser.email ||
+        detail.senderEmail === currentUser.email ||
+        belongsToWaitingQueueDepartment(
+          userEmployee ?? { departmentName: currentUser.department },
+          detail,
+        ),
+    );
+  const sectorOptions = waitingQueueSectorOptions(
+    records.map(({ detail }) => detail),
+  );
+  const visible = records.filter(
+    ({ item, detail }) =>
+      (sector === "all" || waitingQueueSectorKey(detail) === sector) &&
+      reminderFilter.matches({
+        entityId: item.id,
+        clientId: detail.clientCode,
+        title: detail.clientName,
+      }) &&
+      (!query.trim() ||
+        normalize(
+          `${item.title} ${detail.clientCode} ${detail.whatsapp} ${detail.summary} ${detail.requestType} ${detail.responsibleName}`,
+        ).includes(normalize(query.trim()))),
+  );
+  const claim = async (item: WorkItem) => {
+    const detail = parseWaitingQueue(item.description);
+    if (
+      !canEdit ||
+      !detail ||
+      !userEmployee ||
+      !belongsToWaitingQueueDepartment(userEmployee, detail) ||
+      detail.responsibleUserId
+    )
+      return;
+    await operate(
+      {
+        action: "updateWorkItem",
+        id: item.id,
+        title: item.title,
+        owner: userEmployee.displayName,
+        customerName: item.customer_name,
+        amountCents: item.amount_cents,
+        version: item.version,
+        description: JSON.stringify({
+          ...detail,
+          responsibleUserId: userEmployee.id,
+          responsibleName: userEmployee.displayName,
+        }),
+      },
+      "Você assumiu o contato. O cliente continua em espera até o contato ser realizado.",
+    );
+  };
+  const waiting = visible.filter((entry) => entry.detail.state === "waiting");
+  const contacted = visible.filter(
+    (entry) => entry.detail.state === "contacted",
+  );
+  return (
+    <section className="waiting-queue-module">
+      <header className="module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <Clock3 size={21} />
+          </span>
+          <span className="module-page-copy">
+            <span className="eyebrow">OPERAÇÃO · ATENDIMENTO</span>
+            <h1>Fila de Espera</h1>
+            <p>
+              Encaminhamentos recebidos pelo Portal Dontus, organizados por
+              setor e responsável.
+            </p>
+          </span>
+        </div>
+        <div className="module-page-actions">
+          {onOpenSettings && (
+            <button
+              className="icon-button"
+              onClick={onOpenSettings}
+              title="Configurar tipos de solicitação"
+            >
+              <Settings size={18} />
+            </button>
+          )}
+        </div>
+      </header>
+      <section className="waiting-queue-metrics">
+        <article>
+          <Clock3 />
+          <span>
+            <strong>{waiting.length}</strong>
+            <small>Em espera</small>
+          </span>
+        </article>
+        <article>
+          <CheckCircle2 />
+          <span>
+            <strong>{contacted.length}</strong>
+            <small>Contato feito</small>
+          </span>
+        </article>
+        <article>
+          <Headphones />
+          <span>
+            <strong>{visible.length}</strong>
+            <small>Total visível</small>
+          </span>
+        </article>
+      </section>
+      <nav className="waiting-queue-tabs" aria-label="Situação da fila">
+        <button
+          className={tab === "waiting" ? "active" : ""}
+          onClick={() => setTab("waiting")}
+        >
+          <Clock3 size={15} /> Em espera <b>{waiting.length}</b>
+        </button>
+        <button
+          className={tab === "contacted" ? "active" : ""}
+          onClick={() => setTab("contacted")}
+        >
+          <CheckCircle2 size={15} /> Contato feito <b>{contacted.length}</b>
+        </button>
+      </nav>
+      <div className="reminder-filter-toolbar waiting-queue-filters">
+        <label className="waiting-queue-search">
+          <Search size={17} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar cliente, ID, WhatsApp, solicitação ou resumo"
+          />
+        </label>
+        <label className="waiting-queue-sector">
+          Setor de destino
+          <select
+            aria-label="Filtrar por setor de destino"
+            value={sector}
+            onChange={(event) => setSector(event.target.value)}
+          >
+            <option value="all">Todos os setores</option>
+            {sectorOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {reminderFilter.control}
+      </div>
+      <div className="waiting-queue-columns single">
+        {tab === "waiting" ? (
+          <QueueColumn
+            title="Em espera"
+            tone="waiting"
+            records={waiting}
+            canEdit={canEdit}
+            onOpen={setSelected}
+            onEdit={setEditing}
+            onDelete={(item) => {
+              void operate(
+                { action: "deleteWorkItem", id: item.id },
+                "Registro excluído da fila.",
+              );
+            }}
+            busy={busy}
+            currentEmployee={userEmployee}
+            onClaim={(item) => void claim(item)}
+            onContact={canEdit ? setContacting : undefined}
+          />
+        ) : (
+          <QueueColumn
+            title="Contato feito"
+            tone="contacted"
+            records={contacted}
+            totalCount={contacted.length}
+            canEdit={canEdit}
+            onOpen={setSelected}
+            onEdit={setEditing}
+            onDelete={(item) => {
+              void operate(
+                { action: "deleteWorkItem", id: item.id },
+                "Registro excluído da fila.",
+              );
+            }}
+          />
+        )}
+      </div>
+      {editing && canEdit && (
+        <QueueEditModal
+          departments={departments}
+          canChangeDepartment={
+            (editing.created_by ||
+              parseWaitingQueue(editing.description)?.senderEmail) ===
+            currentUser.email
+          }
+          detail={parseWaitingQueue(editing.description)!}
+          busy={busy}
+          onClose={() => setEditing(null)}
+          onSave={async (detail) => {
+            const result = await operate(
+              {
+                action: "updateWorkItem",
+                requireConfirmation: true,
+                id: editing.id,
+                title: detail.clientName,
+                customerName: detail.clientName,
+                owner: editing.owner,
+                amountCents: editing.amount_cents,
+                version: editing.version,
+                description: JSON.stringify(detail),
+              },
+              "Registro da fila atualizado.",
+            );
+            if (result) setEditing(null);
+          }}
+        />
+      )}
+      {selected && (
+        <QueueDetail
+          item={selected}
+          detail={parseWaitingQueue(selected.description)!}
+          onClose={() => setSelected(null)}
+        />
+      )}
+      {contacting && (
+        <ContactModal
+          detail={parseWaitingQueue(contacting.description)!}
+          employees={employees.filter((employee) => employee.active)}
+          departments={departments}
+          currentUserEmail={currentUser.email}
+          permissions={currentUser.permissions}
+          busy={busy}
+          onClose={() => setContacting(null)}
+          onConfirm={async (responsibleId) => {
+            const detail = parseWaitingQueue(contacting.description)!;
+            const responsible = employees.find(
+              (employee) => employee.id === responsibleId,
+            );
+            if (!responsible) return;
+            const next = {
+              ...detail,
+              state: "contacted" as const,
+              responsibleUserId: responsible.id,
+              responsibleName: responsible.displayName,
+              contactedAt: new Date().toISOString(),
+              contactedById: responsible.id,
+              contactedByName: responsible.displayName,
+            };
+            const updated = await operate(
+              {
+                action: "updateWorkItem",
+                id: contacting.id,
+                title: contacting.title,
+                owner: responsible.displayName,
+                customerName: contacting.customer_name,
+                amountCents: contacting.amount_cents,
+                version: contacting.version,
+                description: JSON.stringify(next),
+              },
+              "Contato registrado na Fila de Espera.",
+            );
+            if (updated) setContacting(null);
+          }}
+        />
+      )}
+    </section>
+  );
 }
 
-function QueueDetail({item,detail,onClose}:{item:WorkItem;detail:WaitingQueueDetail;onClose:()=>void}){return <div className="modal-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><section className="modal waiting-detail-modal"><header className="modal-head"><div><span className="eyebrow">FILA DE ESPERA · {detail.departmentName}</span><h2>{detail.clientName}</h2><p>Encaminhamento #{item.id.slice(0,8)}</p></div><button className="icon-button" onClick={onClose}><X size={18}/></button></header>{detail.imageDataUrl&&(detail.imageDataUrl.startsWith("data:image/")?<Image className="waiting-detail-image" src={detail.imageDataUrl} alt={`Anexo de ${detail.clientName}`} width={1200} height={600} unoptimized/>:<button className="secondary-button" onClick={()=>openFile({name:detail.fileName||"Arquivo anexado",type:detail.imageDataUrl.slice(5,detail.imageDataUrl.indexOf(";")),size:0,dataUrl:detail.imageDataUrl})}>{detail.fileName||"Abrir arquivo anexado"}</button>)}<dl className="waiting-detail-grid"><div><dt>ID do cliente</dt><dd>{detail.clientCode||"Não informado"}</dd></div><div><dt>WhatsApp</dt><dd><PhoneLink phone={detail.whatsapp}/></dd></div><div><dt>Tipo de solicitação</dt><dd>{detail.requestType}</dd></div><div><dt>Cliente estratégico</dt><dd>{detail.strategic?"Sim":"Não"}</dd></div><div><dt>Responsável</dt><dd>{detail.responsibleName||"Sem responsável"}</dd></div><div><dt>Enviado por</dt><dd>{detail.senderName} · {dt(detail.sentAt)}</dd></div></dl><section className="waiting-detail-summary"><span>Resumo</span><p>{detail.summary}</p></section>{detail.state==="contacted"&&<section className="waiting-contact-result"><CheckCircle2 size={18}/><span><strong>Contato registrado por {detail.contactedByName}</strong><small>{dt(detail.contactedAt)}{detail.destinationLabel?` · Direcionado para ${detail.destinationLabel}`:""}</small></span></section>}</section></div>}
+function QueueColumn({
+  title,
+  tone,
+  records,
+  totalCount = records.length,
+  canEdit,
+  onOpen,
+  onEdit,
+  onDelete,
+  onContact,
+  onClaim,
+  currentEmployee,
+  busy,
+}: {
+  title: string;
+  tone: string;
+  totalCount?: number;
+  records: Array<{ item: WorkItem; detail: WaitingQueueDetail }>;
+  canEdit: boolean;
+  onOpen: (item: WorkItem) => void;
+  onEdit: (item: WorkItem) => void;
+  onDelete: (item: WorkItem) => void;
+  onContact?: (item: WorkItem) => void;
+  onClaim?: (item: WorkItem) => void;
+  currentEmployee?: Employee;
+  busy?: boolean;
+}) {
+  return (
+    <section className={`waiting-queue-column ${tone}`}>
+      <header>
+        <span>
+          <i />
+          {title}
+        </span>
+        <b>{totalCount}</b>
+      </header>
+      <div>
+        {records.length === 0 ? (
+          <p className="waiting-queue-empty">Nenhum cliente nesta coluna.</p>
+        ) : (
+          <PaginatedItems mode="cards" label="contatos">
+            {records.map(({ item, detail }) => (
+              <article
+                data-reminder-entity-id={item.id}
+                className="waiting-queue-row"
+                key={item.id}
+              >
+                <div className="waiting-queue-client">
+                  <span className="waiting-avatar">
+                    {detail.clientName.slice(0, 2).toUpperCase()}
+                  </span>
+                  <span>
+                    <strong>{detail.clientName}</strong>
+                    <small>
+                      ID {detail.clientCode || item.id.slice(0, 8)} ·{" "}
+                      <PhoneLink phone={detail.whatsapp} />
+                    </small>
+                  </span>
+                  {detail.strategic && (
+                    <b title="Cliente estratégico">
+                      <BadgeCheck size={15} />
+                      Estratégico
+                    </b>
+                  )}
+                </div>
+                <div className="waiting-queue-summary">
+                  <strong>{detail.requestType}</strong>
+                  <p>{detail.summary}</p>
+                  <small>
+                    Enviado por {detail.senderName} · {dt(detail.sentAt)}
+                  </small>
+                </div>
+                <div
+                  className="waiting-queue-owner"
+                  data-collaborator-name={detail.responsibleName}
+                >
+                  <UserRound size={14} />
+                  <span>
+                    <small>Responsável</small>
+                    <strong>
+                      {detail.responsibleName || "Fila compartilhada"}
+                    </strong>
+                  </span>
+                </div>
+                <div className="waiting-queue-actions">
+                  <button
+                    onClick={() => onOpen(item)}
+                    title="Visualizar informações"
+                  >
+                    <Eye size={16} />
+                  </button>
+                  {canEdit && (
+                    <>
+                      <button
+                        onClick={() => onEdit(item)}
+                        title="Editar registro"
+                        aria-label="Editar registro"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => onDelete(item)}
+                        title="Excluir registro"
+                        aria-label="Excluir registro"
+                        className="delete"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
+                  {canEdit &&
+                    onClaim &&
+                    currentEmployee &&
+                    !detail.responsibleUserId &&
+                    belongsToWaitingQueueDepartment(
+                      currentEmployee,
+                      detail,
+                    ) && (
+                      <button
+                        className="contact"
+                        disabled={busy}
+                        onClick={() => onClaim(item)}
+                      >
+                        <UserRound size={15} /> Assumir contato
+                      </button>
+                    )}
+                  {onContact && (
+                    <button
+                      className="contact"
+                      disabled={busy}
+                      onClick={() => onContact(item)}
+                    >
+                      <CheckCircle2 size={15} /> Contato feito
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </PaginatedItems>
+        )}
+      </div>
+    </section>
+  );
+}
 
-function ContactModal({detail,employees,departments,currentUserEmail,permissions,busy,onClose,onConfirm}:{detail:WaitingQueueDetail;employees:Employee[];departments:Department[];currentUserEmail:string;permissions:Permission[];busy:boolean;onClose:()=>void;onConfirm:(responsibleId:string,destinationId:string)=>Promise<void>}){
-  const sectorEmployees=employees.filter(employee=>belongsToWaitingQueueDepartment(employee,detail));
-  const self=sectorEmployees.find(employee=>normalize(employee.email)===normalize(currentUserEmail));
-  const [responsible,setResponsible]=useState(()=>sectorEmployees.some(employee=>employee.id===detail.responsibleUserId)?detail.responsibleUserId:self?.id??"");
-  const [destination,setDestination]=useState("");
+function QueueEditModal({
+  detail,
+  busy,
+  onClose,
+  onSave,
+  departments,
+  canChangeDepartment,
+}: {
+  departments: Department[];
+  canChangeDepartment: boolean;
+  detail: WaitingQueueDetail;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (detail: WaitingQueueDetail) => Promise<void>;
+}) {
+  const [attachment, setAttachment] = useState({
+    dataUrl: detail.imageDataUrl,
+    name: detail.fileName || "Arquivo anexado",
+  });
+  const [fileError, setFileError] = useState("");
+  const selectFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      const [entry] = await readCommentFiles([file]);
+      setAttachment({ dataUrl: entry.dataUrl, name: entry.name });
+      setFileError("");
+    } catch (error) {
+      setFileError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível ler o arquivo.",
+      );
+    }
+  };
+
+  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const department = departments.find(
+      (entry) =>
+        entry.id === String(form.get("departmentId") || detail.departmentId),
+    );
+    if (fileError) return;
+    void onSave({
+      ...detail,
+      imageDataUrl: attachment.dataUrl,
+      fileName: attachment.name,
+      ...(department
+        ? {
+            departmentId: department.id,
+            departmentName: department.name,
+            queueMode: departmentQueueMode(department.description),
+            ...(department.id !== detail.departmentId
+              ? { responsibleUserId: "", responsibleName: "" }
+              : {}),
+          }
+        : {}),
+      clientName: String(form.get("clientName") || "").trim(),
+      clientCode: String(form.get("clientCode") || "").trim(),
+      whatsapp: String(form.get("whatsapp") || "").trim(),
+      requestType: String(form.get("requestType") || "").trim(),
+      summary: String(form.get("summary") || "").trim(),
+      strategic: form.get("strategic") === "on",
+    });
+  };
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <section className="modal waiting-detail-modal">
+        <header className="modal-head">
+          <div>
+            <span className="eyebrow">FILA DE ESPERA</span>
+            <h2>Editar registro</h2>
+            <p>Atualize os dados sem alterar o histórico de contato.</p>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </header>
+        <form className="form-grid" onSubmit={submit}>
+          {canChangeDepartment && (
+            <label className="wide">
+              Setor de destino *
+              <select
+                name="departmentId"
+                required
+                defaultValue={detail.departmentId}
+              >
+                {departments
+                  .filter((department) => department.active)
+                  .map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
+          <label>
+            Cliente *
+            <input
+              name="clientName"
+              required
+              defaultValue={detail.clientName}
+            />
+          </label>
+          <label>
+            ID do cliente
+            <input name="clientCode" defaultValue={detail.clientCode} />
+          </label>
+          <label>
+            WhatsApp *
+            <PhoneInput
+              name="whatsapp"
+              required
+              type="tel"
+              defaultValue={detail.whatsapp}
+            />
+          </label>
+          <label>
+            Tipo de solicitação
+            <input name="requestType" defaultValue={detail.requestType} />
+          </label>
+          <label className="wide">
+            Resumo
+            <textarea name="summary" rows={4} defaultValue={detail.summary} />
+          </label>
+          <div className="wide">
+            {attachment.dataUrl && (
+              <FilePreview
+                url={attachment.dataUrl}
+                name={attachment.name}
+                onRemove={() => setAttachment({ dataUrl: "", name: "" })}
+              />
+            )}
+            <MediaUploadField
+              label="Adicionar ou substituir arquivo"
+              hint="Até 5 MB por arquivo."
+              onChange={(event) => void selectFile(event.target.files?.[0])}
+            />
+            {fileError && (
+              <p role="alert" className="form-error">
+                {fileError}
+              </p>
+            )}
+          </div>
+          <label className="wide checkbox-label">
+            <input
+              name="strategic"
+              type="checkbox"
+              defaultChecked={detail.strategic}
+            />
+            Cliente estratégico
+          </label>
+          <div className="form-actions wide">
+            <button type="button" onClick={onClose}>
+              Cancelar
+            </button>
+            <button className="primary-button" disabled={busy}>
+              <Save size={15} />
+              Salvar alterações
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function QueueDetail({
+  item,
+  detail,
+  onClose,
+}: {
+  item: WorkItem;
+  detail: WaitingQueueDetail;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <section className="modal waiting-detail-modal">
+        <header className="modal-head">
+          <div>
+            <span className="eyebrow">
+              FILA DE ESPERA · {detail.departmentName}
+            </span>
+            <h2>{detail.clientName}</h2>
+            <p>Encaminhamento #{item.id.slice(0, 8)}</p>
+          </div>
+          <button className="icon-button" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        {detail.imageDataUrl &&
+          (detail.imageDataUrl.startsWith("data:image/") ? (
+            <Image
+              className="waiting-detail-image"
+              src={detail.imageDataUrl}
+              alt={`Anexo de ${detail.clientName}`}
+              width={1200}
+              height={600}
+              unoptimized
+            />
+          ) : (
+            <button
+              className="secondary-button"
+              onClick={() =>
+                openFile({
+                  name: detail.fileName || "Arquivo anexado",
+                  type: detail.imageDataUrl.slice(
+                    5,
+                    detail.imageDataUrl.indexOf(";"),
+                  ),
+                  size: 0,
+                  dataUrl: detail.imageDataUrl,
+                })
+              }
+            >
+              {detail.fileName || "Abrir arquivo anexado"}
+            </button>
+          ))}
+        <dl className="waiting-detail-grid">
+          <div>
+            <dt>ID do cliente</dt>
+            <dd>{detail.clientCode || "Não informado"}</dd>
+          </div>
+          <div>
+            <dt>WhatsApp</dt>
+            <dd>
+              <PhoneLink phone={detail.whatsapp} />
+            </dd>
+          </div>
+          <div>
+            <dt>Tipo de solicitação</dt>
+            <dd>{detail.requestType}</dd>
+          </div>
+          <div>
+            <dt>Cliente estratégico</dt>
+            <dd>{detail.strategic ? "Sim" : "Não"}</dd>
+          </div>
+          <div>
+            <dt>Responsável</dt>
+            <dd>{detail.responsibleName || "Sem responsável"}</dd>
+          </div>
+          <div>
+            <dt>Enviado por</dt>
+            <dd>
+              {detail.senderName} · {dt(detail.sentAt)}
+            </dd>
+          </div>
+        </dl>
+        <section className="waiting-detail-summary">
+          <span>Resumo</span>
+          <p>{detail.summary}</p>
+        </section>
+        {detail.state === "contacted" && (
+          <section className="waiting-contact-result">
+            <CheckCircle2 size={18} />
+            <span>
+              <strong>Contato registrado por {detail.contactedByName}</strong>
+              <small>
+                {dt(detail.contactedAt)}
+                {detail.destinationLabel
+                  ? ` · Direcionado para ${detail.destinationLabel}`
+                  : ""}
+              </small>
+            </span>
+          </section>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ContactModal({
+  detail,
+  employees,
+  departments,
+  currentUserEmail,
+  permissions,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  detail: WaitingQueueDetail;
+  employees: Employee[];
+  departments: Department[];
+  currentUserEmail: string;
+  permissions: Permission[];
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (responsibleId: string, destinationId: string) => Promise<void>;
+}) {
+  const sectorEmployees = employees.filter((employee) =>
+    belongsToWaitingQueueDepartment(employee, detail),
+  );
+  const self = sectorEmployees.find(
+    (employee) => normalize(employee.email) === normalize(currentUserEmail),
+  );
+  const [responsible, setResponsible] = useState(() =>
+    sectorEmployees.some((employee) => employee.id === detail.responsibleUserId)
+      ? detail.responsibleUserId
+      : (self?.id ?? ""),
+  );
+  const [destination, setDestination] = useState("");
   const queueMode: string = "conventional";
-  const allowedDestinations=destinations.filter(entry=>permissions.some(permission=>permission.screen===entry.module&&permission.canCreate));
-  const validResponsible=sectorEmployees.some(employee=>employee.id===responsible);
-  return <div className="modal-backdrop" onMouseDown={event=>event.currentTarget===event.target&&onClose()}><section className="modal waiting-contact-modal"><header className="modal-head"><div><span className="eyebrow">REGISTRAR CONTATO</span><h2>{detail.clientName}</h2><p>Confirme quem realizou o atendimento{queueMode==="linked"?" e para qual fluxo o cliente seguirá":""}.</p></div><button className="icon-button" onClick={onClose}><X size={18}/></button></header><div className="form-grid"><label className="wide">Responsável pelo contato *<SearchablePeopleSelect searchLabel="Responsável pelo contato *" value={responsible} onChange={event=>setResponsible(event.target.value)}><option value="">Selecionar responsável</option>{sectorEmployees.map(employee=><option value={employee.id} key={employee.id}>{employee.displayName}</option>)}</SearchablePeopleSelect>{!sectorEmployees.length&&<small>Nenhum responsável ativo vinculado ao setor {detail.departmentName}.</small>}</label>{queueMode==="linked"&&<label className="wide">Direcionar para a funcionalidade *<select value={destination} onChange={event=>setDestination(event.target.value)}><option value="">Selecionar funcionalidade</option>{allowedDestinations.map(entry=><option key={entry.id} value={entry.id}>{entry.label}</option>)}</select><small><Link2 size={12}/> O card será criado automaticamente no fluxo escolhido.</small></label>}<div className="form-actions wide"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy||!validResponsible} onClick={()=>void onConfirm(responsible,destination)}><CheckCircle2 size={16}/> Confirmar contato</button></div></div></section></div>;
+  const allowedDestinations = destinations.filter((entry) =>
+    permissions.some(
+      (permission) =>
+        permission.screen === entry.module && permission.canCreate,
+    ),
+  );
+  const validResponsible = sectorEmployees.some(
+    (employee) => employee.id === responsible,
+  );
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.currentTarget === event.target && onClose()}
+    >
+      <section className="modal waiting-contact-modal">
+        <header className="modal-head">
+          <div>
+            <span className="eyebrow">REGISTRAR CONTATO</span>
+            <h2>{detail.clientName}</h2>
+            <p>
+              Confirme quem realizou o atendimento
+              {queueMode === "linked"
+                ? " e para qual fluxo o cliente seguirá"
+                : ""}
+              .
+            </p>
+          </div>
+          <button className="icon-button" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="form-grid">
+          <label className="wide">
+            Responsável pelo contato *
+            <SearchablePeopleSelect
+              searchLabel="Responsável pelo contato *"
+              value={responsible}
+              onChange={(event) => setResponsible(event.target.value)}
+            >
+              <option value="">Selecionar responsável</option>
+              {sectorEmployees.map((employee) => (
+                <option value={employee.id} key={employee.id}>
+                  {employee.displayName}
+                </option>
+              ))}
+            </SearchablePeopleSelect>
+            {!sectorEmployees.length && (
+              <small>
+                Nenhum responsável ativo vinculado ao setor{" "}
+                {detail.departmentName}.
+              </small>
+            )}
+          </label>
+          {queueMode === "linked" && (
+            <label className="wide">
+              Direcionar para a funcionalidade *
+              <select
+                value={destination}
+                onChange={(event) => setDestination(event.target.value)}
+              >
+                <option value="">Selecionar funcionalidade</option>
+                {allowedDestinations.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+              <small>
+                <Link2 size={12} /> O card será criado automaticamente no fluxo
+                escolhido.
+              </small>
+            </label>
+          )}
+          <div className="form-actions wide">
+            <button type="button" onClick={onClose}>
+              Cancelar
+            </button>
+            <button
+              className="primary-button"
+              disabled={busy || !validResponsible}
+              onClick={() => void onConfirm(responsible, destination)}
+            >
+              <CheckCircle2 size={16} /> Confirmar contato
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 export { cleanDepartmentDescription };

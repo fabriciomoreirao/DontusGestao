@@ -12,15 +12,18 @@ public static class CommissionConfirmationEndpoints
         group.MapPost("", async (GenerateCommissionConfirmation command, HttpContext context, ILocalAuthenticationService authentication, IAccessControlService access, CommissionConfirmationService service, CancellationToken ct) =>
             Results.Ok(await service.GenerateAsync(command, await Actor(context, authentication, access, ct), ct)));
         var documents = app.MapGroup("/api/public-commission-confirmations").RequireAuthorization().RequireRateLimiting("operations");
-        documents.MapGet("/{token}", async (string token, HttpContext context, ILocalAuthenticationService authentication, IAccessControlService access, CommissionConfirmationService service, CancellationToken ct) => {
+        documents.MapGet("/{token}", async (string token, HttpContext context, ILocalAuthenticationService authentication, IAccessControlService access, CommissionConfirmationService service, CancellationToken ct) =>
+        {
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok(await service.GetPublicAsync(token, await Actor(context, authentication, access, ct), ct));
         });
-        documents.MapPost("/{token}", async (string token, AgreeCommissionConfirmation command, HttpContext context, ILocalAuthenticationService authentication, IAccessControlService access, CommissionConfirmationService service, CancellationToken ct) => {
+        documents.MapPost("/{token}", async (string token, AgreeCommissionConfirmation command, HttpContext context, ILocalAuthenticationService authentication, IAccessControlService access, CommissionConfirmationService service, CancellationToken ct) =>
+        {
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok(new { agreedAt = await service.AgreeAsync(token, command, await Actor(context, authentication, access, ct), context.Request.Headers.UserAgent.ToString(), ct), status = "agreed" });
         });
-        documents.MapGet("/{token}/pdf", async (string token, HttpContext context, ILocalAuthenticationService authentication, IAccessControlService access, CommissionConfirmationService service, CancellationToken ct) => {
+        documents.MapGet("/{token}/pdf", async (string token, HttpContext context, ILocalAuthenticationService authentication, IAccessControlService access, CommissionConfirmationService service, CancellationToken ct) =>
+        {
             context.Response.Headers.CacheControl = "no-store";
             var file = await service.DownloadAsync(token, await Actor(context, authentication, access, ct), ct);
             return Results.File(file.Bytes, "application/pdf", file.FileName);

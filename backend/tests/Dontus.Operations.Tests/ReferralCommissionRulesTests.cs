@@ -23,14 +23,14 @@ public sealed class ReferralCommissionRulesTests
         var rules = await db.CustomerCatalogOptions.Where(x => x.Catalog == "referralCommission" && x.Active).ToListAsync();
         Assert.Equal(6, rules.Count);
         foreach (var user in targets.Prepend(source))
-        foreach (var input in inputs)
-        {
-            var json = rules.Select(x => JsonDocument.Parse(x.Description).RootElement).Single(x =>
-                x.GetProperty("collaboratorId").GetGuid() == user.Id && x.GetProperty("moduleId").GetGuid() == input.ModuleId);
-            Assert.Equal(input.Type, json.GetProperty("type").GetString());
-            Assert.Equal(input.Percentage, json.GetProperty("percentage").GetDecimal());
-            Assert.Equal(input.FixedCents, json.GetProperty("fixedCents").GetInt64());
-        }
+            foreach (var input in inputs)
+            {
+                var json = rules.Select(x => JsonDocument.Parse(x.Description).RootElement).Single(x =>
+                    x.GetProperty("collaboratorId").GetGuid() == user.Id && x.GetProperty("moduleId").GetGuid() == input.ModuleId);
+                Assert.Equal(input.Type, json.GetProperty("type").GetString());
+                Assert.Equal(input.Percentage, json.GetProperty("percentage").GetDecimal());
+                Assert.Equal(input.FixedCents, json.GetProperty("fixedCents").GetInt64());
+            }
         Assert.Equal(3, await db.AuditEvents.CountAsync());
     }
 
@@ -39,10 +39,19 @@ public sealed class ReferralCommissionRulesTests
     {
         await using var db = Context();
         var (source, targets, modules) = await Seed(db);
-        var legacy = new CustomerCatalogOption { Catalog = "referralCommission", Name = "Regra antiga", Description = JsonSerializer.Serialize(new
+        var legacy = new CustomerCatalogOption
         {
-            type = "percentage", collaboratorName = source.DisplayName, moduleName = modules[0].Name, percentage = 1.25m, fixedCents = 123,
-        }) };
+            Catalog = "referralCommission",
+            Name = "Regra antiga",
+            Description = JsonSerializer.Serialize(new
+            {
+                type = "percentage",
+                collaboratorName = source.DisplayName,
+                moduleName = modules[0].Name,
+                percentage = 1.25m,
+                fixedCents = 123,
+            })
+        };
         db.Add(legacy); await db.SaveChangesAsync();
         var service = new ReferralCommissionRulesService(db);
         await service.SaveAsync(targets[0].Id, Inputs(modules).Select(x => x with { Percentage = 99, FixedCents = 1 }).ToArray(), Manager);
