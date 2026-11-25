@@ -16,14 +16,18 @@ test("public form proxy forwards multipart files as binary without authenticatio
   globalThis.fetch = async (url, options) => {
     called = true;
     assert.match(url, /public-lia-forms\/token$/);
-    assert.equal(options.headers.has("content-type"), false);
+    assert.match(
+      options.headers.get("content-type"),
+      /multipart\/form-data; boundary=/,
+    );
+    const outgoing = await new Request(url, options).formData();
     assert.equal(options.headers.has("x-local-session"), false);
-    assert.equal(options.body.get("file:document").name, "dados.pdf");
+    assert.equal(outgoing.get("file:document").name, "dados.pdf");
     assert.deepEqual(
-      new Uint8Array(await options.body.get("file:document").arrayBuffer()),
+      new Uint8Array(await outgoing.get("file:document").arrayBuffer()),
       new Uint8Array([0, 1, 2, 255]),
     );
-    assert.deepEqual(JSON.parse(options.body.get("answers")), {
+    assert.deepEqual(JSON.parse(outgoing.get("answers")), {
       answers: { name: "Maria" },
     });
     return Response.json({ submittedAt: "2026-11-13T12:00:00Z" });

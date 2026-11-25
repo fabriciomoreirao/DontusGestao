@@ -1,6 +1,7 @@
 "use client";
 
 import PaginatedItems from "@/app/PaginatedItems";
+import { mergeRecordRows } from "@/lib/record-pages";
 
 import {
   ArrowDown,
@@ -97,9 +98,7 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
       : {}),
   });
   if (response.status === 413)
-    throw new Error(
-      "Os arquivos excedem o limite de envio de 100 MB por formulário.",
-    );
+    throw new Error("O servidor de acesso recusou o envio. Tente novamente.");
   const data = await response.json();
   if (!response.ok)
     throw new Error(data.detail || "Não foi possível concluir a operação.");
@@ -225,7 +224,13 @@ export function LiaFormsSettings() {
       )}
       <div className="lia-form-definitions">
         {
-          <PaginatedItems label="formulários">
+          <PaginatedItems
+            label="formulários"
+            source={["liaForms"]}
+            onRows={(rows) =>
+              setForms((current) => mergeRecordRows(current, rows))
+            }
+          >
             {forms.map((form) => (
               <article key={form.id}>
                 <ClipboardList />
@@ -409,8 +414,7 @@ export function LiaFormsSettings() {
                     <p className="lia-form-note">
                       <Paperclip size={14} /> O cliente poderá enviar PDFs,
                       fotos, vídeos, áudios e outros documentos. Até 10 arquivos
-                      por pergunta, com 50 MB por arquivo e 100 MB no
-                      formulário.
+                      por pergunta, com sem limite de tamanho no sistema.
                     </p>
                   )}
                   {question.type === "select" && (
@@ -627,7 +631,11 @@ export function LiaClientForms({
       )}
       {!requests.length && <p>Nenhum formulário enviado para este cliente.</p>}
       {
-        <PaginatedItems label="formulários">
+        <PaginatedItems
+          label="formulários"
+          source={["liaFormRequests", workItemId]}
+          onRows={() => void onRefresh()}
+        >
           {requests.map((entry) => (
             <article className="lia-form-request" key={entry.id}>
               <div>
@@ -1031,7 +1039,15 @@ export function LiaFormResponses({ workItemId }: { workItemId: string }) {
         {!entries && !error && <p>Carregando respostas...</p>}
         {entries?.length === 0 && <p>Nenhum formulário vinculado.</p>}
         {
-          <PaginatedItems label="respostas de formulários">
+          <PaginatedItems
+            label="respostas de formulários"
+            source={["liaFormRequests", workItemId]}
+            onRows={(rows) =>
+              setEntries((current) =>
+                current ? mergeRecordRows(current, rows) : current,
+              )
+            }
+          >
             {entries?.map((entry) => (
               <article className="lia-response-sheet" key={entry.id}>
                 <header>

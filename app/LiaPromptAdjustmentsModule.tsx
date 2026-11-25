@@ -347,7 +347,7 @@ export default function LiaPromptAdjustmentsModule({
       ) : view === "cards" ? (
         <div className="lia-adjustments-grid">
           {
-            <PaginatedItems label="ajustes da LIA">
+            <PaginatedItems mode="cards" label="ajustes da LIA">
               {visible.map(({ item, detail }) => (
                 <AdjustmentCard
                   key={item.id}

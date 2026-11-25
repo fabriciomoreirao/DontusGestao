@@ -1,7 +1,10 @@
 "use client";
 
+import CustomerSelect from "@/app/CustomerSelect";
+import SaleObservation from "@/app/SaleObservation";
+
 import PaginatedItems from "@/app/PaginatedItems";
-import { findJourneyAgendaType, journeyAgendaType } from "@/lib/agenda-context";
+import { AgendaTypeSelectionModal } from "@/app/AgendaModule";
 
 import FollowupHistory from "@/app/FollowupHistory";
 import {
@@ -160,6 +163,7 @@ type ScoreEvolutionEntry = {
 };
 type CsJourney = {
   trainingRequired?: boolean;
+  saleObservation?: string;
   kind: "csJourney";
   productVersion?: string;
   version?: string;
@@ -1132,7 +1136,7 @@ export default function CustomerSuccessJourneyModule({
       ) : view === "grid" ? (
         <div className="cs-pipeline-grid">
           {
-            <PaginatedItems label="acompanhamentos">
+            <PaginatedItems mode="cards" label="acompanhamentos">
               {visible.map(({ item, journey }) => (
                 <JourneyCard
                   key={item.id}
@@ -1453,21 +1457,17 @@ function ManualJourneyModal({
           {!item && (
             <label className="wide">
               Cliente cadastrado
-              <select
+              <CustomerSelect
                 value={
                   customers.some((entry) => entry.id === customerId)
                     ? customerId
                     : ""
                 }
                 onChange={(event) => chooseCustomer(event.target.value)}
-              >
-                <option value="">Inserir dados manualmente</option>
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.trade_name} · {customer.id.slice(0, 8)}
-                  </option>
-                ))}
-              </select>
+                customers={customers}
+                emptyLabel="Inserir dados manualmente"
+                label="internalId"
+              />
             </label>
           )}
           <label>
@@ -1672,6 +1672,7 @@ function JourneyCard({
             <PhoneLink phone={journey.phone || lead?.phone} />
           </div>
         )}
+        <SaleObservation text={journey.saleObservation} compact />
         {(journey.labels?.length ?? 0) > 0 && (
           <div className="cs-card-labels" aria-label="Etiquetas vinculadas">
             {journey.labels.map((label) => (
@@ -1840,6 +1841,7 @@ function JourneyList({
                   <small>
                     <PhoneLink phone={lead?.phone || item.customer_name} />
                   </small>
+                  <SaleObservation text={journey.saleObservation} compact />
                 </span>
                 <span data-collaborator-name={item.owner}>{item.owner}</span>
                 <span>
@@ -2270,7 +2272,16 @@ export function JourneyDrawer({
     }
   };
 
-  const schedule = async (
+  const [scheduleRequest, setScheduleRequest] = useState<{
+    kind: "Kick off" | "Treinamento" | "Alinhamento único";
+    date: string;
+    time: string;
+    key:
+      | "firstMeetingCommitmentId"
+      | "trainingCommitmentId"
+      | "singleAlignmentCommitmentId";
+  } | null>(null);
+  const schedule = (
     kind: "Kick off" | "Treinamento" | "Alinhamento único",
     date: string,
     time: string,
@@ -2279,16 +2290,22 @@ export function JourneyDrawer({
       | "trainingCommitmentId"
       | "singleAlignmentCommitmentId",
   ) => {
+    if (agendaModule && date) setScheduleRequest({ kind, date, time, key });
+  };
+  const saveSchedule = async (typeId: string) => {
+    if (!scheduleRequest) return false;
+    const { kind, date, time, key } = scheduleRequest;
     if (!agendaModule || !date) return false;
     const calendar =
-      agendaModule.calendars.find((entry) =>
-        /sucesso do cliente|ativa[cç][aã]o|cs/i.test(
-          `${entry.name} ${entry.departmentName}`,
-        ),
+      agendaModule.calendars.find(
+        (entry) =>
+          entry.active &&
+          /sucesso do cliente|ativa[cç][aã]o|cs/i.test(
+            `${entry.name} ${entry.departmentName}`,
+          ),
       ) ?? agendaModule.calendars.find((entry) => entry.active);
-    const type = findJourneyAgendaType(
-      agendaModule.types,
-      journeyAgendaType("cs", item.description) ?? "Reunião",
+    const type = agendaModule.types.find(
+      (entry) => entry.active && entry.id === typeId,
     );
     const agendaStatus = agendaModule.statuses.find((entry) => entry.active);
     const collaborator =
@@ -2332,11 +2349,12 @@ export function JourneyDrawer({
         : kind === "Treinamento"
           ? { trainingAt: startsAt, trainingTime: time }
           : { singleAlignmentAt: startsAt, singleAlignmentTime: time };
-    await save(
+    const saved = await save(
       { ...journey, [key]: result.id, ...scheduleData },
       `${kind} agendado para ${dateOnly(startsAt)} às ${time}.`,
     );
-    return true;
+    if (saved) setScheduleRequest(null);
+    return Boolean(saved);
   };
 
   const requestCancellation = async (detail: CancellationDetail) => {
@@ -2829,6 +2847,7 @@ export function JourneyDrawer({
           <CancellationPanel journey={journey} />
 
           <JourneyTimeline current={journey.phase} />
+          <SaleObservation text={journey.saleObservation} />
           {journey.phase === "conference" && isStrategic && (
             <div className="cs-strategic-conference-notice">
               <ShieldCheck size={17} />
@@ -3722,6 +3741,14 @@ export function JourneyDrawer({
             <ScoreEvolutionPanel entries={journey.scoreEvolution ?? []} />
           )}
         </div>
+        {scheduleRequest && agendaModule && (
+          <AgendaTypeSelectionModal
+            types={agendaModule.types}
+            busy={busy}
+            onClose={() => setScheduleRequest(null)}
+            onSave={saveSchedule}
+          />
+        )}
         {taskEditor && (
           <CancellationEntryModal
             customers={customers}
@@ -4080,17 +4107,12 @@ function CancellationTaskModal({
           </label>
           <label className="wide">
             Cliente cadastrado
-            <select
+            <CustomerSelect
               value={customerId}
               onChange={(event) => selectCustomer(event.target.value)}
-            >
-              <option value="">Sem cliente vinculado</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.trade_name || customer.legal_name}
-                </option>
-              ))}
-            </select>
+              customers={customers}
+              emptyLabel="Sem cliente vinculado"
+            />
           </label>
           <label>
             ID do cliente

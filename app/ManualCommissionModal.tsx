@@ -1,8 +1,10 @@
 "use client";
 
+import CustomerSelect from "@/app/CustomerSelect";
+
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Plus, X } from "lucide-react";
 
 type Employee = {
@@ -41,6 +43,22 @@ export default function ManualCommissionModal({
 }) {
   const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const employeeOptions = useMemo(
+    () => [
+      <option key="empty" value="">
+        Selecionar usuário
+      </option>,
+      ...employees
+        .filter((x) => x.active)
+        .map((employee) => (
+          <option key={employee.id} value={employee.id}>
+            {employee.displayName}
+            {employee.email ? " · " + employee.email : ""}
+          </option>
+        )),
+    ],
+    [employees],
+  );
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -144,15 +162,7 @@ export default function ManualCommissionModal({
               required
               defaultValue=""
             >
-              <option value="">Selecionar usuário</option>
-              {employees
-                .filter((x) => x.active)
-                .map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.displayName}
-                    {employee.email ? " · " + employee.email : ""}
-                  </option>
-                ))}
+              {employeeOptions}
             </SearchablePeopleSelect>
           </label>
           <label>
@@ -166,7 +176,7 @@ export default function ManualCommissionModal({
           </label>
           <label className="wide">
             Cliente cadastrado (opcional)
-            <select
+            <CustomerSelect
               value={customerId}
               onChange={(event) => {
                 setCustomerId(event.target.value);
@@ -176,14 +186,9 @@ export default function ManualCommissionModal({
                 if (customer)
                   setCustomerName(customer.trade_name || customer.legal_name);
               }}
-            >
-              <option value="">Informar cliente manualmente</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.trade_name || customer.legal_name}
-                </option>
-              ))}
-            </select>
+              customers={customers}
+              emptyLabel="Informar cliente manualmente"
+            />
           </label>
           <label>
             Nome do cliente *

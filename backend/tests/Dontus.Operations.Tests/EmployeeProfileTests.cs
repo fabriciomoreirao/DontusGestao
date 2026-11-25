@@ -117,7 +117,6 @@ public sealed class EmployeeProfileTests
     [InlineData("phrase")]
     [InlineData("svg")]
     [InlineData("invalid-base64")]
-    [InlineData("oversize")]
     public async Task Invalid_fields_do_not_change_the_saved_profile(string invalid)
     {
         await using var db = Context(); var user = User("own@example.com"); db.Users.Add(user); db.WorkItems.Add(Record(user)); await db.SaveChangesAsync();

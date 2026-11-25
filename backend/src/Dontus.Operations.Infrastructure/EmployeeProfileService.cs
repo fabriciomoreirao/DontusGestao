@@ -120,17 +120,17 @@ public sealed class EmployeeProfileService(OperationsDbContext db)
     private static void ValidateCover(string cover)
     {
         if (cover.Length == 0) return;
-        const int maxBytes = 2 * 1024 * 1024;
+        if (System.Text.RegularExpressions.Regex.IsMatch(cover, @"^/api/workspace-files/[0-9a-f-]{36}$")) return;
         var prefix = new[] { "data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64," }
             .FirstOrDefault(prefix => cover.StartsWith(prefix, StringComparison.Ordinal));
-        if (prefix is null || cover.Length > (maxBytes + 2) / 3 * 4 + 40)
-            throw new DomainException("Selecione uma capa PNG, JPEG ou WebP de até 2 MB.");
+        if (prefix is null)
+            throw new DomainException("Selecione uma capa PNG, JPEG ou WebP.");
         try
         {
             var bytes = Convert.FromBase64String(cover[prefix.Length..]);
-            if (bytes.Length == 0 || bytes.Length > maxBytes) throw new FormatException();
+            if (bytes.Length == 0) throw new FormatException();
         }
-        catch (FormatException) { throw new DomainException("Selecione uma capa PNG, JPEG ou WebP de até 2 MB."); }
+        catch (FormatException) { throw new DomainException("Selecione uma capa PNG, JPEG ou WebP."); }
     }
 
     internal static void RequireDedicatedEditor(string? recordType, string? description)

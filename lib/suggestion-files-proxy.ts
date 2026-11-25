@@ -24,17 +24,19 @@ export async function uploadSuggestionFiles(request: Request) {
   if (!id)
     return Response.json({ detail: "Sugestão obrigatória." }, { status: 400 });
   try {
-    // Rebuild the multipart boundary rather than forwarding an unconfigured Node stream.
-    const body = await request.formData();
+    const headers = authenticationHeaders(request);
+    const contentType = request.headers.get("content-type");
+    if (contentType) headers.set("content-type", contentType);
     const response = await fetch(
       `${apiBase()}/api/suggestions/${encodeURIComponent(id)}/attachments`,
       {
         method: "POST",
-        headers: authenticationHeaders(request),
-        body,
+        headers,
+        body: request.body,
+        duplex: "half",
         cache: "no-store",
-        signal: AbortSignal.timeout(120_000),
-      },
+        signal: request.signal,
+      } as RequestInit,
     );
     return new Response(response.body, {
       status: response.status,

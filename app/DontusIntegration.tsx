@@ -1,4 +1,5 @@
 "use client";
+import { RecordPageSize } from "@/app/PaginatedItems";
 
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -10,7 +11,7 @@ import {
   Settings,
   ShieldCheck,
 } from "lucide-react";
-import { dontusUsersPage } from "@/lib/dontus-users";
+
 import { dontusIntegrationApi as api } from "@/lib/dontus-integration-api";
 import {
   SupportAccessHistory,
@@ -46,6 +47,12 @@ type UsersResult = {
   customerName: string;
   fetchedAt: string;
   users: EnvironmentUser[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  start: number;
+  end: number;
 };
 
 const message = (error: unknown) =>
@@ -347,6 +354,7 @@ export function DontusSupportAccess({
   const [name, setName] = useState("");
   const [type, setType] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [result, setResult] = useState<UsersResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState<number | null>(null);
@@ -384,19 +392,41 @@ export function DontusSupportAccess({
       });
     return () => controller.abort();
   }, [canManage, view]);
-  async function search(event: FormEvent) {
-    event.preventDefault();
+  const [lookup, setLookup] = useState<{
+    identification: string;
+    revision: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!lookup || view !== "access") return;
+    const controller = new AbortController();
     setBusy(true);
     setError("");
-    setResult(null);
+    void api<UsersResult>(
+      "users",
+      { identification: lookup.identification, name, type, page, pageSize },
+      controller.signal,
+    )
+      .then((value) => {
+        if (!controller.signal.aborted) setResult(value);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          setResult(null);
+          setError(message(err));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBusy(false);
+      });
+    return () => controller.abort();
+  }, [lookup, name, type, page, pageSize, view]);
+  function search(event: FormEvent) {
+    event.preventDefault();
     setPage(1);
-    try {
-      setResult(await api<UsersResult>("users", { identification }));
-    } catch (err) {
-      setError(message(err));
-    } finally {
-      setBusy(false);
-    }
+    setLookup((current) => ({
+      identification,
+      revision: (current?.revision ?? 0) + 1,
+    }));
   }
   async function open(
     user: EnvironmentUser,
@@ -432,8 +462,8 @@ export function DontusSupportAccess({
       setOpening(null);
     }
   }
-  const pagination = dontusUsersPage(result?.users ?? [], name, type, page);
-  const entries = pagination.items;
+  const pagination = result;
+  const entries = result?.users ?? [];
   if (view === "history")
     return (
       <SupportAccessHistory
@@ -501,6 +531,7 @@ export function DontusSupportAccess({
               disabled={busy || opening !== null}
               onChange={(event) => {
                 setIdentification(event.target.value);
+                setLookup(null);
                 setResult(null);
                 setError("");
               }}
@@ -547,17 +578,22 @@ export function DontusSupportAccess({
             {error}
           </div>
         )}
-        {result && (
+        {result && pagination && (
           <p className="dontus-access-meta">
             <strong>{result.customerName || "Cliente Dontus"}</strong> ·
             Identificação {result.identification} · Exibindo {pagination.start}–
-            {pagination.end} de {pagination.total} usuário(s)
-            {pagination.total !== result.users.length
-              ? ` · ${result.users.length} no ambiente`
-              : ""}{" "}
-            · {timestamp(result.fetchedAt)} (Brasília)
+            {pagination.end} de {pagination.total} usuário(s) ·{" "}
+            {timestamp(result.fetchedAt)} (Brasília)
           </p>
         )}
+        <RecordPageSize
+          value={pageSize}
+          onChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          label="usuários"
+        />
         <div
           className="support-access-table"
           role="table"
@@ -627,20 +663,20 @@ export function DontusSupportAccess({
             ))
           )}
         </div>
-        {result && pagination.total > 0 && (
+        {result && pagination && pagination.total > 0 && (
           <nav
             className="dontus-users-pagination"
             aria-label="Páginas de usuários Dontus"
           >
             <span>
-              Página {pagination.page} de {pagination.totalPages} · 10 por
-              página
+              Página {pagination.page} de {pagination.totalPages} · {pageSize}{" "}
+              por página
             </span>
             <div>
               <button
                 type="button"
                 className="secondary-button"
-                disabled={pagination.page === 1 || opening !== null}
+                disabled={busy || pagination.page === 1 || opening !== null}
                 onClick={() => setPage(pagination.page - 1)}
               >
                 Anterior
@@ -649,7 +685,9 @@ export function DontusSupportAccess({
                 type="button"
                 className="secondary-button"
                 disabled={
-                  pagination.page === pagination.totalPages || opening !== null
+                  busy ||
+                  pagination.page === pagination.totalPages ||
+                  opening !== null
                 }
                 onClick={() => setPage(pagination.page + 1)}
               >

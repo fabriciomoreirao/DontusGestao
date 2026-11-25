@@ -1,4 +1,5 @@
 "use client";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import PaginatedItems from "@/app/PaginatedItems";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
@@ -208,7 +209,7 @@ function NoticeSection({
             Tudo em dia. Nenhum aviso aguardando confirmação.
           </p>
         ) : (
-          <PaginatedItems label="avisos">
+          <PaginatedItems mode="cards" label="avisos">
             {items.map((notice) => (
               <article
                 className={`notice-card ${notice.type.toLowerCase()} ${notice.kind.toLowerCase()} ${notice.isRead ? "read" : ""}`}
@@ -573,20 +574,23 @@ function NoticeModal({
   const [imageDataUrl, setImageDataUrl] = useState(notice?.imageDataUrl ?? "");
   const [imageFileName, setImageFileName] = useState("");
   const [imageError, setImageError] = useState("");
-  const selectImage = (file?: File) => {
+  const selectImage = async (file?: File) => {
     if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) {
-      setImageError("Selecione uma imagem de até 2 MB.");
+    if (!file.type.startsWith("image/")) {
+      setImageError("Selecione uma imagem em formato de imagem.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImageDataUrl(String(reader.result ?? ""));
+    try {
+      setImageDataUrl(await workspaceFileUrl(file, { module: "profile" }));
       setImageFileName(file.name);
       setImageError("");
-    };
-    reader.onerror = () => setImageError("Não foi possível carregar a imagem.");
-    reader.readAsDataURL(file);
+    } catch (error) {
+      setImageError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar a imagem.",
+      );
+    }
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -744,7 +748,7 @@ function NoticeModal({
                 selectedText={imageDataUrl ? "Imagem selecionada" : undefined}
                 previewUrl={imageDataUrl}
                 previewLabel={imageFileName || "Visualizar imagem cadastrada"}
-                hint="PNG, JPG, WEBP ou GIF, até 2 MB."
+                hint="PNG, JPG, WEBP ou GIF, sem limite de tamanho no sistema."
                 onChange={(event) => selectImage(event.target.files?.[0])}
               />
               {imageError && <em>{imageError}</em>}

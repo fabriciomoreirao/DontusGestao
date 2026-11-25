@@ -27,11 +27,13 @@ export function TrendChart({
   title,
   currency = false,
   unit = "registros",
+  aggregation = "total",
 }: {
   entries: Array<{ label: string; value: number }>;
   title: string;
   currency?: boolean;
   unit?: string;
+  aggregation?: "total" | "average";
 }) {
   const id = useId().replace(/:/g, "");
   const [active, setActive] = useState<number | null>(null);
@@ -51,6 +53,8 @@ export function TrendChart({
         }).format(currency ? value / 100 : value)
       : format(value);
   const total = data.reduce((sum, entry) => sum + entry.value, 0);
+  const summary =
+    aggregation === "average" ? (data.length ? total / data.length : 0) : total;
   const peak = data.reduce<(typeof data)[number] | null>(
     (best, entry) => (!best || entry.value > best.value ? entry : best),
     null,
@@ -74,9 +78,13 @@ export function TrendChart({
     <div className="bi-trend-detail">
       <div className="bi-chart-summary">
         <span>
-          <small>TOTAL NO GRÁFICO</small>
+          <small>
+            {aggregation === "average"
+              ? "MÉDIA NO GRÁFICO"
+              : "TOTAL NO GRÁFICO"}
+          </small>
           <strong>
-            {format(total)}
+            {format(summary)}
             {!currency && <em>{unit}</em>}
           </strong>
         </span>
@@ -100,8 +108,9 @@ export function TrendChart({
           aria-labelledby={`${id}-title`}
         >
           <title id={`${id}-title`}>
-            {title}. Total: {format(total)} {currency ? "" : unit}. Consulte os
-            valores na tabela abaixo.
+            {title}. {aggregation === "average" ? "Média" : "Total"}:{" "}
+            {format(summary)} {currency ? "" : unit}. Consulte os valores na
+            tabela abaixo.
           </title>
           <defs>
             <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">

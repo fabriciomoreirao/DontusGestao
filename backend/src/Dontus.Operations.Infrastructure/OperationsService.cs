@@ -8,8 +8,9 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Dontus.Operations.Infrastructure;
 
-public sealed class OperationsService(OperationsDbContext db) : IOperationsService
+public sealed partial class OperationsService(OperationsDbContext db) : IOperationsService
 {
+    private OperationsDbContext ListDatabase => db;
     public async Task<string?> GetServiceVersionAsync(string clientId, ActorContext actor, CancellationToken cancellationToken = default)
     {
         actor.RequirePermission("support", "view");
@@ -89,18 +90,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (actor.Permissions?.All(permission => !permission.CanView) != false)
             throw new DomainException("Seu usuário não possui acesso a nenhuma tela do sistema.", 403);
 
-        var visibleModules = actor.Permissions
-            .Where(permission => permission.CanView)
-            .Select(permission => permission.Screen)
-            .ToList();
-        var directlyVisibleModules = visibleModules.ToArray();
-        var canViewValidation = actor.HasPermission(FollowupValidationPolicy.Screen, "view");
         var canManageCommissions = actor.HasPermission("commissions", "manage") || actor.HasPermission("commissions", "approve");
-        var canManageReferrals = actor.HasPermission("referrals", "manage") || actor.HasPermission("referrals", "approve");
-        var canManageGoals = actor.HasPermission("goals", "manage") || actor.HasPermission("goals", "edit");
-        if (actor.HasPermission("commissions", "view"))
-            visibleModules.AddRange(["commercial", "cs", "lia"]);
-        visibleModules = visibleModules.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         var canViewCustomers = actor.HasPermission("customers", "view")
             || actor.HasPermission("catalogs", "view")
@@ -136,44 +126,13 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
             taskProtocolsByCustomer[x.Id].ToList()))
             .ToList();
 
-        var registeredUser = await db.Users.AsNoTracking().Where(user => user.Email == actor.Email)
-            .Select(user => new { user.Id, user.CreatedAt }).SingleOrDefaultAsync(cancellationToken);
-        var registeredAt = registeredUser?.CreatedAt ?? DateTimeOffset.MinValue;
-        var sharedParentIds = registeredUser is null || !actor.HasPermission("tasks", "view") ? [] : await db.CorporateTasks.AsNoTracking()
-            .Where(task => task.CreatorUserId == registeredUser.Id || task.AssigneeUserId == registeredUser.Id).Select(task => task.Id).ToArrayAsync(cancellationToken);
-        var sharedDevelopmentIds = new List<Guid>();
-        if (sharedParentIds.Length > 0)
-        {
-            var developments = await db.WorkItems.AsNoTracking().Where(item => item.Module == "ti" && item.Description.Contains("developmentTask")).Select(item => new { item.Id, item.Description }).ToArrayAsync(cancellationToken);
-            foreach (var development in developments)
-            {
-                try { var source = JsonNode.Parse(development.Description)?["sourceTaskId"]?.ToString(); if (Guid.TryParse(source, out var parentId) && sharedParentIds.Contains(parentId)) sharedDevelopmentIds.Add(development.Id); }
-                catch (JsonException) { }
-            }
-        }
-        var visibleNoteIds = actor.HasPermission("notes", "view") ? (await GetNotesModuleAsync(actor, cancellationToken)).Notes.Select(note => note.Id).ToArray() : [];
+        var listScope = await AuthorizedListItemsAsync(actor, cancellationToken);
+        var authorizedItems = listScope.Query;
         var includeAllDescriptions = knownWorkItemVersions is null;
         var knownVersionKeys = knownWorkItemVersions?.Select(entry => $"{entry.Key}:{entry.Value}").ToArray() ?? [];
-        // Keep authorization and version metadata in SQL, without fetching unchanged embedded files.
-        // Commission descriptions still participate in the identity check below.
-        var authorizedItems = db.WorkItems.AsNoTracking()
-            .Where(x => (visibleModules.Contains(x.Module) || sharedDevelopmentIds.Contains(x.Id))
-                && (canViewValidation || (x.Module != "lia" || x.Status != "Validacao")
-                    && (x.Module != "cs" || !System.Text.RegularExpressions.Regex.IsMatch(x.Description, "\"kind\"\\s*:\\s*\"csJourney\"")
-                        || System.Text.RegularExpressions.Regex.IsMatch(x.Description, "\"phase\"\\s*:") && !System.Text.RegularExpressions.Regex.IsMatch(x.Description, "\"phase\"\\s*:\\s*(null|\"\"|\"validation\")")))
-                && x.RecordType != "Perfil de colaborador"
-                && (x.Module != "notes" || visibleNoteIds.Contains(x.Id))
-                && (directlyVisibleModules.Contains(x.Module) || sharedDevelopmentIds.Contains(x.Id) || canManageCommissions || x.Owner == actor.DisplayName)
-                && (x.Module != "reminders" || x.CreatedAt >= registeredAt)
-                && (x.Module != "reminders" || x.CustomerName == actor.Email || x.CreatedBy == actor.Email || actor.HasPermission("reminders", "manage"))
-                && (x.Module != "diary" || x.CreatedBy == actor.Email)
-                && (x.Module != "commissions" || canManageCommissions || x.Owner == actor.DisplayName)
-                && (x.Module != "referrals" || canManageReferrals || x.CreatedBy == actor.Email || x.CreatedBy == "" && x.Owner == actor.DisplayName)
-                && (x.Module != "goals" || canManageGoals || x.Owner == actor.DisplayName || x.Team == actor.Department));
         // Persistent workflows and sales history must remain complete for client lists,
         // period-based revenue totals and goals, independently of recent activity elsewhere.
-        var items = await authorizedItems.Where(x => x.Module == "cs" || x.Module == "goals" || x.Module == "commercial")
-            .Union(authorizedItems.Where(x => x.Module != "cs" && x.Module != "goals" && x.Module != "commercial").OrderByDescending(x => x.UpdatedAt).Take(1000))
+        var items = await authorizedItems
             .OrderByDescending(x => x.UpdatedAt)
             .Select(x => new WorkItemDto(
                 x.Id, x.Module, x.RecordType, x.Title, x.CustomerId, x.CustomerName,
@@ -189,7 +148,7 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         items = items.Select(item => latestAssignments.TryGetValue(item.Id, out var assignment)
             ? item with { AssignedAt = assignment.CreatedAt, AssignedBy = assignment.Actor } : item).ToList();
         if (!canManageCommissions)
-            items = items.Where(item => item.Module != "commissions" || CommissionBelongsTo(item.Description, item.Owner, actor, registeredUser?.Id)).ToList();
+            items = items.Where(item => item.Module != "commissions" || CommissionBelongsTo(item.Description, item.Owner, actor, listScope.UserId)).ToList();
         if (!new[] { "customers", "catalogs", "commercial", "cs", "lia", "support", "tasks", "waitingQueue", "cancellations", "serviceRequests", "serviceFollowup" }
                 .Any(module => actor.HasPermission(module, "view")))
             customers = customers.Where(customer => items.Any(item => item.CustomerId == customer.Id ||
@@ -592,8 +551,8 @@ public sealed class OperationsService(OperationsDbContext db) : IOperationsServi
         if (expiresAt.HasValue && expiresAt.Value <= DateTimeOffset.UtcNow)
             throw new DomainException("A validade deve ser uma data futura.");
         var normalizedImage = imageDataUrl?.Trim() ?? "";
-        if (normalizedImage.Length > 3_000_000 || (normalizedImage.Length > 0 && !normalizedImage.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase)))
-            throw new DomainException("A imagem do aviso é inválida ou excede o limite permitido.");
+        if (normalizedImage.Length > 0 && !normalizedImage.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) && !System.Text.RegularExpressions.Regex.IsMatch(normalizedImage, @"^/api/workspace-files/[0-9a-f-]{36}$"))
+            throw new DomainException("A imagem do aviso é inválida.");
         var user = await db.Users.SingleOrDefaultAsync(entry => entry.Email == actor.Email, cancellationToken)
             ?? throw new DomainException("Usuário autenticado não encontrado.", 403);
         if (normalizedAudience == "Colaborador")

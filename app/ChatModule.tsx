@@ -1,6 +1,7 @@
 "use client";
 
-import PaginatedItems from "@/app/PaginatedItems";
+import { mergeRecordRows } from "@/lib/record-pages";
+import PaginatedItems, { RecordPageSize } from "@/app/PaginatedItems";
 import MessageText from "@/app/MessageText";
 import ChatMessageComposer from "@/app/ChatMessageComposer";
 import WhatsAppTemplateSender from "./WhatsAppTemplateSender";
@@ -240,6 +241,7 @@ type WorkspaceProps = {
 };
 type InboxFilters = {
   page: number;
+  pageSize: number;
   search: string;
   status: string;
   departmentId: string;
@@ -351,6 +353,7 @@ export default function ChatWorkspace(props: WorkspaceProps) {
   const [module, setModule] = useState<ChatModuleData | null>(null);
   const [filters, setFilters] = useState<InboxFilters>(() => ({
     page: 1,
+    pageSize: 10,
     search:
       typeof window === "undefined"
         ? ""
@@ -402,6 +405,7 @@ export default function ChatWorkspace(props: WorkspaceProps) {
         try {
           const query = new URLSearchParams({
             page: String(filters.page),
+            pageSize: String(filters.pageSize),
             search: filters.search,
             status: filters.status,
             isGroup: String(filters.isGroup),
@@ -824,6 +828,14 @@ function ChatModule({
                 </button>
               </div>
             )}
+            <RecordPageSize
+              value={module.page.size}
+              onChange={(pageSize) => {
+                setSelectedConversationIds([]);
+                onFilters({ page: 1, pageSize });
+              }}
+              label="conversas"
+            />
             <div className="conversation-list" aria-busy={loading}>
               {visibleConversations.length === 0 && (
                 <div className="chat-empty">
@@ -920,6 +932,7 @@ function ChatModule({
               })}
             </div>
             <ChatPagination
+              pageSize={module.page.size}
               page={module.page.number}
               total={module.page.total}
               loading={loading}
@@ -1277,20 +1290,22 @@ function ChatPagination({
   total,
   loading,
   onPage,
+  pageSize = 10,
 }: {
   page: number;
   total: number;
   loading: boolean;
   onPage: (page: number) => void;
+  pageSize?: number;
 }) {
-  const pages = Math.max(1, Math.ceil(total / 10));
+  const pages = Math.max(1, Math.ceil(total / pageSize));
   return (
     <nav className="chat-pagination" aria-label="Páginas de atendimentos">
       <span role="status" aria-live="polite">
         {loading
           ? "Carregando…"
           : total
-            ? `${(page - 1) * 10 + 1}–${Math.min(page * 10, total)} de ${total}`
+            ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} de ${total}`
             : "0 atendimentos"}
       </span>
       <div>
@@ -1629,7 +1644,6 @@ function ChatDashboard({
   const [reportLoading, setReportLoading] = useState(true);
   const [reportError, setReportError] = useState("");
   const [reportRevision, setReportRevision] = useState(0);
-  const [reportPage, setReportPage] = useState(1);
   const latestUnauthorized = useRef(onUnauthorized);
   useEffect(() => {
     latestUnauthorized.current = onUnauthorized;
@@ -1727,14 +1741,16 @@ function ChatDashboard({
   ]);
 
   const closed = conversations.filter((item) => item.closedAt);
-  const currentReportPage = Math.min(
-    reportPage,
-    Math.max(1, Math.ceil(conversations.length / 10)),
-  );
-  const reportRows = conversations.slice(
-    (currentReportPage - 1) * 10,
-    currentReportPage * 10,
-  );
+  const reportEnd = new Date(dateTo + "T00:00:00");
+  reportEnd.setDate(reportEnd.getDate() + 1);
+  const reportSource =
+    dateFrom && dateTo
+      ? [
+          "chatReport",
+          new Date(dateFrom + "T00:00:00").toISOString(),
+          reportEnd.toISOString(),
+        ]
+      : undefined;
   const durations = closed.map((item) =>
     Math.max(
       0,
@@ -2098,55 +2114,71 @@ function ChatDashboard({
               </tr>
             </thead>
             <tbody>
-              {reportRows.map((conversation) => {
-                const duration = conversation.closedAt
-                  ? (new Date(conversation.closedAt).getTime() -
-                      new Date(conversation.createdAt).getTime()) /
-                    60000
-                  : null;
-                return (
-                  <tr key={conversation.id}>
-                    <td>
-                      <b>{conversation.protocol}</b>
-                    </td>
-                    <td>
-                      {conversation.contact.companyName ||
-                        conversation.contact.name}
-                    </td>
-                    <td>{conversation.subject}</td>
-                    <td>{conversation.assigneeName || "Não atribuído"}</td>
-                    <td>{formatDate(conversation.createdAt)}</td>
-                    <td>
-                      {conversation.closedAt
-                        ? formatDate(conversation.closedAt)
-                        : "Em andamento"}
-                    </td>
-                    <td>
-                      {duration === null ? "—" : formatDuration(duration)}
-                    </td>
-                    <td>
-                      {conversation.transfers.length
-                        ? `Sim (${conversation.transfers.length})`
-                        : "Não"}
-                    </td>
-                    <td>
-                      {conversation.satisfactionScore
-                        ? `${conversation.satisfactionScore}/5`
-                        : "Pendente"}
-                    </td>
-                    {has("editReports") && (
+              <PaginatedItems
+                table
+                label="atendimentos do relatório"
+                source={reportSource}
+                resetKey={JSON.stringify([
+                  dateFrom,
+                  dateTo,
+                  assigneeId,
+                  subject,
+                  clientId,
+                ])}
+                onRows={(rows) =>
+                  setReport((current) => mergeRecordRows(current, rows))
+                }
+              >
+                {conversations.map((conversation) => {
+                  const duration = conversation.closedAt
+                    ? (new Date(conversation.closedAt).getTime() -
+                        new Date(conversation.createdAt).getTime()) /
+                      60000
+                    : null;
+                  return (
+                    <tr key={conversation.id}>
                       <td>
-                        <button
-                          className="chat-report-edit"
-                          onClick={() => setEditing(conversation)}
-                        >
-                          <Pencil size={13} /> Editar
-                        </button>
+                        <b>{conversation.protocol}</b>
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
+                      <td>
+                        {conversation.contact.companyName ||
+                          conversation.contact.name}
+                      </td>
+                      <td>{conversation.subject}</td>
+                      <td>{conversation.assigneeName || "Não atribuído"}</td>
+                      <td>{formatDate(conversation.createdAt)}</td>
+                      <td>
+                        {conversation.closedAt
+                          ? formatDate(conversation.closedAt)
+                          : "Em andamento"}
+                      </td>
+                      <td>
+                        {duration === null ? "—" : formatDuration(duration)}
+                      </td>
+                      <td>
+                        {conversation.transfers.length
+                          ? `Sim (${conversation.transfers.length})`
+                          : "Não"}
+                      </td>
+                      <td>
+                        {conversation.satisfactionScore
+                          ? `${conversation.satisfactionScore}/5`
+                          : "Pendente"}
+                      </td>
+                      {has("editReports") && (
+                        <td>
+                          <button
+                            className="chat-report-edit"
+                            onClick={() => setEditing(conversation)}
+                          >
+                            <Pencil size={13} /> Editar
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </PaginatedItems>
               {conversations.length === 0 && (
                 <tr>
                   <td colSpan={has("editReports") ? 10 : 9}>
@@ -2159,12 +2191,6 @@ function ChatDashboard({
             </tbody>
           </table>
         </div>
-        <ChatPagination
-          page={currentReportPage}
-          total={conversations.length}
-          loading={reportLoading}
-          onPage={setReportPage}
-        />
       </article>
       {editing && (
         <ReportEditModal
@@ -2982,7 +3008,7 @@ function WhatsAppSettings({
       )}
       <div className="whatsapp-number-grid">
         {
-          <PaginatedItems label="conexões">
+          <PaginatedItems mode="cards" label="conexões">
             {module.whatsAppNumbers.map((item) => (
               <article
                 className={editingId === item.id ? "editing" : ""}

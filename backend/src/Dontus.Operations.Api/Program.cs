@@ -27,10 +27,16 @@ builder.Services
     .AddAuthentication("DontusLocal")
     .AddScheme<AuthenticationSchemeOptions, LocalAuthenticationHandler>("DontusLocal", _ => { });
 builder.Services.AddAuthorization();
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = null);
 builder.Services.AddHealthChecks();
+builder.Services.AddScoped<WorkspaceFileStorage>();
+builder.Services.AddScoped<PublicRecruitmentService>();
+builder.Services.AddScoped<RecordPages>();
+builder.Services.AddScoped<OperationsService>();
+builder.Services.AddScoped<TaskService>();
 builder.Services.Configure<FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 250 * 1024 * 1024;
+    options.MultipartBodyLengthLimit = long.MaxValue;
 });
 builder.Services.AddRateLimiter(options =>
 {
@@ -65,6 +71,9 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+app.MapWorkspaceFiles();
+app.MapPublicRecruitment();
+app.MapRecordPages();
 
 app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 {
@@ -74,7 +83,7 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
     {
         DomainException domain => (domain.StatusCode, "Regra de negócio", domain.Message),
         BadHttpRequestException badRequest when badRequest.StatusCode == StatusCodes.Status413PayloadTooLarge =>
-            (StatusCodes.Status413PayloadTooLarge, "Arquivo muito grande", "O envio excede o limite permitido. Envie arquivos de até 50 MB."),
+            (StatusCodes.Status413PayloadTooLarge, "Arquivo muito grande", "O servidor de acesso recusou o envio. Tente novamente."),
         DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Conflito de concorrência", "O registro foi alterado por outro usuário."),
         _ => (StatusCodes.Status500InternalServerError, "Falha na operação", "Ocorreu um erro inesperado."),
     };
@@ -666,8 +675,8 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
         return Results.Problem(statusCode: 400, title: "Tipo inválido", detail: "Selecione um dos tipos disponíveis.");
     if (summary.Length < 10 || summary.Length > 1000)
         return Results.Problem(statusCode: 400, title: "Descrição inválida", detail: "Descreva a solicitação com 10 a 1000 caracteres.");
-    if (form.Files.Count > 5 || form.Files.Any(file => file.Length <= 0 || file.Length > 25 * 1024 * 1024))
-        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie no máximo 5 arquivos, com até 25 MB cada.");
+    if (form.Files.Count > 5 || form.Files.Any(file => file.Length <= 0))
+        return Results.Problem(statusCode: 400, title: "Arquivos inválidos", detail: "Envie no máximo 5 arquivos não vazios.");
 
     var customers = await db.Customers.AsNoTracking().ToListAsync(cancellationToken);
     var customer = customers.FirstOrDefault(entry => PublicCustomerCode(entry.DocumentMasked) == clientId);
@@ -790,7 +799,7 @@ taskFiles.MapPost("/{taskId:guid}/attachments", async (
             taskId, commentId, file.FileName, file.ContentType, file.Length, content), actor, cancellationToken));
     }
     return Results.Created($"/api/tasks/{taskId}/attachments", new { ok = true, ids });
-}).WithMetadata(new RequestSizeLimitAttribute(26L * 1024 * 1024)).DisableAntiforgery();
+}).WithMetadata(new DisableRequestSizeLimitAttribute()).DisableAntiforgery();
 
 taskFiles.MapGet("/attachments/{attachmentId:guid}", async (
     Guid attachmentId,
@@ -801,6 +810,7 @@ taskFiles.MapGet("/attachments/{attachmentId:guid}", async (
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var download = await taskService.GetAttachmentDownloadAsync(attachmentId, actor, cancellationToken);
+    if (download.FilePath is not null) return Results.File(download.FilePath, download.ContentType, download.FileName, enableRangeProcessing: true);
     if (download.Content is not null)
         return Results.File(download.Content, download.ContentType, download.FileName, enableRangeProcessing: true);
     return Results.Redirect(download.Url);
@@ -855,6 +865,7 @@ suggestionFiles.MapGet("/attachments/{attachmentId:guid}", async (
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var download = await suggestionService.GetAttachmentDownloadAsync(attachmentId, actor, cancellationToken);
+    if (download.FilePath is not null) return Results.File(download.FilePath, download.ContentType, download.FileName, enableRangeProcessing: true);
     if (download.Content is not null)
         return Results.File(download.Content, download.ContentType, download.FileName, enableRangeProcessing: true);
     return Results.Redirect(download.Url);
@@ -938,6 +949,7 @@ internalChatFiles.MapGet("/photos/{kind}/{id:guid}", async (
                 && db.Users.Any(user => user.Id == member.UserId && user.Email == actor.Email)))
             .Select(room => room.PhotoDataUrl).SingleOrDefaultAsync(cancellationToken);
     }
+    if (photo?.StartsWith("/api/workspace-files/", StringComparison.Ordinal) == true) return Results.Redirect(photo);
     if (string.IsNullOrEmpty(photo) || !photo.StartsWith("data:image/", StringComparison.Ordinal)) return Results.NotFound();
     var separator = photo.IndexOf(";base64,", StringComparison.Ordinal);
     if (separator < 0) return Results.NotFound();
@@ -975,7 +987,7 @@ internalChatFiles.MapPost("/{roomId:guid}/attachments", async (
             roomId, file.FileName, file.ContentType, file.Length, content, replyToMessageId), actor, cancellationToken));
     }
     return Results.Created($"/api/internal-chats/{roomId}/attachments", new { ok = true, ids });
-}).WithMetadata(new RequestSizeLimitAttribute(52L * 1024 * 1024)).DisableAntiforgery();
+}).WithMetadata(new DisableRequestSizeLimitAttribute()).DisableAntiforgery();
 
 internalChatFiles.MapGet("/attachments/{messageId:guid}", async (
     Guid messageId,

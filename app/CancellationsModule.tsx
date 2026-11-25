@@ -1,6 +1,7 @@
 "use client";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
 
-import PaginatedItems from "@/app/PaginatedItems";
+import CustomerSelect from "@/app/CustomerSelect";
 
 import CommentHistory from "@/app/CommentHistory";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
@@ -265,13 +266,8 @@ const createLocalId = () =>
   typeof globalThis.crypto?.randomUUID === "function"
     ? globalThis.crypto.randomUUID()
     : `file-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const readFile = async (file: File) => {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000)
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  return `data:${file.type || "application/octet-stream"};base64,${globalThis.btoa(binary)}`;
-};
+const readFile = (file: File) =>
+  workspaceFileUrl(file, { module: "cancellations" });
 const createAttachments = async (files: File[], author: string) =>
   Promise.all(
     files.map(async (file) => ({
@@ -1178,7 +1174,7 @@ export default function CancellationsModule({
                   </p>
                 </div>
               ) : (
-                <PaginatedItems label="cancelamentos">
+                <>
                   {visible.map(({ item, detail }) => {
                     const nextStage = NEXT_STAGE[item.status];
                     return (
@@ -1210,7 +1206,7 @@ export default function CancellationsModule({
                       />
                     );
                   })}
-                </PaginatedItems>
+                </>
               )}
             </div>
           </div>
@@ -1715,10 +1711,6 @@ export function CancellationEntryModal({
       setFileError("O ID Dontus deve conter exatamente 6 dígitos.");
       return;
     }
-    if (files.some((file) => file.size > 5 * 1024 * 1024)) {
-      setFileError("Cada documento deve ter no máximo 5 MB.");
-      return;
-    }
     if ((base.attachments?.length ?? 0) + files.length > 10) {
       setFileError("É permitido manter até 10 documentos por cancelamento.");
       return;
@@ -1853,25 +1845,13 @@ export function CancellationEntryModal({
           </label>
           <label className="wide">
             Cliente cadastrado
-            <select
+            <CustomerSelect
               value={selectedCustomerId}
               onChange={(event) => selectCustomer(event.target.value)}
-            >
-              <option value="">Preencher ID manualmente</option>
-              {customers.map((customer) => {
-                const publicId = publicCustomerId(customer);
-                return (
-                  <option
-                    value={customer.id}
-                    disabled={!publicId}
-                    key={customer.id}
-                  >
-                    {customer.trade_name || customer.legal_name} ·{" "}
-                    {publicId || "sem ID Dontus"}
-                  </option>
-                );
-              })}
-            </select>
+              customers={customers}
+              emptyLabel="Preencher ID manualmente"
+              label="publicId"
+            />
           </label>
           <label>
             ID Dontus *
@@ -2028,7 +2008,7 @@ export function CancellationEntryModal({
                 ? `${files.length} arquivo(s) selecionado(s)`
                 : undefined
             }
-            hint="Selecione até 10 documentos. Cada arquivo pode ter no máximo 5 MB."
+            hint="Selecione até 10 documentos. Cada arquivo pode ter sem limite de tamanho no sistema."
             onChange={(event) =>
               setFiles((current) =>
                 mergeFiles(
@@ -2125,10 +2105,6 @@ function CancellationDrawer({
   const addAttachments = async (attachmentFiles: File[]) => {
     setAttachmentError("");
     if (!attachmentFiles.length) return;
-    if (attachmentFiles.some((file) => file.size > 5 * 1024 * 1024)) {
-      setAttachmentError("Cada documento deve ter no máximo 5 MB.");
-      return;
-    }
     if (detail.attachments.length + attachmentFiles.length > 10) {
       setAttachmentError(
         "É permitido manter até 10 documentos por cancelamento.",

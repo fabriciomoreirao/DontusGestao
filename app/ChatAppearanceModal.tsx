@@ -22,8 +22,6 @@ import {
 async function wallpaper(file: File) {
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
     throw new Error("Escolha uma imagem PNG, JPG ou WebP.");
-  if (file.size > 5 * 1024 * 1024)
-    throw new Error("Escolha uma imagem de até 5 MB.");
   const url = URL.createObjectURL(file);
   try {
     const image = new Image();
@@ -42,8 +40,6 @@ async function wallpaper(file: File) {
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     const result = canvas.toDataURL("image/jpeg", 0.82);
-    if (result.length > 2_000_000)
-      throw new Error("Use uma imagem menor para o fundo do chat.");
     return result;
   } finally {
     URL.revokeObjectURL(url);
@@ -231,7 +227,7 @@ export default function ChatAppearanceModal({
                         ? "Trocar imagem de fundo"
                         : "Escolher imagem de fundo"}
                   </strong>
-                  <small>PNG, JPG ou WebP · até 5 MB</small>
+                  <small>PNG, JPG ou WebP · sem limite de tamanho</small>
                 </span>
               </button>
               {draft.backgroundImage && (

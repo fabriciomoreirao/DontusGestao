@@ -20,7 +20,7 @@ public sealed class OperationsResponseProjectionTests
         await db.SaveChangesAsync();
         var actor = Actor with { Permissions = [new("marketing", true, false, false, false, false), new("commercial", true, false, false, false, false)] };
         var snapshot = await new OperationsService(db).GetSnapshotAsync(actor);
-        Assert.Equal(1002, snapshot.Items.Count);
+        Assert.Equal(1007, snapshot.Items.Count);
         Assert.Equal(12345, snapshot.Items.Single(item => item.Id == sale.Id).AmountCents);
         Assert.DoesNotContain((await new OperationsService(db).GetSnapshotAsync(Actor)).Items, item => item.Module == "commercial");
     }

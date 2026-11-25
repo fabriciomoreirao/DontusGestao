@@ -1,4 +1,5 @@
 "use client";
+import { memo } from "react";
 import { CommentContent } from "./CommentInput";
 import PhoneLink from "./PhoneLink";
 const labels: Record<string, string> = {
@@ -45,7 +46,7 @@ const labels: Record<string, string> = {
   featuresActive: "Funcionalidades utilizadas",
   featuresPlus: "Funcionalidades Plus",
 };
-export default function RecordDescription({
+export default memo(function RecordDescription({
   description,
 }: {
   description: string;
@@ -141,4 +142,4 @@ export default function RecordDescription({
       )}
     </div>
   );
-}
+});

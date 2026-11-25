@@ -1,4 +1,7 @@
 "use client";
+import PaginatedItems from "@/app/PaginatedItems";
+import CsFeaturesIndicators from "@/app/CsFeaturesIndicators";
+import { parseJourney } from "@/app/CustomerSuccessJourneyModule";
 import CommercialAnalyticsBoard from "@/app/CommercialAnalyticsBoard";
 import FollowupRiskIndicators from "@/app/FollowupRiskIndicators";
 import LiaPromptIndicators from "@/app/LiaPromptIndicators";
@@ -233,6 +236,8 @@ function scopeItems(items: Item[], module: string, contextKey: string) {
       if (item.module !== "cs") return false;
       const detail = parse(item.description);
       const kind = clean(detail.kind);
+      if (contextKey.includes("general"))
+        return Boolean(parseJourney(item.description || ""));
       if (contextKey.includes("enterprise"))
         return (
           /enterprise/.test(kind) ||
@@ -280,6 +285,12 @@ function normalizedStage(value: unknown, fallback = "Sem status") {
   const raw = stringOf(value) || fallback;
   const key = clean(raw);
   const known: Record<string, string> = {
+    onboarding: "Onboarding",
+    finished: "Finalizados",
+    unsuccessful: "Finalizados sem sucesso",
+    cancelledwithouttraining: "Cancelado sem treinamento",
+    validation: "Validação",
+    cancelled: "Cancelados",
     waiting: "Em espera",
     contacted: "Contato feito",
     approved: "Aprovada",
@@ -2227,8 +2238,13 @@ function GenericOperationIndicatorsBoard({
       }),
     [items, module, contextKey],
   );
-  const fieldAnalysis = useFieldIndicatorAnalysis(rawBase);
-  const base = rawBase.filter(fieldAnalysis.matches);
+  const [track, setTrack] = useState("all");
+  const trackBase = rawBase.filter(
+    (item) =>
+      track === "all" || parseJourney(item.description || "")?.track === track,
+  );
+  const fieldAnalysis = useFieldIndicatorAnalysis(trackBase);
+  const base = trackBase.filter(fieldAnalysis.matches);
   const [tab, setTab] = useState<string>("overview");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -2339,6 +2355,22 @@ function GenericOperationIndicatorsBoard({
             <span>Voltar</span>
           </button>
         </header>
+        {module === "cs" && contextKey.includes("general") && (
+          <div className="analytics-filter-row">
+            <label>
+              Acompanhamento
+              <select
+                aria-label="Filtrar acompanhamento"
+                value={track}
+                onChange={(event) => setTrack(event.target.value)}
+              >
+                <option value="all">Ativação e Retenção</option>
+                <option value="activation">Ativação</option>
+                <option value="retention">Retenção</option>
+              </select>
+            </label>
+          </div>
+        )}
         {tab !== "prompts" && (
           <section className="operation-bi-filters">
             <Filter />
@@ -2424,8 +2456,9 @@ function GenericOperationIndicatorsBoard({
             { id: "activity", label: "Atividade" },
             { id: "team", label: "Equipe" },
             { id: "fields", label: "Campos preenchidos" },
-            ...(module === "cs"
+            ...(module === "cs" && !contextKey.includes("enterprise")
               ? [
+                  { id: "features", label: "Features" },
                   { id: "critical", label: "Clientes críticos" },
                   ...(!contextKey.includes("evolution")
                     ? [{ id: "training", label: "Treinamentos em haver" }]
@@ -2443,7 +2476,9 @@ function GenericOperationIndicatorsBoard({
           aria-labelledby={`indicator-tab-${tab}`}
           className="indicator-panel"
         >
-          {tab === "critical" || tab === "training" ? (
+          {tab === "features" ? (
+            <CsFeaturesIndicators items={scoped} catalogs={catalogs} />
+          ) : tab === "critical" || tab === "training" ? (
             <FollowupRiskIndicators
               records={scoped}
               items={items}
@@ -2598,27 +2633,30 @@ function GenericOperationIndicatorsBoard({
                 <section className="indicator-records">
                   <header>
                     <h2>Registros recentes</h2>
-                    <small>Até 30 registros, conforme os filtros acima</small>
+                    <small>Todos os registros, conforme os filtros acima</small>
                   </header>
                   <div className="indicator-record-list">
-                    {scoped
-                      .slice()
-                      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-                      .slice(0, 30)
-                      .map((item) => (
-                        <article key={item.id}>
-                          <span>
-                            <strong>{item.title}</strong>
-                            <small>{item.owner || "Não atribuído"}</small>
-                          </span>
-                          <b>{item.status || "Sem status"}</b>
-                          <time>
-                            {new Date(item.updated_at).toLocaleDateString(
-                              "pt-BR",
-                            )}
-                          </time>
-                        </article>
-                      ))}
+                    <PaginatedItems label="registros">
+                      {scoped
+                        .slice()
+                        .sort((a, b) =>
+                          b.updated_at.localeCompare(a.updated_at),
+                        )
+                        .map((item) => (
+                          <article key={item.id}>
+                            <span>
+                              <strong>{item.title}</strong>
+                              <small>{item.owner || "Não atribuído"}</small>
+                            </span>
+                            <b>{item.status || "Sem status"}</b>
+                            <time>
+                              {new Date(item.updated_at).toLocaleDateString(
+                                "pt-BR",
+                              )}
+                            </time>
+                          </article>
+                        ))}
+                    </PaginatedItems>
                     {!scoped.length && <p>Nenhum registro neste recorte.</p>}
                   </div>
                 </section>

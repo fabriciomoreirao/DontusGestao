@@ -6,12 +6,8 @@ export function internalChatUploadBatches<T extends { size: number }>(
 ) {
   if (files.length > INTERNAL_CHAT_FILE_COUNT)
     throw new Error("É permitido enviar no máximo 10 arquivos por vez.");
-  if (
-    files.some((file) => file.size <= 0 || file.size > INTERNAL_CHAT_FILE_BYTES)
-  )
-    throw new Error(
-      "Arquivos vazios ou maiores que 50 MB não podem ser enviados.",
-    );
+  if (files.some((file) => !Number.isSafeInteger(file.size) || file.size <= 0))
+    throw new Error("Selecione arquivos não vazios.");
   const batches: T[][] = [];
   let bytes = 0;
   for (const file of files) {
@@ -49,7 +45,7 @@ export async function sendInternalChatFiles(
       }
       throw new Error(
         response.status === 413
-          ? "O servidor recusou o tamanho do arquivo. O limite do chat é de 50 MB por arquivo."
+          ? "O servidor de acesso recusou o tamanho do envio. Tente novamente."
           : detail || "Não foi possível enviar o arquivo. Tente novamente.",
       );
     }

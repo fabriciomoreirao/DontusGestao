@@ -70,13 +70,6 @@ export default function useVoiceRecorder(resetKey: string) {
       recorder.ondataavailable = (event) => {
         if (!session.cancelled && event.data.size)
           session.chunks.push(event.data);
-        if (
-          session.chunks.reduce((sum, chunk) => sum + chunk.size, 0) >
-          50 * 1024 * 1024
-        ) {
-          cancel();
-          setError("O áudio ultrapassou o limite de 50 MB.");
-        }
       };
       recorder.onerror = () => {
         cancel();

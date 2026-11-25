@@ -1,6 +1,7 @@
 "use client";
 
-import PaginatedItems from "@/app/PaginatedItems";
+import { mergeRecordRows } from "@/lib/record-pages";
+import PaginatedItems, { RecordPageSize } from "@/app/PaginatedItems";
 
 import SearchableSelect from "./SearchableSelect";
 import SupportAccessFilters from "./SupportAccessFilters";
@@ -262,6 +263,7 @@ export function SupportAccessHistory({
   const [view, setView] = useState<"history" | "indicators">("history");
   const [applied, setApplied] = useState(filters);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [result, setResult] = useState<HistoryResult | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
@@ -270,7 +272,7 @@ export function SupportAccessHistory({
     const controller = new AbortController();
     setBusy(true);
     setError("");
-    const query = supportAccessQuery(applied, page);
+    const query = `${supportAccessQuery(applied, page)}&pageSize=${pageSize}`;
     void api<HistoryResult>(
       `access/history?${query}`,
       undefined,
@@ -289,10 +291,10 @@ export function SupportAccessHistory({
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [applied, page, view]);
+  }, [applied, page, pageSize, view]);
   const totalPages = Math.max(
     1,
-    Math.ceil((result?.total ?? 0) / (result?.pageSize ?? 20)),
+    Math.ceil((result?.total ?? 0) / (result?.pageSize ?? 10)),
   );
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -379,6 +381,14 @@ export function SupportAccessHistory({
             ? "Consultando histórico…"
             : `${result?.total ?? 0} acesso(s) encontrado(s)`}
         </p>
+        <RecordPageSize
+          value={pageSize}
+          onChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          label="acessos"
+        />
         <div className="support-access-log-scroll">
           <table className="support-access-log-table">
             <thead>
@@ -734,7 +744,13 @@ export function SupportAccessSettings({
                   Nenhum motivo cadastrado neste setor.
                 </p>
               ) : (
-                <PaginatedItems label="motivos de acesso">
+                <PaginatedItems
+                  label="motivos de acesso"
+                  source={["supportReasons"]}
+                  onRows={(rows) =>
+                    setReasons((current) => mergeRecordRows(current, rows))
+                  }
+                >
                   {scoped.map((reason) => (
                     <article key={reason.id}>
                       <strong>{reason.name}</strong>

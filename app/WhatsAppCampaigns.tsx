@@ -1,5 +1,6 @@
 "use client";
 
+import { mergeRecordRows } from "@/lib/record-pages";
 import PaginatedItems from "@/app/PaginatedItems";
 import { useState, type FormEvent } from "react";
 import {
@@ -171,7 +172,12 @@ export default function WhatsAppCampaigns({
             </thead>
             <tbody>
               {
-                <PaginatedItems label="registros de campanhas" table>
+                <PaginatedItems
+                  label="registros de campanhas"
+                  table
+                  source={["whatsAppAdmin", "campaigns"]}
+                  onRows={() => void reload()}
+                >
                   {campaigns.map((c) => (
                     <tr key={c.id}>
                       <td>
@@ -359,7 +365,24 @@ export default function WhatsAppCampaigns({
               </thead>
               <tbody>
                 {
-                  <PaginatedItems label="registros de campanhas" table>
+                  <PaginatedItems
+                    label="registros de campanhas"
+                    table
+                    source={["whatsAppDeliveries", detail.campaign.id]}
+                    onRows={(rows) =>
+                      setDetail((current) =>
+                        current
+                          ? {
+                              ...current,
+                              deliveries: mergeRecordRows(
+                                current.deliveries,
+                                rows,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                  >
                     {detail.deliveries.map((d) => (
                       <tr key={d.id}>
                         <td>{d.name}</td>
@@ -465,8 +488,6 @@ function CampaignForm({
     setError("");
     setBusy(true);
     try {
-      if (file.size > 5000000)
-        throw new Error("Selecione uma planilha de até 5 MB.");
       const XLSX = await import("xlsx");
       const book = XLSX.read(await file.arrayBuffer(), {
         type: "array",
@@ -796,7 +817,15 @@ function CampaignForm({
                   )}
                   <div className="wa-recipient-picker">
                     {
-                      <PaginatedItems label="contatos">
+                      <PaginatedItems
+                        label="contatos"
+                        source={
+                          source === "Contatos"
+                            ? ["whatsAppAdmin", "contacts"]
+                            : ["whatsAppAdmin", "customers"]
+                        }
+                        onRows={() => void reload()}
+                      >
                         {entries.map((r) => (
                           <label key={r.id}>
                             <input

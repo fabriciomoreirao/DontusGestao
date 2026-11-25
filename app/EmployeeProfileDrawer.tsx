@@ -1,4 +1,5 @@
 "use client";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import {
   Activity,
@@ -137,7 +138,7 @@ export default function EmployeeProfileDrawer({
       !task.completedAt &&
       !task.cancelled,
   ).length;
-  const upload = (file?: File) => {
+  const upload = async (file?: File) => {
     setError("");
     setSuccess("");
     if (!file) return;
@@ -145,15 +146,18 @@ export default function EmployeeProfileDrawer({
       setError("Selecione uma imagem PNG, JPEG ou WebP.");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setError("A capa deve ter no máximo 2 MB.");
-      return;
+    setSaving(true);
+    try {
+      setCoverDataUrl(await workspaceFileUrl(file, { module: "profile" }));
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar a imagem.",
+      );
+    } finally {
+      setSaving(false);
     }
-    const reader = new FileReader();
-    reader.onload = () => setCoverDataUrl(String(reader.result ?? ""));
-    reader.onerror = () =>
-      setError("Não foi possível ler a imagem. Selecione o arquivo novamente.");
-    reader.readAsDataURL(file);
   };
   const save = async () => {
     if (!profile || !canEdit || saving) return;

@@ -31,6 +31,11 @@ import "./enterprise-network-reference.css";
 import "./whatsapp-admin.css";
 import "./nov23-workflows.css";
 import "./followup-header.css";
+import "./nov24-adjustments.css";
+import "./upload-filter-refinements.css";
+import "./sale-observation.css";
+import "./nov24-chat-recruitment.css";
+import "./list-pagination-refinements.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

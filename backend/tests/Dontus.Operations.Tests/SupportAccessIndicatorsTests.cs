@@ -22,7 +22,10 @@ public sealed class SupportAccessIndicatorsTests
         db.SupportAccessLogs.Add(Log("2026-11-06T03:00:00Z")); await db.SaveChangesAsync();
         var service = Service(db); var filter = new SupportAccessHistoryQuery(new(2026, 11, 5), new(2026, 11, 5), Page: 2);
         var history = System.Text.Json.JsonSerializer.SerializeToElement(await service.GetAccessHistoryAsync(filter, Viewer, default));
-        Assert.Equal(6, history.GetProperty("entries").GetArrayLength());
+        Assert.Equal(10, history.GetProperty("entries").GetArrayLength());
+        Assert.Equal(10, history.GetProperty("pageSize").GetInt32());
+        var last = System.Text.Json.JsonSerializer.SerializeToElement(await service.GetAccessHistoryAsync(filter with { Page = 3 }, Viewer, default));
+        Assert.Equal(6, last.GetProperty("entries").GetArrayLength());
         var data = await service.GetAccessIndicatorsAsync(filter, Viewer, default);
         Assert.Equal(26, data.Total); Assert.Equal(3, data.Clients); Assert.Equal(2, data.Collaborators); Assert.Equal(2, data.Reasons);
         Assert.Equal(26, Assert.Single(data.Trend).Count); Assert.Equal(1, data.ByHour.Single(entry => entry.Key == "23").Count);
@@ -30,6 +33,21 @@ public sealed class SupportAccessIndicatorsTests
         Assert.DoesNotContain("Descrição privada", System.Text.Json.JsonSerializer.Serialize(data));
         var range = await service.GetAccessIndicatorsAsync(new(new(2026, 11, 4), new(2026, 11, 6)), Viewer, default);
         Assert.Equal(3, range.Trend.Count); Assert.Equal(0, range.Trend[0].Count); Assert.Equal(27, range.Total); Assert.Equal(9, range.AveragePerDay);
+    }
+    [Theory]
+    [InlineData(10, 10)]
+    [InlineData(30, 30)]
+    [InlineData(50, 50)]
+    [InlineData(100, 65)]
+    [InlineData(999, 10)]
+    public async Task History_respects_allowed_page_sizes(int requested, int expected)
+    {
+        await using var db = Context();
+        for (var i = 0; i < 65; i++) db.SupportAccessLogs.Add(Log("2026-11-05T15:00:00Z"));
+        await db.SaveChangesAsync();
+        var result = System.Text.Json.JsonSerializer.SerializeToElement(await Service(db).GetAccessHistoryAsync(new(PageSize: requested), Viewer, default));
+        Assert.Equal(expected, result.GetProperty("entries").GetArrayLength());
+        Assert.Equal(65, result.GetProperty("total").GetInt32());
     }
     [Fact]
     public async Task Filters_combine_and_the_access_permission_is_required()

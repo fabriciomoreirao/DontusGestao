@@ -1,6 +1,5 @@
 "use client";
 
-import PaginatedItems from "@/app/PaginatedItems";
 import { reminderRecipients } from "@/lib/assignment-people";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
@@ -643,101 +642,95 @@ export default function RemindersModule({
         </div>
       ) : (
         <section className="reminder-grid">
-          {
-            <PaginatedItems label="lembretes">
-              {reminders.map(({ item, detail }) => (
-                <article
-                  className={`reminder-card ${reminderTone(detail.urgency)} ${detail.seenAt ? "seen" : ""}`}
-                  key={item.id}
-                >
-                  <header>
+          {reminders.map(({ item, detail }) => (
+            <article
+              className={`reminder-card ${reminderTone(detail.urgency)} ${detail.seenAt ? "seen" : ""}`}
+              key={item.id}
+            >
+              <header>
+                <span>
+                  <i />
+                  <b>{detail.urgency}</b>
+                </span>
+                <time>{dt(detail.nextAlertAt)}</time>
+              </header>
+              <h2>{detail.title}</h2>
+              <p>{detail.summary}</p>
+              {detail.sourceTitle && (
+                <small className="reminder-card-source">
+                  {detail.sourceModule} · {detail.sourceTitle}
+                </small>
+              )}
+              <footer>
+                <div className="reminder-card-people">
+                  <span>
+                    <small>Responsável</small>
+                    <strong>{detail.recipientName}</strong>
+                  </span>
+                  <span>
+                    <small>Criado por</small>
+                    <strong>{detail.createdBy}</strong>
+                  </span>
+                </div>
+                {detail.seenAt ? (
+                  <div className="reminder-card-receipt seen">
+                    <Eye />
                     <span>
-                      <i />
-                      <b>{detail.urgency}</b>
+                      Visto por{" "}
+                      <strong>{detail.seenBy || detail.recipientName}</strong>
+                      <time>{dt(detail.seenAt)}</time>
                     </span>
-                    <time>{dt(detail.nextAlertAt)}</time>
-                  </header>
-                  <h2>{detail.title}</h2>
-                  <p>{detail.summary}</p>
-                  {detail.sourceTitle && (
-                    <small className="reminder-card-source">
-                      {detail.sourceModule} · {detail.sourceTitle}
-                    </small>
-                  )}
-                  <footer>
-                    <div className="reminder-card-people">
-                      <span>
-                        <small>Responsável</small>
-                        <strong>{detail.recipientName}</strong>
-                      </span>
-                      <span>
-                        <small>Criado por</small>
-                        <strong>{detail.createdBy}</strong>
-                      </span>
-                    </div>
-                    {detail.seenAt ? (
-                      <div className="reminder-card-receipt seen">
-                        <Eye />
-                        <span>
-                          Visto por{" "}
-                          <strong>
-                            {detail.seenBy || detail.recipientName}
-                          </strong>
-                          <time>{dt(detail.seenAt)}</time>
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="reminder-card-receipt">
-                        <Clock3 />
-                        <span>
-                          {new Date(detail.nextAlertAt) <= new Date()
-                            ? "Aguardando confirmação"
-                            : "Programado"}
-                        </span>
-                      </div>
-                    )}
-                    <div className="reminder-card-actions">
+                  </div>
+                ) : (
+                  <div className="reminder-card-receipt">
+                    <Clock3 />
+                    <span>
+                      {new Date(detail.nextAlertAt) <= new Date()
+                        ? "Aguardando confirmação"
+                        : "Programado"}
+                    </span>
+                  </div>
+                )}
+                <div className="reminder-card-actions">
+                  <button
+                    className="reminder-view-button"
+                    type="button"
+                    onClick={() => setSelected({ item, detail })}
+                  >
+                    <Eye />
+                    Visualizar
+                  </button>
+                  {canEdit &&
+                    !detail.seenAt &&
+                    detail.recipientEmail === currentUser.email && (
                       <button
-                        className="reminder-view-button"
-                        type="button"
-                        onClick={() => setSelected({ item, detail })}
+                        className="reminder-seen-button"
+                        disabled={busy}
+                        onClick={() => markSeen(item, detail)}
                       >
-                        <Eye />
-                        Visualizar
+                        <Check />
+                        Confirmar
                       </button>
-                      {canEdit &&
-                        !detail.seenAt &&
-                        detail.recipientEmail === currentUser.email && (
-                          <button
-                            className="reminder-seen-button"
-                            disabled={busy}
-                            onClick={() => markSeen(item, detail)}
-                          >
-                            <Check />
-                            Confirmar
-                          </button>
-                        )}
-                      {canEdit && detail.creatorEmail === currentUser.email && (
-                        <button
-                          disabled={busy}
-                          className="reminder-delete"
-                          title="Excluir lembrete"
-                          onClick={() =>
-                            void operate(
-                              { action: "deleteWorkItem", id: item.id },
-                              "Lembrete excluído com sucesso.",
-                            )
-                          }
-                        >
-                          <Trash2 />
-                        </button>
-                      )}
-                    </div>
-                  </footer>
-                </article>
-              ))}
-            </PaginatedItems>
-          }
+                    )}
+                  {canEdit && detail.creatorEmail === currentUser.email && (
+                    <button
+                      disabled={busy}
+                      className="reminder-delete"
+                      title="Excluir lembrete"
+                      onClick={() =>
+                        void operate(
+                          { action: "deleteWorkItem", id: item.id },
+                          "Lembrete excluído com sucesso.",
+                        )
+                      }
+                    >
+                      <Trash2 />
+                    </button>
+                  )}
+                </div>
+              </footer>
+            </article>
+          ))}
         </section>
       )}
       {historyOpen && (
@@ -892,7 +885,7 @@ function ReminderPendingHistoryModal({
               </span>
             </div>
           ) : (
-            <PaginatedItems label="lembretes">
+            <>
               {reminders.map(({ item, detail }) => (
                 <article className={reminderTone(detail.urgency)} key={item.id}>
                   <span className="reminder-history-tone">
@@ -934,7 +927,7 @@ function ReminderPendingHistoryModal({
                   )}
                 </article>
               ))}
-            </PaginatedItems>
+            </>
           )}
         </div>
       </section>

@@ -1,4 +1,5 @@
 "use client";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import PaginatedItems from "@/app/PaginatedItems";
 
@@ -665,23 +666,33 @@ export function DispatchModal({
       }),
   );
   const types = requestTypes;
-  const chooseImage = (file?: File) => {
+  const [uploading, setUploading] = useState(false);
+  const chooseImage = async (file?: File) => {
     setError("");
     if (!file) {
       setImageDataUrl("");
       setFileName("");
       return;
     }
-    if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
-      setError("Selecione um arquivo não vazio de até 5 MB.");
+    if (file.size <= 0) {
+      setError("Selecione um arquivo não vazio.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImageDataUrl(String(reader.result ?? ""));
+    setUploading(true);
+    try {
+      setImageDataUrl(
+        await workspaceFileUrl(file, { module: "waitingQueue", public: true }),
+      );
       setFileName(file.name);
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar o arquivo.",
+      );
+    } finally {
+      setUploading(false);
+    }
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -831,7 +842,7 @@ export function DispatchModal({
               setImageDataUrl("");
               setFileName("");
             }}
-            hint="Imagem, vídeo, PDF, Excel ou outro arquivo de até 5 MB."
+            hint="Imagem, vídeo, PDF, Excel ou outro arquivo sem limite de tamanho no sistema."
             onChange={(event) => chooseImage(event.target.files?.[0])}
           />
           {error && <p className="portal-form-error wide">{error}</p>}
@@ -849,12 +860,14 @@ export function DispatchModal({
           </div>
           <button
             className="portal-send wide"
-            disabled={busy || !department || Boolean(error)}
+            disabled={busy || uploading || !department || Boolean(error)}
           >
             <Send size={17} />
-            {busy
-              ? "ENCAMINHANDO..."
-              : `ENCAMINHAR PARA ${department?.name.toUpperCase() || "O SETOR"}`}
+            {uploading
+              ? "ENVIANDO ARQUIVO..."
+              : busy
+                ? "ENCAMINHANDO..."
+                : `ENCAMINHAR PARA ${department?.name.toUpperCase() || "O SETOR"}`}
           </button>
         </form>
         <footer>
@@ -1818,7 +1831,7 @@ function Events({
       {events.length ? (
         <div className="portal-events-grid">
           {
-            <PaginatedItems label="registros">
+            <PaginatedItems mode="cards" label="registros">
               {events.map((event) => (
                 <article key={event.id}>
                   {event.imageDataUrl ? (

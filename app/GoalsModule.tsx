@@ -488,7 +488,7 @@ export default function GoalsModule({
             <p>Crie uma meta para começar a acompanhar o desempenho.</p>
           </div>
         ) : (
-          <PaginatedItems label="metas">
+          <PaginatedItems mode="cards" label="metas">
             {visible.map(({ item, goal }) => {
               const actual = progress(item.id) ?? 0;
               return (

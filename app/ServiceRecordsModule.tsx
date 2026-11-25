@@ -1,4 +1,5 @@
 "use client";
+import PaginatedItems from "@/app/PaginatedItems";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
@@ -218,7 +219,6 @@ export default function ServiceRecordsModule({
   const [sector, setSector] = useState("all");
   const [modal, setModal] = useState<"single" | "bulk" | null>(null);
   const [editing, setEditing] = useState<WorkItem | null>(null);
-  const [page, setPage] = useState(1);
   const employeePhotos = useMemo(
     () =>
       new Map(
@@ -291,9 +291,6 @@ export default function ServiceRecordsModule({
     sector,
     reminderFilter.matches,
   ]);
-  const pageCount = Math.max(1, Math.ceil(visible.length / 10));
-  const currentPage = Math.min(page, pageCount);
-  const pageRecords = visible.slice((currentPage - 1) * 10, currentPage * 10);
   const changeStatus = async (
     item: WorkItem,
     detail: ServiceRecord,
@@ -355,7 +352,7 @@ export default function ServiceRecordsModule({
         </div>
       </header>
 
-      <div className="module-sector-filter" onChangeCapture={() => setPage(1)}>
+      <div className="module-sector-filter">
         <label>
           <span>Setor</span>
           <select
@@ -375,10 +372,7 @@ export default function ServiceRecordsModule({
         </label>
       </div>
 
-      <section
-        className="service-filter-panel"
-        onChangeCapture={() => setPage(1)}
-      >
+      <section className="service-filter-panel">
         <header>
           <Search size={14} /> FILTROS DE PESQUISA
         </header>
@@ -478,135 +472,114 @@ export default function ServiceRecordsModule({
             <p>Insira um atendimento ou ajuste os filtros de pesquisa.</p>
           </div>
         ) : (
-          pageRecords.map(({ item, detail }) => (
-            <article
-              data-reminder-entity-id={item.id}
-              data-reminder-client-id={detail.clientCode}
-              data-reminder-customer-name={
-                detail.customerName || item.customer_name
-              }
-              key={item.id}
-            >
-              <span className="service-client-id">
-                {detail.clientCode || item.id.slice(0, 8)}
-              </span>
-              <span>
-                <strong>{detail.customerName || item.customer_name}</strong>
-                <small>{detail.origin || "Origem não informada"}</small>
-              </span>
-              <span>
-                {displayDate(detail.date)}
-                <small>
-                  {detail.startTime}
-                  {detail.endTime ? ` – ${detail.endTime}` : ""}
-                </small>
-              </span>
-              <span
-                className="service-owner"
-                data-collaborator-name={detail.responsible || item.owner}
+          <PaginatedItems
+            label="atendimentos"
+            resetKey={JSON.stringify([
+              queryId,
+              queryName,
+              date,
+              responsible,
+              version,
+              problem,
+              status,
+              sector,
+              reminderFilter.mode,
+            ])}
+          >
+            {visible.map(({ item, detail }) => (
+              <article
+                data-reminder-entity-id={item.id}
+                data-reminder-client-id={detail.clientCode}
+                data-reminder-customer-name={
+                  detail.customerName || item.customer_name
+                }
+                key={item.id}
               >
-                <i
-                  style={
-                    employeePhotos.get(detail.responsible || item.owner)
-                      ? {
-                          backgroundImage: `url("${employeePhotos.get(detail.responsible || item.owner)}")`,
-                        }
-                      : undefined
-                  }
-                />
-                <span>
-                  <strong>{detail.responsible || item.owner}</strong>
-                  <small>{detail.sector || item.team}</small>
+                <span className="service-client-id">
+                  {detail.clientCode || item.id.slice(0, 8)}
                 </span>
-              </span>
-              <span>{detail.version || "—"}</span>
-              <span>
-                {detail.problem || "—"}
-                <small>{detail.tool || ""}</small>
-              </span>
-              <span>
-                <label
-                  className={`service-status-select ${serviceTone(detail.status)}`}
+                <span>
+                  <strong>{detail.customerName || item.customer_name}</strong>
+                  <small>{detail.origin || "Origem não informada"}</small>
+                </span>
+                <span>
+                  {displayDate(detail.date)}
+                  <small>
+                    {detail.startTime}
+                    {detail.endTime ? ` – ${detail.endTime}` : ""}
+                  </small>
+                </span>
+                <span
+                  className="service-owner"
+                  data-collaborator-name={detail.responsible || item.owner}
                 >
-                  <i />
-                  <select
-                    disabled={!canEdit || busy}
-                    value={detail.status}
-                    onChange={(event) =>
-                      void changeStatus(item, detail, event.target.value)
+                  <i
+                    style={
+                      employeePhotos.get(detail.responsible || item.owner)
+                        ? {
+                            backgroundImage: `url("${employeePhotos.get(detail.responsible || item.owner)}")`,
+                          }
+                        : undefined
                     }
+                  />
+                  <span>
+                    <strong>{detail.responsible || item.owner}</strong>
+                    <small>{detail.sector || item.team}</small>
+                  </span>
+                </span>
+                <span>{detail.version || "—"}</span>
+                <span>
+                  {detail.problem || "—"}
+                  <small>{detail.tool || ""}</small>
+                </span>
+                <span>
+                  <label
+                    className={`service-status-select ${serviceTone(detail.status)}`}
                   >
-                    {statuses.map((entry) => (
-                      <option key={entry}>{entry}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={13} />
-                </label>
-              </span>
-              <span className="service-row-actions">
-                {canEdit && (
-                  <button
-                    onClick={() => setEditing(item)}
-                    aria-label="Editar atendimento"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    className="delete"
-                    onClick={() =>
-                      void operate(
-                        { action: "deleteWorkItem", id: item.id },
-                        "Atendimento excluído com sucesso.",
-                      )
-                    }
-                    aria-label="Excluir atendimento"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </span>
-            </article>
-          ))
+                    <i />
+                    <select
+                      disabled={!canEdit || busy}
+                      value={detail.status}
+                      onChange={(event) =>
+                        void changeStatus(item, detail, event.target.value)
+                      }
+                    >
+                      {statuses.map((entry) => (
+                        <option key={entry}>{entry}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={13} />
+                  </label>
+                </span>
+                <span className="service-row-actions">
+                  {canEdit && (
+                    <button
+                      onClick={() => setEditing(item)}
+                      aria-label="Editar atendimento"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      className="delete"
+                      onClick={() =>
+                        void operate(
+                          { action: "deleteWorkItem", id: item.id },
+                          "Atendimento excluído com sucesso.",
+                        )
+                      }
+                      aria-label="Excluir atendimento"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </span>
+              </article>
+            ))}
+          </PaginatedItems>
         )}
       </section>
-
-      <nav
-        className="chat-pagination service-pagination"
-        aria-label="Páginas de atendimentos"
-      >
-        <span role="status" aria-live="polite">
-          {visible.length
-            ? (currentPage - 1) * 10 +
-              1 +
-              "–" +
-              Math.min(currentPage * 10, visible.length) +
-              " de " +
-              visible.length +
-              " atendimentos"
-            : "0 atendimentos"}
-        </span>
-        <div>
-          <button
-            type="button"
-            disabled={currentPage <= 1}
-            onClick={() => setPage(currentPage - 1)}
-          >
-            <ChevronLeft size={15} aria-hidden="true" /> Anterior
-          </button>
-          <span aria-label={"Página " + currentPage + " de " + pageCount}>
-            {currentPage}/{pageCount}
-          </span>
-          <button
-            type="button"
-            disabled={currentPage >= pageCount}
-            onClick={() => setPage(currentPage + 1)}
-          >
-            Seguinte <ChevronRight size={15} aria-hidden="true" />
-          </button>
-        </div>
-      </nav>
 
       {(modal || editing) && (
         <ServiceEntryModal

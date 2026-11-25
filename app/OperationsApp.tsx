@@ -1,6 +1,11 @@
 "use client";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
+
+import CustomerSelect from "@/app/CustomerSelect";
 
 import PaginatedItems from "@/app/PaginatedItems";
+import RecordPagesProvider from "@/app/RecordPagesProvider";
+import { mergeRecordPage } from "@/lib/record-pages";
 
 import EnterpriseNetworkInsights from "@/app/EnterpriseNetworkInsights";
 import CommentHistory from "@/app/CommentHistory";
@@ -42,6 +47,9 @@ import {
   directSaleClientId,
   directSaleFollowup,
 } from "@/lib/direct-sale-routing";
+import SaleObservation from "@/app/SaleObservation";
+import UnitObservation from "@/app/UnitObservation";
+import PublicRecruitmentPage from "@/app/PublicRecruitmentPage";
 import {
   clientRecordQuery,
   resolveClientHistory,
@@ -201,10 +209,12 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -223,7 +233,10 @@ import TasksModule, {
 } from "@/app/TasksModule";
 import type { ChatModuleData } from "@/app/ChatModule";
 const ChatModule = lazy(() => import("@/app/ChatModule"));
-import { journeyAgendaType, findJourneyAgendaType } from "@/lib/agenda-context";
+import {
+  selectableAgendaTypes,
+  findJourneyAgendaType,
+} from "@/lib/agenda-context";
 import AgendaModule, {
   AgendaCatalogsModule,
   QuickAgendaCommitmentModal,
@@ -329,6 +342,10 @@ import { PortalLinksAdmin } from "@/app/PortalLinksModule";
 import SatisfactionSurveysModule, {
   PublicSurveyResponsePage,
 } from "@/app/SatisfactionSurveysModule";
+import {
+  EmployeePerformanceCharts,
+  SectorIndicatorsBoard,
+} from "@/app/TeamPerformanceIndicators";
 import IndicatorTabs from "@/app/IndicatorTabs";
 import CommercialWinNotificationModal from "@/app/CommercialWinNotificationModal";
 import {
@@ -1068,14 +1085,12 @@ export default function OperationsApp() {
   const [busy, setBusy] = useState(false);
   const [chatBusy, setChatBusy] = useState(0);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
-  const globalSearchInput = useRef<HTMLInputElement>(null);
-  const [recordSearchOpen, setRecordSearchOpen] = useState(false);
+  const globalSearchInput = useRef<GlobalRecordSearchHandle>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const [modal, setModal] = useState<Modal>(null);
   const [modalModule, setModalModule] = useState("commercial");
   const [forwardRequest, setForwardRequest] = useState<{
@@ -1195,6 +1210,7 @@ export default function OperationsApp() {
   >({});
   const [agendaVisual, setAgendaVisual] = useState<SystemVisual>("azure");
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
+  const [generalIndicators, setGeneralIndicators] = useState(false);
   const [historyClientId, setHistoryClientId] = useState("");
   const [profileEmployee, setProfileEmployee] = useState<{ id: string } | null>(
     null,
@@ -1400,18 +1416,7 @@ export default function OperationsApp() {
       const context = (event as CustomEvent<ReminderContext>).detail ?? {
         module: active,
       };
-      const source = data?.items.find(
-        (item) =>
-          item.module === context.module &&
-          (context.entityId
-            ? item.id === context.entityId
-            : item.title === context.title ||
-              item.customer_name === context.customerName),
-      );
-      setAgendaContext({
-        ...context,
-        agendaTypeName: journeyAgendaType(context.module, source?.description),
-      });
+      setAgendaContext(context);
     };
     window.addEventListener(AGENDA_COMPOSER_EVENT, openAgenda);
     return () => window.removeEventListener(AGENDA_COMPOSER_EVENT, openAgenda);
@@ -1542,26 +1547,14 @@ export default function OperationsApp() {
       ) {
         event.preventDefault();
         globalSearchInput.current?.focus();
-        setRecordSearchOpen(true);
       }
       if (event.key === "Escape") {
-        setRecordSearchOpen(false);
+        globalSearchInput.current?.close();
         setMobileNav(false);
       }
     };
-    const outside = (event: PointerEvent) => {
-      if (
-        event.target instanceof Element &&
-        !event.target.closest(".global-search")
-      )
-        setRecordSearchOpen(false);
-    };
     window.addEventListener("keydown", key);
-    document.addEventListener("pointerdown", outside);
-    return () => {
-      window.removeEventListener("keydown", key);
-      document.removeEventListener("pointerdown", outside);
-    };
+    return () => window.removeEventListener("keydown", key);
   }, []);
 
   const loadInFlight = useRef(false);
@@ -1845,7 +1838,8 @@ export default function OperationsApp() {
       const params = new URLSearchParams(window.location.search);
       if (
         ["overview", "chamados"].includes(params.get("public") ?? "") ||
-        params.has("survey")
+        params.has("survey") ||
+        params.get("application") === "processo-seletivo"
       ) {
         setLoading(false);
         return;
@@ -2072,7 +2066,7 @@ export default function OperationsApp() {
     });
     if (url.href !== window.location.href) pushWorkspaceHistory(url);
     setLocationSearch(url.search);
-    setSearch("");
+    globalSearchInput.current?.clear();
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
       document
@@ -2145,25 +2139,30 @@ export default function OperationsApp() {
     }
   };
 
-  const uploadBackgroundImage = (file?: File, onComplete?: () => void) => {
+  const uploadBackgroundImage = async (
+    file?: File,
+    onComplete?: () => void,
+  ) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setToast({ kind: "error", message: "Selecione um arquivo de imagem." });
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setToast({ kind: "error", message: "Envie uma imagem de até 2 MB." });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      changeBackgroundImage(String(reader.result ?? ""));
+
+    try {
+      changeBackgroundImage(
+        await workspaceFileUrl(file, { module: "profile" }),
+      );
       onComplete?.();
-    };
-    reader.onerror = () => {
-      setToast({ kind: "error", message: "Não foi possível ler esta imagem." });
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      setToast({
+        kind: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Não foi possível enviar a imagem.",
+      });
+    }
   };
 
   const navigateCatalog = (section: CatalogSection) => {
@@ -2577,94 +2576,6 @@ export default function OperationsApp() {
     [suggestionModule, kanbanMonth],
   );
 
-  const globalResults = useMemo(() => {
-    const query = normalizeWorkspaceSearch(deferredSearch);
-    if (!query || !data) return [];
-    const employees = (
-      data.access?.employees ??
-      data.assignmentDirectory?.employees.map((person) => ({
-        ...person,
-        jobTitle: "",
-      })) ??
-      []
-    )
-      .filter((employee) =>
-        `${employee.displayName} ${employee.email} ${employee.jobTitle} ${employee.departmentName} ${employee.departmentNames.join(" ")}`
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLocaleLowerCase("pt-BR")
-          .includes(query),
-      )
-      .slice(0, 5)
-      .map((employee) => ({
-        id: employee.id,
-        label: employee.displayName,
-        meta: `Colaborador · ${employee.jobTitle || employee.departmentName || "Dontus"}`,
-        kind: "employee" as const,
-      }));
-    const customers = data.customers
-      .filter((customer) =>
-        `${customer.id} ${customer.trade_name} ${customer.legal_name} ${customer.document_masked} ${customer.phone}`
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLocaleLowerCase("pt-BR")
-          .includes(query),
-      )
-      .slice(0, 4)
-      .map((customer) => ({
-        id: customer.id,
-        label: customer.trade_name,
-        meta: `Cliente · ${customer.document_masked} · ${customer.status}`,
-        kind: "customer" as const,
-      }));
-    const records = data.items
-      .filter((item) => recordSearchText(item).includes(query))
-      .slice(0, 6)
-      .map((item) => ({
-        id: item.id,
-        label: item.title,
-        meta: `${item.record_type} · ${MODULES[item.module as ModuleKey]?.short ?? item.module} · ${statusLabel(item.status)} · ${item.owner || "Sem responsável"}${item.amount_cents > 0 ? ` · ${formatMoney(item.amount_cents)}` : ""}`,
-        kind: "item" as const,
-      }));
-    const tasks = (data.taskModule?.tasks ?? [])
-      .filter((task) =>
-        `${task.customerId ?? ""} ${task.customerCode} ${task.customerName} ${task.protocol} ${task.title} ${task.description}`
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLocaleLowerCase("pt-BR")
-          .includes(query),
-      )
-      .slice(0, 4)
-      .map((task) => ({
-        id: task.id,
-        label: `${task.protocol} · ${task.title}`,
-        meta: `Tarefa · ${task.statusName}`,
-        kind: "task" as const,
-      }));
-    const suggestions = (data.suggestionModule?.suggestions ?? [])
-      .filter((suggestion) =>
-        `${suggestion.customerId ?? ""} ${suggestion.customerName} ${suggestion.protocol} ${suggestion.name} ${suggestion.description}`
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLocaleLowerCase("pt-BR")
-          .includes(query),
-      )
-      .slice(0, 3)
-      .map((suggestion) => ({
-        id: suggestion.id,
-        label: `${suggestion.protocol} · ${suggestion.name}`,
-        meta: `Sugestão · ${suggestion.statusName}`,
-        kind: "suggestion" as const,
-      }));
-    return [
-      ...employees,
-      ...customers,
-      ...records,
-      ...tasks,
-      ...suggestions,
-    ].slice(0, 12);
-  }, [data, deferredSearch]);
-
   const openEmployeeFromGlobalSearch = (employeeId: string) => {
     const employee = (
       data?.access?.employees ??
@@ -2674,26 +2585,53 @@ export default function OperationsApp() {
     if (!employee) return false;
     setProfileEditable(false);
     setProfileEmployee(employee);
-    setSearch("");
+    globalSearchInput.current?.clear();
     return true;
   };
 
-  const submitGlobalSearch = () => {
-    const query = search.trim();
-    if (query.length < 3 || !data) return;
-    const normalized = query.toLocaleLowerCase("pt-BR");
-    const exactEmployee = (
-      data.access?.employees ??
-      data.assignmentDirectory?.employees ??
-      []
-    ).find(
-      (employee) =>
-        employee.displayName.toLocaleLowerCase("pt-BR") === normalized ||
-        employee.email.toLocaleLowerCase("pt-BR") === normalized,
-    );
-    if (exactEmployee && openEmployeeFromGlobalSearch(exactEmployee.id)) return;
-    openClientHistoryPage(query);
-    setSearch("");
+  const selectGlobalSearchResult = (
+    result: GlobalSearchResult,
+    query: string,
+  ) => {
+    if (!data) return;
+    const searchedId = query;
+    const idSearch =
+      /^#?[\d-]{3,}$/.test(searchedId) ||
+      (result.kind === "customer" &&
+        result.id.toLocaleLowerCase("pt-BR") ===
+          searchedId.toLocaleLowerCase("pt-BR"));
+    if (result.kind === "employee") {
+      openEmployeeFromGlobalSearch(result.id);
+    } else if (idSearch) {
+      openClientHistoryPage(searchedId);
+    } else if (result.kind === "customer") {
+      const customer =
+        data.customers.find((entry) => entry.id === result.id) ?? null;
+      setSelectedCustomer(customer);
+      navigate("customers");
+    } else if (result.kind === "item") {
+      const item = data.items.find((entry) => entry.id === result.id) ?? null;
+      if (item) {
+        navigate(
+          item.module as ModuleKey,
+          undefined,
+          item.module === "commercial"
+            ? commercialIndicatorFlow(item)
+            : undefined,
+          item.module === "cs"
+            ? csCardFlow(item.description) || undefined
+            : undefined,
+        );
+        setSelectedItem(item);
+      }
+    } else {
+      navigate(result.kind === "task" ? "tasks" : "suggestions");
+      const url = new URL(window.location.href);
+      if (result.kind === "task") url.searchParams.set("task", result.id);
+      url.searchParams.set("card", result.id);
+      pushWorkspaceHistory(url);
+      setLocationSearch(url.search);
+    }
   };
 
   const openCreate = (module: string) => {
@@ -2978,6 +2916,12 @@ export default function OperationsApp() {
   const publicSurveyToken = routeParams.get("survey");
   if (publicSurveyToken)
     return <PublicSurveyResponsePage token={publicSurveyToken} />;
+  if (routeParams.get("application") === "processo-seletivo")
+    return (
+      <PublicRecruitmentPage
+        processId={routeParams.get("process") || undefined}
+      />
+    );
   if (loading) return <LoadingScreen />;
   if (loginRequired)
     return (
@@ -2987,16 +2931,7 @@ export default function OperationsApp() {
       />
     );
   if (error || !data) return <ErrorScreen message={error} onRetry={load} />;
-  const publicProcessId = routeParams.get("process");
-  if (routeParams.get("application") === "processo-seletivo" && publicProcessId)
-    return (
-      <PublicRecruitmentApplication
-        data={data}
-        processId={publicProcessId}
-        busy={busy}
-        onOperate={operate}
-      />
-    );
+
   const assignmentEmployees =
     data.assignmentDirectory?.employees ??
     data.access?.employees?.filter(
@@ -3714,1880 +3649,2080 @@ export default function OperationsApp() {
       <QueueArrivalNotice />
       <CommentEnterSupport />
       <KanbanDragSupport />
-      <ReminderFilterProvider
-        records={data.items.filter((entry) => entry.module === "reminders")}
+      <RecordPagesProvider
+        data={data}
+        module={active}
+        scope={currentDestinationKey}
+        onEnter={() => void load(true)}
+        onRows={(path, rows) =>
+          setData((current) =>
+            current ? mergeRecordPage(current, path, rows) : current,
+          )
+        }
       >
-        <div
-          className={[
-            "app-shell",
-            theme === "dark" ? "theme-dark" : "theme-light",
-            backgroundImage && active !== "internalChat"
-              ? "has-workspace-background"
-              : "",
-            active === "chat" ? "chat-focus-mode" : "",
-            `agenda-visual-${agendaVisual}`,
-            `system-accent-${agendaVisual}`,
-          ].join(" ")}
+        <ReminderFilterProvider
+          records={data.items.filter((entry) => entry.module === "reminders")}
         >
-          <a className="workspace-skip-link" href="#workspace-content">
-            Pular para o conteúdo
-          </a>
-          <aside
-            id="workspace-sidebar"
-            className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}
+          <div
+            className={[
+              "app-shell",
+              theme === "dark" ? "theme-dark" : "theme-light",
+              backgroundImage && active !== "internalChat"
+                ? "has-workspace-background"
+                : "",
+              active === "chat" ? "chat-focus-mode" : "",
+              focusMode ? "workspace-focus" : "",
+              `agenda-visual-${agendaVisual}`,
+              `system-accent-${agendaVisual}`,
+            ].join(" ")}
           >
-            <div className="brand">
-              <Image
-                src="/dontus-logo.png"
-                alt="Dontus Gestão Odontológica"
-                width={184}
-                height={52}
-                priority
-                unoptimized
-              />
-            </div>
-            <nav aria-label="Navegação principal">
-              {navigationGroups.map((group) => {
-                const groupCollapsed = collapsedNavGroups[group.label] === true;
-                return (
-                  <div
-                    className={`nav-group ${groupCollapsed ? "collapsed" : ""}`}
-                    key={group.label}
-                  >
-                    <button
-                      className="nav-group-toggle"
-                      type="button"
-                      onClick={() => {
-                        setCollapsedNavGroups((current) => ({
-                          ...current,
-                          [group.label]: !groupCollapsed,
-                        }));
-                        if (group.label === "Administração")
-                          setCollapsedNavItems((current) => ({
-                            ...current,
-                            "Administração:WhatsApp": true,
-                          }));
-                      }}
-                      aria-expanded={!groupCollapsed}
-                    >
-                      <span>{group.label}</span>
-                      <ChevronDown
-                        className={groupCollapsed ? "" : "expanded"}
-                        size={14}
-                      />
-                    </button>
-                    {!groupCollapsed && (
-                      <div className="nav-group-items">
-                        {group.items.map((item) =>
-                          renderNavigationItem(
-                            item,
-                            `${group.label}:${item.label}`,
-                          ),
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </nav>
-            <div className="sidebar-footer">
-              <button
-                className="sidebar-account"
-                onClick={() => setAccountMenuOpen((current) => !current)}
-                aria-expanded={accountMenuOpen}
-              >
-                <ProfileAvatar
-                  name={data.user.displayName}
-                  photo={data.user.photoDataUrl}
-                  coordinator={data.user.isCoordinator}
-                />
-                <span>
-                  <strong>{data.user.displayName}</strong>
-                  <small>{data.user.jobTitle || data.user.role}</small>
-                </span>
-                <ChevronDown size={15} />
-              </button>
-              {accountMenuOpen && (
-                <div className="account-menu">
-                  <button
-                    onClick={() => {
-                      setProfileEditable(true);
-                      setProfileEmployee({ id: "me" });
-                      setAccountMenuOpen(false);
-                    }}
-                  >
-                    Perfil
-                  </button>
-                  <button
-                    onClick={() => {
-                      setChangingPassword(true);
-                      setAccountMenuOpen(false);
-                    }}
-                  >
-                    Alterar senha
-                  </button>
-                  <button className="signout" onClick={() => void signOut()}>
-                    Sair do sistema
-                  </button>
-                </div>
-              )}
-            </div>
-          </aside>
-
-          {mobileNav && (
-            <button
-              className="nav-backdrop"
-              aria-label="Fechar navegação"
-              onClick={() => setMobileNav(false)}
-            />
-          )}
-
-          <main
-            className="main"
-            style={
-              active === "internalChat" ? undefined : workspaceBackgroundStyle
-            }
-          >
-            <WorkspaceExperience
-              destinations={workspaceTargets}
-              currentKey={currentDestinationKey}
-              currentTitle={workspaceTitle}
-              userEmail={data.user.email}
-              onNavigate={(key) => {
-                const target = workspaceTargets.find(
-                  (item) => item.key === key,
-                );
-                if (target)
-                  navigate(
-                    target.route.module,
-                    target.route.adminPage,
-                    target.route.commercialFlow,
-                    target.route.csFlow,
-                    target.route.reportingSection,
-                  );
-              }}
-              onSearchRecords={(query) => {
-                setSearch(query);
-                setRecordSearchOpen(true);
-                globalSearchInput.current?.focus();
-              }}
-              lastUpdatedAt={lastUpdatedAt}
-              syncing={syncing}
-              syncError={syncError}
-              realtimeConnected={realtimeConnected}
+            <a className="workspace-skip-link" href="#workspace-content">
+              Pular para o conteúdo
+            </a>
+            <aside
+              id="workspace-sidebar"
+              className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}
             >
-              <button
-                className="icon-button menu-button"
-                onClick={() => setMobileNav((current) => !current)}
-                aria-label={mobileNav ? "Fechar menu" : "Abrir menu"}
-                aria-controls="workspace-sidebar"
-                aria-expanded={mobileNav}
-              >
-                <Menu size={21} />
-              </button>
-              <div className="global-search">
-                <Search size={18} />
-                <input
-                  ref={globalSearchInput}
-                  value={search}
-                  onFocus={() => setRecordSearchOpen(true)}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                    setRecordSearchOpen(true);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") submitGlobalSearch();
-                    if (event.key === "Escape") setRecordSearchOpen(false);
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      event.currentTarget
-                        .closest(".global-search")
-                        ?.querySelector<HTMLButtonElement>(
-                          ".search-results button",
-                        )
-                        ?.focus();
-                    }
-                  }}
-                  placeholder="Buscar clientes, IDs, protocolos e registros..."
-                  aria-label="Busca global"
+              <div className="brand">
+                <Image
+                  src="/dontus-logo.png"
+                  alt="Dontus Gestão Odontológica"
+                  width={184}
+                  height={52}
+                  priority
+                  unoptimized
                 />
-                <kbd aria-hidden="true">/</kbd>
-                {recordSearchOpen && search.trim() && (
-                  <div
-                    className="search-results"
-                    role="region"
-                    aria-label="Resultados da busca global"
-                  >
-                    {globalResults.length === 0 &&
-                      !/^#?[\d-]{3,}$/.test(search.trim()) && (
-                        <p className="search-no-results">
-                          Nenhum registro encontrado. Confira o nome, ID ou
-                          protocolo.
-                        </p>
+              </div>
+              <nav aria-label="Navegação principal">
+                {navigationGroups.map((group) => {
+                  const groupCollapsed =
+                    collapsedNavGroups[group.label] === true;
+                  return (
+                    <div
+                      className={`nav-group ${groupCollapsed ? "collapsed" : ""}`}
+                      key={group.label}
+                    >
+                      <button
+                        className="nav-group-toggle"
+                        type="button"
+                        onClick={() => {
+                          setCollapsedNavGroups((current) => ({
+                            ...current,
+                            [group.label]: !groupCollapsed,
+                          }));
+                          if (group.label === "Administração")
+                            setCollapsedNavItems((current) => ({
+                              ...current,
+                              "Administração:WhatsApp": true,
+                            }));
+                        }}
+                        aria-expanded={!groupCollapsed}
+                      >
+                        <span>{group.label}</span>
+                        <ChevronDown
+                          className={groupCollapsed ? "" : "expanded"}
+                          size={14}
+                        />
+                      </button>
+                      {!groupCollapsed && (
+                        <div className="nav-group-items">
+                          {group.items.map((item) =>
+                            renderNavigationItem(
+                              item,
+                              `${group.label}:${item.label}`,
+                            ),
+                          )}
+                        </div>
                       )}
-                    {/^#?[\d-]{3,}$/.test(search.trim()) && (
-                      <button
-                        className="search-id-overview"
-                        onClick={() => {
-                          openClientHistoryPage(search);
-                          setSearch("");
-                        }}
-                      >
-                        <span>
-                          <b>Abrir página do ID {search.trim()}</b>
-                        </span>
-                        <small>
-                          Tarefas, atendimentos, temas, sugestões,
-                          acompanhamentos, agenda e rede
-                        </small>
-                      </button>
-                    )}
-                    {globalResults.map((result) => (
-                      <button
-                        key={`${result.kind}-${result.id}`}
-                        onClick={() => {
-                          const searchedId = search.trim();
-                          const idSearch =
-                            /^#?[\d-]{3,}$/.test(searchedId) ||
-                            (result.kind === "customer" &&
-                              result.id.toLocaleLowerCase("pt-BR") ===
-                                searchedId.toLocaleLowerCase("pt-BR"));
-                          if (result.kind === "employee") {
-                            openEmployeeFromGlobalSearch(result.id);
-                          } else if (idSearch) {
-                            openClientHistoryPage(searchedId);
-                          } else if (result.kind === "customer") {
-                            const customer =
-                              data.customers.find(
-                                (entry) => entry.id === result.id,
-                              ) ?? null;
-                            setSelectedCustomer(customer);
-                            navigate("customers");
-                          } else if (result.kind === "item") {
-                            const item =
-                              data.items.find(
-                                (entry) => entry.id === result.id,
-                              ) ?? null;
-                            if (item) {
-                              navigate(
-                                item.module as ModuleKey,
-                                undefined,
-                                item.module === "commercial"
-                                  ? commercialIndicatorFlow(item)
-                                  : undefined,
-                                item.module === "cs"
-                                  ? csCardFlow(item.description) || undefined
-                                  : undefined,
-                              );
-                              setSelectedItem(item);
-                            }
-                          } else if (result.kind === "task") {
-                            navigate("tasks");
-                            const url = new URL(window.location.href);
-                            url.searchParams.set("task", result.id);
-                            url.searchParams.set("card", result.id);
-                            pushWorkspaceHistory(url);
-                            setLocationSearch(url.search);
-                          } else {
-                            navigate("suggestions");
-                            const url = new URL(window.location.href);
-                            url.searchParams.set("card", result.id);
-                            pushWorkspaceHistory(url);
-                            setLocationSearch(url.search);
-                          }
-                          if (result.kind !== "employee") setSearch("");
-                        }}
-                      >
-                        <span>{result.label}</span>
-                        <small>{result.meta}</small>
-                      </button>
-                    ))}
+                    </div>
+                  );
+                })}
+              </nav>
+              <div className="sidebar-footer">
+                <button
+                  className="sidebar-account"
+                  onClick={() => setAccountMenuOpen((current) => !current)}
+                  aria-expanded={accountMenuOpen}
+                >
+                  <ProfileAvatar
+                    name={data.user.displayName}
+                    photo={data.user.photoDataUrl}
+                    coordinator={data.user.isCoordinator}
+                  />
+                  <span>
+                    <strong>{data.user.displayName}</strong>
+                    <small>{data.user.jobTitle || data.user.role}</small>
+                  </span>
+                  <ChevronDown size={15} />
+                </button>
+                {accountMenuOpen && (
+                  <div className="account-menu">
+                    <button
+                      onClick={() => {
+                        setProfileEditable(true);
+                        setProfileEmployee({ id: "me" });
+                        setAccountMenuOpen(false);
+                      }}
+                    >
+                      Perfil
+                    </button>
+                    <button
+                      onClick={() => {
+                        setChangingPassword(true);
+                        setAccountMenuOpen(false);
+                      }}
+                    >
+                      Alterar senha
+                    </button>
+                    <button className="signout" onClick={() => void signOut()}>
+                      Sair do sistema
+                    </button>
                   </div>
                 )}
               </div>
-              <div className="topbar-actions">
-                {kanbanModules.has(active) &&
-                  active !== "tasks" &&
-                  active !== "lia" &&
-                  !indicatorsOpen && (
-                    <label className="topbar-month-filter">
-                      <span>Mês</span>
-                      <input
-                        aria-label="Filtrar mês do quadro"
-                        type="month"
-                        value={kanbanMonth}
-                        onChange={(event) =>
-                          setKanbanMonth(
-                            event.target.value || brasiliaMonthKey(),
+            </aside>
+
+            {mobileNav && (
+              <button
+                className="nav-backdrop"
+                aria-label="Fechar navegação"
+                onClick={() => setMobileNav(false)}
+              />
+            )}
+
+            <main
+              className="main"
+              style={
+                active === "internalChat" ? undefined : workspaceBackgroundStyle
+              }
+            >
+              <WorkspaceExperience
+                destinations={workspaceTargets}
+                currentKey={currentDestinationKey}
+                currentTitle={workspaceTitle}
+                userEmail={data.user.email}
+                onNavigate={(key) => {
+                  const target = workspaceTargets.find(
+                    (item) => item.key === key,
+                  );
+                  if (target)
+                    navigate(
+                      target.route.module,
+                      target.route.adminPage,
+                      target.route.commercialFlow,
+                      target.route.csFlow,
+                      target.route.reportingSection,
+                    );
+                }}
+                onSearchRecords={(query) =>
+                  globalSearchInput.current?.search(query)
+                }
+                lastUpdatedAt={lastUpdatedAt}
+                syncing={syncing}
+                syncError={syncError}
+                realtimeConnected={realtimeConnected}
+                focusMode={focusMode}
+                onFocusModeChange={setFocusMode}
+              >
+                <button
+                  className="icon-button menu-button"
+                  onClick={() => setMobileNav((current) => !current)}
+                  aria-label={mobileNav ? "Fechar menu" : "Abrir menu"}
+                  aria-controls="workspace-sidebar"
+                  aria-expanded={mobileNav}
+                >
+                  <Menu size={21} />
+                </button>
+                <GlobalRecordSearch
+                  data={data}
+                  controlRef={globalSearchInput}
+                  onOpenEmployee={openEmployeeFromGlobalSearch}
+                  onOpenClientHistory={openClientHistoryPage}
+                  onSelectResult={selectGlobalSearchResult}
+                />
+                <div className="topbar-actions">
+                  {kanbanModules.has(active) &&
+                    active !== "tasks" &&
+                    active !== "lia" &&
+                    active !== "referrals" &&
+                    !indicatorsOpen && (
+                      <label className="topbar-month-filter">
+                        <span>Mês</span>
+                        <input
+                          aria-label="Filtrar mês do quadro"
+                          type="month"
+                          value={kanbanMonth}
+                          onChange={(event) =>
+                            setKanbanMonth(
+                              event.target.value || brasiliaMonthKey(),
+                            )
+                          }
+                        />
+                      </label>
+                    )}
+                  <button
+                    className="icon-button background-shortcut"
+                    onClick={() =>
+                      active === "internalChat"
+                        ? window.dispatchEvent(
+                            new Event("dontus:chat-appearance"),
                           )
-                        }
-                      />
-                    </label>
-                  )}
-                <button
-                  className="icon-button background-shortcut"
-                  onClick={() =>
-                    active === "internalChat"
-                      ? window.dispatchEvent(
-                          new Event("dontus:chat-appearance"),
-                        )
-                      : setBackgroundModalOpen(true)
-                  }
-                  aria-label="Alterar imagem de fundo"
-                  title="Alterar imagem de fundo"
-                >
-                  <Upload size={18} />
-                </button>
-                <button
-                  className="icon-button theme-toggle"
-                  onClick={() =>
-                    changeTheme(theme === "dark" ? "light" : "dark")
-                  }
-                  aria-label={
-                    theme === "dark"
-                      ? "Ativar modo claro"
-                      : "Ativar modo escuro"
-                  }
-                  title={
-                    theme === "dark"
-                      ? "Ativar modo claro"
-                      : "Ativar modo escuro"
-                  }
-                >
-                  {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-                </button>
-                <div className="topbar-celebration-wrap">
-                  <button
-                    className={`icon-button celebration-button ${todayCelebrations.length ? "has-celebration" : ""}`}
-                    onClick={() =>
-                      setCelebrationCenterOpen((current) => !current)
+                        : setBackgroundModalOpen(true)
                     }
-                    aria-label={`${todayCelebrations.length} aniversariante(s) hoje`}
-                    title="Aniversários de hoje"
+                    aria-label="Alterar imagem de fundo"
+                    title="Alterar imagem de fundo"
                   >
-                    <CalendarDays size={18} />
-                    {todayCelebrations.length > 0 && (
-                      <b>{todayCelebrations.length}</b>
-                    )}
+                    <Upload size={18} />
                   </button>
-                  {celebrationCenterOpen && (
-                    <section className="celebration-center">
-                      <header>
-                        <span>
-                          <strong>Aniversários de hoje</strong>
-                          <small>Datas especiais da equipe</small>
-                        </span>
-                        <button
-                          onClick={() => setCelebrationCenterOpen(false)}
-                          aria-label="Fechar aniversários"
-                        >
-                          <X size={15} />
-                        </button>
-                      </header>
-                      <div>
-                        {todayCelebrations.length === 0 ? (
-                          <p>Nenhum aniversário hoje.</p>
-                        ) : (
-                          todayCelebrations.map(({ employee, kinds }) => (
-                            <article
-                              data-reminder-entity-id={employee.id}
-                              key={employee.id}
-                            >
-                              {employee.photoDataUrl ? (
-                                <img src={employee.photoDataUrl} alt="" />
-                              ) : (
-                                <span className="celebration-avatar">
-                                  {employee.displayName
-                                    .slice(0, 2)
-                                    .toUpperCase()}
-                                </span>
-                              )}
-                              <span>
-                                <strong>{employee.displayName}</strong>
-                                <small>{kinds.join(" · ")}</small>
-                              </span>
-                            </article>
-                          ))
-                        )}
-                      </div>
-                    </section>
-                  )}
-                </div>
-                <button
-                  className={`icon-button topbar-chat-button ${internalChatUnread > 0 ? "has-unread" : ""}`}
-                  onClick={() => {
-                    setChatRoomTarget(latestUnreadRoom?.id ?? "");
-                    navigate("internalChat");
-                  }}
-                  aria-label={
-                    internalChatUnread
-                      ? `${internalChatUnread} mensagem(ns) recebida(s)`
-                      : "Abrir Chat Dontus"
-                  }
-                  title="Mensagens recebidas"
-                >
-                  <MessageCircleMore size={18} />
-                  {internalChatUnread > 0 && (
-                    <b>
-                      {internalChatUnread > 99 ? "99+" : internalChatUnread}
-                    </b>
-                  )}
-                </button>
-                <DesktopAppControls unreadCount={notificationTotal} />
-                <div className="notification-center-wrap">
                   <button
-                    className="icon-button notification-button"
+                    className="icon-button theme-toggle"
+                    onClick={() =>
+                      changeTheme(theme === "dark" ? "light" : "dark")
+                    }
                     aria-label={
-                      notificationTotal
-                        ? `${notificationTotal} notificações`
-                        : "Sem notificações"
+                      theme === "dark"
+                        ? "Ativar modo claro"
+                        : "Ativar modo escuro"
                     }
-                    onClick={() =>
-                      setNotificationCenterOpen((current) => !current)
+                    title={
+                      theme === "dark"
+                        ? "Ativar modo claro"
+                        : "Ativar modo escuro"
                     }
                   >
-                    <Bell size={19} />
-                    {notificationTotal > 0 && (
-                      <b>
-                        {notificationTotal > 99 ? "99+" : notificationTotal}
-                      </b>
-                    )}
+                    {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
                   </button>
-                  {notificationCenterOpen && (
-                    <section className="notification-center">
-                      <header>
-                        <span>
-                          <strong>Notificações</strong>
-                          <small>Chegadas e comentários para você</small>
-                        </span>
-                        <div className="notification-center-head-actions">
-                          {notificationTotal > 0 && (
-                            <button
-                              className="mark-all-read"
-                              disabled={busy}
-                              onClick={() => void markAllNotificationsRead()}
-                            >
-                              <CheckCheck size={15} />
-                              Marcar todas como vistas
-                            </button>
-                          )}
+                  <div className="topbar-celebration-wrap">
+                    <button
+                      className={`icon-button celebration-button ${todayCelebrations.length ? "has-celebration" : ""}`}
+                      onClick={() =>
+                        setCelebrationCenterOpen((current) => !current)
+                      }
+                      aria-label={`${todayCelebrations.length} aniversariante(s) hoje`}
+                      title="Aniversários de hoje"
+                    >
+                      <CalendarDays size={18} />
+                      {todayCelebrations.length > 0 && (
+                        <b>{todayCelebrations.length}</b>
+                      )}
+                    </button>
+                    {celebrationCenterOpen && (
+                      <section className="celebration-center">
+                        <header>
+                          <span>
+                            <strong>Aniversários de hoje</strong>
+                            <small>Datas especiais da equipe</small>
+                          </span>
                           <button
-                            onClick={() => setNotificationCenterOpen(false)}
-                            aria-label="Fechar notificações"
+                            onClick={() => setCelebrationCenterOpen(false)}
+                            aria-label="Fechar aniversários"
                           >
                             <X size={15} />
                           </button>
+                        </header>
+                        <div>
+                          {todayCelebrations.length === 0 ? (
+                            <p>Nenhum aniversário hoje.</p>
+                          ) : (
+                            todayCelebrations.map(({ employee, kinds }) => (
+                              <article
+                                data-reminder-entity-id={employee.id}
+                                key={employee.id}
+                              >
+                                {employee.photoDataUrl ? (
+                                  <img src={employee.photoDataUrl} alt="" />
+                                ) : (
+                                  <span className="celebration-avatar">
+                                    {employee.displayName
+                                      .slice(0, 2)
+                                      .toUpperCase()}
+                                  </span>
+                                )}
+                                <span>
+                                  <strong>{employee.displayName}</strong>
+                                  <small>{kinds.join(" · ")}</small>
+                                </span>
+                              </article>
+                            ))
+                          )}
                         </div>
-                      </header>
-                      <div>
-                        {notificationEntries.length === 0 ? (
-                          <p>Nenhuma notificação pendente.</p>
-                        ) : (
-                          notificationEntries.map((entry) => (
-                            <button
-                              data-reminder-entity-id={entry.id}
-                              key={entry.id}
-                              onClick={() => {
-                                if (
-                                  !/^(task|chat|notice|reminder)-/.test(
-                                    entry.id,
-                                  )
-                                ) {
-                                  setDismissedNotificationIds((current) => {
-                                    const next = new Set([
-                                      ...current,
-                                      entry.id,
-                                    ]);
-                                    try {
-                                      localStorage.setItem(
-                                        `dontus:read-operational-notifications:${data.user.email}`,
-                                        JSON.stringify([...next].slice(-2000)),
-                                      );
-                                    } catch {}
-                                    return next;
-                                  });
-                                }
-                                setNotificationCenterOpen(false);
-                                if (entry.roomId) {
-                                  setChatRoomTarget(entry.roomId);
-                                  navigate("internalChat");
-                                  return;
-                                }
-                                if (entry.targetUrl) {
-                                  window.location.href = entry.targetUrl;
-                                  return;
-                                }
-                                navigate(entry.module as ModuleKey);
-                              }}
-                            >
-                              <span>
-                                <strong>{entry.title}</strong>
-                                <small>
-                                  {entry.meta} · {dateTime(entry.at)}
-                                </small>
-                              </span>
-                              <ChevronRight size={15} />
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </section>
-                  )}
-                </div>
-              </div>
-            </WorkspaceExperience>
-            <div
-              id="workspace-content"
-              tabIndex={-1}
-              className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}
-            >
-              <Suspense
-                fallback={
-                  <section role="status" className="empty-state">
-                    Carregando módulo...
-                  </section>
-                }
-              >
-                {historyClientId ? (
-                  <ClientHistoryPage
-                    query={historyClientId}
-                    data={data}
-                    canEdit={userCan(data.user, "customers", "edit")}
-                    busy={busy}
-                    operate={operate}
-                    onClose={closeClientHistoryPage}
-                    onNavigate={(module) => {
-                      closeClientHistoryPage();
-                      navigate(module);
+                      </section>
+                    )}
+                  </div>
+                  <button
+                    className={`icon-button topbar-chat-button ${internalChatUnread > 0 ? "has-unread" : ""}`}
+                    onClick={() => {
+                      setChatRoomTarget(latestUnreadRoom?.id ?? "");
+                      navigate("internalChat");
                     }}
-                  />
-                ) : indicatorsOpen &&
-                  operationContext &&
-                  canViewOperationIndicators ? (
-                  operationContext.module === "commercial" &&
-                  commercialFlow === "retention" ? (
-                    <RetentionIndicatorsBoard
-                      title={operationContext.title}
-                      contextKey="commercial:retention"
-                      items={indicatorItems}
-                      onClose={closeIndicatorsPage}
+                    aria-label={
+                      internalChatUnread
+                        ? `${internalChatUnread} mensagem(ns) recebida(s)`
+                        : "Abrir Chat Dontus"
+                    }
+                    title="Mensagens recebidas"
+                  >
+                    <MessageCircleMore size={18} />
+                    {internalChatUnread > 0 && (
+                      <b>
+                        {internalChatUnread > 99 ? "99+" : internalChatUnread}
+                      </b>
+                    )}
+                  </button>
+                  <DesktopAppControls unreadCount={notificationTotal} />
+                  <div className="notification-center-wrap">
+                    <button
+                      className="icon-button notification-button"
+                      aria-label={
+                        notificationTotal
+                          ? `${notificationTotal} notificações`
+                          : "Sem notificações"
+                      }
+                      onClick={() =>
+                        setNotificationCenterOpen((current) => !current)
+                      }
+                    >
+                      <Bell size={19} />
+                      {notificationTotal > 0 && (
+                        <b>
+                          {notificationTotal > 99 ? "99+" : notificationTotal}
+                        </b>
+                      )}
+                    </button>
+                    {notificationCenterOpen && (
+                      <section className="notification-center">
+                        <header>
+                          <span>
+                            <strong>Notificações</strong>
+                            <small>Chegadas e comentários para você</small>
+                          </span>
+                          <div className="notification-center-head-actions">
+                            {notificationTotal > 0 && (
+                              <button
+                                className="mark-all-read"
+                                disabled={busy}
+                                onClick={() => void markAllNotificationsRead()}
+                              >
+                                <CheckCheck size={15} />
+                                Marcar todas como vistas
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setNotificationCenterOpen(false)}
+                              aria-label="Fechar notificações"
+                            >
+                              <X size={15} />
+                            </button>
+                          </div>
+                        </header>
+                        <div>
+                          {notificationEntries.length === 0 ? (
+                            <p>Nenhuma notificação pendente.</p>
+                          ) : (
+                            notificationEntries.map((entry) => (
+                              <button
+                                data-reminder-entity-id={entry.id}
+                                key={entry.id}
+                                onClick={() => {
+                                  if (
+                                    !/^(task|chat|notice|reminder)-/.test(
+                                      entry.id,
+                                    )
+                                  ) {
+                                    setDismissedNotificationIds((current) => {
+                                      const next = new Set([
+                                        ...current,
+                                        entry.id,
+                                      ]);
+                                      try {
+                                        localStorage.setItem(
+                                          `dontus:read-operational-notifications:${data.user.email}`,
+                                          JSON.stringify(
+                                            [...next].slice(-2000),
+                                          ),
+                                        );
+                                      } catch {}
+                                      return next;
+                                    });
+                                  }
+                                  setNotificationCenterOpen(false);
+                                  if (entry.roomId) {
+                                    setChatRoomTarget(entry.roomId);
+                                    navigate("internalChat");
+                                    return;
+                                  }
+                                  if (entry.targetUrl) {
+                                    window.location.href = entry.targetUrl;
+                                    return;
+                                  }
+                                  navigate(entry.module as ModuleKey);
+                                }}
+                              >
+                                <span>
+                                  <strong>{entry.title}</strong>
+                                  <small>
+                                    {entry.meta} · {dateTime(entry.at)}
+                                  </small>
+                                </span>
+                                <ChevronRight size={15} />
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                </div>
+              </WorkspaceExperience>
+              <div
+                id="workspace-content"
+                tabIndex={-1}
+                className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}
+              >
+                <Suspense
+                  fallback={
+                    <section role="status" className="empty-state">
+                      Carregando módulo...
+                    </section>
+                  }
+                >
+                  {historyClientId ? (
+                    <ClientHistoryPage
+                      query={historyClientId}
+                      data={data}
+                      canEdit={userCan(data.user, "customers", "edit")}
+                      busy={busy}
+                      operate={operate}
+                      onClose={closeClientHistoryPage}
+                      onNavigate={(module) => {
+                        closeClientHistoryPage();
+                        navigate(module);
+                      }}
                     />
+                  ) : indicatorsOpen &&
+                    operationContext &&
+                    canViewOperationIndicators ? (
+                    operationContext.module === "commercial" &&
+                    commercialFlow === "retention" ? (
+                      <RetentionIndicatorsBoard
+                        title={operationContext.title}
+                        contextKey="commercial:retention"
+                        items={indicatorItems}
+                        onClose={closeIndicatorsPage}
+                      />
+                    ) : (
+                      <OperationIndicatorsBoard
+                        title={
+                          generalIndicators && active === "cs"
+                            ? "Indicadores gerais · Ativação e Retenção"
+                            : operationContext.title
+                        }
+                        module={operationContext.module}
+                        contextKey={`${active}:${commercialFlow}:${generalIndicators && active === "cs" ? "general" : csFlow}:${adminSection}`}
+                        items={indicatorItems}
+                        employees={assignmentEmployees}
+                        catalogs={data.customerModule?.catalogs ?? []}
+                        customers={data.customers}
+                        onClose={closeIndicatorsPage}
+                      />
+                    )
                   ) : (
-                    <OperationIndicatorsBoard
-                      title={operationContext.title}
-                      module={operationContext.module}
-                      contextKey={`${active}:${commercialFlow}:${csFlow}:${adminSection}`}
-                      items={indicatorItems}
-                      employees={assignmentEmployees}
-                      catalogs={data.customerModule?.catalogs ?? []}
-                      customers={data.customers}
-                      onClose={closeIndicatorsPage}
-                    />
-                  )
-                ) : (
-                  <>
-                    {operationContext && canViewOperationIndicators && (
-                      <OperationIndicatorsLauncher
-                        pageKey={`${active}:${commercialFlow}:${csFlow}`}
-                        onOpen={openIndicatorsPage}
-                      />
-                    )}
-                    {active === "dashboard" &&
-                      (dashboardPage === "portal" ? (
-                        <PortalDontus
-                          data={data}
-                          busy={busy}
-                          operate={operate}
-                          onBack={() => setDashboardPage("home")}
-                        />
-                      ) : (
-                        <Dashboard
-                          data={data}
-                          onNavigate={navigate}
-                          onPortal={() => setDashboardPage("portal")}
-                        />
-                      ))}
-                    {active === "customers" && data.customerModule && (
-                      <CustomersView
-                        customers={data.customers}
-                        catalogs={data.customerModule.catalogs}
-                        items={data.items}
-                        selected={null}
-                        onSelect={(customer) =>
-                          customer &&
-                          openClientHistoryPage(
-                            customer.document_masked || customer.id,
-                          )
-                        }
-                        onCreate={() => openCreate("customers")}
-                        onOpenSettings={
-                          userCan(data.user, "customers", "manage")
-                            ? () => openFunctionSettings("customers")
-                            : undefined
-                        }
-                        canCreate={userCan(data.user, "customers", "create")}
-                        canEdit={userCan(data.user, "customers", "edit")}
-                        busy={busy}
-                        operate={operate}
-                      />
-                    )}
-                    {active === "commercial" && data.customerModule && (
-                      <CommercialLeadsModule
-                        key={commercialFlow}
-                        flow={commercialFlow}
-                        catalogs={data.customerModule.catalogs}
-                        customers={data.customers}
-                        items={kanbanItems}
-                        marketingCampaigns={data.items.filter(
-                          (item) => item.module === "marketing",
-                        )}
-                        sellers={data.customerModule.commercialSellers ?? []}
-                        employees={assignmentEmployees}
-                        agendaModule={data.agendaModule}
-                        currentUser={data.user}
-                        busy={busy}
-                        canCreate={userCan(data.user, "commercial", "create")}
-                        canEdit={userCan(data.user, "commercial", "edit")}
-                        canDelete={userCan(data.user, "commercial", "edit")}
-                        operate={operate}
-                        onOpenSettings={
-                          userCan(data.user, "commercial", "manage")
-                            ? () => openFunctionSettings("commercialCatalogs")
-                            : undefined
-                        }
-                      />
-                    )}
-                    {active === "cs" &&
-                      data.customerModule &&
-                      (csFlow === "enterprise" ? (
-                        <CustomerSuccessModule
-                          flow={csFlow}
-                          catalogs={data.customerModule.catalogs}
-                          items={kanbanItems}
-                          customers={data.customers}
-                          agendaModule={data.agendaModule}
-                          taskModule={data.taskModule}
-                          employees={assignmentEmployees}
-                          currentUser={data.user}
-                          busy={busy}
-                          canEdit={userCan(data.user, "cs", "edit")}
-                          canDelete={userCan(data.user, "cs", "edit")}
-                          canCreateTask={userCan(
-                            data.user,
-                            "cancellations",
-                            "create",
-                          )}
-                          operate={operate}
-                          onOpenSettings={
-                            userCan(data.user, "cs", "manage")
-                              ? () => openFunctionSettings("enterpriseCatalogs")
+                    <>
+                      {operationContext && canViewOperationIndicators && (
+                        <OperationIndicatorsLauncher
+                          pageKey={`${active}:${commercialFlow}:${csFlow}`}
+                          onOpen={() => {
+                            setGeneralIndicators(false);
+                            openIndicatorsPage();
+                          }}
+                          onGeneral={
+                            active === "cs" && csFlow === "onboarding"
+                              ? () => {
+                                  setGeneralIndicators(true);
+                                  openIndicatorsPage();
+                                }
                               : undefined
                           }
                         />
-                      ) : (
-                        <CustomerSuccessJourneyModule
-                          distribution={data.customerModule.csDistribution}
-                          flow={csFlow}
-                          catalogs={data.customerModule.catalogs}
-                          items={kanbanItems}
+                      )}
+                      {active === "dashboard" &&
+                        (dashboardPage === "portal" ? (
+                          <PortalDontus
+                            data={data}
+                            busy={busy}
+                            operate={operate}
+                            onBack={() => setDashboardPage("home")}
+                          />
+                        ) : (
+                          <Dashboard
+                            data={data}
+                            onNavigate={navigate}
+                            onPortal={() => setDashboardPage("portal")}
+                          />
+                        ))}
+                      {active === "customers" && data.customerModule && (
+                        <CustomersView
                           customers={data.customers}
-                          agendaModule={data.agendaModule}
-                          taskModule={data.taskModule}
+                          catalogs={data.customerModule.catalogs}
+                          items={data.items}
+                          selected={null}
+                          onSelect={(customer) =>
+                            customer &&
+                            openClientHistoryPage(
+                              customer.document_masked || customer.id,
+                            )
+                          }
+                          onCreate={() => openCreate("customers")}
+                          onOpenSettings={
+                            userCan(data.user, "customers", "manage")
+                              ? () => openFunctionSettings("customers")
+                              : undefined
+                          }
+                          canCreate={userCan(data.user, "customers", "create")}
+                          canEdit={userCan(data.user, "customers", "edit")}
+                          busy={busy}
+                          operate={operate}
+                        />
+                      )}
+                      {active === "commercial" && data.customerModule && (
+                        <CommercialLeadsModule
+                          key={commercialFlow}
+                          flow={commercialFlow}
+                          catalogs={data.customerModule.catalogs}
+                          customers={data.customers}
+                          items={kanbanItems}
+                          marketingCampaigns={data.items.filter(
+                            (item) => item.module === "marketing",
+                          )}
+                          sellers={data.customerModule.commercialSellers ?? []}
                           employees={assignmentEmployees}
+                          agendaModule={data.agendaModule}
                           currentUser={data.user}
                           busy={busy}
-                          canCreate={userCan(data.user, "cs", "create")}
-                          canEdit={
-                            userCan(data.user, "cs", "edit") ||
-                            userCan(data.user, "cs", "approve")
-                          }
-                          canDelete={userCan(data.user, "cs", "edit")}
-                          canCreateTask={userCan(
-                            data.user,
-                            "cancellations",
-                            "create",
-                          )}
+                          canCreate={userCan(data.user, "commercial", "create")}
+                          canEdit={userCan(data.user, "commercial", "edit")}
+                          canDelete={userCan(data.user, "commercial", "edit")}
                           operate={operate}
                           onOpenSettings={
-                            userCan(data.user, "cs", "manage")
-                              ? () => openFunctionSettings("csCatalogs")
+                            userCan(data.user, "commercial", "manage")
+                              ? () => openFunctionSettings("commercialCatalogs")
                               : undefined
                           }
                         />
-                      ))}
-                    {active === "cancellations" && data.customerModule && (
-                      <CancellationsModule
-                        taskModule={data.taskModule}
-                        canCreateTask={userCan(data.user, "tasks", "create")}
-                        canViewOtherTaskDepartments={
-                          userCan(data.user, "tasks", "manage") ||
-                          userHasCapability(
-                            data.user,
-                            "tasks",
-                            "viewOtherDepartments",
-                          )
-                        }
-                        uploadTaskAttachments={(id, files, onUploaded) =>
-                          uploadTaskAttachments(
-                            id,
-                            files,
-                            undefined,
-                            onUploaded,
-                          )
-                        }
-                        items={kanbanItems}
-                        customers={data.customers}
-                        catalogs={data.customerModule.catalogs}
-                        employees={assignmentEmployees}
-                        currentUser={data.user}
-                        busy={busy}
-                        canCreate={userCan(
-                          data.user,
-                          "cancellations",
-                          "create",
-                        )}
-                        canEdit={userCan(data.user, "cancellations", "edit")}
-                        canDelete={userCan(data.user, "cancellations", "edit")}
-                        operate={operate}
-                        onOpenSettings={
-                          userCan(data.user, "cancellations", "manage")
-                            ? () => openFunctionSettings("cancellationCatalogs")
-                            : undefined
-                        }
-                      />
-                    )}
-                    {active === "hr" && data.customerModule && (
-                      <HrManagementModule
-                        items={kanbanItems}
-                        catalogs={data.customerModule.catalogs}
-                        employees={data.access?.employees ?? []}
-                        currentUser={data.user}
-                        busy={busy}
-                        canEdit={userCan(data.user, "hr", "edit")}
-                        operate={operate}
-                        onOpenSettings={
-                          userCan(data.user, "hr", "manage")
-                            ? () => openFunctionSettings("hrCatalogs")
-                            : undefined
-                        }
-                      />
-                    )}
-                    {active === "support" && data.customerModule && (
-                      <ServiceRecordsModule
-                        items={kanbanItems}
-                        customers={data.customers}
-                        catalogs={data.customerModule.catalogs}
-                        employees={assignmentEmployees}
-                        departments={assignmentDepartments}
-                        currentUser={data.user}
-                        busy={busy}
-                        canCreate={userCan(data.user, "support", "create")}
-                        canEdit={userCan(data.user, "support", "edit")}
-                        canDelete={userCan(data.user, "support", "edit")}
-                        operate={operate}
-                        onOpenSettings={
-                          userCan(data.user, "support", "manage")
-                            ? () => openFunctionSettings("serviceCatalogs")
-                            : undefined
-                        }
-                      />
-                    )}
-                    {active === "waitingQueue" && (
-                      <WaitingQueueModule
-                        items={kanbanItems}
-                        employees={
-                          data.waitingQueueDirectory?.employees ??
-                          data.access?.employees ??
-                          []
-                        }
-                        departments={
-                          data.waitingQueueDirectory?.departments ??
-                          data.access?.departments ??
-                          []
-                        }
-                        currentUser={data.user}
-                        busy={busy}
-                        operate={operate}
-                        onOpenSettings={
-                          userCan(data.user, "waitingQueue", "manage")
-                            ? () => openFunctionSettings("waitingQueueCatalogs")
-                            : undefined
-                        }
-                      />
-                    )}
-                    {active === "referrals" && data.customerModule && (
-                      <ReferralsModule
-                        items={kanbanItems}
-                        catalogs={data.customerModule.catalogs}
-                        employees={assignmentEmployees}
-                        currentUser={data.user}
-                        busy={busy}
-                        canEdit={userCan(data.user, "referrals", "edit")}
-                        canManage={userCan(data.user, "referrals", "manage")}
-                        operate={operate}
-                      />
-                    )}
-                    {active === "commissions" && data.customerModule && (
-                      <CommissionsModule
-                        items={data.items}
-                        customers={data.customers}
-                        catalogs={data.customerModule.catalogs}
-                        employees={assignmentEmployees}
-                        currentUser={data.user}
-                        busy={busy}
-                        canApprove={userCan(
-                          data.user,
-                          "commissions",
-                          "approve",
-                        )}
-                        canManage={userCan(data.user, "commissions", "manage")}
-                        operate={operate}
-                      />
-                    )}
-                    {active === "goals" && (
-                      <GoalsModule
-                        items={data.items}
-                        taskItems={data.taskModule?.tasks ?? []}
-                        catalogs={data.customerModule?.catalogs ?? []}
-                        employees={assignmentEmployees}
-                        departments={assignmentDepartments}
-                        currentUser={data.user}
-                        busy={busy}
-                        canCreate={userCan(data.user, "goals", "create")}
-                        canEdit={userCan(data.user, "goals", "edit")}
-                        canManage={userCan(data.user, "goals", "manage")}
-                        operate={operate}
-                      />
-                    )}
-                    {active === "surveys" && (
-                      <SatisfactionSurveysModule
-                        items={data.items}
-                        employees={assignmentEmployees}
-                        departments={assignmentDepartments}
-                        currentUser={data.user}
-                        busy={busy}
-                        canEdit={userCan(data.user, "surveys", "edit")}
-                        operate={operate}
-                      />
-                    )}
-                    {["finance", "procurement"].includes(active) && (
-                      <ModuleView
-                        module={active}
-                        items={moduleItems}
-                        customers={data.customers}
-                        appointments={data.appointments}
-                        view={view}
-                        onView={setView}
-                        onCreate={() => openCreate(active)}
-                        onOpen={setSelectedItem}
-                        canCreate={userCan(data.user, active, "create")}
-                        canEdit={userCan(data.user, active, "edit")}
-                        onMove={(item, status) =>
-                          operate(
-                            {
-                              action: "transitionWorkItem",
-                              id: item.id,
-                              nextStatus: status,
-                              version: item.version,
-                              confirmed: true,
-                              boardMove: true,
-                            },
-                            `Registro movido para ${status}.`,
-                          )
-                        }
-                      />
-                    )}
-                    {active === "lia" && (
-                      <LiaJourneyModule
-                        canViewValidation={
-                          followupValidationAccess(data.user).view
-                        }
-                        canValidate={followupValidationAccess(data.user).edit}
-                        items={data.items}
-                        canCreate={userCan(data.user, "lia", "create")}
-                        employees={assignmentEmployees}
-                        catalogs={data.customerModule?.catalogs ?? []}
-                        currentUser={data.user.displayName}
-                        canEdit={userCan(data.user, "lia", "edit")}
-                        canCoordinate={
-                          userCan(data.user, "lia", "approve") ||
-                          userCan(data.user, "lia", "manage")
-                        }
-                        busy={busy}
-                        operate={operate}
-                        agendaModule={data.agendaModule}
-                        onOpenSettings={
-                          userCan(data.user, "lia", "manage")
-                            ? () => openFunctionSettings("liaCatalogs")
-                            : undefined
-                        }
-                      />
-                    )}
-                    {active === "marketing" && (
-                      <MarketingWorkspaceModule
-                        items={kanbanItems}
-                        campaignItems={data.items.filter(
-                          (item) => item.module === "marketing",
-                        )}
-                        employees={assignmentEmployees}
-                        currentUser={data.user}
-                        agendaModule={data.agendaModule}
-                        canEdit={userCan(data.user, "marketing", "edit")}
-                        busy={busy}
-                        operate={operate}
-                        onOpenSettings={undefined}
-                      />
-                    )}
-                    {active === "work" && data.agendaModule && (
-                      <AgendaModule
-                        module={data.agendaModule}
-                        busy={busy}
-                        operate={operate}
-                        currentEmail={data.user.email}
-                        currentUserIsCoordinator={data.user.isCoordinator}
-                        onOpenSettings={
-                          userCan(data.user, "work", "manage")
-                            ? () => openFunctionSettings("agenda")
-                            : undefined
-                        }
-                      />
-                    )}
-                    {active === "diary" && data.diaryModule && (
-                      <DiaryModule
-                        module={data.diaryModule}
-                        busy={busy}
-                        canCreate={userCan(data.user, "diary", "create")}
-                        canEdit={userCan(data.user, "diary", "edit")}
-                        operate={operate}
-                      />
-                    )}
-                    {active === "notes" && data.notesModule && (
-                      <NotesModule
-                        canCreate={userCan(data.user, "notes", "create")}
-                        module={data.notesModule}
-                        busy={busy}
-                        operate={operate}
-                      />
-                    )}
-                    {active === "reminders" && (
-                      <RemindersModule
-                        items={reminderItems}
-                        employees={
-                          data.assignmentDirectory?.employees ??
-                          data.access?.employees ??
-                          []
-                        }
-                        currentUser={data.user}
-                        busy={busy}
-                        canCreate={userCan(data.user, "reminders", "create")}
-                        canEdit={userCan(data.user, "reminders", "edit")}
-                        operate={operate}
-                        onCreate={setReminderContext}
-                      />
-                    )}
-                    {active === "notices" && data.noticesModule && (
-                      <NoticesModule
-                        module={data.noticesModule}
-                        busy={busy}
-                        operate={operate}
-                      />
-                    )}
-                    {active === "suggestions" && monthSuggestionModule && (
-                      <SuggestionsModule
-                        module={monthSuggestionModule}
-                        customers={data.customers}
-                        canCreate={userCan(data.user, "suggestions", "create")}
-                        canEdit={userCan(data.user, "suggestions", "edit")}
-                        canDelete={userCan(data.user, "suggestions", "edit")}
-                        busy={busy}
-                        operate={operate}
-                        uploadAttachments={uploadSuggestionAttachments}
-                        onOpenSettings={
-                          userCan(data.user, "suggestions", "manage")
-                            ? () => openFunctionSettings("suggestions")
-                            : undefined
-                        }
-                      />
-                    )}
-                    {(active === "serviceRequests" ||
-                      active === "serviceFollowup") && (
-                      <ServiceRequestsModule
-                        canCreateTargets={[
-                          "tasks",
-                          "ti",
-                          "suggestions",
-                          "cancellations",
-                          "commercial",
-                          "cs",
-                        ].filter((module) =>
-                          userCan(data.user, module, "create"),
-                        )}
-                        key={active}
-                        onForward={(detail, sourceId) =>
-                          setForwardRequest({
-                            clientName: detail.fullName,
-                            whatsapp: detail.whatsapp,
-                            clientCode: detail.clientId,
-                            summary: `${detail.protocol}: ${detail.summary}`,
-                            sourceId,
-                          })
-                        }
-                        mode={
-                          active === "serviceRequests" ? "triage" : "followup"
-                        }
-                        items={kanbanItems}
-                        customers={data.customers}
-                        currentUser={data.user}
-                        taskModule={data.taskModule}
-                        suggestionModule={data.suggestionModule}
-                        canEdit={userCan(data.user, active, "edit")}
-                        busy={busy}
-                        operate={operate}
-                        uploadTaskAttachments={uploadTaskAttachments}
-                      />
-                    )}
-                    {active === "internalChat" && data.internalChatModule && (
-                      <InternalChatModule
-                        module={data.internalChatModule}
-                        employees={data.access?.employees ?? []}
-                        canCreate={userCan(data.user, "internalChat", "create")}
-                        canEdit={userCan(data.user, "internalChat", "edit")}
-                        busy={busy || chatBusy > 0}
-                        operate={executeOperation}
-                        markRead={markInternalChatRead}
-                        uploadAttachments={uploadInternalChatAttachments}
-                        initialRoomId={chatRoomTarget}
-                        onOpenProfile={(userId) => {
-                          setProfileEditable(false);
-                          setProfileEmployee({ id: userId });
-                        }}
-                      />
-                    )}
-                    {active === "approvals" && (
-                      <ApprovalsView
-                        approvals={data.approvals}
-                        busy={busy}
-                        canApprove={userCan(data.user, "approvals", "approve")}
-                        onDecision={(id, decision) =>
-                          operate(
-                            {
-                              action: "decideApproval",
+                      )}
+                      {active === "cs" &&
+                        data.customerModule &&
+                        (csFlow === "enterprise" ? (
+                          <CustomerSuccessModule
+                            flow={csFlow}
+                            catalogs={data.customerModule.catalogs}
+                            items={kanbanItems}
+                            customers={data.customers}
+                            agendaModule={data.agendaModule}
+                            taskModule={data.taskModule}
+                            employees={assignmentEmployees}
+                            currentUser={data.user}
+                            busy={busy}
+                            canEdit={userCan(data.user, "cs", "edit")}
+                            canDelete={userCan(data.user, "cs", "edit")}
+                            canCreateTask={userCan(
+                              data.user,
+                              "cancellations",
+                              "create",
+                            )}
+                            operate={operate}
+                            onOpenSettings={
+                              userCan(data.user, "cs", "manage")
+                                ? () =>
+                                    openFunctionSettings("enterpriseCatalogs")
+                                : undefined
+                            }
+                          />
+                        ) : (
+                          <CustomerSuccessJourneyModule
+                            key={csFlow}
+                            distribution={data.customerModule.csDistribution}
+                            flow={csFlow}
+                            catalogs={data.customerModule.catalogs}
+                            items={kanbanItems}
+                            customers={data.customers}
+                            agendaModule={data.agendaModule}
+                            taskModule={data.taskModule}
+                            employees={assignmentEmployees}
+                            currentUser={data.user}
+                            busy={busy}
+                            canCreate={userCan(data.user, "cs", "create")}
+                            canEdit={
+                              userCan(data.user, "cs", "edit") ||
+                              userCan(data.user, "cs", "approve")
+                            }
+                            canDelete={userCan(data.user, "cs", "edit")}
+                            canCreateTask={userCan(
+                              data.user,
+                              "cancellations",
+                              "create",
+                            )}
+                            operate={operate}
+                            onOpenSettings={
+                              userCan(data.user, "cs", "manage")
+                                ? () => openFunctionSettings("csCatalogs")
+                                : undefined
+                            }
+                          />
+                        ))}
+                      {active === "cancellations" && data.customerModule && (
+                        <CancellationsModule
+                          taskModule={data.taskModule}
+                          canCreateTask={userCan(data.user, "tasks", "create")}
+                          canViewOtherTaskDepartments={
+                            userCan(data.user, "tasks", "manage") ||
+                            userHasCapability(
+                              data.user,
+                              "tasks",
+                              "viewOtherDepartments",
+                            )
+                          }
+                          uploadTaskAttachments={(id, files, onUploaded) =>
+                            uploadTaskAttachments(
                               id,
-                              decision,
-                              justification:
-                                decision === "Aprovado"
-                                  ? ""
-                                  : "Necessário revisar os dados apresentados.",
-                            },
-                            `Solicitação ${decision.toLowerCase()}.`,
-                          )
-                        }
-                      />
-                    )}
-                    {active === "tasks" && monthTaskModule && (
-                      <TasksModule
-                        linkedDevelopmentItems={data.items.filter(
-                          (item) => item.module === "ti",
-                        )}
-                        module={monthTaskModule}
-                        month={kanbanMonth}
-                        onMonthChange={setKanbanMonth}
-                        customers={data.customers}
-                        user={data.user}
-                        canCreate={userCan(data.user, "tasks", "create")}
-                        canEdit={userCan(data.user, "tasks", "edit")}
-                        canManage={userCan(data.user, "tasks", "manage")}
-                        canRemind={userCan(data.user, "reminders", "create")}
-                        canSchedule={userCan(data.user, "agenda", "create")}
-                        capabilities={
-                          data.user.permissions.find(
-                            (permission) => permission.screen === "tasks",
-                          )?.capabilities ?? []
-                        }
-                        busy={busy}
-                        operate={operate}
-                        onSendToDevelopment={async (task) => {
-                          const developmentTask = {
-                            kind: "developmentTask",
-                            sourceTaskId: task.id,
-                            sourceProtocol: task.protocol,
-                            sourceDepartment: task.departmentName,
-                            triageStage: "Recebida",
-                            processStage: "Aguardando triagem",
-                            sourceSnapshot: {
-                              description: task.description,
-                              status: task.statusName,
-                              type: task.typeName,
-                              priority: task.priorityName,
-                              responsible: task.assigneeName,
-                              attachments: task.attachments ?? [],
-                              comments: task.comments ?? [],
-                            },
-                            history: [
+                              files,
+                              undefined,
+                              onUploaded,
+                            )
+                          }
+                          items={kanbanItems}
+                          customers={data.customers}
+                          catalogs={data.customerModule.catalogs}
+                          employees={assignmentEmployees}
+                          currentUser={data.user}
+                          busy={busy}
+                          canCreate={userCan(
+                            data.user,
+                            "cancellations",
+                            "create",
+                          )}
+                          canEdit={userCan(data.user, "cancellations", "edit")}
+                          canDelete={userCan(
+                            data.user,
+                            "cancellations",
+                            "edit",
+                          )}
+                          operate={operate}
+                          onOpenSettings={
+                            userCan(data.user, "cancellations", "manage")
+                              ? () =>
+                                  openFunctionSettings("cancellationCatalogs")
+                              : undefined
+                          }
+                        />
+                      )}
+                      {active === "hr" && data.customerModule && (
+                        <HrManagementModule
+                          items={kanbanItems}
+                          catalogs={data.customerModule.catalogs}
+                          employees={data.access?.employees ?? []}
+                          currentUser={data.user}
+                          busy={busy}
+                          canEdit={userCan(data.user, "hr", "edit")}
+                          operate={operate}
+                          onOpenSettings={
+                            userCan(data.user, "hr", "manage")
+                              ? () => openFunctionSettings("hrCatalogs")
+                              : undefined
+                          }
+                        />
+                      )}
+                      {active === "support" && data.customerModule && (
+                        <ServiceRecordsModule
+                          items={kanbanItems}
+                          customers={data.customers}
+                          catalogs={data.customerModule.catalogs}
+                          employees={assignmentEmployees}
+                          departments={assignmentDepartments}
+                          currentUser={data.user}
+                          busy={busy}
+                          canCreate={userCan(data.user, "support", "create")}
+                          canEdit={userCan(data.user, "support", "edit")}
+                          canDelete={userCan(data.user, "support", "edit")}
+                          operate={operate}
+                          onOpenSettings={
+                            userCan(data.user, "support", "manage")
+                              ? () => openFunctionSettings("serviceCatalogs")
+                              : undefined
+                          }
+                        />
+                      )}
+                      {active === "waitingQueue" && (
+                        <WaitingQueueModule
+                          items={kanbanItems}
+                          employees={
+                            data.waitingQueueDirectory?.employees ??
+                            data.access?.employees ??
+                            []
+                          }
+                          departments={
+                            data.waitingQueueDirectory?.departments ??
+                            data.access?.departments ??
+                            []
+                          }
+                          currentUser={data.user}
+                          busy={busy}
+                          operate={operate}
+                          onOpenSettings={
+                            userCan(data.user, "waitingQueue", "manage")
+                              ? () =>
+                                  openFunctionSettings("waitingQueueCatalogs")
+                              : undefined
+                          }
+                        />
+                      )}
+                      {active === "referrals" && data.customerModule && (
+                        <ReferralsModule
+                          items={data.items}
+                          catalogs={data.customerModule.catalogs}
+                          employees={assignmentEmployees}
+                          currentUser={data.user}
+                          busy={busy}
+                          canEdit={userCan(data.user, "referrals", "edit")}
+                          canManage={userCan(data.user, "referrals", "manage")}
+                          operate={operate}
+                        />
+                      )}
+                      {active === "commissions" && data.customerModule && (
+                        <CommissionsModule
+                          items={data.items}
+                          customers={data.customers}
+                          catalogs={data.customerModule.catalogs}
+                          employees={assignmentEmployees}
+                          currentUser={data.user}
+                          busy={busy}
+                          canApprove={userCan(
+                            data.user,
+                            "commissions",
+                            "approve",
+                          )}
+                          canManage={userCan(
+                            data.user,
+                            "commissions",
+                            "manage",
+                          )}
+                          operate={operate}
+                        />
+                      )}
+                      {active === "goals" && (
+                        <GoalsModule
+                          items={data.items}
+                          taskItems={data.taskModule?.tasks ?? []}
+                          catalogs={data.customerModule?.catalogs ?? []}
+                          employees={assignmentEmployees}
+                          departments={assignmentDepartments}
+                          currentUser={data.user}
+                          busy={busy}
+                          canCreate={userCan(data.user, "goals", "create")}
+                          canEdit={userCan(data.user, "goals", "edit")}
+                          canManage={userCan(data.user, "goals", "manage")}
+                          operate={operate}
+                        />
+                      )}
+                      {active === "surveys" && (
+                        <SatisfactionSurveysModule
+                          items={data.items}
+                          employees={assignmentEmployees}
+                          departments={assignmentDepartments}
+                          currentUser={data.user}
+                          busy={busy}
+                          canEdit={userCan(data.user, "surveys", "edit")}
+                          operate={operate}
+                        />
+                      )}
+                      {["finance", "procurement"].includes(active) && (
+                        <ModuleView
+                          module={active}
+                          items={moduleItems}
+                          customers={data.customers}
+                          appointments={data.appointments}
+                          view={view}
+                          onView={setView}
+                          onCreate={() => openCreate(active)}
+                          onOpen={setSelectedItem}
+                          canCreate={userCan(data.user, active, "create")}
+                          canEdit={userCan(data.user, active, "edit")}
+                          onMove={(item, status) =>
+                            operate(
                               {
-                                text: `Tarefa ${task.protocol} enviada pela operação corporativa.`,
-                                at: new Date().toISOString(),
-                                by: data.user.displayName,
+                                action: "transitionWorkItem",
+                                id: item.id,
+                                nextStatus: status,
+                                version: item.version,
+                                confirmed: true,
+                                boardMove: true,
                               },
-                            ],
-                          };
-                          const created = await operate(
-                            {
-                              action: "createWorkItem",
-                              module: "ti",
-                              recordType: "Tarefa de desenvolvimento",
-                              title: task.title,
-                              customerName: task.customerName,
-                              owner: task.creatorName || data.user.displayName,
-                              team: "Desenvolvimento",
-                              priority: "P3",
-                              amountCents: 0,
-                              description: JSON.stringify(developmentTask),
-                              originType: "task",
-                              originId: task.id,
-                            },
-                            "Tarefa enviada para a triagem de Desenvolvimento.",
-                          );
-                          if (!created) return false;
-                          const completedStatus =
-                            data.taskModule?.statuses.find(
-                              (status) =>
-                                status.active &&
-                                status.isFinal &&
-                                (!status.departmentId ||
-                                  status.departmentId ===
-                                    task.currentDepartmentId),
-                            );
-                          if (completedStatus)
-                            await operate(
+                              `Registro movido para ${status}.`,
+                            )
+                          }
+                        />
+                      )}
+                      {active === "lia" && (
+                        <LiaJourneyModule
+                          canViewValidation={
+                            followupValidationAccess(data.user).view
+                          }
+                          canValidate={followupValidationAccess(data.user).edit}
+                          items={data.items}
+                          canCreate={userCan(data.user, "lia", "create")}
+                          employees={assignmentEmployees}
+                          catalogs={data.customerModule?.catalogs ?? []}
+                          currentUser={data.user.displayName}
+                          canEdit={userCan(data.user, "lia", "edit")}
+                          canCoordinate={
+                            userCan(data.user, "lia", "approve") ||
+                            userCan(data.user, "lia", "manage")
+                          }
+                          busy={busy}
+                          operate={operate}
+                          agendaModule={data.agendaModule}
+                          onOpenSettings={
+                            userCan(data.user, "lia", "manage")
+                              ? () => openFunctionSettings("liaCatalogs")
+                              : undefined
+                          }
+                        />
+                      )}
+                      {active === "marketing" && (
+                        <MarketingWorkspaceModule
+                          items={kanbanItems}
+                          campaignItems={data.items.filter(
+                            (item) => item.module === "marketing",
+                          )}
+                          employees={assignmentEmployees}
+                          currentUser={data.user}
+                          agendaModule={data.agendaModule}
+                          canEdit={userCan(data.user, "marketing", "edit")}
+                          busy={busy}
+                          operate={operate}
+                          onOpenSettings={undefined}
+                        />
+                      )}
+                      {active === "work" && data.agendaModule && (
+                        <AgendaModule
+                          module={data.agendaModule}
+                          busy={busy}
+                          operate={operate}
+                          currentEmail={data.user.email}
+                          currentUserIsCoordinator={data.user.isCoordinator}
+                          onOpenSettings={
+                            userCan(data.user, "work", "manage")
+                              ? () => openFunctionSettings("agenda")
+                              : undefined
+                          }
+                        />
+                      )}
+                      {active === "diary" && data.diaryModule && (
+                        <DiaryModule
+                          module={data.diaryModule}
+                          busy={busy}
+                          canCreate={userCan(data.user, "diary", "create")}
+                          canEdit={userCan(data.user, "diary", "edit")}
+                          operate={operate}
+                        />
+                      )}
+                      {active === "notes" && data.notesModule && (
+                        <NotesModule
+                          canCreate={userCan(data.user, "notes", "create")}
+                          module={data.notesModule}
+                          busy={busy}
+                          operate={operate}
+                        />
+                      )}
+                      {active === "reminders" && (
+                        <RemindersModule
+                          items={reminderItems}
+                          employees={
+                            data.assignmentDirectory?.employees ??
+                            data.access?.employees ??
+                            []
+                          }
+                          currentUser={data.user}
+                          busy={busy}
+                          canCreate={userCan(data.user, "reminders", "create")}
+                          canEdit={userCan(data.user, "reminders", "edit")}
+                          operate={operate}
+                          onCreate={setReminderContext}
+                        />
+                      )}
+                      {active === "notices" && data.noticesModule && (
+                        <NoticesModule
+                          module={data.noticesModule}
+                          busy={busy}
+                          operate={operate}
+                        />
+                      )}
+                      {active === "suggestions" && monthSuggestionModule && (
+                        <SuggestionsModule
+                          module={monthSuggestionModule}
+                          customers={data.customers}
+                          canCreate={userCan(
+                            data.user,
+                            "suggestions",
+                            "create",
+                          )}
+                          canEdit={userCan(data.user, "suggestions", "edit")}
+                          canDelete={userCan(data.user, "suggestions", "edit")}
+                          busy={busy}
+                          operate={operate}
+                          uploadAttachments={uploadSuggestionAttachments}
+                          onOpenSettings={
+                            userCan(data.user, "suggestions", "manage")
+                              ? () => openFunctionSettings("suggestions")
+                              : undefined
+                          }
+                        />
+                      )}
+                      {(active === "serviceRequests" ||
+                        active === "serviceFollowup") && (
+                        <ServiceRequestsModule
+                          canCreateTargets={[
+                            "tasks",
+                            "ti",
+                            "suggestions",
+                            "cancellations",
+                            "commercial",
+                            "cs",
+                          ].filter((module) =>
+                            userCan(data.user, module, "create"),
+                          )}
+                          key={active}
+                          onForward={(detail, sourceId) =>
+                            setForwardRequest({
+                              clientName: detail.fullName,
+                              whatsapp: detail.whatsapp,
+                              clientCode: detail.clientId,
+                              summary: `${detail.protocol}: ${detail.summary}`,
+                              sourceId,
+                            })
+                          }
+                          mode={
+                            active === "serviceRequests" ? "triage" : "followup"
+                          }
+                          items={kanbanItems}
+                          customers={data.customers}
+                          currentUser={data.user}
+                          taskModule={data.taskModule}
+                          suggestionModule={data.suggestionModule}
+                          canEdit={userCan(data.user, active, "edit")}
+                          busy={busy}
+                          operate={operate}
+                          uploadTaskAttachments={uploadTaskAttachments}
+                        />
+                      )}
+                      {active === "internalChat" && data.internalChatModule && (
+                        <InternalChatModule
+                          module={data.internalChatModule}
+                          employees={data.access?.employees ?? []}
+                          canCreate={userCan(
+                            data.user,
+                            "internalChat",
+                            "create",
+                          )}
+                          canEdit={userCan(data.user, "internalChat", "edit")}
+                          busy={busy || chatBusy > 0}
+                          operate={executeOperation}
+                          markRead={markInternalChatRead}
+                          uploadAttachments={uploadInternalChatAttachments}
+                          initialRoomId={chatRoomTarget}
+                          onOpenProfile={(userId) => {
+                            setProfileEditable(false);
+                            setProfileEmployee({ id: userId });
+                          }}
+                        />
+                      )}
+                      {active === "approvals" && (
+                        <ApprovalsView
+                          approvals={data.approvals}
+                          busy={busy}
+                          canApprove={userCan(
+                            data.user,
+                            "approvals",
+                            "approve",
+                          )}
+                          onDecision={(id, decision) =>
+                            operate(
                               {
-                                action: "changeTaskStatus",
-                                taskId: task.id,
-                                statusId: completedStatus.id,
+                                action: "decideApproval",
+                                id,
+                                decision,
                                 justification:
-                                  "Tarefa encaminhada para o time de Desenvolvimento.",
-                                version: task.version,
+                                  decision === "Aprovado"
+                                    ? ""
+                                    : "Necessário revisar os dados apresentados.",
                               },
-                              "Tarefa concluída e acompanhada pelo time de Desenvolvimento.",
-                            );
-                          if (created.id)
-                            await operate(
-                              {
-                                action: "addTaskComment",
-                                taskId: task.id,
-                                body: `Tarefa encaminhada para o time de Desenvolvimento. [TI:${created.id}]`,
-                              },
-                              "Vínculo com a subtarefa de TI criado.",
-                            );
-                          return created;
-                        }}
-                        uploadAttachments={uploadTaskAttachments}
-                        deleteAttachment={deleteTaskAttachment}
-                        onOpenSettings={() =>
-                          openFunctionSettings("types", "catalogs")
-                        }
-                      />
-                    )}
-                    {active === "ti" && (
-                      <DevelopmentModule
-                        taskModule={data.taskModule}
-                        items={kanbanItems}
-                        employees={assignmentEmployees}
-                        user={data.user}
-                        canCreate={userCan(data.user, "ti", "create")}
-                        canEdit={userCan(data.user, "ti", "edit")}
-                        busy={busy}
-                        operate={operate}
-                      />
-                    )}
-                    {active === "chat" &&
-                      userCan(data.user, "chat", "view") && (
-                        <ChatModule
-                          refreshVersion={attendanceRevision}
-                          onUnauthorized={expireSession}
-                          canCreate={userCan(data.user, "chat", "create")}
-                          canEdit={userCan(data.user, "chat", "edit")}
-                          canManage={userCan(data.user, "chat", "manage")}
+                              `Solicitação ${decision.toLowerCase()}.`,
+                            )
+                          }
+                        />
+                      )}
+                      {active === "tasks" && monthTaskModule && (
+                        <TasksModule
+                          linkedDevelopmentItems={data.items.filter(
+                            (item) => item.module === "ti",
+                          )}
+                          module={monthTaskModule}
+                          month={kanbanMonth}
+                          onMonthChange={setKanbanMonth}
+                          customers={data.customers}
+                          user={data.user}
+                          canCreate={userCan(data.user, "tasks", "create")}
+                          canEdit={userCan(data.user, "tasks", "edit")}
+                          canManage={userCan(data.user, "tasks", "manage")}
+                          canRemind={userCan(data.user, "reminders", "create")}
+                          canSchedule={userCan(data.user, "agenda", "create")}
                           capabilities={
                             data.user.permissions.find(
-                              (permission) => permission.screen === "chat",
+                              (permission) => permission.screen === "tasks",
                             )?.capabilities ?? []
                           }
                           busy={busy}
                           operate={operate}
-                          uploadAttachments={uploadChatAttachments}
-                          onExit={() => navigate("dashboard")}
+                          onSendToDevelopment={async (task) => {
+                            const developmentTask = {
+                              kind: "developmentTask",
+                              sourceTaskId: task.id,
+                              sourceProtocol: task.protocol,
+                              sourceDepartment: task.departmentName,
+                              triageStage: "Recebida",
+                              processStage: "Aguardando triagem",
+                              sourceSnapshot: {
+                                description: task.description,
+                                status: task.statusName,
+                                type: task.typeName,
+                                priority: task.priorityName,
+                                responsible: task.assigneeName,
+                                attachments: task.attachments ?? [],
+                                comments: task.comments ?? [],
+                              },
+                              history: [
+                                {
+                                  text: `Tarefa ${task.protocol} enviada pela operação corporativa.`,
+                                  at: new Date().toISOString(),
+                                  by: data.user.displayName,
+                                },
+                              ],
+                            };
+                            const created = await operate(
+                              {
+                                action: "createWorkItem",
+                                module: "ti",
+                                recordType: "Tarefa de desenvolvimento",
+                                title: task.title,
+                                customerName: task.customerName,
+                                owner:
+                                  task.creatorName || data.user.displayName,
+                                team: "Desenvolvimento",
+                                priority: "P3",
+                                amountCents: 0,
+                                description: JSON.stringify(developmentTask),
+                                originType: "task",
+                                originId: task.id,
+                              },
+                              "Tarefa enviada para a triagem de Desenvolvimento.",
+                            );
+                            if (!created) return false;
+                            const completedStatus =
+                              data.taskModule?.statuses.find(
+                                (status) =>
+                                  status.active &&
+                                  status.isFinal &&
+                                  (!status.departmentId ||
+                                    status.departmentId ===
+                                      task.currentDepartmentId),
+                              );
+                            if (completedStatus)
+                              await operate(
+                                {
+                                  action: "changeTaskStatus",
+                                  taskId: task.id,
+                                  statusId: completedStatus.id,
+                                  justification:
+                                    "Tarefa encaminhada para o time de Desenvolvimento.",
+                                  version: task.version,
+                                },
+                                "Tarefa concluída e acompanhada pelo time de Desenvolvimento.",
+                              );
+                            if (created.id)
+                              await operate(
+                                {
+                                  action: "addTaskComment",
+                                  taskId: task.id,
+                                  body: `Tarefa encaminhada para o time de Desenvolvimento. [TI:${created.id}]`,
+                                },
+                                "Vínculo com a subtarefa de TI criado.",
+                              );
+                            return created;
+                          }}
+                          uploadAttachments={uploadTaskAttachments}
+                          deleteAttachment={deleteTaskAttachment}
+                          onOpenSettings={() =>
+                            openFunctionSettings("types", "catalogs")
+                          }
                         />
                       )}
-                    {active === "access" && (
-                      <DontusSupportAccess
-                        canManage={userCan(data.user, "access", "manage")}
-                      />
-                    )}
-                    {active === "catalogs" && data.taskModule && (
-                      <>
-                        <ConfigurationReturnBar
-                          target={settingsReturnTarget}
-                          onBack={returnFromSettings}
-                        />
-                        <CatalogsModule
-                          module={data.taskModule}
-                          section={catalogSection}
-                          onSection={navigateCatalog}
-                          canManage={
-                            userCan(data.user, "catalogs", "manage") ||
-                            userCan(data.user, "tasks", "manage")
-                          }
+                      {active === "ti" && (
+                        <DevelopmentModule
+                          taskModule={data.taskModule}
+                          items={kanbanItems}
+                          employees={assignmentEmployees}
+                          user={data.user}
+                          canCreate={userCan(data.user, "ti", "create")}
+                          canEdit={userCan(data.user, "ti", "edit")}
                           busy={busy}
                           operate={operate}
                         />
-                      </>
-                    )}
-                    {active === "reporting" && (
-                      <AnalyticsWorkspace
-                        data={data}
-                        records={indicatorItems}
-                        section={
-                          reportingSection === "biExecutive"
-                            ? "bi"
-                            : reportingSection
-                        }
-                        sector={analyticsDepartment}
-                      />
-                    )}
-                    {active === "admin" && (
-                      <>
-                        <ConfigurationReturnBar
-                          target={settingsReturnTarget}
-                          onBack={returnFromSettings}
+                      )}
+                      {active === "chat" &&
+                        userCan(data.user, "chat", "view") && (
+                          <ChatModule
+                            refreshVersion={attendanceRevision}
+                            onUnauthorized={expireSession}
+                            canCreate={userCan(data.user, "chat", "create")}
+                            canEdit={userCan(data.user, "chat", "edit")}
+                            canManage={userCan(data.user, "chat", "manage")}
+                            capabilities={
+                              data.user.permissions.find(
+                                (permission) => permission.screen === "chat",
+                              )?.capabilities ?? []
+                            }
+                            busy={busy}
+                            operate={operate}
+                            uploadAttachments={uploadChatAttachments}
+                            onExit={() => navigate("dashboard")}
+                          />
+                        )}
+                      {active === "access" && (
+                        <DontusSupportAccess
+                          canManage={userCan(data.user, "access", "manage")}
                         />
-                        <AdminView
+                      )}
+                      {active === "catalogs" && data.taskModule && (
+                        <>
+                          <ConfigurationReturnBar
+                            target={settingsReturnTarget}
+                            onBack={returnFromSettings}
+                          />
+                          <CatalogsModule
+                            module={data.taskModule}
+                            section={catalogSection}
+                            onSection={navigateCatalog}
+                            canManage={
+                              userCan(data.user, "catalogs", "manage") ||
+                              userCan(data.user, "tasks", "manage")
+                            }
+                            busy={busy}
+                            operate={operate}
+                          />
+                        </>
+                      )}
+                      {active === "reporting" && (
+                        <AnalyticsWorkspace
                           data={data}
-                          section={adminSection}
-                          onSection={(section) => navigate("admin", section)}
-                          busy={busy}
-                          onOperate={operate}
-                          backgroundImage={backgroundImage}
-                          onBackgroundChange={changeBackgroundImage}
+                          records={indicatorItems}
+                          section={
+                            reportingSection === "biExecutive"
+                              ? "bi"
+                              : reportingSection
+                          }
+                          sector={analyticsDepartment}
                         />
-                      </>
-                    )}
-                  </>
-                )}
-              </Suspense>
-            </div>
-          </main>
+                      )}
+                      {active === "admin" && (
+                        <>
+                          <ConfigurationReturnBar
+                            target={settingsReturnTarget}
+                            onBack={returnFromSettings}
+                          />
+                          <AdminView
+                            data={data}
+                            section={adminSection}
+                            onSection={(section) => navigate("admin", section)}
+                            busy={busy}
+                            onOperate={operate}
+                            backgroundImage={backgroundImage}
+                            onBackgroundChange={changeBackgroundImage}
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
+                </Suspense>
+              </div>
+            </main>
 
-          {forwardRequest && (
-            <DispatchModal
-              initial={forwardRequest}
-              initialDepartmentId=""
-              departments={assignmentDepartments}
-              employees={assignmentEmployees}
-              requestTypes={
-                data.customerModule?.catalogs
-                  .filter(
-                    (entry) =>
-                      entry.active &&
-                      entry.catalog === "waitingQueueRequestType",
-                  )
-                  .map((entry) => entry.name) || []
-              }
-              user={data.user}
-              busy={busy}
-              onClose={() => setForwardRequest(null)}
-              onSend={async (detail) => {
-                const result = await operate(
-                  {
-                    action: "createWorkItem",
-                    module: "waitingQueue",
-                    recordType: "Encaminhamento de chamado",
-                    title: detail.clientName,
-                    customerName: detail.clientName,
-                    owner: detail.responsibleName || "Fila compartilhada",
-                    team: detail.departmentName,
-                    priority: detail.strategic ? "P1" : "P3",
-                    amountCents: 0,
-                    originType: "serviceFollowup",
-                    originId: forwardRequest.sourceId,
-                    description: JSON.stringify(detail),
-                  },
-                  "Cliente encaminhado à fila de espera.",
-                );
-                if (result) setForwardRequest(null);
-              }}
-            />
-          )}
-          <CardLinkEnhancer
-            module={active}
-            records={[
-              ...data.items,
-              ...(data.taskModule?.tasks || []).map((task) => ({
-                id: task.id,
-                title: task.title,
-                protocol: task.protocol,
-                module: "tasks",
-              })),
-              ...(data.suggestionModule?.suggestions || []).map(
-                (suggestion) => ({
-                  id: suggestion.id,
-                  title: suggestion.name,
-                  protocol: suggestion.protocol,
-                  module: "suggestions",
-                }),
-              ),
-            ]}
-          />
-          <ReminderCardEnhancer
-            module={active}
-            reminders={data.items.filter(
-              (entry) => entry.module === "reminders",
-            )}
-            checklists={data.items.filter(
-              (entry) => entry.record_type === "Checklist vinculado",
-            )}
-          />
-
-          {selectedItem && (
-            <ItemDrawer
-              item={selectedItem}
-              busy={busy}
-              canEdit={userCan(data.user, selectedItem.module, "edit")}
-              onClose={() => setSelectedItem(null)}
-              onTransition={(nextStatus, confirmed) =>
-                operate(
-                  {
-                    action: "transitionWorkItem",
-                    id: selectedItem.id,
-                    nextStatus,
-                    version: selectedItem.version,
-                    confirmed,
-                  },
-                  `Status alterado para ${statusLabel(nextStatus)}.`,
-                )
-              }
-            />
-          )}
-
-          {attentionNotice && (
-            <NoticeAttentionModal
-              notice={attentionNotice}
-              busy={busy}
-              onLater={() => {
-                const next = {
-                  ...noticeSnoozedUntil,
-                  [attentionNotice.id]: Date.now() + 60 * 60_000,
-                };
-                setNoticeSnoozedUntil(next);
-                try {
-                  localStorage.setItem(
-                    `dontus:snoozed-notices:${data.user.email}`,
-                    JSON.stringify(next),
-                  );
-                } catch {
-                  /* armazenamento local indisponível */
+            {forwardRequest && (
+              <DispatchModal
+                initial={forwardRequest}
+                initialDepartmentId=""
+                departments={assignmentDepartments}
+                employees={assignmentEmployees}
+                requestTypes={
+                  data.customerModule?.catalogs
+                    .filter(
+                      (entry) =>
+                        entry.active &&
+                        entry.catalog === "waitingQueueRequestType",
+                    )
+                    .map((entry) => entry.name) || []
                 }
-              }}
-              onConfirm={() => {
-                const next = { ...noticeSnoozedUntil };
-                delete next[attentionNotice.id];
-                setNoticeSnoozedUntil(next);
-                try {
-                  localStorage.setItem(
-                    `dontus:snoozed-notices:${data.user.email}`,
-                    JSON.stringify(next),
+                user={data.user}
+                busy={busy}
+                onClose={() => setForwardRequest(null)}
+                onSend={async (detail) => {
+                  const result = await operate(
+                    {
+                      action: "createWorkItem",
+                      module: "waitingQueue",
+                      recordType: "Encaminhamento de chamado",
+                      title: detail.clientName,
+                      customerName: detail.clientName,
+                      owner: detail.responsibleName || "Fila compartilhada",
+                      team: detail.departmentName,
+                      priority: detail.strategic ? "P1" : "P3",
+                      amountCents: 0,
+                      originType: "serviceFollowup",
+                      originId: forwardRequest.sourceId,
+                      description: JSON.stringify(detail),
+                    },
+                    "Cliente encaminhado à fila de espera.",
                   );
-                } catch {
-                  /* armazenamento local indisponível */
-                }
-                void executeOperation(
-                  { action: "markNoticeRead", id: attentionNotice.id },
-                  attentionNotice.kind === "Evento"
-                    ? "Presença confirmada com sucesso."
-                    : "Leitura confirmada com sucesso.",
-                );
-              }}
+                  if (result) setForwardRequest(null);
+                }}
+              />
+            )}
+            <CardLinkEnhancer
+              module={active}
+              records={[
+                ...data.items,
+                ...(data.taskModule?.tasks || []).map((task) => ({
+                  id: task.id,
+                  title: task.title,
+                  protocol: task.protocol,
+                  module: "tasks",
+                })),
+                ...(data.suggestionModule?.suggestions || []).map(
+                  (suggestion) => ({
+                    id: suggestion.id,
+                    title: suggestion.name,
+                    protocol: suggestion.protocol,
+                    module: "suggestions",
+                  }),
+                ),
+              ]}
             />
-          )}
-
-          {modal === "customer" && (
-            <CustomerModal
-              catalogs={data.customerModule?.catalogs ?? []}
-              networks={data.items.filter(
-                (item) =>
-                  item.module === "cs" &&
-                  /enterpriseNetwork/.test(item.description),
+            <ReminderCardEnhancer
+              module={active}
+              reminders={data.items.filter(
+                (entry) => entry.module === "reminders",
               )}
-              busy={busy}
-              onClose={() => setModal(null)}
-              onSubmit={(payload) =>
-                operate(
-                  { action: "createCustomer", ...payload },
-                  "Cliente criado no Customer 360.",
-                )
-              }
+              checklists={data.items.filter(
+                (entry) => entry.record_type === "Checklist vinculado",
+              )}
             />
-          )}
-          {modal === "workItem" && (
-            <WorkItemModal
-              module={modalModule}
-              customers={data.customers}
-              busy={busy}
-              onClose={() => setModal(null)}
-              onSubmit={(payload) =>
-                operate(
-                  { action: "createWorkItem", module: modalModule, ...payload },
-                  "Registro criado e auditado.",
-                )
-              }
-            />
-          )}
-          {modal === "appointment" && (
-            <AppointmentModal
-              customers={data.customers}
-              busy={busy}
-              onClose={() => setModal(null)}
-              onSubmit={(payload) =>
-                operate(
-                  { action: "createAppointment", ...payload },
-                  "Compromisso reservado sem conflito.",
-                )
-              }
-            />
-          )}
 
-          {reminderContext && userCan(data.user, "reminders", "create") && (
-            <ReminderComposerModal
-              context={reminderContext}
-              user={data.user}
-              employees={
-                data.assignmentDirectory?.employees ??
-                data.access?.employees ??
-                []
-              }
-              busy={busy}
-              onClose={() => setReminderContext(null)}
-              operate={operate}
-            />
-          )}
-          {clientAlertContext && (
-            <ClientAlertModal
-              context={clientAlertContext}
-              customers={data.customers}
-              user={data.user}
-              busy={busy}
-              operate={operate}
-              onClose={() => setClientAlertContext(null)}
-            />
-          )}
-          {clientChecklistContext && (
-            <ClientChecklistModal
-              context={clientChecklistContext}
-              customers={data.customers}
-              catalogs={data.customerModule?.catalogs ?? []}
-              items={data.items}
-              user={data.user}
-              busy={busy}
-              operate={operate}
-              onClose={() => setClientChecklistContext(null)}
-            />
-          )}
-          {agendaContext && data.agendaModule && (
-            <QuickAgendaCommitmentModal
-              module={data.agendaModule}
-              busy={busy}
-              currentEmail={data.user.email}
-              canReserveMeetingRoom={data.user.isCoordinator}
-              preset={{
-                typeName: agendaContext.agendaTypeName,
-                title: agendaContext.title
-                  ? `Acompanhamento · ${agendaContext.title}`
-                  : "Novo compromisso",
-                description: [agendaContext.customerName, agendaContext.summary]
-                  .filter(Boolean)
-                  .join(" · "),
-                responsibleName:
-                  agendaContext.recipientName || data.user.displayName,
-              }}
-              onClose={() => setAgendaContext(null)}
-              onSave={async (payload) => {
-                const created = await operate(
-                  { action: "createAgendaCommitment", ...payload },
-                  "Compromisso criado na agenda.",
-                );
-                if (!created) return;
-                const normalizeAgendaSource = (value: string | undefined) =>
-                  String(value ?? "")
-                    .trim()
-                    .toLocaleLowerCase("pt-BR");
-                const source = agendaContext.entityId
-                  ? data.items.find(
-                      (item) => item.id === agendaContext.entityId,
-                    )
-                  : data.items.find(
-                      (item) =>
-                        item.module === agendaContext.module &&
-                        [item.title, item.customer_name].some(
-                          (value) =>
-                            normalizeAgendaSource(value) ===
-                              normalizeAgendaSource(agendaContext.title) ||
-                            normalizeAgendaSource(value) ===
-                              normalizeAgendaSource(agendaContext.customerName),
-                        ),
-                    );
-                if (source) {
-                  try {
-                    const detail = JSON.parse(source.description) as Record<
-                      string,
-                      unknown
-                    >;
-                    const at = new Date().toISOString();
-                    const text = `Compromisso \"${String(payload.title || "Agenda")}\" agendado para ${dateTime(String(payload.startsAt))}.`;
-                    let nextDetail: Record<string, unknown> | null = null;
-                    if (
-                      detail.kind === "enterpriseNetwork" &&
-                      Array.isArray(detail.history)
-                    )
-                      nextDetail = {
-                        ...detail,
-                        history: [
-                          ...detail.history,
-                          {
-                            id: crypto.randomUUID(),
-                            createdAt: at,
-                            user: data.user.displayName,
-                            type: "Agendamento",
-                            text,
-                            scheduledFor: payload.startsAt,
-                            scheduledCommitmentId: created.id,
-                          },
-                        ],
-                      };
-                    else if (
-                      detail.kind === "hrEmployee" &&
-                      Array.isArray(detail.comments)
-                    )
-                      nextDetail = {
-                        ...detail,
-                        comments: [
-                          ...detail.comments,
-                          {
-                            id: crypto.randomUUID(),
-                            type: "Agendamento",
-                            text,
-                            at,
-                            author: data.user.displayName,
-                          },
-                        ],
-                      };
-                    else if (
-                      detail.kind === "referral" &&
-                      Array.isArray(detail.comments)
-                    )
-                      nextDetail = {
-                        ...detail,
-                        comments: [
-                          ...detail.comments,
-                          {
-                            id: crypto.randomUUID(),
-                            text,
-                            at,
-                            by: data.user.displayName,
-                          },
-                        ],
-                      };
-                    else if (
-                      (detail.kind === "commercialLead" ||
-                        detail.kind === "csJourney") &&
-                      Array.isArray(detail.follows)
-                    )
-                      nextDetail = {
-                        ...detail,
-                        follows: [
-                          ...detail.follows,
-                          {
-                            type: "Agendamento",
-                            kind: "Agendamento",
-                            text,
-                            createdAt: at,
-                            author: data.user.displayName,
-                            actor: data.user.displayName,
-                          },
-                        ],
-                      };
-                    else if (
-                      source.record_type === "Candidato" &&
-                      Array.isArray(detail.comments)
-                    )
-                      nextDetail = {
-                        ...detail,
-                        comments: [...detail.comments, text],
-                      };
-                    else if (Array.isArray(detail.history))
-                      nextDetail = {
-                        ...detail,
-                        history: [
-                          ...detail.history,
-                          {
-                            id: crypto.randomUUID(),
-                            type: "Agendamento",
-                            text,
-                            at,
-                            author: data.user.displayName,
-                          },
-                        ],
-                      };
-                    if (nextDetail)
-                      await operate(
-                        {
-                          action: "updateWorkItem",
-                          id: source.id,
-                          title: source.title,
-                          owner: source.owner,
-                          customerName: source.customer_name,
-                          amountCents: source.amount_cents,
-                          version: source.version,
-                          description: JSON.stringify(nextDetail),
-                        },
-                        "Agendamento registrado no histórico.",
-                      );
-                  } catch {
-                    /* Registros sem histórico estruturado mantêm somente o compromisso da agenda. */
-                  }
+            {selectedItem && (
+              <ItemDrawer
+                item={selectedItem}
+                busy={busy}
+                canEdit={userCan(data.user, selectedItem.module, "edit")}
+                onClose={() => setSelectedItem(null)}
+                onTransition={(nextStatus, confirmed) =>
+                  operate(
+                    {
+                      action: "transitionWorkItem",
+                      id: selectedItem.id,
+                      nextStatus,
+                      version: selectedItem.version,
+                      confirmed,
+                    },
+                    `Status alterado para ${statusLabel(nextStatus)}.`,
+                  )
                 }
-                setAgendaContext(null);
-              }}
-            />
-          )}
-          {dueReminder &&
-            userCan(data.user, "reminders", "edit") &&
-            !reminderContext && (
-              <ReminderDueModal
-                item={dueReminder.item}
-                detail={dueReminder.detail}
+              />
+            )}
+
+            {attentionNotice && (
+              <NoticeAttentionModal
+                notice={attentionNotice}
                 busy={busy}
                 onLater={() => {
                   const next = {
-                    ...dueReminder.detail,
-                    nextAlertAt: new Date(
-                      Date.now() + 60 * 60_000,
-                    ).toISOString(),
-                    snoozeCount: dueReminder.detail.snoozeCount + 1,
+                    ...noticeSnoozedUntil,
+                    [attentionNotice.id]: Date.now() + 60 * 60_000,
                   };
-                  void operate(
-                    {
-                      action: "updateWorkItem",
-                      id: dueReminder.item.id,
-                      title: dueReminder.item.title,
-                      owner: dueReminder.item.owner,
-                      amountCents: 0,
-                      version: dueReminder.item.version,
-                      description: JSON.stringify(next),
-                    },
-                    "Lembrete adiado por 60 minutos.",
-                  );
+                  setNoticeSnoozedUntil(next);
+                  try {
+                    localStorage.setItem(
+                      `dontus:snoozed-notices:${data.user.email}`,
+                      JSON.stringify(next),
+                    );
+                  } catch {
+                    /* armazenamento local indisponível */
+                  }
                 }}
-                onSeen={() => {
-                  const confirmedAt = new Date().toISOString();
-                  const next = {
-                    ...dueReminder.detail,
-                    seenAt: confirmedAt,
-                    seenBy: data.user.displayName,
-                    confirmedAt,
-                    confirmedBy: data.user.displayName,
-                  };
-                  void operate(
-                    {
-                      action: "updateWorkItem",
-                      id: dueReminder.item.id,
-                      title: dueReminder.item.title,
-                      owner: dueReminder.item.owner,
-                      amountCents: 0,
-                      version: dueReminder.item.version,
-                      description: JSON.stringify(next),
-                    },
-                    "Lembrete marcado como visto e confirmado.",
+                onConfirm={() => {
+                  const next = { ...noticeSnoozedUntil };
+                  delete next[attentionNotice.id];
+                  setNoticeSnoozedUntil(next);
+                  try {
+                    localStorage.setItem(
+                      `dontus:snoozed-notices:${data.user.email}`,
+                      JSON.stringify(next),
+                    );
+                  } catch {
+                    /* armazenamento local indisponível */
+                  }
+                  void executeOperation(
+                    { action: "markNoticeRead", id: attentionNotice.id },
+                    attentionNotice.kind === "Evento"
+                      ? "Presença confirmada com sucesso."
+                      : "Leitura confirmada com sucesso.",
                   );
                 }}
               />
             )}
 
-          {changingPassword && (
-            <PasswordChangeModal
-              busy={busy}
-              onClose={() => setChangingPassword(false)}
-              onComplete={() => {
-                setChangingPassword(false);
-                setToast({
-                  kind: "success",
-                  message: "Senha alterada com sucesso.",
-                });
-              }}
-            />
-          )}
-          <AgendaStaleAlerts
-            alerts={data.agendaModule?.alerts}
-            commitments={data.agendaModule?.commitments}
-            currentUserId={
-              data.agendaModule?.collaborators.find(
-                (user) => user.email === data.user.email,
-              )?.id
-            }
-          />
-          {profileEmployee && (
-            <EmployeeProfileDrawer
-              key={profileEmployee.id}
-              profileId={profileEmployee.id}
-              items={data.items}
-              tasks={data.taskModule?.tasks ?? []}
-              editable={profileEditable}
-              onClose={() => {
-                setProfileEmployee(null);
-                setProfileEditable(false);
-              }}
-            />
-          )}
-          {backgroundModalOpen && (
-            <BackgroundImageModal
-              image={backgroundImage}
-              agendaVisual={agendaVisual}
-              onAgendaVisual={(visual) => {
-                setAgendaVisual(visual);
-                window.localStorage.setItem("dontus.agenda-visual", visual);
-              }}
-              onClose={() => setBackgroundModalOpen(false)}
-              onUpload={(file) =>
-                uploadBackgroundImage(file, () => setBackgroundModalOpen(false))
-              }
-              onRemove={() => {
-                changeBackgroundImage("");
-                setBackgroundModalOpen(false);
-              }}
-            />
-          )}
-          {winNotification && (
-            <CommercialWinNotificationModal
-              customer={winNotification.customer}
-              onCancel={() => {
-                const request = winNotification;
-                setWinNotification(null);
-                request.resolve(false);
-              }}
-              onConfirm={(notify) => {
-                const request = winNotification;
-                setWinNotification(null);
-                if (
-                  request.payload.action === "chooseCommercialWinNotification"
-                ) {
-                  request.resolve({ notifyPublicWin: notify });
-                  return;
-                }
-                const payload: Record<string, unknown> = {
-                  ...request.payload,
-                  notifyPublicWin: notify,
-                };
-                if (typeof payload.description === "string") {
-                  try {
-                    payload.description = JSON.stringify({
-                      ...JSON.parse(payload.description),
-                      notifyPublicWin: notify,
-                    });
-                  } catch {
-                    /* The API validates malformed record data. */
-                  }
-                }
-                void executeOperation(payload, request.success).then(
-                  request.resolve,
-                );
-              }}
-            />
-          )}
-          {confirmation && (
-            <ConfirmationModal
-              action={confirmation.payload.action as string | undefined}
-              successMessage={confirmation.success}
-              busy={busy}
-              onCancel={cancelOperation}
-              onConfirm={() => void confirmOperation()}
-            />
-          )}
-          {userCan(data.user, "chat", "view") && (
-            <WhatsAppIncomingNotifications
-              key={data.user.email}
-              email={data.user.email}
-              onOpen={(id) => {
-                navigate("chat");
-                window.dispatchEvent(
-                  new CustomEvent("dontus:open-whatsapp-conversation", {
-                    detail: id,
-                  }),
-                );
-                const url = new URL(window.location.href);
-                url.searchParams.set("conversationId", id);
-                window.history.replaceState(window.history.state, "", url);
-              }}
-            />
-          )}
-          <TaskPriorityNotice
-            notifications={data.taskModule?.notifications ?? []}
-            busy={busy}
-            onOpen={async (notice) => {
-              const result = await operate(
-                {
-                  action: "markTaskNotificationRead",
-                  notificationId: notice.id,
-                },
-                "Aviso de prioridade visualizado.",
-              );
-              if (result)
-                window.location.href = `/?mod=tasks&task=${encodeURIComponent(notice.taskId)}`;
-            }}
-          />
-          <ChatNotifications
-            alerts={chatAlerts}
-            onOpen={(roomId) => {
-              setChatRoomTarget(roomId);
-              setChatAlerts((current) =>
-                current.filter((alert) => alert.roomId !== roomId),
-              );
-              navigate("internalChat");
-            }}
-            onDismiss={(id) => {
-              const timer = chatAlertTimers.current.get(id);
-              if (timer) clearTimeout(timer);
-              chatAlertTimers.current.delete(id);
-              setChatAlerts((current) =>
-                current.filter((alert) => alert.id !== id),
-              );
-            }}
-          />
-          <GlobalImagePreview />
-          {toast &&
-            createPortal(
-              <div
-                className={`toast ${toast.kind}`}
-                role={toast.kind === "error" ? "alert" : "status"}
-                aria-live={toast.kind === "error" ? "assertive" : "polite"}
-              >
-                {toast.kind === "success" ? (
-                  <CheckCircle2 size={18} />
-                ) : (
-                  <AlertTriangle size={18} />
+            {modal === "customer" && (
+              <CustomerModal
+                catalogs={data.customerModule?.catalogs ?? []}
+                networks={data.items.filter(
+                  (item) =>
+                    item.module === "cs" &&
+                    /enterpriseNetwork/.test(item.description),
                 )}
-                <span>{toast.message}</span>
-                <button
-                  type="button"
-                  aria-label="Fechar aviso"
-                  onClick={() => setToast(null)}
-                >
-                  <X size={17} />
-                </button>
-              </div>,
-              document.body,
+                busy={busy}
+                onClose={() => setModal(null)}
+                onSubmit={(payload) =>
+                  operate(
+                    { action: "createCustomer", ...payload },
+                    "Cliente criado no Customer 360.",
+                  )
+                }
+              />
             )}
-        </div>
-      </ReminderFilterProvider>
+            {modal === "workItem" && (
+              <WorkItemModal
+                module={modalModule}
+                customers={data.customers}
+                busy={busy}
+                onClose={() => setModal(null)}
+                onSubmit={(payload) =>
+                  operate(
+                    {
+                      action: "createWorkItem",
+                      module: modalModule,
+                      ...payload,
+                    },
+                    "Registro criado e auditado.",
+                  )
+                }
+              />
+            )}
+            {modal === "appointment" && (
+              <AppointmentModal
+                customers={data.customers}
+                busy={busy}
+                onClose={() => setModal(null)}
+                onSubmit={(payload) =>
+                  operate(
+                    { action: "createAppointment", ...payload },
+                    "Compromisso reservado sem conflito.",
+                  )
+                }
+              />
+            )}
+
+            {reminderContext && userCan(data.user, "reminders", "create") && (
+              <ReminderComposerModal
+                context={reminderContext}
+                user={data.user}
+                employees={
+                  data.assignmentDirectory?.employees ??
+                  data.access?.employees ??
+                  []
+                }
+                busy={busy}
+                onClose={() => setReminderContext(null)}
+                operate={operate}
+              />
+            )}
+            {clientAlertContext && (
+              <ClientAlertModal
+                context={clientAlertContext}
+                customers={data.customers}
+                user={data.user}
+                busy={busy}
+                operate={operate}
+                onClose={() => setClientAlertContext(null)}
+              />
+            )}
+            {clientChecklistContext && (
+              <ClientChecklistModal
+                context={clientChecklistContext}
+                customers={data.customers}
+                catalogs={data.customerModule?.catalogs ?? []}
+                items={data.items}
+                user={data.user}
+                busy={busy}
+                operate={operate}
+                onClose={() => setClientChecklistContext(null)}
+              />
+            )}
+            {agendaContext && data.agendaModule && (
+              <QuickAgendaCommitmentModal
+                module={data.agendaModule}
+                busy={busy}
+                currentEmail={data.user.email}
+                canReserveMeetingRoom={data.user.isCoordinator}
+                preset={{
+                  title: agendaContext.title
+                    ? `Acompanhamento · ${agendaContext.title}`
+                    : "Novo compromisso",
+                  description: [
+                    agendaContext.customerName,
+                    agendaContext.summary,
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                  responsibleName:
+                    agendaContext.recipientName || data.user.displayName,
+                }}
+                onClose={() => setAgendaContext(null)}
+                onSave={async (payload) => {
+                  const created = await operate(
+                    { action: "createAgendaCommitment", ...payload },
+                    "Compromisso criado na agenda.",
+                  );
+                  if (!created) return;
+                  const normalizeAgendaSource = (value: string | undefined) =>
+                    String(value ?? "")
+                      .trim()
+                      .toLocaleLowerCase("pt-BR");
+                  const source = agendaContext.entityId
+                    ? data.items.find(
+                        (item) => item.id === agendaContext.entityId,
+                      )
+                    : data.items.find(
+                        (item) =>
+                          item.module === agendaContext.module &&
+                          [item.title, item.customer_name].some(
+                            (value) =>
+                              normalizeAgendaSource(value) ===
+                                normalizeAgendaSource(agendaContext.title) ||
+                              normalizeAgendaSource(value) ===
+                                normalizeAgendaSource(
+                                  agendaContext.customerName,
+                                ),
+                          ),
+                      );
+                  if (source) {
+                    try {
+                      const detail = JSON.parse(source.description) as Record<
+                        string,
+                        unknown
+                      >;
+                      const at = new Date().toISOString();
+                      const text = `Compromisso \"${String(payload.title || "Agenda")}\" agendado para ${dateTime(String(payload.startsAt))}.`;
+                      let nextDetail: Record<string, unknown> | null = null;
+                      if (
+                        detail.kind === "enterpriseNetwork" &&
+                        Array.isArray(detail.history)
+                      )
+                        nextDetail = {
+                          ...detail,
+                          history: [
+                            ...detail.history,
+                            {
+                              id: crypto.randomUUID(),
+                              createdAt: at,
+                              user: data.user.displayName,
+                              type: "Agendamento",
+                              text,
+                              scheduledFor: payload.startsAt,
+                              scheduledCommitmentId: created.id,
+                            },
+                          ],
+                        };
+                      else if (
+                        detail.kind === "hrEmployee" &&
+                        Array.isArray(detail.comments)
+                      )
+                        nextDetail = {
+                          ...detail,
+                          comments: [
+                            ...detail.comments,
+                            {
+                              id: crypto.randomUUID(),
+                              type: "Agendamento",
+                              text,
+                              at,
+                              author: data.user.displayName,
+                            },
+                          ],
+                        };
+                      else if (
+                        detail.kind === "referral" &&
+                        Array.isArray(detail.comments)
+                      )
+                        nextDetail = {
+                          ...detail,
+                          comments: [
+                            ...detail.comments,
+                            {
+                              id: crypto.randomUUID(),
+                              text,
+                              at,
+                              by: data.user.displayName,
+                            },
+                          ],
+                        };
+                      else if (
+                        (detail.kind === "commercialLead" ||
+                          detail.kind === "csJourney") &&
+                        Array.isArray(detail.follows)
+                      )
+                        nextDetail = {
+                          ...detail,
+                          follows: [
+                            ...detail.follows,
+                            {
+                              type: "Agendamento",
+                              kind: "Agendamento",
+                              text,
+                              createdAt: at,
+                              author: data.user.displayName,
+                              actor: data.user.displayName,
+                            },
+                          ],
+                        };
+                      else if (
+                        source.record_type === "Candidato" &&
+                        Array.isArray(detail.comments)
+                      )
+                        nextDetail = {
+                          ...detail,
+                          comments: [...detail.comments, text],
+                        };
+                      else if (Array.isArray(detail.history))
+                        nextDetail = {
+                          ...detail,
+                          history: [
+                            ...detail.history,
+                            {
+                              id: crypto.randomUUID(),
+                              type: "Agendamento",
+                              text,
+                              at,
+                              author: data.user.displayName,
+                            },
+                          ],
+                        };
+                      if (nextDetail)
+                        await operate(
+                          {
+                            action: "updateWorkItem",
+                            id: source.id,
+                            title: source.title,
+                            owner: source.owner,
+                            customerName: source.customer_name,
+                            amountCents: source.amount_cents,
+                            version: source.version,
+                            description: JSON.stringify(nextDetail),
+                          },
+                          "Agendamento registrado no histórico.",
+                        );
+                    } catch {
+                      /* Registros sem histórico estruturado mantêm somente o compromisso da agenda. */
+                    }
+                  }
+                  setAgendaContext(null);
+                }}
+              />
+            )}
+            {dueReminder &&
+              userCan(data.user, "reminders", "edit") &&
+              !reminderContext && (
+                <ReminderDueModal
+                  item={dueReminder.item}
+                  detail={dueReminder.detail}
+                  busy={busy}
+                  onLater={() => {
+                    const next = {
+                      ...dueReminder.detail,
+                      nextAlertAt: new Date(
+                        Date.now() + 60 * 60_000,
+                      ).toISOString(),
+                      snoozeCount: dueReminder.detail.snoozeCount + 1,
+                    };
+                    void operate(
+                      {
+                        action: "updateWorkItem",
+                        id: dueReminder.item.id,
+                        title: dueReminder.item.title,
+                        owner: dueReminder.item.owner,
+                        amountCents: 0,
+                        version: dueReminder.item.version,
+                        description: JSON.stringify(next),
+                      },
+                      "Lembrete adiado por 60 minutos.",
+                    );
+                  }}
+                  onSeen={() => {
+                    const confirmedAt = new Date().toISOString();
+                    const next = {
+                      ...dueReminder.detail,
+                      seenAt: confirmedAt,
+                      seenBy: data.user.displayName,
+                      confirmedAt,
+                      confirmedBy: data.user.displayName,
+                    };
+                    void operate(
+                      {
+                        action: "updateWorkItem",
+                        id: dueReminder.item.id,
+                        title: dueReminder.item.title,
+                        owner: dueReminder.item.owner,
+                        amountCents: 0,
+                        version: dueReminder.item.version,
+                        description: JSON.stringify(next),
+                      },
+                      "Lembrete marcado como visto e confirmado.",
+                    );
+                  }}
+                />
+              )}
+
+            {changingPassword && (
+              <PasswordChangeModal
+                busy={busy}
+                onClose={() => setChangingPassword(false)}
+                onComplete={() => {
+                  setChangingPassword(false);
+                  setToast({
+                    kind: "success",
+                    message: "Senha alterada com sucesso.",
+                  });
+                }}
+              />
+            )}
+            <AgendaStaleAlerts
+              alerts={data.agendaModule?.alerts}
+              commitments={data.agendaModule?.commitments}
+              currentUserId={
+                data.agendaModule?.collaborators.find(
+                  (user) => user.email === data.user.email,
+                )?.id
+              }
+            />
+            {profileEmployee && (
+              <EmployeeProfileDrawer
+                key={profileEmployee.id}
+                profileId={profileEmployee.id}
+                items={data.items}
+                tasks={data.taskModule?.tasks ?? []}
+                editable={profileEditable}
+                onClose={() => {
+                  setProfileEmployee(null);
+                  setProfileEditable(false);
+                }}
+              />
+            )}
+            {backgroundModalOpen && (
+              <BackgroundImageModal
+                image={backgroundImage}
+                agendaVisual={agendaVisual}
+                onAgendaVisual={(visual) => {
+                  setAgendaVisual(visual);
+                  window.localStorage.setItem("dontus.agenda-visual", visual);
+                }}
+                onClose={() => setBackgroundModalOpen(false)}
+                onUpload={(file) =>
+                  uploadBackgroundImage(file, () =>
+                    setBackgroundModalOpen(false),
+                  )
+                }
+                onRemove={() => {
+                  changeBackgroundImage("");
+                  setBackgroundModalOpen(false);
+                }}
+              />
+            )}
+            {winNotification && (
+              <CommercialWinNotificationModal
+                customer={winNotification.customer}
+                onCancel={() => {
+                  const request = winNotification;
+                  setWinNotification(null);
+                  request.resolve(false);
+                }}
+                onConfirm={(notify) => {
+                  const request = winNotification;
+                  setWinNotification(null);
+                  if (
+                    request.payload.action === "chooseCommercialWinNotification"
+                  ) {
+                    request.resolve({ notifyPublicWin: notify });
+                    return;
+                  }
+                  const payload: Record<string, unknown> = {
+                    ...request.payload,
+                    notifyPublicWin: notify,
+                  };
+                  if (typeof payload.description === "string") {
+                    try {
+                      payload.description = JSON.stringify({
+                        ...JSON.parse(payload.description),
+                        notifyPublicWin: notify,
+                      });
+                    } catch {
+                      /* The API validates malformed record data. */
+                    }
+                  }
+                  void executeOperation(payload, request.success).then(
+                    request.resolve,
+                  );
+                }}
+              />
+            )}
+            {confirmation && (
+              <ConfirmationModal
+                action={confirmation.payload.action as string | undefined}
+                successMessage={confirmation.success}
+                busy={busy}
+                onCancel={cancelOperation}
+                onConfirm={() => void confirmOperation()}
+              />
+            )}
+            {userCan(data.user, "chat", "view") && (
+              <WhatsAppIncomingNotifications
+                key={data.user.email}
+                email={data.user.email}
+                onOpen={(id) => {
+                  navigate("chat");
+                  window.dispatchEvent(
+                    new CustomEvent("dontus:open-whatsapp-conversation", {
+                      detail: id,
+                    }),
+                  );
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("conversationId", id);
+                  window.history.replaceState(window.history.state, "", url);
+                }}
+              />
+            )}
+            <TaskPriorityNotice
+              notifications={data.taskModule?.notifications ?? []}
+              busy={busy}
+              onOpen={async (notice) => {
+                const result = await operate(
+                  {
+                    action: "markTaskNotificationRead",
+                    notificationId: notice.id,
+                  },
+                  "Aviso de prioridade visualizado.",
+                );
+                if (result)
+                  window.location.href = `/?mod=tasks&task=${encodeURIComponent(notice.taskId)}`;
+              }}
+            />
+            <ChatNotifications
+              alerts={chatAlerts}
+              onOpen={(roomId) => {
+                setChatRoomTarget(roomId);
+                setChatAlerts((current) =>
+                  current.filter((alert) => alert.roomId !== roomId),
+                );
+                navigate("internalChat");
+              }}
+              onDismiss={(id) => {
+                const timer = chatAlertTimers.current.get(id);
+                if (timer) clearTimeout(timer);
+                chatAlertTimers.current.delete(id);
+                setChatAlerts((current) =>
+                  current.filter((alert) => alert.id !== id),
+                );
+              }}
+            />
+            <GlobalImagePreview />
+            {toast &&
+              createPortal(
+                <div
+                  className={`toast ${toast.kind}`}
+                  role={toast.kind === "error" ? "alert" : "status"}
+                  aria-live={toast.kind === "error" ? "assertive" : "polite"}
+                >
+                  {toast.kind === "success" ? (
+                    <CheckCircle2 size={18} />
+                  ) : (
+                    <AlertTriangle size={18} />
+                  )}
+                  <span>{toast.message}</span>
+                  <button
+                    type="button"
+                    aria-label="Fechar aviso"
+                    onClick={() => setToast(null)}
+                  >
+                    <X size={17} />
+                  </button>
+                </div>,
+                document.body,
+              )}
+          </div>
+        </ReminderFilterProvider>
+      </RecordPagesProvider>
     </PeopleDirectoryProvider>
+  );
+}
+
+type GlobalSearchResult = {
+  id: string;
+  label: string;
+  meta: string;
+  kind: "employee" | "customer" | "item" | "task" | "suggestion";
+};
+type GlobalRecordSearchHandle = {
+  focus: () => void;
+  search: (query: string) => void;
+  clear: () => void;
+  close: () => void;
+};
+
+/** Typing here must not render the operational workspace or its open forms. */
+export function GlobalRecordSearch({
+  data,
+  controlRef,
+  onOpenEmployee,
+  onOpenClientHistory,
+  onSelectResult,
+}: {
+  data: AppData;
+  controlRef?: Ref<GlobalRecordSearchHandle>;
+  onOpenEmployee: (id: string) => boolean;
+  onOpenClientHistory: (query: string) => void;
+  onSelectResult: (result: GlobalSearchResult, query: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [recordSearchOpen, setRecordSearchOpen] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useImperativeHandle(
+    controlRef,
+    () => ({
+      focus: () => {
+        input.current?.focus();
+        setRecordSearchOpen(true);
+      },
+      search: (query) => {
+        setSearch(query);
+        input.current?.focus();
+        setRecordSearchOpen(true);
+      },
+      clear: () => {
+        setSearch("");
+        setRecordSearchOpen(false);
+      },
+      close: () => setRecordSearchOpen(false),
+    }),
+    [],
+  );
+  useEffect(() => {
+    const outside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Element &&
+        !event.target.closest(".global-search")
+      )
+        setRecordSearchOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, []);
+  const globalResults = useMemo(() => {
+    const query = normalizeWorkspaceSearch(deferredSearch);
+    if (!query || !data) return [];
+    const employees = (
+      data.access?.employees ??
+      data.assignmentDirectory?.employees.map((person) => ({
+        ...person,
+        jobTitle: "",
+      })) ??
+      []
+    )
+      .filter((employee) =>
+        `${employee.displayName} ${employee.email} ${employee.jobTitle} ${employee.departmentName} ${employee.departmentNames.join(" ")}`
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLocaleLowerCase("pt-BR")
+          .includes(query),
+      )
+      .slice(0, 5)
+      .map((employee) => ({
+        id: employee.id,
+        label: employee.displayName,
+        meta: `Colaborador · ${employee.jobTitle || employee.departmentName || "Dontus"}`,
+        kind: "employee" as const,
+      }));
+    const customers = data.customers
+      .filter((customer) =>
+        `${customer.id} ${customer.trade_name} ${customer.legal_name} ${customer.document_masked} ${customer.phone}`
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLocaleLowerCase("pt-BR")
+          .includes(query),
+      )
+      .slice(0, 4)
+      .map((customer) => ({
+        id: customer.id,
+        label: customer.trade_name,
+        meta: `Cliente · ${customer.document_masked} · ${customer.status}`,
+        kind: "customer" as const,
+      }));
+    const records = data.items
+      .filter((item) => recordSearchText(item).includes(query))
+      .slice(0, 6)
+      .map((item) => ({
+        id: item.id,
+        label: item.title,
+        meta: `${item.record_type} · ${MODULES[item.module as ModuleKey]?.short ?? item.module} · ${statusLabel(item.status)} · ${item.owner || "Sem responsável"}${item.amount_cents > 0 ? ` · ${formatMoney(item.amount_cents)}` : ""}`,
+        kind: "item" as const,
+      }));
+    const tasks = (data.taskModule?.tasks ?? [])
+      .filter((task) =>
+        `${task.customerId ?? ""} ${task.customerCode} ${task.customerName} ${task.protocol} ${task.title} ${task.description}`
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLocaleLowerCase("pt-BR")
+          .includes(query),
+      )
+      .slice(0, 4)
+      .map((task) => ({
+        id: task.id,
+        label: `${task.protocol} · ${task.title}`,
+        meta: `Tarefa · ${task.statusName}`,
+        kind: "task" as const,
+      }));
+    const suggestions = (data.suggestionModule?.suggestions ?? [])
+      .filter((suggestion) =>
+        `${suggestion.customerId ?? ""} ${suggestion.customerName} ${suggestion.protocol} ${suggestion.name} ${suggestion.description}`
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLocaleLowerCase("pt-BR")
+          .includes(query),
+      )
+      .slice(0, 3)
+      .map((suggestion) => ({
+        id: suggestion.id,
+        label: `${suggestion.protocol} · ${suggestion.name}`,
+        meta: `Sugestão · ${suggestion.statusName}`,
+        kind: "suggestion" as const,
+      }));
+    return [
+      ...employees,
+      ...customers,
+      ...records,
+      ...tasks,
+      ...suggestions,
+    ].slice(0, 12);
+  }, [data, deferredSearch]);
+
+  const submitGlobalSearch = () => {
+    const query = search.trim();
+    if (query.length < 3 || !data) return;
+    const normalized = query.toLocaleLowerCase("pt-BR");
+    const exactEmployee = (
+      data.access?.employees ??
+      data.assignmentDirectory?.employees ??
+      []
+    ).find(
+      (employee) =>
+        employee.displayName.toLocaleLowerCase("pt-BR") === normalized ||
+        employee.email.toLocaleLowerCase("pt-BR") === normalized,
+    );
+    if (exactEmployee && onOpenEmployee(exactEmployee.id)) {
+      setSearch("");
+      setRecordSearchOpen(false);
+      return;
+    }
+    onOpenClientHistory(query);
+    setSearch("");
+  };
+
+  return (
+    <div className="global-search">
+      <Search size={18} />
+      <input
+        ref={input}
+        value={search}
+        onFocus={() => setRecordSearchOpen(true)}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setRecordSearchOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") submitGlobalSearch();
+          if (event.key === "Escape") setRecordSearchOpen(false);
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            event.currentTarget
+              .closest(".global-search")
+              ?.querySelector<HTMLButtonElement>(".search-results button")
+              ?.focus();
+          }
+        }}
+        placeholder="Buscar clientes, IDs, protocolos e registros..."
+        aria-label="Busca global"
+      />
+      <kbd aria-hidden="true">/</kbd>
+      {recordSearchOpen && search.trim() && (
+        <div
+          className="search-results"
+          role="region"
+          aria-label="Resultados da busca global"
+        >
+          {globalResults.length === 0 &&
+            !/^#?[\d-]{3,}$/.test(search.trim()) && (
+              <p className="search-no-results">
+                Nenhum registro encontrado. Confira o nome, ID ou protocolo.
+              </p>
+            )}
+          {/^#?[\d-]{3,}$/.test(search.trim()) && (
+            <button
+              className="search-id-overview"
+              onClick={() => {
+                onOpenClientHistory(search);
+                setSearch("");
+              }}
+            >
+              <span>
+                <b>Abrir página do ID {search.trim()}</b>
+              </span>
+              <small>
+                Tarefas, atendimentos, temas, sugestões, acompanhamentos, agenda
+                e rede
+              </small>
+            </button>
+          )}
+          {globalResults.map((result) => (
+            <button
+              key={`${result.kind}-${result.id}`}
+              onClick={() => {
+                onSelectResult(result, search.trim());
+                setSearch("");
+                setRecordSearchOpen(false);
+              }}
+            >
+              <span>{result.label}</span>
+              <small>{result.meta}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -7872,9 +8007,11 @@ function PageHeader({
 function OperationIndicatorsLauncher({
   pageKey,
   onOpen,
+  onGeneral,
 }: {
   pageKey: string;
   onOpen: () => void;
+  onGeneral?: () => void;
 }) {
   const [target, setTarget] = useState<Element | null>(null);
   useEffect(() => {
@@ -7894,14 +8031,26 @@ function OperationIndicatorsLauncher({
   }, [pageKey]);
   return target
     ? createPortal(
-        <button
-          type="button"
-          className="operation-indicators-button"
-          onClick={onOpen}
-        >
-          <ChartNoAxesCombined size={17} />
-          <span>Indicadores</span>
-        </button>,
+        <>
+          <button
+            type="button"
+            className="operation-indicators-button"
+            onClick={onOpen}
+          >
+            <ChartNoAxesCombined size={17} />
+            <span>Indicadores</span>
+          </button>
+          {onGeneral && (
+            <button
+              type="button"
+              className="secondary-button operation-general-indicators-button"
+              onClick={onGeneral}
+            >
+              <ChartNoAxesCombined size={17} />
+              <span>Indicadores gerais</span>
+            </button>
+          )}
+        </>,
         target,
       )
     : null;
@@ -9337,7 +9486,11 @@ export function CustomersView({
             {filteredNetworks.length === 0 ? (
               <EmptyState text="Nenhuma rede ou franquia encontrada." />
             ) : (
-              <PaginatedItems label="redes e franquias" resetKey={filter}>
+              <PaginatedItems
+                mode="cards"
+                label="redes e franquias"
+                resetKey={filter}
+              >
                 {filteredNetworks.map((networkItem) => {
                   const network = enterpriseNetworkFor(networkItem);
                   const total = network.units.length;
@@ -10050,7 +10203,7 @@ function ModuleView({
                   {statusItems.length === 0 ? (
                     <p className="column-empty">Solte um card aqui</p>
                   ) : (
-                    <PaginatedItems label="registros">
+                    <PaginatedItems mode="cards" label="registros">
                       {statusItems.map((item) => (
                         <WorkCard
                           key={item.id}
@@ -11080,6 +11233,8 @@ type RecruitmentProcessDetails = {
   sector?: string;
   description?: string;
   requirements?: string;
+  responsibilities?: string;
+  benefits?: string;
   stageTemplateId?: string;
   stageTemplateName?: string;
   stages?: string[];
@@ -11099,13 +11254,8 @@ const recruitmentTemplateStages = (item: CustomerCatalogOption) =>
     .map((stage) => stage.name.trim())
     .filter(Boolean);
 
-const fileAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
-    reader.readAsDataURL(file);
-  });
+const fileAsDataUrl = (file: File, sourceId?: string, publicUpload = false) =>
+  workspaceFileUrl(file, { module: "admin", sourceId, public: publicUpload });
 
 function CommercialCatalogRow({
   item,
@@ -11928,6 +12078,7 @@ const followUpTrackLabel = (track: FollowUpTrack) =>
 
 type DirectSale = {
   liaPlan?: string;
+  observation?: string;
   phone?: string;
   kind: "directSale";
   flow: "crm" | "retention";
@@ -11981,6 +12132,7 @@ const parseDirectSale = (value: string): DirectSale | null => {
       saleDate: parsed.saleDate ?? "",
       name: parsed.name ?? "",
       phone: parsed.phone ?? "",
+      observation: parsed.observation ?? "",
       origin: parsed.origin ?? "",
       version: parsed.version ?? "",
       seller: parsed.seller ?? "",
@@ -12824,7 +12976,7 @@ function CommercialLeadsModule({
                       Arraste um card para esta etapa.
                     </p>
                   ) : (
-                    <PaginatedItems label="registros">
+                    <>
                       {visibleLeads.map((lead) =>
                         flow === "retention" ? (
                           <RetentionLeadCard
@@ -12906,7 +13058,7 @@ function CommercialLeadsModule({
                           />
                         ),
                       )}
-                    </PaginatedItems>
+                    </>
                   )}
                   {stageLeads.length > visibleLeads.length && (
                     <button
@@ -13249,7 +13401,10 @@ function DirectSalesView({
           }
         : current,
     );
-    if ((detail.phone || "") !== (editing.detail.phone || "")) {
+    const phoneChanged = (detail.phone || "") !== (editing.detail.phone || "");
+    const observationChanged =
+      (detail.observation || "") !== (editing.detail.observation || "");
+    if (phoneChanged || observationChanged) {
       for (const item of items.filter(
         (item) => item.module === "lia" || item.module === "cs",
       )) {
@@ -13271,11 +13426,15 @@ function DirectSalesView({
             version: item.version,
             description: JSON.stringify({
               ...linked,
-              phone: detail.phone || "",
-              whatsapp: detail.phone || "",
+              ...(phoneChanged
+                ? { phone: detail.phone || "", whatsapp: detail.phone || "" }
+                : {}),
+              ...(observationChanged
+                ? { saleObservation: detail.observation || "" }
+                : {}),
             }),
           },
-          "Telefone atualizado no acompanhamento.",
+          "Dados da venda atualizados no acompanhamento.",
         );
         if (!saved) return;
       }
@@ -13284,9 +13443,16 @@ function DirectSalesView({
         const network = item && parseEnterpriseNetwork(item.description);
         if (item && network) {
           const units = network.units.map((unit) =>
-            unit.externalId === directSaleClientId(detail) &&
-            unit.notes.includes(`Venda ${detail.saleId} ·`)
-              ? { ...unit, phone: detail.phone || "" }
+            unit.sourceLeadId === editing.item.id ||
+            (unit.externalId === directSaleClientId(detail) &&
+              unit.notes.includes(`Venda ${detail.saleId} ·`))
+              ? {
+                  ...unit,
+                  ...(phoneChanged ? { phone: detail.phone || "" } : {}),
+                  ...(observationChanged
+                    ? { saleObservation: detail.observation || "" }
+                    : {}),
+                }
               : unit,
           );
           const saved = await operate(
@@ -13300,12 +13466,12 @@ function DirectSalesView({
               version: item.version,
               description: JSON.stringify({ ...network, units }),
             },
-            "Telefone atualizado na unidade estratégica.",
+            "Dados da venda atualizados na unidade estratégica.",
           );
           if (!saved) return;
         }
       }
-      if (editing.item.customer_id) {
+      if (phoneChanged && editing.item.customer_id) {
         const saved = await operate(
           {
             action: "updateCustomer",
@@ -13644,6 +13810,8 @@ function DirectSalesView({
               const unit: EnterpriseUnit = {
                 id: unitId,
                 customerId,
+                sourceLeadId: sourceId,
+                saleObservation: detail.observation || "",
                 pendingFollowUp: true,
                 trainingRequired: true,
                 name: detail.name,
@@ -13838,6 +14006,7 @@ function DirectSaleModal({
   const [saleDate, setSaleDate] = useState(sale?.saleDate ?? today);
   const [name, setName] = useState(sale?.name ?? "");
   const [phone, setPhone] = useState(sale?.phone ?? "");
+  const [observation, setObservation] = useState(sale?.observation ?? "");
   const [clientId, setClientId] = useState(
     sale ? directSaleClientId(sale) : "",
   );
@@ -13920,6 +14089,7 @@ function DirectSaleModal({
       saleDate,
       name: name.trim(),
       phone: phone.trim(),
+      observation: observation.trim(),
       origin,
       version,
       seller: sale?.seller || currentUser.displayName,
@@ -14208,6 +14378,19 @@ function DirectSaleModal({
               : "Sem desconto aplicado"}
           </small>
         </div>
+        <label className="wide">
+          Observação
+          <textarea
+            name="observation"
+            value={observation}
+            onChange={(event) => setObservation(event.target.value)}
+            rows={4}
+            placeholder="Informações importantes para o acompanhamento do cliente"
+          />
+          <small>
+            Esta informação aparecerá no card do acompanhamento de destino.
+          </small>
+        </label>
         <div className="form-actions wide">
           <button type="button" onClick={onClose}>
             Cancelar
@@ -14471,90 +14654,92 @@ function CommercialLeadList({
         {leads.length === 0 ? (
           <EmptyState text="Nenhum lead encontrado." />
         ) : (
-          <PaginatedItems label="registros comerciais">
-            {leads.map((item) => {
-              const lead = parseCommercialLead(item.description);
-              return (
-                <div
-                  data-reminder-entity-id={item.id}
-                  data-reminder-client-id={
-                    lead?.clientId || lead?.onboarding?.clientId
-                  }
-                  data-reminder-customer-name={
-                    lead?.customer || item.customer_name || item.title
-                  }
-                  className="commercial-list-row"
-                  key={item.id}
-                >
-                  <button className="table-row" onClick={() => onOpen(item)}>
-                    <span>
-                      <b className="commercial-list-avatar">
-                        {item.title
-                          .split(" ")
-                          .slice(0, 2)
-                          .map((part) => part[0])
-                          .join("")
-                          .toUpperCase()}
-                      </b>
+          <>
+            <PaginatedItems label="registros">
+              {leads.map((item) => {
+                const lead = parseCommercialLead(item.description);
+                return (
+                  <div
+                    data-reminder-entity-id={item.id}
+                    data-reminder-client-id={
+                      lead?.clientId || lead?.onboarding?.clientId
+                    }
+                    data-reminder-customer-name={
+                      lead?.customer || item.customer_name || item.title
+                    }
+                    className="commercial-list-row"
+                    key={item.id}
+                  >
+                    <button className="table-row" onClick={() => onOpen(item)}>
                       <span>
-                        <strong>{item.title}</strong>
-                        <small>
-                          {lead?.customer ||
-                            item.customer_name ||
-                            "Sem cliente vinculado"}
-                        </small>
+                        <b className="commercial-list-avatar">
+                          {item.title
+                            .split(" ")
+                            .slice(0, 2)
+                            .map((part) => part[0])
+                            .join("")
+                            .toUpperCase()}
+                        </b>
+                        <span>
+                          <strong>{item.title}</strong>
+                          <small>
+                            {lead?.customer ||
+                              item.customer_name ||
+                              "Sem cliente vinculado"}
+                          </small>
+                        </span>
                       </span>
-                    </span>
-                    <span>
-                      <b className="status-pill neutral">
-                        {lead?.stage || "Sem etapa"}
-                      </b>
-                    </span>
-                    <span>{item.owner || "Não atribuído"}</span>
-                    <span>
-                      <small>
-                        {(lead?.follows.length ?? 0) +
-                          (lead?.comments.length ?? 0)}{" "}
-                        registro(s)
-                      </small>
-                      <CrmCardActivity
-                        item={item}
-                        lead={lead}
-                        stages={stages}
-                        reminders={remindersByLead.get(item.id) ?? []}
-                        now={now}
-                      />
-                    </span>
-                    <span>
-                      {commercialAmountCents(item)
-                        ? formatMoney(commercialAmountCents(item))
-                        : "—"}
-                      <ChevronRight size={16} />
-                    </span>
-                  </button>
-                  {canEdit && (
-                    <span className="card-inline-actions">
-                      <button
-                        type="button"
-                        title="Editar cliente"
-                        onClick={() => onEdit(item)}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className="delete"
-                        title="Excluir cliente"
-                        onClick={() => onDelete(item)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </PaginatedItems>
+                      <span>
+                        <b className="status-pill neutral">
+                          {lead?.stage || "Sem etapa"}
+                        </b>
+                      </span>
+                      <span>{item.owner || "Não atribuído"}</span>
+                      <span>
+                        <small>
+                          {(lead?.follows.length ?? 0) +
+                            (lead?.comments.length ?? 0)}{" "}
+                          registro(s)
+                        </small>
+                        <CrmCardActivity
+                          item={item}
+                          lead={lead}
+                          stages={stages}
+                          reminders={remindersByLead.get(item.id) ?? []}
+                          now={now}
+                        />
+                      </span>
+                      <span>
+                        {commercialAmountCents(item)
+                          ? formatMoney(commercialAmountCents(item))
+                          : "—"}
+                        <ChevronRight size={16} />
+                      </span>
+                    </button>
+                    {canEdit && (
+                      <span className="card-inline-actions">
+                        <button
+                          type="button"
+                          title="Editar cliente"
+                          onClick={() => onEdit(item)}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="delete"
+                          title="Excluir cliente"
+                          onClick={() => onDelete(item)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </PaginatedItems>
+          </>
         )}
       </div>
     </div>
@@ -19738,6 +19923,8 @@ type EnterpriseFeature = {
   notes: string;
 };
 type EnterpriseUnit = {
+  sourceLeadId?: string;
+  saleObservation?: string;
   trainingRequired?: boolean;
   trainingPending?: boolean;
   pendingFollowUp?: boolean;
@@ -19807,6 +19994,8 @@ const parseEnterpriseNetwork = (value: string): EnterpriseNetwork | null => {
             ? entry.units.map((unit) => ({
                 id: unit.id ?? networkId(),
                 customerId: unit.customerId,
+                sourceLeadId: unit.sourceLeadId,
+                saleObservation: unit.saleObservation,
                 trainingRequired:
                   unit.trainingRequired === true ||
                   unit.pendingFollowUp === true,
@@ -20213,7 +20402,7 @@ function EnterpriseNetworksModule({
           {filtered.length === 0 ? (
             <EmptyState text="Nenhuma rede cadastrada." />
           ) : (
-            <PaginatedItems label="redes e franquias">
+            <>
               {filtered.map((item) => (
                 <EnterpriseNetworkCard
                   key={item.id}
@@ -20223,7 +20412,7 @@ function EnterpriseNetworksModule({
                   onOpen={() => setSelected(item)}
                 />
               ))}
-            </PaginatedItems>
+            </>
           )}
         </section>
       ) : (
@@ -20669,6 +20858,8 @@ function EnterpriseNetworkDrawer({
     const description = JSON.stringify({
       kind: "csJourney",
       track: "activation",
+      sourceLeadId: unit.sourceLeadId,
+      saleObservation: unit.saleObservation,
       phase: unit.trainingRequired ? "onboarding" : "tracking",
       clientId: unit.externalId || undefined,
       trainingRequired: unit.trainingRequired === true,
@@ -20855,30 +21046,27 @@ function EnterpriseNetworkDrawer({
                 )}
               </div>
               <div className="enterprise-unit-tabs enterprise-unit-card-grid">
-                {
-                  <PaginatedItems label="unidades">
-                    {network.units.map((entry) => (
-                      <button
-                        key={entry.id}
-                        className={unit?.id === entry.id ? "active" : ""}
-                        onClick={() => setSelectedUnitId(entry.id)}
-                        aria-pressed={unit?.id === entry.id}
-                        title="Visualizar dados da unidade"
+                {network.units.map((entry) => (
+                  <button
+                    key={entry.id}
+                    className={unit?.id === entry.id ? "active" : ""}
+                    onClick={() => setSelectedUnitId(entry.id)}
+                    aria-pressed={unit?.id === entry.id}
+                    title="Visualizar dados da unidade"
+                  >
+                    <Building2 size={20} />
+                    {entry.name}
+                    <SaleObservation text={entry.saleObservation} compact />
+                    {entry.pendingFollowUp && (
+                      <span
+                        className="enterprise-new-units"
+                        aria-label="Nova unidade para acompanhamento"
                       >
-                        <Building2 size={20} />
-                        {entry.name}
-                        {entry.pendingFollowUp && (
-                          <span
-                            className="enterprise-new-units"
-                            aria-label="Nova unidade para acompanhamento"
-                          >
-                            1
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </PaginatedItems>
-                }
+                        1
+                      </span>
+                    )}
+                  </button>
+                ))}
               </div>
               {!unit ? (
                 <EmptyState
@@ -21029,13 +21217,8 @@ function EnterpriseNetworkDrawer({
                       </div>
                     </span>
                   </div>
-                  <p className="enterprise-notes">
-                    <FileText size={19} />
-                    <strong>Nota / Observação</strong>
-                    <span>
-                      {unit.notes || "Sem observações para esta unidade."}
-                    </span>
-                  </p>
+                  <SaleObservation text={unit.saleObservation} />
+                  <UnitObservation text={unit.notes} />
                 </>
               )}
             </section>
@@ -21469,7 +21652,7 @@ function EnterpriseAgendaInteractionModal({
   ) => Promise<OperationResult>;
 }) {
   const calendars = agendaModule.calendars.filter((entry) => entry.active);
-  const types = agendaModule.types.filter((entry) => entry.active);
+  const types = selectableAgendaTypes(agendaModule.types);
   const statuses = agendaModule.statuses.filter((entry) => entry.active);
   const suggestedCalendar =
     calendars.find((entry) =>
@@ -22042,7 +22225,7 @@ function CustomerSuccessModule({
             </p>
           </div>
         ) : (
-          <PaginatedItems label="registros">
+          <PaginatedItems mode="cards" label="registros">
             {filtered.map((item) => {
               const journey = parseCsJourney(item.description);
               return (
@@ -22418,6 +22601,8 @@ function CsJourneyDrawer({
         .toLowerCase()
         .includes("sucesso do cliente"),
     );
+  const agendaTypes = selectableAgendaTypes(agendaModule?.types ?? []);
+  const [agendaTypeId, setAgendaTypeId] = useState("");
   const scheduleInAgenda = async (
     kind: "1ª reunião de onboarding" | "Treinamento",
     date: string,
@@ -22426,10 +22611,7 @@ function CsJourneyDrawer({
   ) => {
     if (!agendaModule || !activationCalendar || !date) return false;
     if (journey[commitmentKey]) return false;
-    const type = findJourneyAgendaType(
-      agendaModule.types,
-      journeyAgendaType("cs", item.description) ?? "Reunião",
-    );
+    const type = agendaTypes.find((type) => type.id === agendaTypeId);
     const status = agendaModule.statuses.find((entry) => entry.active);
     const responsible =
       agendaModule.collaborators.find((entry) => entry.name === item.owner) ??
@@ -22633,6 +22815,22 @@ function CsJourneyDrawer({
                   </p>
                 </div>
               </div>
+              <label>
+                Tipo *
+                <select
+                  required
+                  value={agendaTypeId}
+                  disabled={!canEdit || busy}
+                  onChange={(event) => setAgendaTypeId(event.target.value)}
+                >
+                  <option value="">Selecionar...</option>
+                  {agendaTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="cs-meeting-grid">
                 <label>
                   1ª reunião de onboarding
@@ -22672,6 +22870,7 @@ function CsJourneyDrawer({
                     !canEdit ||
                     busy ||
                     !firstMeeting ||
+                    !agendaTypeId ||
                     Boolean(journey.firstMeetingCommitmentId)
                   }
                   onClick={() =>
@@ -22725,6 +22924,7 @@ function CsJourneyDrawer({
                     !canEdit ||
                     busy ||
                     !training ||
+                    !agendaTypeId ||
                     Boolean(journey.trainingCommitmentId)
                   }
                   onClick={() =>
@@ -23462,7 +23662,7 @@ function RecruitmentView({
               className="secondary-button"
               onClick={() =>
                 void navigator.clipboard?.writeText(
-                  `${window.location.origin}/?application=processo-seletivo`,
+                  `${window.location.origin}/candidatura`,
                 )
               }
             >
@@ -23501,20 +23701,16 @@ function RecruitmentView({
                 }
               </b>
             </header>
-            {
-              <PaginatedItems label="registros do processo seletivo">
-                {candidates
-                  .filter((candidate) => candidate.status === stage.name)
-                  .map((candidate) => (
-                    <RecruitmentCandidateCard
-                      candidate={candidate}
-                      busy={busy}
-                      key={candidate.id}
-                      onSelect={() => setSelected(candidate)}
-                    />
-                  ))}
-              </PaginatedItems>
-            }
+            {candidates
+              .filter((candidate) => candidate.status === stage.name)
+              .map((candidate) => (
+                <RecruitmentCandidateCard
+                  candidate={candidate}
+                  busy={busy}
+                  key={candidate.id}
+                  onSelect={() => setSelected(candidate)}
+                />
+              ))}
           </article>
         ))}
       </section>
@@ -23587,194 +23783,6 @@ function RecruitmentView({
         />
       )}
     </>
-  );
-}
-
-function PublicRecruitmentApplication({
-  data,
-  processId,
-  busy,
-  onOperate,
-}: {
-  data: AppData;
-  processId: string;
-  busy: boolean;
-  onOperate: (
-    payload: Record<string, unknown>,
-    success: string,
-  ) => Promise<OperationResult>;
-}) {
-  const [sent, setSent] = useState(false);
-  const process = data.items.find(
-    (item) =>
-      item.id === processId &&
-      item.module === "admin" &&
-      item.record_type === "Processo seletivo",
-  );
-  const details = recruitmentProcessDetails(process?.description ?? "{}");
-  const firstStage =
-    details.stages?.find(Boolean) ?? DEFAULT_RECRUITMENT_STAGES[0];
-  const processIsOpen = Boolean(process && process.status === "Ativo");
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!process || !processIsOpen) return;
-    const form = new FormData(event.currentTarget);
-    const curriculum = form.get("curriculum");
-    const curriculumFile =
-      curriculum instanceof File && curriculum.size > 0 ? curriculum : null;
-    if (curriculumFile && curriculumFile.size > 8 * 1024 * 1024) return;
-    const curriculumData = curriculumFile
-      ? await fileAsDataUrl(curriculumFile)
-      : "";
-    const result = await onOperate(
-      {
-        action: "createWorkItem",
-        module: "admin",
-        recordType: "Candidato",
-        title: form.get("name"),
-        customerName: form.get("email"),
-        owner: form.get("phone"),
-        team: process.team,
-        status: firstStage,
-        priority: "P3",
-        amountCents: 0,
-        description: JSON.stringify({
-          processId: process.id,
-          vacancy: details.vacancy || process.customer_name,
-          sector: details.sector || process.team,
-          notes: form.get("notes"),
-          curriculumName: curriculumFile?.name ?? "",
-          curriculumData,
-          comments: [],
-        }),
-      },
-      "Candidatura enviada com sucesso.",
-    );
-    if (result) setSent(true);
-  };
-  if (!process)
-    return (
-      <main className="external-experience-page public-application">
-        <section className="external-experience-card public-application-card">
-          <Image
-            src="/dontus-logo.png"
-            alt="Dontus"
-            width={190}
-            height={56}
-            priority
-            unoptimized
-          />
-          <h1>Processo não encontrado</h1>
-          <p>
-            O link de candidatura não é válido ou este processo não está mais
-            disponível.
-          </p>
-        </section>
-      </main>
-    );
-  return (
-    <main className="external-experience-page public-application">
-      <section className="external-experience-card public-application-card">
-        <span
-          className="public-application-logo"
-          role="img"
-          aria-label="Dontus Gestão Odontológica"
-        />
-        <span className="eyebrow">DONTUS · GESTÃO ODONTOLÓGICA</span>
-        <h1 className="sr-only">Candidatura à vaga</h1>
-        <p className="public-application-sector">
-          {details.sector || process.team}
-        </p>
-        {!processIsOpen ? (
-          <div className="public-application-closed">
-            <XCircle size={28} />
-            <h2>Inscrições encerradas</h2>
-            <p>
-              Este processo seletivo foi finalizado e não está mais recebendo
-              candidaturas.
-            </p>
-          </div>
-        ) : sent ? (
-          <div className="public-application-success">
-            <CheckCircle2 size={28} />
-            <h2>Candidatura enviada!</h2>
-            <p>
-              Recebemos suas informações. Caso seu perfil avance, entraremos em
-              contato.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="public-job-description">
-              <h2>Sobre a vaga</h2>
-              <p>
-                {details.description ||
-                  "Preencha seus dados para participar do processo seletivo."}
-              </p>
-              {details.requirements && (
-                <>
-                  <h3>Requisitos</h3>
-                  <p>{details.requirements}</p>
-                </>
-              )}
-            </div>
-            <form className="public-application-form" onSubmit={submit}>
-              <label>
-                Nome completo *
-                <input
-                  name="name"
-                  required
-                  autoFocus
-                  placeholder="Seu nome completo"
-                />
-              </label>
-              <div className="public-application-split">
-                <label>
-                  Celular (WhatsApp) *
-                  <PhoneInput
-                    name="phone"
-                    required
-                    placeholder="(00) 00000-0000"
-                  />
-                </label>
-                <label>
-                  E-mail *
-                  <input
-                    name="email"
-                    type="email"
-                    required
-                    placeholder="seu@email.com"
-                  />
-                </label>
-              </div>
-              <label className="upload-document-field">
-                Currículo / carta de apresentação *
-                <input name="curriculum" type="file" required />
-                <small>
-                  Envie um arquivo de até 8 MB. Imagens, vídeos, PDF, Excel e
-                  outros formatos.
-                </small>
-              </label>
-              <label>
-                Observações adicionais
-                <textarea
-                  name="notes"
-                  rows={3}
-                  placeholder="Alguma informação adicional?"
-                />
-              </label>
-              <button
-                className="public-gradient-button"
-                disabled={busy}
-                type="submit"
-              >
-                {busy ? "Enviando..." : "Enviar candidatura"}
-              </button>
-            </form>
-          </>
-        )}
-      </section>
-    </main>
   );
 }
 
@@ -23893,6 +23901,8 @@ function RecruitmentWorkflowView({
           sector: form.get("sector"),
           description: form.get("description"),
           requirements: form.get("requirements"),
+          responsibilities: form.get("responsibilities"),
+          benefits: form.get("benefits"),
           stageTemplateId: template?.id ?? "default",
           stageTemplateName: template?.name ?? "Padrão do sistema",
           stages,
@@ -23908,9 +23918,8 @@ function RecruitmentWorkflowView({
     const curriculum = form.get("curriculum");
     const curriculumFile =
       curriculum instanceof File && curriculum.size > 0 ? curriculum : null;
-    if (curriculumFile && curriculumFile.size > 8 * 1024 * 1024) return;
     const curriculumData = curriculumFile
-      ? await fileAsDataUrl(curriculumFile)
+      ? await fileAsDataUrl(curriculumFile, process?.id)
       : "";
     const result = await onOperate(
       {
@@ -23943,7 +23952,7 @@ function RecruitmentWorkflowView({
   };
   const copyLink = (item: WorkItem) =>
     void navigator.clipboard?.writeText(
-      `${window.location.origin}/?application=processo-seletivo&process=${item.id}`,
+      `${window.location.origin}/candidatura/${item.id}`,
     );
   const setProcessStatus = (item: WorkItem, status: "Ativo" | "Finalizado") => {
     if (item.status === status) return;
@@ -24030,64 +24039,66 @@ function RecruitmentWorkflowView({
           {processes.length === 0 ? (
             <EmptyState text="Crie o primeiro processo seletivo para iniciar as candidaturas." />
           ) : (
-            <PaginatedItems label="registros do processo seletivo">
-              {processes.map((item) => {
-                const detail = info(item);
-                const count = data.items.filter(
-                  (candidate) =>
-                    candidate.record_type === "Candidato" &&
-                    info(candidate).processId === item.id,
-                ).length;
-                const isOpen = item.status === "Ativo";
-                return (
-                  <article data-reminder-entity-id={item.id} key={item.id}>
-                    <div>
-                      <span className="eyebrow">PROCESSO SELETIVO</span>
-                      <h2>{item.title}</h2>
-                      <p>
-                        {detail.vacancy || item.customer_name} ·{" "}
-                        {detail.sector || item.team}
-                      </p>
-                      <div className="recruitment-process-meta">
-                        <small>{count} candidato(s)</small>
-                        <label
-                          className={`recruitment-status-control ${isOpen ? "open" : "closed"}`}
-                        >
-                          Inscrições
-                          <select
-                            value={isOpen ? "Ativo" : "Finalizado"}
-                            disabled={busy}
-                            onChange={(event) =>
-                              setProcessStatus(
-                                item,
-                                event.target.value as "Ativo" | "Finalizado",
-                              )
-                            }
+            <>
+              <PaginatedItems label="registros">
+                {processes.map((item) => {
+                  const detail = info(item);
+                  const count = data.items.filter(
+                    (candidate) =>
+                      candidate.record_type === "Candidato" &&
+                      info(candidate).processId === item.id,
+                  ).length;
+                  const isOpen = item.status === "Ativo";
+                  return (
+                    <article data-reminder-entity-id={item.id} key={item.id}>
+                      <div>
+                        <span className="eyebrow">PROCESSO SELETIVO</span>
+                        <h2>{item.title}</h2>
+                        <p>
+                          {detail.vacancy || item.customer_name} ·{" "}
+                          {detail.sector || item.team}
+                        </p>
+                        <div className="recruitment-process-meta">
+                          <small>{count} candidato(s)</small>
+                          <label
+                            className={`recruitment-status-control ${isOpen ? "open" : "closed"}`}
                           >
-                            <option>Ativo</option>
-                            <option>Finalizado</option>
-                          </select>
-                        </label>
+                            Inscrições
+                            <select
+                              value={isOpen ? "Ativo" : "Finalizado"}
+                              disabled={busy}
+                              onChange={(event) =>
+                                setProcessStatus(
+                                  item,
+                                  event.target.value as "Ativo" | "Finalizado",
+                                )
+                              }
+                            >
+                              <option>Ativo</option>
+                              <option>Finalizado</option>
+                            </select>
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                    <div className="recruitment-process-actions">
-                      <button
-                        className="secondary-button"
-                        onClick={() => copyLink(item)}
-                      >
-                        <FileCheck2 size={14} /> Copiar link
-                      </button>
-                      <button
-                        className="primary-button"
-                        onClick={() => setProcess(item)}
-                      >
-                        Gerenciar <ChevronRight size={15} />
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </PaginatedItems>
+                      <div className="recruitment-process-actions">
+                        <button
+                          className="secondary-button"
+                          onClick={() => copyLink(item)}
+                        >
+                          <FileCheck2 size={14} /> Copiar link
+                        </button>
+                        <button
+                          className="primary-button"
+                          onClick={() => setProcess(item)}
+                        >
+                          Gerenciar <ChevronRight size={15} />
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </PaginatedItems>
+            </>
           )}
         </section>
       ) : (
@@ -24146,20 +24157,16 @@ function RecruitmentWorkflowView({
                     }
                   </b>
                 </header>
-                {
-                  <PaginatedItems label="registros do processo seletivo">
-                    {candidates
-                      .filter((candidate) => candidate.status === stage)
-                      .map((candidate) => (
-                        <RecruitmentCandidateCard
-                          candidate={candidate}
-                          busy={busy}
-                          key={candidate.id}
-                          onSelect={() => setSelected(candidate)}
-                        />
-                      ))}
-                  </PaginatedItems>
-                }
+                {candidates
+                  .filter((candidate) => candidate.status === stage)
+                  .map((candidate) => (
+                    <RecruitmentCandidateCard
+                      candidate={candidate}
+                      busy={busy}
+                      key={candidate.id}
+                      onSelect={() => setSelected(candidate)}
+                    />
+                  ))}
               </article>
             ))}
           </section>
@@ -24230,11 +24237,41 @@ function RecruitmentWorkflowView({
             </label>
             <label className="wide">
               Descrição da vaga
-              <textarea name="description" required rows={3} />
+              <textarea
+                name="description"
+                required
+                rows={4}
+                placeholder="Apresente a vaga e a oportunidade."
+              />
+              <small>
+                Separe os parágrafos e use **texto** para destacar informações
+                em negrito.
+              </small>
+            </label>
+            <label className="wide">
+              Responsabilidades
+              <textarea
+                name="responsibilities"
+                rows={3}
+                placeholder="Liste as principais atividades, uma por linha."
+              />
             </label>
             <label className="wide">
               Requisitos
-              <textarea name="requirements" required rows={3} />
+              <textarea
+                name="requirements"
+                required
+                rows={3}
+                placeholder="Experiências e conhecimentos necessários."
+              />
+            </label>
+            <label className="wide">
+              Benefícios
+              <textarea
+                name="benefits"
+                rows={3}
+                placeholder="Informe os benefícios oferecidos."
+              />
             </label>
             <div className="form-actions wide">
               <button type="button" onClick={() => setNewProcess(false)}>
@@ -24273,7 +24310,7 @@ function RecruitmentWorkflowView({
             <label className="wide upload-document-field">
               Currículo / carta de apresentação
               <input name="curriculum" type="file" />
-              <small>PDF, DOC ou DOCX · máximo de 8 MB</small>
+              <small>PDF, DOC ou DOCX · sem limite de tamanho no sistema</small>
             </label>
             <label className="wide">
               Etapa inicial
@@ -24404,6 +24441,7 @@ function AdminView({
   if (section === "departments")
     return (
       <EmployeeCatalog
+        data={data}
         title="Setores"
         description="Cadastre os setores que serão exibidos no cadastro de colaboradores."
         items={data.access.departments}
@@ -24620,17 +24658,20 @@ function BackgroundImageSettings({
   onChange: (image: string) => void;
 }) {
   const [error, setError] = useState("");
-  const chooseImage = (file?: File) => {
+  const chooseImage = async (file?: File) => {
     setError("");
     if (!file) return;
     if (!file.type.startsWith("image/"))
       return setError("Selecione um arquivo de imagem.");
-    if (file.size > 2 * 1024 * 1024)
-      return setError("Envie uma imagem de até 2 MB.");
-    const reader = new FileReader();
-    reader.onload = () => onChange(String(reader.result ?? ""));
-    reader.onerror = () => setError("Não foi possível ler esta imagem.");
-    reader.readAsDataURL(file);
+    try {
+      onChange(await workspaceFileUrl(file, { module: "profile" }));
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar a imagem.",
+      );
+    }
   };
   const previewStyle = image
     ? { backgroundImage: 'url("' + image + '")' }
@@ -24671,7 +24712,7 @@ function BackgroundImageSettings({
             }
             previewUrl={image}
             previewLabel="Abrir imagem de fundo"
-            hint="PNG, JPG, WEBP ou GIF, com no máximo 2 MB."
+            hint="PNG, JPG, WEBP ou GIF, sem limite de tamanho no sistema."
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.currentTarget.value = "";
@@ -24893,66 +24934,71 @@ function EnterpriseNetworkList({
       {items.length === 0 ? (
         <EmptyState text="Nenhuma rede cadastrada." />
       ) : (
-        <PaginatedItems label="redes e franquias">
-          {items.map((item) => {
-            const network = enterpriseNetworkFor(item);
-            const active = network.units.filter((unit) => unit.active).length;
-            const health = enterpriseHealthScore(network.units, featureOptions);
-            return (
-              <article
-                data-reminder-entity-id={item.id}
-                key={item.id}
-                onClick={() => onOpen(item)}
-              >
-                <span>
-                  <strong>{item.title}</strong>
-                  <small>{network.contact || "Sem contato principal"}</small>
-                </span>
-                <span>{item.owner || "Não atribuído"}</span>
-                <span>{network.units.length}</span>
-                <span className="good">{active}</span>
-                <span
-                  className={
-                    health >= 70 ? "good" : health >= 40 ? "warn" : "bad"
-                  }
+        <>
+          <PaginatedItems label="registros">
+            {items.map((item) => {
+              const network = enterpriseNetworkFor(item);
+              const active = network.units.filter((unit) => unit.active).length;
+              const health = enterpriseHealthScore(
+                network.units,
+                featureOptions,
+              );
+              return (
+                <article
+                  data-reminder-entity-id={item.id}
+                  key={item.id}
+                  onClick={() => onOpen(item)}
                 >
-                  {health}%
-                </span>
-                <span>
-                  <b
-                    className={`status-pill ${enterpriseTone(health, active > 0)}`}
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{network.contact || "Sem contato principal"}</small>
+                  </span>
+                  <span>{item.owner || "Não atribuído"}</span>
+                  <span>{network.units.length}</span>
+                  <span className="good">{active}</span>
+                  <span
+                    className={
+                      health >= 70 ? "good" : health >= 40 ? "warn" : "bad"
+                    }
                   >
-                    {network.status}
-                  </b>
-                </span>
-                <span className="enterprise-list-actions">
-                  {canEdit && (
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onEdit(item);
-                      }}
+                    {health}%
+                  </span>
+                  <span>
+                    <b
+                      className={`status-pill ${enterpriseTone(health, active > 0)}`}
                     >
-                      <Pencil size={14} />
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      className="delete"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDelete(item);
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                  <ChevronRight size={15} />
-                </span>
-              </article>
-            );
-          })}
-        </PaginatedItems>
+                      {network.status}
+                    </b>
+                  </span>
+                  <span className="enterprise-list-actions">
+                    {canEdit && (
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEdit(item);
+                        }}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        className="delete"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete(item);
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <ChevronRight size={15} />
+                  </span>
+                </article>
+              );
+            })}
+          </PaginatedItems>
+        </>
       )}
     </section>
   );
@@ -25381,6 +25427,16 @@ function EmployeeIndicatorsAdmin({
         className="indicator-panel"
       >
         {indicatorTab === "overview" && (
+          <EmployeePerformanceCharts
+            tasks={tasks.filter(
+              (task) =>
+                task.assigneeUserId === employee.id ||
+                task.assigneeName === employee.displayName,
+            )}
+            commitments={commitments}
+          />
+        )}
+        {indicatorTab === "overview" && (
           <div className="employee-indicator-kpis">
             <article>
               <Clock3 />
@@ -25616,6 +25672,7 @@ function EmployeeIndicatorsAdmin({
 }
 
 function EmployeeCatalog({
+  data,
   title,
   description,
   items,
@@ -25627,6 +25684,7 @@ function EmployeeCatalog({
   section,
   onSection,
 }: {
+  data?: AppData;
   title: string;
   description: string;
   items: Array<EmployeeDepartment | EmployeeLevel>;
@@ -25645,6 +25703,7 @@ function EmployeeCatalog({
     EmployeeDepartment | EmployeeLevel | null | undefined
   >(undefined);
   const [showInactive, setShowInactive] = useState(false);
+  const [indicators, setIndicators] = useState(false);
   const deleteAction =
     action === "saveEmployeeDepartment"
       ? "deleteEmployeeDepartment"
@@ -25664,6 +25723,17 @@ function EmployeeCatalog({
         ? `${singular} inativado temporariamente.`
         : `${singular} reativado com sucesso.`,
     );
+  if (indicators && data)
+    return (
+      <SectorIndicatorsBoard
+        sectors={data.access?.departments ?? []}
+        employees={employees}
+        tasks={data.taskModule?.tasks ?? []}
+        agenda={data.agendaModule}
+        items={data.items}
+        onClose={() => setIndicators(false)}
+      />
+    );
   return (
     <>
       <PageHeader
@@ -25680,6 +25750,16 @@ function EmployeeCatalog({
               />{" "}
               Exibir inativos
             </label>
+            {section === "departments" && data && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setIndicators(true)}
+              >
+                <ChartNoAxesCombined size={17} />
+                Indicadores
+              </button>
+            )}
             <button className="primary-button" onClick={() => setEditing(null)}>
               <Plus size={17} /> {buttonLabel}
             </button>
@@ -25843,14 +25923,20 @@ function EmployeeModal({
   const [scheduleError, setScheduleError] = useState("");
   const [departmentError, setDepartmentError] = useState("");
   const [groupError, setGroupError] = useState("");
-  const choosePhoto = (file?: File) => {
+  const choosePhoto = async (file?: File) => {
     setPhotoError("");
     if (!file) return setPhotoDataUrl("");
-    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024)
-      return setPhotoError("Envie uma imagem de até 2 MB.");
-    const reader = new FileReader();
-    reader.onload = () => setPhotoDataUrl(String(reader.result ?? ""));
-    reader.readAsDataURL(file);
+    if (!file.type.startsWith("image/"))
+      return setPhotoError("Envie uma imagem em formato de imagem.");
+    try {
+      setPhotoDataUrl(await workspaceFileUrl(file, { module: "profile" }));
+    } catch (error) {
+      setPhotoError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar a imagem.",
+      );
+    }
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -25908,7 +25994,7 @@ function EmployeeModal({
           selectedText={photoDataUrl ? "Foto selecionada" : undefined}
           previewUrl={photoDataUrl}
           previewLabel="Abrir foto do colaborador"
-          hint="Selecione uma imagem para o perfil do colaborador, com no máximo 2 MB."
+          hint="Selecione uma imagem para o perfil do colaborador, sem limite de tamanho no sistema."
           onChange={(event) => choosePhoto(event.target.files?.[0])}
         />
         {photoError && <p className="form-error wide">{photoError}</p>}
@@ -26453,7 +26539,7 @@ function LegacyAdminView({
         </div>
         <div className="decision-grid">
           {
-            <PaginatedItems label="registros">
+            <PaginatedItems mode="cards" label="registros">
               {data.decisions.map((decision) => (
                 <article key={decision.code}>
                   <div>
@@ -27392,14 +27478,12 @@ function WorkItemModal({
         </label>
         <label className="wide">
           Cliente
-          <select name="customerId">
-            <option value="">Sem cliente vinculado</option>
-            {customers.map((customer) => (
-              <option value={customer.id} key={customer.id}>
-                {customer.trade_name}
-              </option>
-            ))}
-          </select>
+          <CustomerSelect
+            name="customerId"
+            customers={customers}
+            emptyLabel="Sem cliente vinculado"
+            label="tradeName"
+          />
         </label>
         <label>
           Responsável
@@ -27832,14 +27916,12 @@ function AppointmentModal({
         </label>
         <label>
           Cliente
-          <select name="customerId">
-            <option value="">Interno</option>
-            {customers.map((customer) => (
-              <option value={customer.id} key={customer.id}>
-                {customer.trade_name}
-              </option>
-            ))}
-          </select>
+          <CustomerSelect
+            name="customerId"
+            customers={customers}
+            emptyLabel="Interno"
+            label="tradeName"
+          />
         </label>
         <label>
           Responsável
@@ -27985,7 +28067,7 @@ function BackgroundImageModal({
             <>
               <ImageIcon size={34} />
               <strong>Nenhuma imagem configurada</strong>
-              <span>PNG, JPG, WEBP ou GIF de até 2 MB.</span>
+              <span>PNG, JPG, WEBP ou GIF em formato de imagem.</span>
             </>
           )}
         </div>

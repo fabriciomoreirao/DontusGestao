@@ -48,6 +48,8 @@ export default function WorkspaceExperience({
   syncing,
   syncError,
   realtimeConnected = false,
+  focusMode,
+  onFocusModeChange,
 }: {
   children: ReactNode;
   destinations: WorkspaceDestination[];
@@ -60,13 +62,14 @@ export default function WorkspaceExperience({
   syncing: boolean;
   syncError: boolean;
   realtimeConnected?: boolean;
+  focusMode: boolean;
+  onFocusModeChange: (enabled: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
-  const [focusMode, setFocusMode] = useState(false);
   const [history, setHistory] = useState({ back: false, forward: false });
   const [shortcut, setShortcut] = useState("Ctrl K");
   const dialog = useRef<HTMLDialogElement>(null);
@@ -177,20 +180,12 @@ export default function WorkspaceExperience({
         event.key === "Escape" &&
         !document.querySelector('dialog[open],[aria-modal="true"]')
       ) {
-        setFocusMode(false);
+        onFocusModeChange(false);
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, []);
-
-  useEffect(() => {
-    const shell = dialog.current?.closest(".app-shell");
-    shell?.classList.toggle("workspace-focus", focusMode);
-    return () => {
-      shell?.classList.remove("workspace-focus");
-    };
-  }, [focusMode]);
+  }, [onFocusModeChange]);
 
   const close = (restoreFocus = true) => {
     dialog.current?.close();
@@ -313,7 +308,7 @@ export default function WorkspaceExperience({
             <button
               type="button"
               className="workspace-focus-toggle"
-              onClick={() => setFocusMode((value) => !value)}
+              onClick={() => onFocusModeChange(!focusMode)}
               aria-pressed={focusMode}
               aria-label={focusMode ? "Sair do modo foco" : "Ativar modo foco"}
               title={

@@ -48,11 +48,11 @@ async function proxy(
       {
         method: request.method,
         headers,
-        body:
-          request.method === "GET" ? undefined : await request.arrayBuffer(),
+        body: request.method === "GET" ? undefined : request.body,
         cache: "no-store",
-        signal: apiRequestSignal(request),
-      },
+        signal: request.signal,
+        duplex: "half",
+      } as RequestInit,
     );
     return apiResponse(request, response);
   } catch {

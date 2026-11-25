@@ -1,8 +1,8 @@
 export function validateSuggestionFiles(files: { size: number }[]) {
   if (files.length > 10)
     throw new Error("Selecione no máximo 10 arquivos por vez.");
-  if (files.some((file) => file.size <= 0 || file.size > 25 * 1024 * 1024))
-    throw new Error("Cada anexo deve estar entre 1 byte e 25 MB.");
+  if (files.some((file) => !Number.isSafeInteger(file.size) || file.size <= 0))
+    throw new Error("Selecione arquivos não vazios.");
 }
 
 export async function sendSuggestionFiles(
@@ -29,7 +29,7 @@ export async function sendSuggestionFiles(
       }
       throw new Error(
         response.status === 413
-          ? "O arquivo excedeu o limite de envio de 25 MB."
+          ? "O servidor de acesso recusou o tamanho do envio. Tente novamente."
           : detail ||
               "Não foi possível enviar o anexo. Tente novamente com os arquivos pendentes.",
       );

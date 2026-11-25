@@ -76,7 +76,7 @@ test("Enter envia; Shift, composição de caracteres e repetição de tecla pres
     assert.equal(isCommentSubmitKey({ ...event, [flag]: true }), false, flag);
   assert.equal(isCommentSubmitKey({ ...event, keyCode: 229 }), false);
 });
-test("a presença altera somente os usuários e expira após a perda de conexão", () => {
+test("a presença segue a conexão do sistema informada pelo servidor sem depender do relógio do navegador", () => {
   const module = {
     users: [{ id: "ana", name: "Ana" }],
     rooms: [{ id: "private-room" }],
@@ -87,13 +87,37 @@ test("a presença altera somente os usuários e expira após a perda de conexão
   ]);
   assert.equal(updated.rooms, module.rooms);
   assert.equal(userIsOnline(updated.users[0], now), true);
-  assert.equal(userIsOnline(updated.users[0], now + 76000), false);
+  assert.equal(userIsOnline(updated.users[0], now + 76000), true);
+  assert.equal(userIsOnline(updated.users[0], now - 60000), true);
+  assert.equal(
+    userIsOnline(
+      applyChatPresence(updated, [
+        {
+          userId: "ana",
+          isOnline: false,
+          lastSeenAt: new Date(now).toISOString(),
+        },
+      ]).users[0],
+      now,
+    ),
+    false,
+  );
   assert.equal(
     applyChatPresence(updated, [
       {
         userId: "ana",
         isOnline: true,
         lastSeenAt: new Date(now).toISOString(),
+      },
+    ]),
+    updated,
+  );
+  assert.equal(
+    applyChatPresence(updated, [
+      {
+        userId: "ana",
+        isOnline: false,
+        lastSeenAt: new Date(now - 1000).toISOString(),
       },
     ]),
     updated,

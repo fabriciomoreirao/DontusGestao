@@ -1,5 +1,5 @@
 "use client";
-
+import { uploadWorkspaceFile } from "@/lib/workspace-upload";
 import PaginatedItems from "@/app/PaginatedItems";
 
 import CommentHistory from "@/app/CommentHistory";
@@ -482,85 +482,81 @@ export default function MarketingWorkspaceModule({
                   }
                 </span>
               </header>
-              {
-                <PaginatedItems label="registros de marketing">
-                  {visible
-                    .filter(
-                      (record) => marketingStage(record.item.status) === stage,
-                    )
-                    .map(({ item, detail }) => (
-                      <article
-                        className="standard-card marketing-card"
-                        draggable={canEdit}
-                        data-reminder-entity-id={item.id}
-                        data-reminder-customer-name={
-                          item.customer_name || item.title
-                        }
-                        onDragStart={(event) => {
-                          setDragging(item);
-                          beginKanbanDrag(event, "text/plain", item.id);
-                        }}
-                        onDragEnd={() => {
-                          setDragging(null);
-                          setDropStage("");
-                        }}
-                        onClick={() => !dragging && setSelected(item)}
-                        key={item.id}
+              {visible
+                .filter(
+                  (record) => marketingStage(record.item.status) === stage,
+                )
+                .map(({ item, detail }) => (
+                  <article
+                    className="standard-card marketing-card"
+                    draggable={canEdit}
+                    data-reminder-entity-id={item.id}
+                    data-reminder-customer-name={
+                      item.customer_name || item.title
+                    }
+                    onDragStart={(event) => {
+                      setDragging(item);
+                      beginKanbanDrag(event, "text/plain", item.id);
+                    }}
+                    onDragEnd={() => {
+                      setDragging(null);
+                      setDropStage("");
+                    }}
+                    onClick={() => !dragging && setSelected(item)}
+                    key={item.id}
+                  >
+                    <small>{detail.type}</small>
+                    <h3>{item.title}</h3>
+                    <p>
+                      {detail.campaign ||
+                        detail.summary ||
+                        "Sem campanha vinculada"}
+                    </p>
+                    <div>
+                      <span>{detail.channel || "Canal não informado"}</span>
+                      <span>{date(detail.dueDate)}</span>
+                    </div>
+                    {detail.attachments.length > 0 && (
+                      <span className="marketing-media-count">
+                        <ImageIcon size={13} />
+                        {detail.attachments.length} arquivo(s)
+                      </span>
+                    )}
+                    <footer>
+                      <span
+                        className="marketing-owner-chip"
+                        data-collaborator-name={item.owner}
                       >
-                        <small>{detail.type}</small>
-                        <h3>{item.title}</h3>
-                        <p>
-                          {detail.campaign ||
-                            detail.summary ||
-                            "Sem campanha vinculada"}
-                        </p>
-                        <div>
-                          <span>{detail.channel || "Canal não informado"}</span>
-                          <span>{date(detail.dueDate)}</span>
-                        </div>
-                        {detail.attachments.length > 0 && (
-                          <span className="marketing-media-count">
-                            <ImageIcon size={13} />
-                            {detail.attachments.length} arquivo(s)
-                          </span>
-                        )}
-                        <footer>
-                          <span
-                            className="marketing-owner-chip"
-                            data-collaborator-name={item.owner}
-                          >
-                            {item.owner || "Fila de Marketing"}
-                          </span>
-                          <ChevronRight size={16} />
-                        </footer>
-                        {canEdit && (
-                          <span className="marketing-card-actions">
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setEditing(item);
-                              }}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              className="delete"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void operate(
-                                  { action: "deleteWorkItem", id: item.id },
-                                  "Item de Marketing excluído.",
-                                );
-                              }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </span>
-                        )}
-                      </article>
-                    ))}
-                </PaginatedItems>
-              }
+                        {item.owner || "Fila de Marketing"}
+                      </span>
+                      <ChevronRight size={16} />
+                    </footer>
+                    {canEdit && (
+                      <span className="marketing-card-actions">
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditing(item);
+                          }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          className="delete"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void operate(
+                              { action: "deleteWorkItem", id: item.id },
+                              "Item de Marketing excluído.",
+                            );
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    )}
+                  </article>
+                ))}
             </section>
           ))}
         </div>
@@ -576,29 +572,27 @@ export default function MarketingWorkspaceModule({
             <span>PRAZO</span>
             <span />
           </header>
-          {
-            <PaginatedItems label="registros de marketing">
-              {visible.map(({ item, detail }) => (
-                <button
-                  data-reminder-entity-id={item.id}
-                  key={item.id}
-                  onClick={() => setSelected(item)}
-                >
-                  <span>{detail.type}</span>
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>{detail.summary}</small>
-                  </span>
-                  <span>{detail.campaign || "—"}</span>
-                  <span>{detail.channel || "—"}</span>
-                  <span>{item.owner}</span>
-                  <span>{marketingStage(item.status)}</span>
-                  <span>{date(detail.dueDate)}</span>
-                  <ChevronRight size={15} />
-                </button>
-              ))}
-            </PaginatedItems>
-          }
+          <PaginatedItems label="registros">
+            {visible.map(({ item, detail }) => (
+              <button
+                data-reminder-entity-id={item.id}
+                key={item.id}
+                onClick={() => setSelected(item)}
+              >
+                <span>{detail.type}</span>
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>{detail.summary}</small>
+                </span>
+                <span>{detail.campaign || "—"}</span>
+                <span>{detail.channel || "—"}</span>
+                <span>{item.owner}</span>
+                <span>{marketingStage(item.status)}</span>
+                <span>{date(detail.dueDate)}</span>
+                <ChevronRight size={15} />
+              </button>
+            ))}
+          </PaginatedItems>
         </div>
       )}
       {visible.length === 0 && (
@@ -886,7 +880,7 @@ function CampaignWorkspace({
                 <header>Campanhas por responsável</header>
                 <div className="campaign-owner-ranking">
                   {owners.length ? (
-                    <PaginatedItems label="registros de marketing">
+                    <>
                       {owners.map((name, index) => (
                         <span key={name}>
                           <b>#{index + 1}</b>
@@ -900,7 +894,7 @@ function CampaignWorkspace({
                           </em>
                         </span>
                       ))}
-                    </PaginatedItems>
+                    </>
                   ) : (
                     <p>Nenhuma campanha cadastrada.</p>
                   )}
@@ -912,7 +906,7 @@ function CampaignWorkspace({
                 <header>Campanhas publicadas</header>
                 {campaigns.filter(({ item }) => item.status === "Publicada")
                   .length ? (
-                  <PaginatedItems label="registros de marketing">
+                  <>
                     {campaigns
                       .filter(({ item }) => item.status === "Publicada")
                       .map(({ item, detail }) => (
@@ -931,7 +925,7 @@ function CampaignWorkspace({
                           <ChevronRight size={16} />
                         </button>
                       ))}
-                  </PaginatedItems>
+                  </>
                 ) : (
                   <p>Nenhuma campanha publicada.</p>
                 )}
@@ -1034,45 +1028,41 @@ function CampaignWorkspace({
                 {visible.filter(({ item }) => item.status === stage).length}
               </span>
             </header>
-            {
-              <PaginatedItems label="registros de marketing">
-                {visible
-                  .filter(({ item }) => item.status === stage)
-                  .map(({ item, detail }) => (
-                    <article
-                      data-reminder-entity-id={item.id}
-                      className="standard-card campaign-card"
-                      draggable={canEdit}
-                      key={item.id}
-                      onDragStart={(event) => {
-                        beginKanbanDrag(event, "text/plain", item.id);
-                        setDragging(item);
-                      }}
-                      onDragEnd={() => setDragging(null)}
-                      onClick={() => !dragging && setSelected(item)}
+            {visible
+              .filter(({ item }) => item.status === stage)
+              .map(({ item, detail }) => (
+                <article
+                  data-reminder-entity-id={item.id}
+                  className="standard-card campaign-card"
+                  draggable={canEdit}
+                  key={item.id}
+                  onDragStart={(event) => {
+                    beginKanbanDrag(event, "text/plain", item.id);
+                    setDragging(item);
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                  onClick={() => !dragging && setSelected(item)}
+                >
+                  <small>{stage}</small>
+                  <h3>{detail.name}</h3>
+                  <p>{detail.description}</p>
+                  <div>
+                    <span>
+                      <CalendarDays size={13} /> {date(detail.startDate)}
+                    </span>
+                    <span>{detail.attachments.length} arquivo(s)</span>
+                  </div>
+                  <footer>
+                    <span
+                      className="marketing-owner-chip"
+                      data-collaborator-name={item.owner}
                     >
-                      <small>{stage}</small>
-                      <h3>{detail.name}</h3>
-                      <p>{detail.description}</p>
-                      <div>
-                        <span>
-                          <CalendarDays size={13} /> {date(detail.startDate)}
-                        </span>
-                        <span>{detail.attachments.length} arquivo(s)</span>
-                      </div>
-                      <footer>
-                        <span
-                          className="marketing-owner-chip"
-                          data-collaborator-name={item.owner}
-                        >
-                          {item.owner || "Marketing"}
-                        </span>
-                        <ChevronRight size={16} />
-                      </footer>
-                    </article>
-                  ))}
-              </PaginatedItems>
-            }
+                      {item.owner || "Marketing"}
+                    </span>
+                    <ChevronRight size={16} />
+                  </footer>
+                </article>
+              ))}
           </section>
         ))}
       </div>
@@ -1244,35 +1234,45 @@ function CampaignDrawer({
 }) {
   const [comment, setComment] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const upload = async (files: FileList | null) => {
-    if (!files?.length) return;
-    const accepted = Array.from(files)
-      .slice(0, Math.max(0, 10 - detail.attachments.length))
-      .filter((file) => file.size <= 25 * 1024 * 1024);
-    const created = await Promise.all(
-      accepted.map(
-        (file) =>
-          new Promise<Attachment>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () =>
-              resolve({
-                id: crypto.randomUUID(),
-                name: file.name,
-                type: file.type || "application/octet-stream",
-                dataUrl: String(reader.result || ""),
-                uploadedAt: new Date().toISOString(),
-                uploadedBy: currentUser.displayName,
-              });
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          }),
-      ),
-    );
-    await onSave({
-      ...detail,
-      attachments: [...detail.attachments, ...created],
-    });
-    if (fileRef.current) fileRef.current.value = "";
+    if (!files?.length || uploading) return;
+    setUploading(true);
+    setUploadError("");
+    setUploadProgress(0);
+    try {
+      const created: Attachment[] = [];
+      for (const file of Array.from(files)) {
+        const saved = await uploadWorkspaceFile(file, {
+          module: "marketing",
+          sourceId: item.id,
+          onProgress: setUploadProgress,
+        });
+        created.push({
+          id: saved.id,
+          name: saved.name,
+          type: saved.type,
+          dataUrl: saved.url,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentUser.displayName,
+        });
+      }
+      await onSave({
+        ...detail,
+        attachments: [...detail.attachments, ...created],
+      });
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (error) {
+      setUploadError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar os arquivos.",
+      );
+    } finally {
+      setUploading(false);
+    }
   };
   const addComment = async () => {
     if (!comment.trim()) return;
@@ -1350,7 +1350,10 @@ function CampaignDrawer({
                 <h3>
                   <Upload size={17} /> Arquivos da campanha
                 </h3>
-                <p>Até 10 arquivos, com no máximo 25 MB cada.</p>
+                <p>
+                  Vídeos, imagens e documentos · sem limite de tamanho no
+                  sistema.
+                </p>
               </div>
               {canEdit && (
                 <>
@@ -1363,14 +1366,22 @@ function CampaignDrawer({
                   />
                   <button
                     className="secondary-button"
-                    disabled={detail.attachments.length >= 10}
+                    disabled={busy || uploading}
                     onClick={() => fileRef.current?.click()}
                   >
-                    <Upload size={15} /> Adicionar arquivos
+                    <Upload size={15} />{" "}
+                    {uploading
+                      ? `Enviando… ${uploadProgress}%`
+                      : "Adicionar arquivos"}
                   </button>
                 </>
               )}
             </header>
+            {uploadError && (
+              <p className="form-error" role="alert">
+                {uploadError}
+              </p>
+            )}
             {detail.attachments.length ? (
               <div className="campaign-file-list">
                 {detail.attachments.map((file) => (
@@ -1678,35 +1689,45 @@ function MarketingDrawer({
     if (saved) setComment("");
     return saved;
   };
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const upload = async (files: FileList | null) => {
-    if (!files?.length) return;
-    const accepted = Array.from(files).filter(
-      (file) => file.size > 0 && file.size <= 5 * 1024 * 1024,
-    );
-    const created = await Promise.all(
-      accepted.map(
-        (file) =>
-          new Promise<Attachment>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () =>
-              resolve({
-                id: crypto.randomUUID(),
-                name: file.name,
-                type: file.type,
-                dataUrl: String(reader.result || ""),
-                uploadedAt: new Date().toISOString(),
-                uploadedBy: currentUser.displayName,
-              });
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          }),
-      ),
-    );
-    await onSave({
-      ...detail,
-      attachments: [...detail.attachments, ...created],
-    });
-    if (fileRef.current) fileRef.current.value = "";
+    if (!files?.length || uploading) return;
+    setUploading(true);
+    setUploadError("");
+    setUploadProgress(0);
+    try {
+      const created: Attachment[] = [];
+      for (const file of Array.from(files)) {
+        const saved = await uploadWorkspaceFile(file, {
+          module: "marketing",
+          sourceId: item.id,
+          onProgress: setUploadProgress,
+        });
+        created.push({
+          id: saved.id,
+          name: saved.name,
+          type: saved.type,
+          dataUrl: saved.url,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentUser.displayName,
+        });
+      }
+      await onSave({
+        ...detail,
+        attachments: [...detail.attachments, ...created],
+      });
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (error) {
+      setUploadError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar os arquivos.",
+      );
+    } finally {
+      setUploading(false);
+    }
   };
   const assume = async () => {
     if (item.owner === currentUser.displayName) return;
@@ -1876,8 +1897,8 @@ function MarketingDrawer({
                   <ImageIcon size={17} /> Arquivos e criativos
                 </h3>
                 <p>
-                  Imagens, vídeos, PDFs, Excel e outros formatos · até 5 MB
-                  cada.
+                  Imagens, vídeos, PDFs, Excel e outros formatos · sem limite de
+                  tamanho no sistema.
                 </p>
               </div>
               {canEdit && (
@@ -1891,13 +1912,22 @@ function MarketingDrawer({
                   />
                   <button
                     className="secondary-button"
+                    disabled={busy || uploading}
                     onClick={() => fileRef.current?.click()}
                   >
-                    <Upload size={15} /> Adicionar arquivos
+                    <Upload size={15} />{" "}
+                    {uploading
+                      ? `Enviando… ${uploadProgress}%`
+                      : "Adicionar arquivos"}
                   </button>
                 </>
               )}
             </header>
+            {uploadError && (
+              <p className="form-error" role="alert">
+                {uploadError}
+              </p>
+            )}
             {detail.attachments.length ? (
               <div>
                 {detail.attachments.map((file) => (

@@ -2,6 +2,7 @@ import { liaContractedPlan } from "./lia-journey.ts";
 
 type RoutedSale = {
   liaPlan?: string;
+  observation?: string;
   clientId?: string;
   phone?: string;
   saleId: string;
@@ -31,11 +32,13 @@ export function directSaleFollowup(
   at: string,
   historyId: string,
 ) {
-  const summary = `Venda direta ${sale.saleId} · Cliente ${directSaleClientId(sale)} · ${sale.name}. Versão: ${sale.version}. Origem: ${sale.origin}. Produtos: ${sale.products.map((product) => `${product.product} · ${product.plan} · ${product.quantity} unidade(s)`).join("; ")}.`;
+  const saleObservation = sale.observation?.trim() || "";
+  const summary = `Venda direta ${sale.saleId} · Cliente ${directSaleClientId(sale)} · ${sale.name}. Versão: ${sale.version}. Origem: ${sale.origin}. Produtos: ${sale.products.map((product) => `${product.product} · ${product.plan} · ${product.quantity} unidade(s)`).join("; ")}.${saleObservation ? `\nObservação da venda: ${saleObservation}` : ""}`;
   const common = {
     clientId: directSaleClientId(sale),
     sourceLeadId: sourceId,
     saleId: sale.saleId,
+    saleObservation,
     phone: sale.phone?.trim() || "",
     whatsapp: sale.phone?.trim() || "",
     version: sale.version,

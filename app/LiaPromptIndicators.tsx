@@ -1,4 +1,5 @@
 "use client";
+import PaginatedItems from "@/app/PaginatedItems";
 import { useMemo, useState } from "react";
 import { Activity, CheckCircle2, Clock3, Users } from "lucide-react";
 import { DistributionChart, TrendChart } from "@/app/AnalyticsCharts";
@@ -227,30 +228,32 @@ export default function LiaPromptIndicators({
             </tr>
           </thead>
           <tbody>
-            {scoped
-              .slice()
-              .sort((a, b) => b.date.localeCompare(a.date))
-              .map((entry) => (
-                <tr key={entry.item.id}>
-                  <td>
-                    {entry.date
-                      ? entry.date.split("-").reverse().join("/")
-                      : "—"}
-                  </td>
-                  <td>{entry.clientId || "—"}</td>
-                  <td>{entry.type}</td>
-                  <td>{entry.responsible}</td>
-                  <td>{entry.reviewer}</td>
-                  <td>
-                    {
-                      LIA_PROMPT_STATUSES[
-                        entry.status as keyof typeof LIA_PROMPT_STATUSES
-                      ]
-                    }
-                  </td>
-                  <td>{entry.tested ? "Sim" : "Não"}</td>
-                </tr>
-              ))}
+            <PaginatedItems label="registros" table>
+              {scoped
+                .slice()
+                .sort((a, b) => b.date.localeCompare(a.date))
+                .map((entry) => (
+                  <tr key={entry.item.id}>
+                    <td>
+                      {entry.date
+                        ? entry.date.split("-").reverse().join("/")
+                        : "—"}
+                    </td>
+                    <td>{entry.clientId || "—"}</td>
+                    <td>{entry.type}</td>
+                    <td>{entry.responsible}</td>
+                    <td>{entry.reviewer}</td>
+                    <td>
+                      {
+                        LIA_PROMPT_STATUSES[
+                          entry.status as keyof typeof LIA_PROMPT_STATUSES
+                        ]
+                      }
+                    </td>
+                    <td>{entry.tested ? "Sim" : "Não"}</td>
+                  </tr>
+                ))}
+            </PaginatedItems>
           </tbody>
         </table>
         {!scoped.length && (

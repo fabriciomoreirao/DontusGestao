@@ -1,5 +1,4 @@
 "use client";
-
 import PaginatedItems from "@/app/PaginatedItems";
 
 import CommentHistory from "@/app/CommentHistory";
@@ -971,21 +970,23 @@ function TriageView({
         <span>Ações</span>
       </div>
       {visible.length ? (
-        <PaginatedItems label="demandas de desenvolvimento">
-          {visible.map((item) => (
-            <DevelopmentListRow
-              key={item.id}
-              item={item}
-              secondary={item.customer_name || "Interno"}
-              stage={stageOf(item)}
-              owner={item.owner}
-              canEdit={canEdit}
-              canDelete={canDelete}
-              onOpen={() => onOpen(item)}
-              onDelete={() => onDelete(item)}
-            />
-          ))}
-        </PaginatedItems>
+        <>
+          <PaginatedItems label="registros">
+            {visible.map((item) => (
+              <DevelopmentListRow
+                key={item.id}
+                item={item}
+                secondary={item.customer_name || "Interno"}
+                stage={stageOf(item)}
+                owner={item.owner}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                onOpen={() => onOpen(item)}
+                onDelete={() => onDelete(item)}
+              />
+            ))}
+          </PaginatedItems>
+        </>
       ) : (
         <Empty />
       )}
@@ -1058,23 +1059,25 @@ function ProcessView({
         {active.length === 0 ? (
           <Empty />
         ) : (
-          <PaginatedItems label="demandas de desenvolvimento">
-            {active.map((item) => (
-              <DevelopmentListRow
-                key={item.id}
-                item={item}
-                secondary={item.customer_name || "Interno"}
-                stage={
-                  readDevelopment(item.description)?.processStage || "Ajuste"
-                }
-                owner={displayDate(item.updated_at)}
-                canEdit={canEdit}
-                canDelete={canDelete}
-                onOpen={() => onOpen(item)}
-                onDelete={() => onDelete(item)}
-              />
-            ))}
-          </PaginatedItems>
+          <>
+            <PaginatedItems label="registros">
+              {active.map((item) => (
+                <DevelopmentListRow
+                  key={item.id}
+                  item={item}
+                  secondary={item.customer_name || "Interno"}
+                  stage={
+                    readDevelopment(item.description)?.processStage || "Ajuste"
+                  }
+                  owner={displayDate(item.updated_at)}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  onOpen={() => onOpen(item)}
+                  onDelete={() => onDelete(item)}
+                />
+              ))}
+            </PaginatedItems>
+          </>
         )}
       </section>
     );
@@ -1138,150 +1141,146 @@ function VersionView({
         <Empty text="Cadastre a primeira versão para encaminhar demandas." />
       ) : (
         <div className="version-release-grid">
-          {
-            <PaginatedItems label="demandas de desenvolvimento">
-              {releases.map((release) => {
-                const detail = readRelease(release.description)!;
-                const related = items.filter(
-                  (item) =>
-                    readDevelopment(item.description)?.versionName ===
-                    release.title,
-                );
-                const validated = related.filter((item) => {
-                  const task = readDevelopment(item.description);
-                  return task ? countsAsValidated(task) : false;
-                }).length;
-                return (
-                  <article className="version-release" key={release.id}>
-                    <div className="version-release-head">
-                      <span className="version-mark">
-                        <GitBranch size={19} />
-                      </span>
-                      <span className="version-release-title">
-                        <b>{release.title}</b>
-                        <small>
-                          {detail.plannedAt
-                            ? `Previsão ${displayDate(detail.plannedAt)}`
-                            : "Sem previsão definida"}
-                        </small>
-                      </span>
-                      <em
-                        className={
-                          detail.status === "Liberada"
-                            ? "is-tested"
-                            : detail.status === "Suspensa"
-                              ? "is-suspended"
-                              : ""
-                        }
+          {releases.map((release) => {
+            const detail = readRelease(release.description)!;
+            const related = items.filter(
+              (item) =>
+                readDevelopment(item.description)?.versionName ===
+                release.title,
+            );
+            const validated = related.filter((item) => {
+              const task = readDevelopment(item.description);
+              return task ? countsAsValidated(task) : false;
+            }).length;
+            return (
+              <article className="version-release" key={release.id}>
+                <div className="version-release-head">
+                  <span className="version-mark">
+                    <GitBranch size={19} />
+                  </span>
+                  <span className="version-release-title">
+                    <b>{release.title}</b>
+                    <small>
+                      {detail.plannedAt
+                        ? `Previsão ${displayDate(detail.plannedAt)}`
+                        : "Sem previsão definida"}
+                    </small>
+                  </span>
+                  <em
+                    className={
+                      detail.status === "Liberada"
+                        ? "is-tested"
+                        : detail.status === "Suspensa"
+                          ? "is-suspended"
+                          : ""
+                    }
+                  >
+                    {detail.status ?? "Planejada"}
+                  </em>
+                  <span className="development-inline-actions">
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(release)}
+                        title="Editar versão"
+                        aria-label="Editar versão"
                       >
-                        {detail.status ?? "Planejada"}
-                      </em>
-                      <span className="development-inline-actions">
-                        {canEdit && (
-                          <button
-                            type="button"
-                            onClick={() => onEdit(release)}
-                            title="Editar versão"
-                            aria-label="Editar versão"
-                          >
-                            <Pencil size={15} />
-                          </button>
-                        )}
-                        {canDelete && (
-                          <button
-                            type="button"
-                            className="delete"
-                            onClick={() => onDelete(release)}
-                            title="Excluir versão"
-                            aria-label="Excluir versão"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        )}
-                      </span>
-                    </div>
-                    <div className="version-release-meta">
-                      <span>
-                        <b>{related.length}</b>
-                        <small>Demandas</small>
-                      </span>
-                      <span>
-                        <b>{validated}</b>
-                        <small>Validadas</small>
-                      </span>
-                      <span>
-                        <b>{Math.max(0, related.length - validated)}</b>
-                        <small>Pendentes</small>
-                      </span>
-                    </div>
-                    {detail.notes && (
-                      <p className="version-release-notes">{detail.notes}</p>
+                        <Pencil size={15} />
+                      </button>
                     )}
-                    <div className="version-release-tasks">
-                      <strong className="version-task-heading">
-                        Pontos da versão
-                      </strong>
-                      {related.length === 0 ? (
-                        <small>Nenhuma tarefa encaminhada ainda.</small>
-                      ) : (
-                        <PaginatedItems label="tarefas da versão">
-                          {related.map((item) => {
-                            const task = readDevelopment(item.description);
-                            return (
-                              <div
-                                data-reminder-entity-id={item.id}
-                                className="version-row-shell"
-                                key={item.id}
-                              >
+                    {canDelete && (
+                      <button
+                        type="button"
+                        className="delete"
+                        onClick={() => onDelete(release)}
+                        title="Excluir versão"
+                        aria-label="Excluir versão"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <div className="version-release-meta">
+                  <span>
+                    <b>{related.length}</b>
+                    <small>Demandas</small>
+                  </span>
+                  <span>
+                    <b>{validated}</b>
+                    <small>Validadas</small>
+                  </span>
+                  <span>
+                    <b>{Math.max(0, related.length - validated)}</b>
+                    <small>Pendentes</small>
+                  </span>
+                </div>
+                {detail.notes && (
+                  <p className="version-release-notes">{detail.notes}</p>
+                )}
+                <div className="version-release-tasks">
+                  <strong className="version-task-heading">
+                    Pontos da versão
+                  </strong>
+                  {related.length === 0 ? (
+                    <small>Nenhuma tarefa encaminhada ainda.</small>
+                  ) : (
+                    <>
+                      {related.map((item) => {
+                        const task = readDevelopment(item.description);
+                        return (
+                          <div
+                            data-reminder-entity-id={item.id}
+                            className="version-row-shell"
+                            key={item.id}
+                          >
+                            <button
+                              className="version-row"
+                              onClick={() => onOpen(item)}
+                            >
+                              <span>
+                                <b>{item.title}</b>
+                                <small>
+                                  {task?.sourceProtocol || "Demanda TI"}
+                                </small>
+                              </span>
+                              <span>
+                                {task
+                                  ? versionKanbanStage(task)
+                                  : "Etapa não identificada"}
+                              </span>
+                              <ChevronRight size={17} />
+                            </button>
+                            <span className="development-inline-actions">
+                              {canEdit && (
                                 <button
-                                  className="version-row"
+                                  type="button"
                                   onClick={() => onOpen(item)}
+                                  title="Editar demanda"
                                 >
-                                  <span>
-                                    <b>{item.title}</b>
-                                    <small>
-                                      {task?.sourceProtocol || "Demanda TI"}
-                                    </small>
-                                  </span>
-                                  <span>
-                                    {task
-                                      ? versionKanbanStage(task)
-                                      : "Etapa não identificada"}
-                                  </span>
-                                  <ChevronRight size={17} />
+                                  <Pencil size={14} />
                                 </button>
-                                <span className="development-inline-actions">
-                                  {canEdit && (
-                                    <button
-                                      type="button"
-                                      onClick={() => onOpen(item)}
-                                      title="Editar demanda"
-                                    >
-                                      <Pencil size={14} />
-                                    </button>
-                                  )}
-                                  {canDelete && (
-                                    <button
-                                      type="button"
-                                      className="delete"
-                                      onClick={() => onDelete(item)}
-                                      title="Excluir demanda"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  )}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </PaginatedItems>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </PaginatedItems>
-          }
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  className="delete"
+                                  onClick={() => onDelete(item)}
+                                  title="Excluir demanda"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>
@@ -1385,7 +1384,7 @@ function DevelopmentColumn({
       </header>
       <div>
         {items.length ? (
-          <PaginatedItems label="demandas de desenvolvimento">
+          <>
             {items.map((item) => (
               <DevelopmentCard
                 item={item}
@@ -1400,7 +1399,7 @@ function DevelopmentColumn({
                 key={item.id}
               />
             ))}
-          </PaginatedItems>
+          </>
         ) : (
           <p>Arraste um card para esta etapa.</p>
         )}
@@ -2474,7 +2473,7 @@ function DevelopmentEvidenceChecklist({
         {entries.length === 0 ? (
           <p>Nenhuma evidência registrada.</p>
         ) : (
-          <PaginatedItems label="demandas de desenvolvimento">
+          <>
             {entries.map((entry) => (
               <label className={entry.done ? "done" : ""} key={entry.id}>
                 <input
@@ -2522,7 +2521,7 @@ function DevelopmentEvidenceChecklist({
                 )}
               </label>
             ))}
-          </PaginatedItems>
+          </>
         )}
       </div>
     </section>

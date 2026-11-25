@@ -5,8 +5,8 @@ export function taskUploadBatches<T extends { name: string; size: number }>(
 ) {
   if (files.length > 10)
     throw new Error("É permitido enviar no máximo 10 arquivos por vez.");
-  if (files.some((file) => file.size <= 0 || file.size > TASK_FILE_BYTES))
-    throw new Error("Selecione arquivos não vazios, com no máximo 25 MB cada.");
+  if (files.some((file) => !Number.isSafeInteger(file.size) || file.size <= 0))
+    throw new Error("Selecione arquivos não vazios.");
   const batches: T[][] = [];
   let bytes = 0;
   for (const file of files) {
@@ -45,7 +45,7 @@ export async function sendTaskFiles(
       }
       throw new Error(
         response.status === 413
-          ? "O envio excedeu o limite do servidor. Cada anexo pode possuir até 25 MB."
+          ? "O servidor de acesso recusou o tamanho do envio. Tente novamente."
           : detail ||
               "Não foi possível enviar os anexos. Os arquivos pendentes continuam selecionados.",
       );

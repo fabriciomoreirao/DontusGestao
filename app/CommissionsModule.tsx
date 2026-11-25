@@ -37,7 +37,6 @@ import {
   Mail,
   MapPin,
   FileDown,
-  Filter,
   Pencil,
   Plus,
   Settings,
@@ -1045,12 +1044,15 @@ export default function CommissionsModule({
         </article>
       </section>
       <section className="commission-filters panel reminder-filter-toolbar">
-        <label>
-          <Filter size={15} />
+        <label className="operational-month-filter">
+          <span>Mês/ano (competência)</span>
           <input
             type="month"
+            required
             value={competence}
-            onChange={(event) => setCompetence(event.target.value)}
+            onChange={(event) =>
+              setCompetence(event.target.value || currentMonth())
+            }
           />
         </label>
         {reminderFilter.control}

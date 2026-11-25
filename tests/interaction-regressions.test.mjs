@@ -469,7 +469,7 @@ test("organiza múltiplos anexos, documentos de cancelamento e ID público", asy
   assertCode.match(cancellations, /requesterPhone:string/);
   assertCode.match(cancellations, /Telefone do responsável pela solicitação/);
   assertCode.match(cancellations, /Telefone da solicitação/);
-  assertCode.match(cancellations, /file\.arrayBuffer\(\)/);
+  assertCode.match(cancellations, /workspaceFileUrl/);
   assertCode.match(cancellations, /typeof globalThis\.crypto\?\.randomUUID/);
   assertCode.doesNotMatch(
     cancellations,
@@ -803,7 +803,7 @@ test("integra campanhas de marketing com qualificação e indicadores do CRM", a
   assertCode.match(marketing, /"Planejada","Em desenvolvimento","Publicada"/);
   assertCode.match(marketing, /Indicadores de campanhas/);
   assertCode.match(marketing, /Nova campanha/);
-  assertCode.match(marketing, /Até 10 arquivos, com no máximo 25 MB cada/);
+  assertCode.match(marketing, /sem limite de tamanho no sistema/);
   assertCode.match(app, /marketingCampaigns=\{data\.items\.filter/);
   assertCode.match(app, /leadQualification/);
   assertCode.match(app, /Link do post/);

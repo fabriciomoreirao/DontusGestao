@@ -101,8 +101,8 @@ test("reenvio mantém apenas arquivos pendentes e valida limites antes de inicia
   assert.throws(() =>
     validateSuggestionFiles(Array.from({ length: 11 }, () => ({ size: 1 }))),
   );
-  assert.throws(() =>
-    validateSuggestionFiles([{ size: 25 * 1024 * 1024 + 1 }]),
+  assert.doesNotThrow(() =>
+    validateSuggestionFiles([{ size: 10_000_000_000 }]),
   );
   const files = [new File(["png"], "a.png"), new File(["pdf"], "b.pdf")];
   const sent = [];

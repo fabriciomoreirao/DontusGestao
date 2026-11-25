@@ -30,9 +30,10 @@ export async function POST(request: Request) {
         method: "POST",
         headers,
         body: request.body,
+        duplex: "half",
         cache: "no-store",
-        signal: AbortSignal.timeout(120_000),
-      },
+        signal: request.signal,
+      } as RequestInit,
     );
     return new Response(response.body, {
       status: response.status,

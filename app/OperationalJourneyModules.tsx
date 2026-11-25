@@ -1,12 +1,17 @@
 "use client";
-
 import PaginatedItems from "@/app/PaginatedItems";
-import { findJourneyAgendaType } from "@/lib/agenda-context";
+import SaleObservation from "@/app/SaleObservation";
+
+import { AgendaTypeSelectionModal } from "@/app/AgendaModule";
 import {
   LIA_FINAL_FOLLOWUP_DAYS,
   liaFinalFollowupDays,
 } from "@/lib/lia-followup";
-import { liaDateFilterError, matchesLiaDates } from "@/lib/lia-date-filter";
+import {
+  liaCalendarDate,
+  liaDateFilterError,
+  matchesLiaDates,
+} from "@/lib/lia-date-filter";
 import PhoneLink from "@/app/PhoneLink";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
 
@@ -102,6 +107,7 @@ type CommonProps = {
 };
 type Detail = {
   kind?: string;
+  saleObservation?: string;
   liaPlan?: string;
   products?: Array<{ product?: string; plan?: string }>;
   validationConfirmedAt?: string;
@@ -201,6 +207,7 @@ export function LiaJourneyModule(props: CommonProps) {
   const [creating, setCreating] = useState(false);
   const [changingOwner, setChangingOwner] = useState(false);
   const [editingClient, setEditingClient] = useState(false);
+  const [allClients, setAllClients] = useState(false);
   const [view, setView] = useState<"board" | "list">("board");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
@@ -219,7 +226,17 @@ export function LiaJourneyModule(props: CommonProps) {
   const dateError = liaDateFilterError(startDate, endDate);
   const filtered = records.filter(
     (i) =>
-      matchesLiaDates(i, startDate, endDate) &&
+      (allClients
+        ? !dateError &&
+          (!startDate ||
+            liaCalendarDate(
+              parseDetail(i.description).startDate || i.created_at,
+            ) >= startDate) &&
+          (!endDate ||
+            liaCalendarDate(
+              parseDetail(i.description).startDate || i.created_at,
+            ) <= endDate)
+        : matchesLiaDates(i, startDate, endDate)) &&
       reminderFilter.matches({
         entityId: i.id,
         clientId: parseDetail(i.description).clientId,
@@ -231,9 +248,11 @@ export function LiaJourneyModule(props: CommonProps) {
           .includes(query.toLowerCase())) &&
       (!owner || i.owner === owner),
   );
-  const visible = filtered.filter(
-    (i) => liaStageForStatus(i.status, liaStages).key === stage.key,
-  );
+  const visible = allClients
+    ? filtered
+    : filtered.filter(
+        (i) => liaStageForStatus(i.status, liaStages).key === stage.key,
+      );
   async function update(item: Item, patch: Partial<Detail>, success: string) {
     const detail = { ...parseDetail(item.description), ...patch };
     const result = await operate(mergeDetail(item, detail), success);
@@ -567,6 +586,20 @@ export function LiaJourneyModule(props: CommonProps) {
         </div>
         <div className="button-row module-page-actions">
           <button
+            type="button"
+            className="secondary-button lia-clients-button"
+            aria-pressed={allClients}
+            onClick={() => {
+              setAllClients((value) => !value);
+              setView("list");
+              setStartDate("");
+              setEndDate("");
+            }}
+          >
+            <List size={16} />
+            {allClients ? "Voltar às etapas" : "Clientes"}
+          </button>
+          <button
             className="secondary-button lia-prompt-button"
             onClick={() => setPromptAdjustments(true)}
           >
@@ -591,66 +624,49 @@ export function LiaJourneyModule(props: CommonProps) {
           )}
         </div>
       </header>
-      <div className="lia-workspace-tabs">
-        <nav
-          className="journey-tabs"
-          aria-label="Etapas do acompanhamento LIA"
-          style={{
-            gridTemplateColumns: liaStages
-              .map(
-                (stage) =>
-                  `minmax(0,${Math.max(22, stage.label.length + 10)}fr)`,
-              )
-              .join(" "),
-          }}
-        >
-          {liaStages.map((s) => (
+      {!allClients && (
+        <div className="lia-workspace-tabs">
+          <nav
+            className="journey-tabs"
+            aria-label="Etapas do acompanhamento LIA"
+            style={{
+              gridTemplateColumns: liaStages
+                .map(
+                  (stage) =>
+                    `minmax(0,${Math.max(22, stage.label.length + 10)}fr)`,
+                )
+                .join(" "),
+            }}
+          >
+            {liaStages.map((s) => (
+              <button
+                key={s.key}
+                className={tab === s.key ? "active" : ""}
+                onClick={() => setTab(s.key)}
+              >
+                <strong className="lia-tab-name">{s.label}</strong>
+                <span className="lia-tab-count">
+                  {
+                    filtered.filter(
+                      (i) =>
+                        liaStageForStatus(i.status, liaStages).key === s.key,
+                    ).length
+                  }
+                </span>
+              </button>
+            ))}
+          </nav>
+          {tab === "completed" && canCreate && (
             <button
-              key={s.key}
-              className={tab === s.key ? "active" : ""}
-              onClick={() => setTab(s.key)}
+              type="button"
+              className="primary-button lia-upload-completed"
+              onClick={() => setBulkOpen(true)}
             >
-              <strong className="lia-tab-name">{s.label}</strong>
-              <span className="lia-tab-count">
-                {
-                  filtered.filter(
-                    (i) => liaStageForStatus(i.status, liaStages).key === s.key,
-                  ).length
-                }
-              </span>
+              <Upload size={16} /> Subir clientes
             </button>
-          ))}
-        </nav>
-        {tab === "completed" && canCreate && (
-          <button
-            type="button"
-            className="primary-button lia-upload-completed"
-            onClick={() => setBulkOpen(true)}
-          >
-            <Upload size={16} /> Subir clientes
-          </button>
-        )}
-        <div className="view-switch" aria-label="Visualização dos clientes LIA">
-          <button
-            type="button"
-            aria-label="Visualizar em cards"
-            aria-pressed={view === "board"}
-            className={view === "board" ? "active" : ""}
-            onClick={() => setView("board")}
-          >
-            <Columns3 size={17} />
-          </button>
-          <button
-            type="button"
-            aria-label="Visualizar em lista"
-            aria-pressed={view === "list"}
-            className={view === "list" ? "active" : ""}
-            onClick={() => setView("list")}
-          >
-            <List size={17} />
-          </button>
+          )}
         </div>
-      </div>
+      )}
       <div className="journey-filterbar reminder-filter-toolbar compact-operational-filters lia-compact-filters">
         <label>
           <Search size={16} />
@@ -686,7 +702,11 @@ export function LiaJourneyModule(props: CommonProps) {
           />
         </label>
         <label>
-          <span>Data final · concluído até</span>
+          <span>
+            {allClients
+              ? "Data final · adicionado até"
+              : "Data final · concluído até"}
+          </span>
           <input
             type="date"
             value={endDate}
@@ -706,6 +726,29 @@ export function LiaJourneyModule(props: CommonProps) {
         >
           Limpar datas
         </button>
+        <div className="view-switch" aria-label="Visualização dos clientes LIA">
+          <button
+            type="button"
+            aria-label="Visualizar em cards"
+            aria-pressed={view === "board"}
+            className={view === "board" ? "active" : ""}
+            onClick={() => {
+              setAllClients(false);
+              setView("board");
+            }}
+          >
+            <Columns3 size={17} />
+          </button>
+          <button
+            type="button"
+            aria-label="Visualizar em lista"
+            aria-pressed={view === "list"}
+            className={view === "list" ? "active" : ""}
+            onClick={() => setView("list")}
+          >
+            <List size={17} />
+          </button>
+        </div>
         <strong>{visible.length} cliente(s)</strong>
       </div>
       {dateError ? (
@@ -714,8 +757,9 @@ export function LiaJourneyModule(props: CommonProps) {
         </p>
       ) : (
         <p id="lia-date-help" className="lia-date-help">
-          A data inicial considera a entrada no acompanhamento. A data final
-          considera apenas clientes concluídos, pela data de conclusão.
+          {allClients
+            ? "Período de entrada do cliente no acompanhamento, incluindo todas as etapas."
+            : "A data inicial considera a entrada no acompanhamento. A data final considera apenas clientes concluídos, pela data de conclusão."}
         </p>
       )}
       {formsError && (
@@ -738,62 +782,150 @@ export function LiaJourneyModule(props: CommonProps) {
                 <th>Início</th>
                 <th>Valor</th>
                 <th>Formulário</th>
+                <th>WhatsApp</th>
+                <th>Origem</th>
+                <th>Atualização</th>
+                <th>Dados e histórico</th>
               </tr>
             </thead>
             <tbody>
-              {
-                <PaginatedItems label="clientes da LIA" table>
-                  {visible.map((item) => {
-                    const detail = parseDetail(item.description);
-                    return (
-                      <tr key={item.id}>
-                        <td>
+              <PaginatedItems
+                key={allClients ? "all" : tab}
+                table
+                label="clientes LIA"
+              >
+                {visible.map((item) => {
+                  const detail = parseDetail(item.description);
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        <button type="button" onClick={() => setSelected(item)}>
+                          <strong>{item.customer_name || item.title}</strong>
+                          <small>
+                            ID{" "}
+                            {detail.clientId ||
+                              item.customer_id ||
+                              item.id.slice(0, 6)}
+                          </small>
+                        </button>
+                      </td>
+                      <td>{liaContractedPlan(detail) || "Não informado"}</td>
+                      <td>{item.owner || "Fila compartilhada"}</td>
+                      <td>
+                        {liaStageForStatus(
+                          item.status,
+                          liaStages,
+                        ).label.replace(/^\d+\. /, "")}
+                      </td>
+                      <td>
+                        {(detail.startDate || item.created_at)
+                          .slice(0, 10)
+                          .split("-")
+                          .reverse()
+                          .join("/")}
+                      </td>
+                      <td>
+                        {(item.amount_cents / 100).toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </td>
+                      <td>
+                        <LiaFormStatus
+                          requests={formRequests.filter(
+                            (entry) => entry.workItemId === item.id,
+                          )}
+                        />
+                      </td>
+                      <td>
+                        <PhoneLink phone={detail.whatsapp || "Não informado"} />
+                      </td>
+                      <td>{detail.sector || item.team || "Não informado"}</td>
+                      <td>
+                        {new Date(item.updated_at).toLocaleString("pt-BR", {
+                          timeZone: "America/Sao_Paulo",
+                        })}
+                      </td>
+                      <td>
+                        <details className="lia-row-details">
+                          <summary>Ver todos os dados</summary>
+                          <dl>
+                            <dt>Kick off</dt>
+                            <dd>
+                              {detail.kickoffDate || "Não agendado"}{" "}
+                              {detail.kickoffTime || ""}
+                            </dd>
+                            <dt>Conferência dos dados</dt>
+                            <dd>
+                              {detail.validationConfirmedAt
+                                ? new Date(
+                                    detail.validationConfirmedAt,
+                                  ).toLocaleString("pt-BR", {
+                                    timeZone: "America/Sao_Paulo",
+                                  })
+                                : "Pendente"}{" "}
+                              {detail.validationConfirmedBy || ""}
+                            </dd>
+                            <dt>Início do acompanhamento final</dt>
+                            <dd>
+                              {detail.finalFollowupStartedAt || "Não iniciado"}
+                            </dd>
+                            <dt>CRM</dt>
+                            <dd>{detail.crmUrl || "Não informado"}</dd>
+                            <dt>Read do Kick off</dt>
+                            <dd>{detail.kickoffReadUrl || "Não informado"}</dd>
+                            <dt>Checklist de configuração</dt>
+                            <dd>
+                              {(detail.checklist ?? []).map((e) => (
+                                <p key={e.id}>
+                                  {e.done ? "Concluído" : "Pendente"} ·{" "}
+                                  {e.label}
+                                </p>
+                              ))}
+                            </dd>
+                            <dt>Checklist de testes</dt>
+                            <dd>
+                              {(detail.testChecklist ?? []).map((e) => (
+                                <p key={e.id}>
+                                  {e.done ? "Concluído" : "Pendente"} ·{" "}
+                                  {e.label}
+                                </p>
+                              ))}
+                            </dd>
+                            <dt>Pendências</dt>
+                            <dd>
+                              {(detail.issues ?? []).map((e) => (
+                                <p key={e.id}>
+                                  {e.resolved ? "Resolvida" : "Aberta"} ·{" "}
+                                  {e.text}
+                                </p>
+                              ))}
+                            </dd>
+                            <dt>Histórico</dt>
+                            <dd>
+                              {(detail.history ?? []).map((e) => (
+                                <p key={e.id}>
+                                  {new Date(e.at).toLocaleString("pt-BR", {
+                                    timeZone: "America/Sao_Paulo",
+                                  })}{" "}
+                                  · {e.author}: {e.text}
+                                </p>
+                              ))}
+                            </dd>
+                          </dl>
                           <button
                             type="button"
+                            className="secondary-button compact"
                             onClick={() => setSelected(item)}
                           >
-                            <strong>{item.customer_name || item.title}</strong>
-                            <small>
-                              ID{" "}
-                              {detail.clientId ||
-                                item.customer_id ||
-                                item.id.slice(0, 6)}
-                            </small>
+                            Abrir cliente
                           </button>
-                        </td>
-                        <td>{liaContractedPlan(detail) || "Não informado"}</td>
-                        <td>{item.owner || "Fila compartilhada"}</td>
-                        <td>
-                          {liaStageForStatus(
-                            item.status,
-                            liaStages,
-                          ).label.replace(/^\d+\. /, "")}
-                        </td>
-                        <td>
-                          {(detail.startDate || item.created_at)
-                            .slice(0, 10)
-                            .split("-")
-                            .reverse()
-                            .join("/")}
-                        </td>
-                        <td>
-                          {(item.amount_cents / 100).toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })}
-                        </td>
-                        <td>
-                          <LiaFormStatus
-                            requests={formRequests.filter(
-                              (entry) => entry.workItemId === item.id,
-                            )}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </PaginatedItems>
-              }
+                        </details>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </PaginatedItems>
             </tbody>
           </table>
           {!visible.length && (
@@ -802,117 +934,110 @@ export function LiaJourneyModule(props: CommonProps) {
         </div>
       ) : (
         <div className="journey-board">
-          {
-            <PaginatedItems label="clientes da LIA">
-              {visible.map((item) => {
-                const d = parseDetail(item.description);
-                const responsible = employees.find(
-                  (employee) => employee.displayName === item.owner,
-                );
-                const lastInteraction =
-                  (d.history ?? []).at(-1)?.at ||
-                  d.startDate ||
-                  item.created_at;
-                return (
-                  <article
-                    data-reminder-entity-id={item.id}
-                    className="journey-card"
-                    key={item.id}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        setSelected(item);
-                      }
-                    }}
-                    onClick={() => setSelected(item)}
+          {visible.map((item) => {
+            const d = parseDetail(item.description);
+            const responsible = employees.find(
+              (employee) => employee.displayName === item.owner,
+            );
+            const lastInteraction =
+              (d.history ?? []).at(-1)?.at || d.startDate || item.created_at;
+            return (
+              <article
+                data-reminder-entity-id={item.id}
+                className="journey-card"
+                key={item.id}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    setSelected(item);
+                  }
+                }}
+                onClick={() => setSelected(item)}
+              >
+                <div className="journey-card-top">
+                  <span className="journey-avatar">
+                    {(item.customer_name || item.title)
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </span>
+                  <span className="status-pill">
+                    {liaStageForStatus(item.status, liaStages).label.replace(
+                      /^\d+\. /,
+                      "",
+                    )}
+                  </span>
+                </div>
+                <h3>{item.customer_name || item.title}</h3>
+                <small>
+                  ID {d.clientId || item.customer_id || item.id.slice(0, 6)}
+                </small>
+                <span className="lia-plan-chip">
+                  Plano LIA: {liaContractedPlan(d) || "Não informado"}
+                </span>
+                <div className="journey-meta">
+                  <span>
+                    <CalendarDays size={14} />
+                    {daysSince(d.startDate || item.created_at)} dias em
+                    acompanhamento
+                  </span>
+                  <span
+                    className={
+                      daysSince(lastInteraction) >= 5
+                        ? "journey-inactive-alert"
+                        : ""
+                    }
                   >
-                    <div className="journey-card-top">
-                      <span className="journey-avatar">
-                        {(item.customer_name || item.title)
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </span>
-                      <span className="status-pill">
-                        {liaStageForStatus(
-                          item.status,
-                          liaStages,
-                        ).label.replace(/^\d+\. /, "")}
-                      </span>
-                    </div>
-                    <h3>{item.customer_name || item.title}</h3>
-                    <small>
-                      ID {d.clientId || item.customer_id || item.id.slice(0, 6)}
-                    </small>
-                    <span className="lia-plan-chip">
-                      Plano LIA: {liaContractedPlan(d) || "Não informado"}
-                    </span>
-                    <div className="journey-meta">
-                      <span>
-                        <CalendarDays size={14} />
-                        {daysSince(d.startDate || item.created_at)} dias em
-                        acompanhamento
-                      </span>
-                      <span
-                        className={
-                          daysSince(lastInteraction) >= 5
-                            ? "journey-inactive-alert"
-                            : ""
-                        }
-                      >
-                        <Clock3 size={14} />
-                        {daysSince(lastInteraction)} dia(s) sem interação
-                      </span>
-                      <span
-                        className="journey-owner-chip"
-                        data-collaborator-name={item.owner}
-                      >
-                        <i
-                          style={
-                            responsible?.photoDataUrl
-                              ? {
-                                  backgroundImage: `url("${responsible.photoDataUrl}")`,
-                                }
-                              : undefined
-                          }
-                        />
-                        {item.owner || "Fila compartilhada"}
-                      </span>
-                    </div>
-                    <div className="lia-card-form-state">
-                      <LiaFormStatus
-                        requests={formRequests.filter(
-                          (entry) => entry.workItemId === item.id,
-                        )}
-                      />
-                      {formRequests.some(
-                        (entry) =>
-                          entry.workItemId === item.id && entry.submittedAt,
-                      ) && (
-                        <a
-                          href={`/lia-form-responses/${item.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          Ver respostas ↗
-                        </a>
-                      )}
-                    </div>
-                    <footer>
-                      <span>
-                        <PhoneLink
-                          phone={d.whatsapp || "WhatsApp não informado"}
-                        />
-                      </span>
-                      <ChevronRight size={17} />
-                    </footer>
-                  </article>
-                );
-              })}
-            </PaginatedItems>
-          }
+                    <Clock3 size={14} />
+                    {daysSince(lastInteraction)} dia(s) sem interação
+                  </span>
+                  <span
+                    className="journey-owner-chip"
+                    data-collaborator-name={item.owner}
+                  >
+                    <i
+                      style={
+                        responsible?.photoDataUrl
+                          ? {
+                              backgroundImage: `url("${responsible.photoDataUrl}")`,
+                            }
+                          : undefined
+                      }
+                    />
+                    {item.owner || "Fila compartilhada"}
+                  </span>
+                </div>
+                <SaleObservation text={d.saleObservation} compact />
+                <div className="lia-card-form-state">
+                  <LiaFormStatus
+                    requests={formRequests.filter(
+                      (entry) => entry.workItemId === item.id,
+                    )}
+                  />
+                  {formRequests.some(
+                    (entry) =>
+                      entry.workItemId === item.id && entry.submittedAt,
+                  ) && (
+                    <a
+                      href={`/lia-form-responses/${item.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      Ver respostas ↗
+                    </a>
+                  )}
+                </div>
+                <footer>
+                  <span>
+                    <PhoneLink phone={d.whatsapp || "WhatsApp não informado"} />
+                  </span>
+                  <ChevronRight size={17} />
+                </footer>
+              </article>
+            );
+          })}
           {!visible.length && (
             <div className="empty-state">
               <ClipboardCheck />
@@ -964,6 +1089,9 @@ export function LiaJourneyModule(props: CommonProps) {
               </button>
             </header>
             <div className="journey-drawer-body">
+              <SaleObservation
+                text={parseDetail(selected.description).saleObservation}
+              />
               <LiaClientForms
                 workItemId={selected.id}
                 clientName={selected.customer_name || selected.title}
@@ -1417,7 +1545,8 @@ function LiaKickoff({
   const [date, setDate] = useState(detail.kickoffDate || "");
   const [time, setTime] = useState(detail.kickoffTime || "");
   const [link, setLink] = useState(detail.kickoffReadUrl || "");
-  async function schedule() {
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  async function schedule(typeId: string) {
     if (!date || !time) return;
     const normalize = (v: string) =>
       v
@@ -1430,9 +1559,8 @@ function LiaKickoff({
           v.active &&
           /lia|ativacao/.test(normalize(`${v.name} ${v.departmentName}`)),
       ) ?? agendaModule?.calendars.find((v) => v.active);
-    const type = findJourneyAgendaType(
-      agendaModule?.types ?? [],
-      "Treinamento",
+    const type = agendaModule?.types.find(
+      (type) => type.active && type.id === typeId,
     );
     const statusValue =
       agendaModule?.statuses.find(
@@ -1473,7 +1601,10 @@ function LiaKickoff({
       },
       "Kick off agendado e incluído na agenda.",
     );
-    if (created) await onScheduled({ kickoffDate: date, kickoffTime: time });
+    if (created) {
+      const saved = await onScheduled({ kickoffDate: date, kickoffTime: time });
+      if (saved) setScheduleOpen(false);
+    }
   }
   async function complete() {
     await onCompleted({
@@ -1492,52 +1623,64 @@ function LiaKickoff({
     });
   }
   return (
-    <section className="journey-action-card">
-      <h3>Kick off</h3>
-      <p>Registre o agendamento e, após a reunião, preserve o link do Read.</p>
-      <div className="field-grid">
+    <>
+      <section className="journey-action-card">
+        <h3>Kick off</h3>
+        <p>
+          Registre o agendamento e, após a reunião, preserve o link do Read.
+        </p>
+        <div className="field-grid">
+          <label>
+            Data
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </label>
+          <label>
+            Horário
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+            />
+          </label>
+        </div>
         <label>
-          Data
+          Link do Read (opcional)
           <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder="https://app.read.ai/..."
           />
         </label>
-        <label>
-          Horário
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-          />
-        </label>
-      </div>
-      <label>
-        Link do Read (opcional)
-        <input
-          value={link}
-          onChange={(e) => setLink(e.target.value)}
-          placeholder="https://app.read.ai/..."
+        <div className="button-row">
+          <button
+            className="secondary-button compact"
+            disabled={!date || !time}
+            onClick={() => setScheduleOpen(true)}
+          >
+            Agendar na agenda
+          </button>
+          <button
+            className="primary-button compact"
+            disabled={!date || !time}
+            onClick={() => void complete()}
+          >
+            Marcar realizado
+          </button>
+        </div>
+      </section>
+      {scheduleOpen && (
+        <AgendaTypeSelectionModal
+          types={agendaModule?.types ?? []}
+          busy={false}
+          onClose={() => setScheduleOpen(false)}
+          onSave={schedule}
         />
-      </label>
-      <div className="button-row">
-        <button
-          className="secondary-button compact"
-          disabled={!date || !time}
-          onClick={() => void schedule()}
-        >
-          Agendar na agenda
-        </button>
-        <button
-          className="primary-button compact"
-          disabled={!date || !time}
-          onClick={() => void complete()}
-        >
-          Marcar realizado
-        </button>
-      </div>
-    </section>
+      )}
+    </>
   );
 }
 function LiaChecklist({

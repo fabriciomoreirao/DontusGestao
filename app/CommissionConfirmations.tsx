@@ -1,6 +1,7 @@
 "use client";
 
 import PaginatedItems from "@/app/PaginatedItems";
+import { mergeRecordRows } from "@/lib/record-pages";
 
 import {
   ArrowRight,
@@ -314,7 +315,13 @@ export function CommissionConfirmationControl({
               Atualizar status
             </button>
             {
-              <PaginatedItems label="links de confirmação">
+              <PaginatedItems
+                label="links de confirmação"
+                source={["commissionConfirmations", module, scope, competence]}
+                onRows={(rows) =>
+                  setConfirmations((current) => mergeRecordRows(current, rows))
+                }
+              >
                 {visible.map((entry) => (
                   <article key={entry.id}>
                     <strong>{entry.employeeName}</strong>

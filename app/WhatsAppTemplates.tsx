@@ -169,7 +169,12 @@ export default function WhatsAppTemplates({
                 </thead>
                 <tbody>
                   {
-                    <PaginatedItems label="templates" table>
+                    <PaginatedItems
+                      label="templates"
+                      table
+                      source={["whatsAppAdmin", "templates"]}
+                      onRows={() => void reload()}
+                    >
                       {state.templates
                         .filter(
                           (t) =>
@@ -394,8 +399,10 @@ function TemplateForm({
           : headerType === "VIDEO"
             ? /^video\/mp4$/
             : /^application\/pdf$/;
-      if (file.size > 10000000 || !type.test(file.type))
-        throw new Error("Escolha uma mídia do tipo selecionado com até 10 MB.");
+      if (!type.test(file.type))
+        throw new Error(
+          "Escolha uma mídia do tipo selecionado sem limite de tamanho no sistema.",
+        );
       const form = new FormData();
       form.set("file", file);
       const result = await waApi<{ handle: string }>(`media/${numberId}`, form);
@@ -541,7 +548,7 @@ function TemplateForm({
                 <small>
                   {handle
                     ? `Enviada à Meta: ${mediaName}`
-                    : "Envie um arquivo de até 10 MB."}
+                    : "Envie um arquivo sem limite de tamanho no sistema."}
                 </small>
               </label>
               <label>

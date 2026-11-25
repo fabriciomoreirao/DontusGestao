@@ -11,6 +11,7 @@ import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { CommissionConfirmationControl } from "@/app/CommissionConfirmations";
 import { useReminderFilter } from "@/app/ReminderFilters";
+import { commissionDate } from "@/lib/commission-rules";
 
 import {
   BadgeCheck,
@@ -112,16 +113,7 @@ const date = (value: string) =>
         new Date(`${value.slice(0, 10)}T12:00:00`),
       )
     : "—";
-const monthKey = (value: string) =>
-  !value
-    ? ""
-    : value.length <= 10
-      ? value.slice(0, 7)
-      : new Intl.DateTimeFormat("en-CA", {
-          year: "numeric",
-          month: "2-digit",
-          timeZone: "America/Sao_Paulo",
-        }).format(new Date(value));
+const monthKey = (value: string) => commissionDate(value)?.slice(0, 7) ?? "";
 const uid = () => crypto.randomUUID();
 export function parseReferral(raw: string): ReferralDetail | null {
   try {
@@ -291,9 +283,12 @@ export default function ReferralsModule({
           .toLowerCase()
           .includes(query.toLowerCase())) &&
       (owner === "all" || item.owner === owner) &&
-      (!["approved", "rejected", "decisions"].includes(tab) ||
-        !month ||
-        monthKey(detail.decisionAt || detail.date) === month),
+      (!month ||
+        monthKey(
+          ["approved", "rejected"].includes(detail.phase)
+            ? detail.decisionAt || detail.date
+            : detail.date,
+        ) === month),
   );
   const update = async (
     item: ReferralWorkItem,
@@ -471,13 +466,19 @@ export default function ReferralsModule({
             <option key={name}>{name}</option>
           ))}
         </select>
-        {["approved", "rejected", "decisions"].includes(tab) && (
+        <label className="operational-month-filter">
+          <span>
+            {["tracking", "conference"].includes(tab)
+              ? "Mês/ano da indicação"
+              : "Mês/ano da decisão"}
+          </span>
           <input
             type="month"
             value={month}
             onChange={(event) => setMonth(event.target.value)}
+            title="Limpe o campo para consultar todos os meses"
           />
-        )}
+        </label>
         <strong>{visible.length} registro(s)</strong>
         {["approved", "rejected", "decisions"].includes(tab) && (
           <CommissionConfirmationControl
@@ -519,7 +520,7 @@ export default function ReferralsModule({
       </section>
       <div className="referral-grid">
         {
-          <PaginatedItems label="indicações">
+          <PaginatedItems mode="cards" label="indicações">
             {visible.map(({ item, detail }) => (
               <article
                 data-reminder-entity-id={item.id}

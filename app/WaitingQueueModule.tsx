@@ -414,7 +414,6 @@ export default function WaitingQueueModule({
   const [selected, setSelected] = useState<WorkItem | null>(null);
   const [editing, setEditing] = useState<WorkItem | null>(null);
   const [contacting, setContacting] = useState<WorkItem | null>(null);
-  const [contactPage, setContactPage] = useState(1);
   const [tab, setTab] = useState<"waiting" | "contacted">("waiting");
   const userEmployee = employees.find(
     (employee) => normalize(employee.email) === normalize(currentUser.email),
@@ -490,12 +489,6 @@ export default function WaitingQueueModule({
   const contacted = visible.filter(
     (entry) => entry.detail.state === "contacted",
   );
-  const contactPageCount = Math.max(1, Math.ceil(contacted.length / 10));
-  const currentContactPage = Math.min(contactPage, contactPageCount);
-  const pageContacts = contacted.slice(
-    (currentContactPage - 1) * 10,
-    currentContactPage * 10,
-  );
   return (
     <section className="waiting-queue-module">
       <header className="module-page-header">
@@ -561,10 +554,7 @@ export default function WaitingQueueModule({
           <CheckCircle2 size={15} /> Contato feito <b>{contacted.length}</b>
         </button>
       </nav>
-      <div
-        className="reminder-filter-toolbar waiting-queue-filters"
-        onChangeCapture={() => setContactPage(1)}
-      >
+      <div className="reminder-filter-toolbar waiting-queue-filters">
         <label className="waiting-queue-search">
           <Search size={17} />
           <input
@@ -614,7 +604,7 @@ export default function WaitingQueueModule({
           <QueueColumn
             title="Contato feito"
             tone="contacted"
-            records={pageContacts}
+            records={contacted}
             totalCount={contacted.length}
             canEdit={canEdit}
             onOpen={setSelected}
@@ -628,39 +618,6 @@ export default function WaitingQueueModule({
           />
         )}
       </div>
-      {tab === "contacted" && (
-        <nav
-          className="chat-pagination service-pagination"
-          aria-label="Páginas de contatos feitos"
-        >
-          <span role="status" aria-live="polite">
-            {contacted.length
-              ? `${(currentContactPage - 1) * 10 + 1}–${Math.min(currentContactPage * 10, contacted.length)} de ${contacted.length} contatos`
-              : "0 contatos"}
-          </span>
-          <div>
-            <button
-              type="button"
-              disabled={currentContactPage <= 1}
-              onClick={() => setContactPage(currentContactPage - 1)}
-            >
-              Anterior
-            </button>
-            <span
-              aria-label={`Página ${currentContactPage} de ${contactPageCount}`}
-            >
-              {currentContactPage}/{contactPageCount}
-            </span>
-            <button
-              type="button"
-              disabled={currentContactPage >= contactPageCount}
-              onClick={() => setContactPage(currentContactPage + 1)}
-            >
-              Seguinte
-            </button>
-          </div>
-        </nav>
-      )}
       {editing && canEdit && (
         <QueueEditModal
           departments={departments}
@@ -783,7 +740,7 @@ function QueueColumn({
         {records.length === 0 ? (
           <p className="waiting-queue-empty">Nenhum cliente nesta coluna.</p>
         ) : (
-          <PaginatedItems label="contatos">
+          <PaginatedItems mode="cards" label="contatos">
             {records.map(({ item, detail }) => (
               <article
                 data-reminder-entity-id={item.id}

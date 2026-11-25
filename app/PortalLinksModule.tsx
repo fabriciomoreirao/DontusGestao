@@ -240,7 +240,7 @@ export function PortalLinksPage({
             </p>
           </div>
         ) : (
-          <PaginatedItems label="links do portal">
+          <PaginatedItems mode="cards" label="links do portal">
             {links.map((entry) => {
               const detail = parseUrl(entry.description);
               return (

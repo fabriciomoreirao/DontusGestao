@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  memo,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -66,15 +67,8 @@ export default forwardRef<HTMLTextAreaElement, Props>(function CommentInput(
     event.currentTarget.value = "";
     if (!incoming.length) return;
     const existing = splitComment(latest.current).files;
-    if (
-      existing.length + incoming.length > 10 ||
-      existing.reduce((sum, file) => sum + file.size, 0) +
-        incoming.reduce((sum, file) => sum + file.size, 0) >
-        15 * 1024 * 1024
-    ) {
-      setError(
-        "Use até 10 arquivos, totalizando no máximo 15 MB por comentário.",
-      );
+    if (existing.length + incoming.length > 10) {
+      setError("Use até 10 arquivos por comentário.");
       return;
     }
     setReading(true);
@@ -147,7 +141,7 @@ export default forwardRef<HTMLTextAreaElement, Props>(function CommentInput(
     <label className="comment-paperclip" title="Anexar arquivos">
       <Paperclip size={18} />
       {!isComposer && (
-        <span>{reading ? "Lendo arquivos…" : "Anexar arquivo"}</span>
+        <span>{reading ? "Enviando arquivos…" : "Anexar arquivo"}</span>
       )}
       <input
         aria-label="Anexar arquivos ao comentário"
@@ -219,7 +213,8 @@ export default forwardRef<HTMLTextAreaElement, Props>(function CommentInput(
           <div className="comment-file-tools">
             {attachment}
             <small>
-              Imagens, vídeos, PDF, Excel e outros · até 5 MB por arquivo
+              Imagens, vídeos, PDF, Excel e outros · sem limite de tamanho no
+              sistema
             </small>
           </div>
         </>
@@ -254,7 +249,11 @@ export default forwardRef<HTMLTextAreaElement, Props>(function CommentInput(
   );
 });
 
-export function CommentContent({ text }: { text?: string }) {
+export const CommentContent = memo(function CommentContent({
+  text,
+}: {
+  text?: string;
+}) {
   const content = splitComment(text || "");
   return (
     <span className="comment-content">
@@ -277,8 +276,12 @@ export function CommentContent({ text }: { text?: string }) {
       )}
     </span>
   );
-}
+});
 export function openFile(file: CommentFile) {
+  if (file.dataUrl.startsWith("/api/workspace-files/")) {
+    window.open(file.dataUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
   const raw = atob(file.dataUrl.slice(file.dataUrl.indexOf(",") + 1));
   const bytes = Uint8Array.from(raw, (char) => char.charCodeAt(0));
   const preview =

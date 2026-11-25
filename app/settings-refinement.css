@@ -179,7 +179,8 @@
   min-height: 42px;
   box-sizing: border-box;
 }
-.task-catalog-modal:has(input[name="acceptsNewTasks"]) form {
+/* Avoid a name-based :has(): React updates input names during text entry. */
+.task-catalog-modal form.task-status-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .task-catalog-modal .catalog-form form .catalog-field {

@@ -1,6 +1,8 @@
 "use client";
-
 import PaginatedItems from "@/app/PaginatedItems";
+
+import CustomerSelect from "@/app/CustomerSelect";
+
 import "./task-search-filters.css";
 import {
   taskDeliveryDate,
@@ -437,6 +439,7 @@ export default function TasksModule({
   const [priority, setPriority] = useState("");
   const [assignee, setAssignee] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
+  const [onlyPriority, setOnlyPriority] = useState(false);
   const [approvalFilter, setApprovalFilter] = useState("");
   const [clientNotice, setClientNotice] = useState("Todos");
   const filterResultsRef = useRef<HTMLDivElement>(null);
@@ -546,6 +549,7 @@ export default function TasksModule({
           ) &&
             (approvalFilter === "all" ||
               task.approverUserId === approvalFilter))) &&
+        (!onlyPriority || Boolean(taskPriorityRequest(task.history))) &&
         (!priorityFilter || task.priorityId === priorityFilter) &&
         (!assigneeFilter || task.assigneeUserId === assigneeFilter) &&
         (clientNotice === "Todos" ||
@@ -566,6 +570,7 @@ export default function TasksModule({
     assigneeFilter,
     clientNotice,
     onlyMine,
+    onlyPriority,
     currentCollaborator,
     user.displayName,
     reminderFilter.matches,
@@ -711,6 +716,15 @@ export default function TasksModule({
                 />
                 Somente minhas
               </label>
+              <label className="mine-filter task-priority-filter">
+                <input
+                  type="checkbox"
+                  checked={onlyPriority}
+                  onChange={(event) => setOnlyPriority(event.target.checked)}
+                />
+                <Flag size={15} />
+                Prioridade
+              </label>
               <button
                 type="button"
                 className="secondary-button task-filter-reset"
@@ -721,6 +735,7 @@ export default function TasksModule({
                   setAssignee("");
                   setClientNotice("Todos");
                   setOnlyMine(false);
+                  setOnlyPriority(false);
                   setApprovalFilter("");
                   reminderFilter.setMode("all");
                 }}
@@ -1071,125 +1086,123 @@ function Kanban({
               {column.length === 0 && (
                 <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>
               )}
-              {
-                <PaginatedItems label="tarefas">
-                  {column.map((task) => (
-                    <article
-                      draggable={!busy && canDrag(task)}
-                      tabIndex={0}
-                      role="button"
-                      className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`}
-                      data-reminder-entity-id={task.id}
-                      data-reminder-client-id={task.customerCode}
-                      data-reminder-customer-name={task.customerName}
-                      key={task.id}
-                      onDragStart={(e) => {
-                        beginKanbanDrag(e, "taskId", task.id);
-                        setDraggedId(task.id);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedId("");
-                        document
-                          .querySelectorAll(".task-column.drag-over")
-                          .forEach((column) =>
-                            column.classList.remove("drag-over"),
-                          );
-                      }}
-                      onClick={() => onOpen(task)}
-                      onKeyDown={(event) => {
-                        if (
-                          event.target === event.currentTarget &&
-                          (event.key === "Enter" || event.key === " ")
-                        ) {
-                          event.preventDefault();
-                          onOpen(task);
-                        }
-                      }}
+              {column.map((task) => (
+                <article
+                  draggable={!busy && canDrag(task)}
+                  tabIndex={0}
+                  role="button"
+                  className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`}
+                  data-reminder-entity-id={task.id}
+                  data-reminder-client-id={task.customerCode}
+                  data-reminder-customer-name={task.customerName}
+                  key={task.id}
+                  onDragStart={(e) => {
+                    beginKanbanDrag(e, "taskId", task.id);
+                    setDraggedId(task.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedId("");
+                    document
+                      .querySelectorAll(".task-column.drag-over")
+                      .forEach((column) =>
+                        column.classList.remove("drag-over"),
+                      );
+                  }}
+                  onClick={() => onOpen(task)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.target === event.currentTarget &&
+                      (event.key === "Enter" || event.key === " ")
+                    ) {
+                      event.preventDefault();
+                      onOpen(task);
+                    }
+                  }}
+                >
+                  <div className="task-card-heading">
+                    <strong className="task-card-title">{task.title}</strong>
+                    <TaskClientStateBadge
+                      state={task.clientNotificationState}
+                    />
+                  </div>
+                  <div className="task-card-labels">
+                    <span className="task-card-type">
+                      <CircleDot size={13} />
+                      <span>{task.typeName}</span>
+                    </span>
+                    {taskPriorityRequest(task.history) && (
+                      <Flag
+                        className="task-priority-flag"
+                        size={15}
+                        aria-label="Prioridade solicitada"
+                      />
+                    )}
+                  </div>
+                  <div className="task-card-meta">
+                    <span className="task-card-priority">
+                      <i style={{ background: task.priorityColor }} />
+                      {task.priorityName}
+                    </span>
+                    <span
+                      className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}
                     >
-                      <div className="task-card-heading">
-                        <strong className="task-card-title">
-                          {task.title}
-                        </strong>
-                        <TaskClientStateBadge
-                          state={task.clientNotificationState}
-                        />
-                      </div>
-                      <div className="task-card-labels">
-                        <span className="task-card-type">
-                          <CircleDot size={13} />
-                          <span>{task.typeName}</span>
-                        </span>
-                      </div>
-                      <div className="task-card-meta">
-                        <span className="task-card-priority">
-                          <i style={{ background: task.priorityColor }} />
-                          {task.priorityName}
-                        </span>
-                        <span
-                          className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}
+                      <Clock3 size={12} />{" "}
+                      {task.completedAt
+                        ? "Concluída"
+                        : `${task.slaState} · ${dt(task.slaDueAt)}`}
+                    </span>
+                  </div>
+                  <footer>
+                    <div className="task-card-sector-deadline">
+                      <span className="task-card-department">
+                        <UsersRound size={14} /> {task.departmentName}
+                      </span>
+                      <TaskDeliveryDeadline task={task} compact />
+                    </div>
+                    <span className="task-card-owner">
+                      <CollaboratorAvatar
+                        collaborator={collaborators.find(
+                          (item) => item.id === task.assigneeUserId,
+                        )}
+                      />
+                      <span>
+                        <small>Responsável</small>
+                        <b>{task.assigneeName}</b>
+                      </span>
+                      <ChevronRight size={17} className="task-card-open-icon" />
+                    </span>
+                  </footer>
+                  {canEdit && task.canModify && (
+                    <div className="task-card-bottom-actions">
+                      <span className="task-card-actions">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onEdit(task);
+                          }}
+                          title="Editar tarefa"
+                          aria-label="Editar tarefa"
                         >
-                          <Clock3 size={12} />{" "}
-                          {task.completedAt
-                            ? "Concluída"
-                            : `${task.slaState} · ${dt(task.slaDueAt)}`}
-                        </span>
-                      </div>
-                      <footer>
-                        <div className="task-card-sector-deadline">
-                          <span className="task-card-department">
-                            <UsersRound size={14} /> {task.departmentName}
-                          </span>
-                          <TaskDeliveryDeadline task={task} compact />
-                        </div>
-                        <span className="task-card-owner">
-                          <CollaboratorAvatar
-                            collaborator={collaborators.find(
-                              (item) => item.id === task.assigneeUserId,
-                            )}
-                          />
-                          <span>
-                            <small>Responsável</small>
-                            <b>{task.assigneeName}</b>
-                          </span>
-                          <ChevronRight
-                            size={17}
-                            className="task-card-open-icon"
-                          />
-                        </span>
-                      </footer>
-                      {canEdit && task.canModify && (
-                        <div className="task-card-bottom-actions">
-                          <span className="task-card-actions">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onEdit(task);
-                              }}
-                              title="Editar tarefa"
-                              aria-label="Editar tarefa"
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            <button
-                              type="button"
-                              className="delete"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onDelete(task);
-                              }}
-                              title="Excluir tarefa"
-                              aria-label="Excluir tarefa"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </span>
-                        </div>
-                      )}
-                    </article>
-                  ))}
-                </PaginatedItems>
-              }
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="delete"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDelete(task);
+                          }}
+                          title="Excluir tarefa"
+                          aria-label="Excluir tarefa"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </span>
+                    </div>
+                  )}
+                </article>
+              ))}
             </div>
           </section>
         );
@@ -1249,7 +1262,7 @@ function TaskList({
           Nenhuma tarefa encontrada com estes filtros.
         </div>
       ) : (
-        <PaginatedItems label="tarefas e cadastros">
+        <PaginatedItems label="tarefas">
           {tasks.map((task) => (
             <button
               className="task-table-row"
@@ -1554,19 +1567,15 @@ export function CreateTaskModal({
               </label>
               <label>
                 Cliente
-                <select
+                <CustomerSelect
                   name="customerId"
                   disabled={customerLocked}
                   value={customerId}
                   onChange={(event) => selectCustomer(event.target.value)}
-                >
-                  <option value="">Sem cliente vinculado</option>
-                  {customers.map((c) => (
-                    <option value={c.id} key={c.id}>
-                      {c.trade_name}
-                    </option>
-                  ))}
-                </select>
+                  customers={customers}
+                  emptyLabel="Sem cliente vinculado"
+                  label="tradeName"
+                />
               </label>
               <label>
                 WhatsApp do cliente *
@@ -1705,7 +1714,7 @@ export function CreateTaskModal({
                   ? `${files.length} arquivo(s) selecionado(s)`
                   : undefined
               }
-              hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, com no máximo 25 MB cada."
+              hint="Selecione vários arquivos de uma vez ou adicione outros depois. Até 10 arquivos, sem limite de tamanho no sistema."
               onChange={(event) => {
                 const selectedFiles = Array.from(
                   event.currentTarget.files ?? [],
@@ -1814,7 +1823,7 @@ function EditTaskModal({
         </label>
         <label>
           Cliente
-          <select
+          <CustomerSelect
             name="customerId"
             value={customerId}
             onChange={(event) => {
@@ -1824,14 +1833,10 @@ function EditTaskModal({
               );
               if (customer) setCustomerCode(publicCustomerCode(customer));
             }}
-          >
-            <option value="">Sem cliente vinculado</option>
-            {customers.map((customer) => (
-              <option value={customer.id} key={customer.id}>
-                {customer.trade_name}
-              </option>
-            ))}
-          </select>
+            customers={customers}
+            emptyLabel="Sem cliente vinculado"
+            label="tradeName"
+          />
         </label>
         <label>
           ID do cliente
@@ -1950,7 +1955,6 @@ export function TaskDetail({
     canManage,
   );
   const canEdit = moduleCanEdit && canInteract;
-  const [comment, setComment] = useState("");
   const [commentLimit, setCommentLimit] = useState(5);
   const [historyLimit, setHistoryLimit] = useState(5);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -1966,11 +1970,19 @@ export function TaskDetail({
     reveal();
     return () => observer.disconnect();
   }, [historyOpen]);
-  const commentsByDate = [...task.comments].sort(
-    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+  const commentsByDate = useMemo(
+    () =>
+      [...task.comments].sort(
+        (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+      ),
+    [task.comments],
   );
-  const historyByDate = [...task.history].sort(
-    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+  const historyByDate = useMemo(
+    () =>
+      [...task.history].sort(
+        (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+      ),
+    [task.history],
   );
   useEffect(() => {
     setCommentLimit(5);
@@ -1979,9 +1991,7 @@ export function TaskDetail({
   }, [task.id]);
   const [transferOpen, setTransferOpen] = useState(false);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
-  const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [fileInputKey, setFileInputKey] = useState(0);
-  const [showEmojis, setShowEmojis] = useState(false);
   const [clientNoticeOpen, setClientNoticeOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState<{
     url: string;
@@ -2015,7 +2025,6 @@ export function TaskDetail({
   const [responsibleUserId, setResponsibleUserId] = useState(
     task.assigneeUserId ?? "",
   );
-  const commentInput = useRef<HTMLTextAreaElement>(null);
   const attachmentInput = useRef<HTMLInputElement>(null);
   const availableAssignees = module.collaborators.filter(
     (collaborator) => collaborator.active,
@@ -2099,66 +2108,6 @@ export function TaskDetail({
   const resumeStatus =
     availableStatuses.find((status) => !status.isFinal && status.isInitial) ??
     availableStatuses.find((status) => !status.isFinal);
-  const insertEmoji = (emoji: string) => {
-    const input = commentInput.current;
-    const start = input?.selectionStart ?? comment.length;
-    const end = input?.selectionEnd ?? start;
-    const next = `${comment.slice(0, start)}${emoji}${comment.slice(end)}`;
-    setComment(next);
-    requestAnimationFrame(() => {
-      input?.focus();
-      input?.setSelectionRange(start + emoji.length, start + emoji.length);
-    });
-  };
-  const [pendingCommentId, setPendingCommentId] = useState<string | null>(null);
-  const [commentError, setCommentError] = useState("");
-  const submitComment = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (busy || !comment.trim()) return;
-    try {
-      taskUploadBatches(commentFiles);
-    } catch (error) {
-      setCommentError(
-        error instanceof Error
-          ? error.message
-          : "Confira os arquivos selecionados.",
-      );
-      return;
-    }
-    setCommentError("");
-    const result = pendingCommentId
-      ? { id: pendingCommentId }
-      : await operate(
-          { action: "addTaskComment", taskId: task.id, body: comment },
-          "Comentário registrado.",
-        );
-    if (!result) return;
-    if (commentFiles.length) {
-      if (!result.id) {
-        setCommentError(
-          "O comentário foi salvo, mas não foi possível vincular os arquivos. Reabra a tarefa para anexá-los.",
-        );
-        return;
-      }
-      setPendingCommentId(result.id);
-      if (
-        !(await uploadAttachments(task.id, commentFiles, result.id, (sent) =>
-          setCommentFiles((current) =>
-            current.filter((file) => !sent.includes(file)),
-          ),
-        ))
-      ) {
-        setCommentError(
-          "O comentário foi salvo. Reenvie os anexos pendentes para concluir.",
-        );
-        return;
-      }
-    }
-    setPendingCommentId(null);
-    setComment("");
-    setCommentFiles([]);
-    setShowEmojis(false);
-  };
   const selectAndUploadAttachments = async (files: File[]) => {
     setAttachmentFiles(files);
     if (files.length === 0) return;
@@ -2588,122 +2537,15 @@ export function TaskDetail({
                 Ver mais comentários ({task.comments.length - commentLimit})
               </button>
             )}
-            {commentError && <p role="alert">{commentError}</p>}
             {canEdit && (
-              <form data-comment-composer="true" onSubmit={submitComment}>
-                <label htmlFor="task-comment" className="sr-only">
-                  Adicionar comentário
-                </label>
-                <CommentEditor
-                  data-comment-input="true"
-                  ref={commentInput}
-                  id="task-comment"
-                  rows={2}
-                  readOnly={!!pendingCommentId}
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Escreva uma mensagem…"
-                />
-                <div className="task-comment-tools">
-                  <button
-                    className={showEmojis ? "active" : ""}
-                    type="button"
-                    onClick={() => setShowEmojis((value) => !value)}
-                    aria-label="Adicionar emoji"
-                    title="Adicionar emoji"
-                  >
-                    <Smile size={17} />
-                  </button>
-                  <label
-                    className="comment-file-picker"
-                    title="Anexar arquivos"
-                  >
-                    <Paperclip size={17} />
-                    <span className="sr-only">Anexar arquivos</span>
-                    <input
-                      type="file"
-                      multiple
-                      onChange={(event) =>
-                        setCommentFiles((current) =>
-                          mergeSelectedFiles(
-                            current,
-                            Array.from(event.target.files ?? []),
-                          ),
-                        )
-                      }
-                    />
-                  </label>
-                  {showEmojis && (
-                    <div
-                      className="task-emoji-picker"
-                      aria-label="Emojis rápidos"
-                    >
-                      {[
-                        "😀",
-                        "👍",
-                        "✅",
-                        "🎯",
-                        "🚨",
-                        "🙏",
-                        "📌",
-                        "💬",
-                        "📎",
-                        "🚀",
-                      ].map((emoji) => (
-                        <button
-                          type="button"
-                          onClick={() => insertEmoji(emoji)}
-                          key={emoji}
-                          aria-label={`Inserir ${emoji}`}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {commentFiles.length > 0 && (
-                  <div className="comment-selected-files">
-                    {commentFiles.map((file) => (
-                      <button
-                        type="button"
-                        key={`${file.name}-${file.lastModified}`}
-                        onClick={() => {
-                          if (
-                            /^(image\/(png|jpeg|gif|webp|avif)|video\/(mp4|webm|ogg|quicktime))$/.test(
-                              file.type,
-                            )
-                          )
-                            setAttachmentPreview({
-                              url: URL.createObjectURL(file),
-                              name: file.name,
-                              video: file.type.startsWith("video/"),
-                              temporary: true,
-                            });
-                          else downloadSelectedTaskFile(file);
-                        }}
-                      >
-                        <Paperclip size={13} />
-                        {file.name}
-                        <small>Clique para visualizar</small>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <footer>
-                  <small>
-                    {comment.length} caracteres · {commentFiles.length}{" "}
-                    arquivo(s)
-                  </small>
-                  <button
-                    data-comment-submit="true"
-                    disabled={busy || !comment.trim()}
-                  >
-                    <Send size={17} />
-                    <span className="sr-only">Enviar</span>
-                  </button>
-                </footer>
-              </form>
+              <TaskCommentComposer
+                key={task.id}
+                taskId={task.id}
+                busy={busy}
+                operate={operate}
+                uploadAttachments={uploadAttachments}
+                onPreview={setAttachmentPreview}
+              />
             )}
           </section>
         </main>
@@ -3242,6 +3084,192 @@ export function TaskDetail({
   );
 }
 
+function TaskCommentComposer({
+  taskId,
+  busy,
+  operate,
+  uploadAttachments,
+  onPreview,
+}: {
+  taskId: string;
+  busy: boolean;
+  operate: Props["operate"];
+  uploadAttachments: Props["uploadAttachments"];
+  onPreview: (preview: {
+    url: string;
+    name: string;
+    video: boolean;
+    temporary?: boolean;
+  }) => void;
+}) {
+  const [comment, setComment] = useState("");
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
+  const [showEmojis, setShowEmojis] = useState(false);
+  const commentInput = useRef<HTMLTextAreaElement>(null);
+
+  const insertEmoji = (emoji: string) => {
+    const input = commentInput.current;
+    const start = input?.selectionStart ?? comment.length;
+    const end = input?.selectionEnd ?? start;
+    const next = `${comment.slice(0, start)}${emoji}${comment.slice(end)}`;
+    setComment(next);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
+  };
+  const [pendingCommentId, setPendingCommentId] = useState<string | null>(null);
+  const [commentError, setCommentError] = useState("");
+  const submitComment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy || !comment.trim()) return;
+    try {
+      taskUploadBatches(commentFiles);
+    } catch (error) {
+      setCommentError(
+        error instanceof Error
+          ? error.message
+          : "Confira os arquivos selecionados.",
+      );
+      return;
+    }
+    setCommentError("");
+    const result = pendingCommentId
+      ? { id: pendingCommentId }
+      : await operate(
+          { action: "addTaskComment", taskId, body: comment },
+          "Comentário registrado.",
+        );
+    if (!result) return;
+    if (commentFiles.length) {
+      if (!result.id) {
+        setCommentError(
+          "O comentário foi salvo, mas não foi possível vincular os arquivos. Reabra a tarefa para anexá-los.",
+        );
+        return;
+      }
+      setPendingCommentId(result.id);
+      if (
+        !(await uploadAttachments(taskId, commentFiles, result.id, (sent) =>
+          setCommentFiles((current) =>
+            current.filter((file) => !sent.includes(file)),
+          ),
+        ))
+      ) {
+        setCommentError(
+          "O comentário foi salvo. Reenvie os anexos pendentes para concluir.",
+        );
+        return;
+      }
+    }
+    setPendingCommentId(null);
+    setComment("");
+    setCommentFiles([]);
+    setShowEmojis(false);
+  };
+
+  return (
+    <>
+      {commentError && <p role="alert">{commentError}</p>}
+      <form data-comment-composer="true" onSubmit={submitComment}>
+        <label htmlFor="task-comment" className="sr-only">
+          Adicionar comentário
+        </label>
+        <CommentEditor
+          data-comment-input="true"
+          ref={commentInput}
+          id="task-comment"
+          rows={2}
+          readOnly={!!pendingCommentId}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Escreva uma mensagem…"
+        />
+        <div className="task-comment-tools">
+          <button
+            className={showEmojis ? "active" : ""}
+            type="button"
+            onClick={() => setShowEmojis((value) => !value)}
+            aria-label="Adicionar emoji"
+            title="Adicionar emoji"
+          >
+            <Smile size={17} />
+          </button>
+          <label className="comment-file-picker" title="Anexar arquivos">
+            <Paperclip size={17} />
+            <span className="sr-only">Anexar arquivos</span>
+            <input
+              type="file"
+              multiple
+              onChange={(event) =>
+                setCommentFiles((current) =>
+                  mergeSelectedFiles(
+                    current,
+                    Array.from(event.target.files ?? []),
+                  ),
+                )
+              }
+            />
+          </label>
+          {showEmojis && (
+            <div className="task-emoji-picker" aria-label="Emojis rápidos">
+              {["😀", "👍", "✅", "🎯", "🚨", "🙏", "📌", "💬", "📎", "🚀"].map(
+                (emoji) => (
+                  <button
+                    type="button"
+                    onClick={() => insertEmoji(emoji)}
+                    key={emoji}
+                    aria-label={`Inserir ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ),
+              )}
+            </div>
+          )}
+        </div>
+        {commentFiles.length > 0 && (
+          <div className="comment-selected-files">
+            {commentFiles.map((file) => (
+              <button
+                type="button"
+                key={`${file.name}-${file.lastModified}`}
+                onClick={() => {
+                  if (
+                    /^(image\/(png|jpeg|gif|webp|avif)|video\/(mp4|webm|ogg|quicktime))$/.test(
+                      file.type,
+                    )
+                  )
+                    onPreview({
+                      url: URL.createObjectURL(file),
+                      name: file.name,
+                      video: file.type.startsWith("video/"),
+                      temporary: true,
+                    });
+                  else downloadSelectedTaskFile(file);
+                }}
+              >
+                <Paperclip size={13} />
+                {file.name}
+                <small>Clique para visualizar</small>
+              </button>
+            ))}
+          </div>
+        )}
+        <footer>
+          <small>
+            {comment.length} caracteres · {commentFiles.length} arquivo(s)
+          </small>
+          <button data-comment-submit="true" disabled={busy || !comment.trim()}>
+            <Send size={17} />
+            <span className="sr-only">Enviar</span>
+          </button>
+        </footer>
+      </form>
+    </>
+  );
+}
+
 function downloadSelectedTaskFile(file: File) {
   const url = URL.createObjectURL(
     new Blob([file], { type: "application/octet-stream" }),
@@ -3762,6 +3790,7 @@ function TaskSettings({
               }))}
             >
               <form
+                className="task-status-form"
                 key={editingId ?? "new"}
                 onSubmit={submit("saveTaskStatus", "Etapa do Kanban salva.")}
               >
@@ -3977,73 +4006,71 @@ function TaskSettings({
                 <b>{module.collaborators.length} registro(s)</b>
               </div>
               <div className="collaborator-list">
-                {
-                  <PaginatedItems label="tarefas e cadastros">
-                    {module.collaborators.map((c) => (
-                      <form
-                        key={c.id}
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          const f = new FormData(e.currentTarget);
-                          await operate(
-                            {
-                              action: "saveTaskCollaborator",
-                              userId: c.id,
-                              phone: f.get("phone"),
-                              jobTitle: f.get("jobTitle"),
-                              departmentIds: f.getAll("departmentIds"),
-                              coordinatorDepartmentIds: f.getAll(
-                                "coordinatorDepartmentIds",
-                              ),
-                              active: f.has("active"),
-                            },
-                            "Colaborador atualizado.",
-                          );
-                        }}
-                      >
-                        <div className="collaborator-identity">
-                          <CollaboratorAvatar collaborator={c} />
-                          <span>
-                            <b>{c.name}</b>
-                            <small>{c.email}</small>
-                          </span>
-                        </div>
-                        <PhoneInput
-                          name="phone"
-                          defaultValue={c.phone}
-                          placeholder="Telefone"
-                          aria-label={`Telefone de ${c.name}`}
-                        />
-                        <input
-                          name="jobTitle"
-                          defaultValue={c.jobTitle}
-                          placeholder="Cargo"
-                          aria-label={`Cargo de ${c.name}`}
-                        />
-                        <CheckGroup
-                          legend="Setores"
-                          name="departmentIds"
-                          values={module.departments.map((d) => ({
-                            id: d.id,
-                            label: d.name,
-                          }))}
-                          selected={c.departmentIds}
-                        />
-                        <CheckGroup
-                          legend="Coordena"
-                          name="coordinatorDepartmentIds"
-                          values={module.departments.map((d) => ({
-                            id: d.id,
-                            label: d.name,
-                          }))}
-                          selected={c.coordinatorDepartmentIds}
-                        />
-                        <ActiveField value={c.active} />
-                        <button disabled={busy}>Salvar alterações</button>
-                      </form>
-                    ))}
-                  </PaginatedItems>
-                }
+                <PaginatedItems label="registros">
+                  {module.collaborators.map((c) => (
+                    <form
+                      key={c.id}
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const f = new FormData(e.currentTarget);
+                        await operate(
+                          {
+                            action: "saveTaskCollaborator",
+                            userId: c.id,
+                            phone: f.get("phone"),
+                            jobTitle: f.get("jobTitle"),
+                            departmentIds: f.getAll("departmentIds"),
+                            coordinatorDepartmentIds: f.getAll(
+                              "coordinatorDepartmentIds",
+                            ),
+                            active: f.has("active"),
+                          },
+                          "Colaborador atualizado.",
+                        );
+                      }}
+                    >
+                      <div className="collaborator-identity">
+                        <CollaboratorAvatar collaborator={c} />
+                        <span>
+                          <b>{c.name}</b>
+                          <small>{c.email}</small>
+                        </span>
+                      </div>
+                      <PhoneInput
+                        name="phone"
+                        defaultValue={c.phone}
+                        placeholder="Telefone"
+                        aria-label={`Telefone de ${c.name}`}
+                      />
+                      <input
+                        name="jobTitle"
+                        defaultValue={c.jobTitle}
+                        placeholder="Cargo"
+                        aria-label={`Cargo de ${c.name}`}
+                      />
+                      <CheckGroup
+                        legend="Setores"
+                        name="departmentIds"
+                        values={module.departments.map((d) => ({
+                          id: d.id,
+                          label: d.name,
+                        }))}
+                        selected={c.departmentIds}
+                      />
+                      <CheckGroup
+                        legend="Coordena"
+                        name="coordinatorDepartmentIds"
+                        values={module.departments.map((d) => ({
+                          id: d.id,
+                          label: d.name,
+                        }))}
+                        selected={c.coordinatorDepartmentIds}
+                      />
+                      <ActiveField value={c.active} />
+                      <button disabled={busy}>Salvar alterações</button>
+                    </form>
+                  ))}
+                </PaginatedItems>
               </div>
             </div>
           )}
@@ -4114,44 +4141,42 @@ function LegacyCatalog({
         </b>
       </div>
       <div className="catalog-list">
-        {
-          <PaginatedItems label="tarefas e cadastros">
-            {items.map((item) => (
-              <article
-                className={editingId === item.id ? "selected" : ""}
-                key={item.id}
-              >
-                <i
-                  style={{
-                    background:
-                      item.color ?? (item.active ? "#22c55e" : "#94a3b8"),
-                  }}
-                />
-                <span>
-                  <b>{item.title}</b>
-                  <small>{item.subtitle || "Sem descrição"}</small>
-                </span>
-                <em className={item.active ? "active" : "inactive"}>
-                  {item.active ? "Ativo" : "Inativo"}
-                </em>
-                <button type="button" onClick={() => onEdit(item.id)}>
-                  Editar
+        <PaginatedItems label="registros">
+          {items.map((item) => (
+            <article
+              className={editingId === item.id ? "selected" : ""}
+              key={item.id}
+            >
+              <i
+                style={{
+                  background:
+                    item.color ?? (item.active ? "#22c55e" : "#94a3b8"),
+                }}
+              />
+              <span>
+                <b>{item.title}</b>
+                <small>{item.subtitle || "Sem descrição"}</small>
+              </span>
+              <em className={item.active ? "active" : "inactive"}>
+                {item.active ? "Ativo" : "Inativo"}
+              </em>
+              <button type="button" onClick={() => onEdit(item.id)}>
+                Editar
+              </button>
+              {actions && catalog && (
+                <button
+                  type="button"
+                  className="catalog-delete-action"
+                  onClick={() =>
+                    void actions.remove(catalog, item.id, item.title)
+                  }
+                >
+                  <Trash2 size={14} /> Desativar
                 </button>
-                {actions && catalog && (
-                  <button
-                    type="button"
-                    className="catalog-delete-action"
-                    onClick={() =>
-                      void actions.remove(catalog, item.id, item.title)
-                    }
-                  >
-                    <Trash2 size={14} /> Desativar
-                  </button>
-                )}
-              </article>
-            ))}
-          </PaginatedItems>
-        }
+              )}
+            </article>
+          ))}
+        </PaginatedItems>
       </div>
     </div>
   );
@@ -4242,54 +4267,52 @@ function Catalog({
             consultar e reativar registros.
           </p>
         )}
-        {
-          <PaginatedItems label="tarefas e cadastros">
-            {visibleItems.map((item) => (
-              <article
-                className={editingId === item.id ? "selected" : ""}
-                key={item.id}
-              >
-                <i
-                  style={{
-                    background:
-                      item.color ?? (item.active ? "#22c55e" : "#94a3b8"),
-                  }}
-                />
-                <span>
-                  <b>{item.title}</b>
-                  <small>{item.subtitle || "Sem descrição"}</small>
-                </span>
-                <em className={item.active ? "active" : "inactive"}>
-                  {item.active ? "Ativo" : "Inativo"}
-                </em>
-                {actions && catalog && (
-                  <button
-                    type="button"
-                    className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`}
-                    onClick={() =>
-                      void actions.toggle(catalog, item.id, item.title)
-                    }
-                    aria-label={
-                      item.active
-                        ? `Bloquear ${item.title}`
-                        : `Reativar ${item.title}`
-                    }
-                    title={
-                      item.active
-                        ? "Bloquear temporariamente"
-                        : "Reativar cadastro"
-                    }
-                  >
-                    <Power size={14} />
-                  </button>
-                )}
-                <button type="button" onClick={() => onEdit(item.id)}>
-                  Editar
+        <PaginatedItems label="registros">
+          {visibleItems.map((item) => (
+            <article
+              className={editingId === item.id ? "selected" : ""}
+              key={item.id}
+            >
+              <i
+                style={{
+                  background:
+                    item.color ?? (item.active ? "#22c55e" : "#94a3b8"),
+                }}
+              />
+              <span>
+                <b>{item.title}</b>
+                <small>{item.subtitle || "Sem descrição"}</small>
+              </span>
+              <em className={item.active ? "active" : "inactive"}>
+                {item.active ? "Ativo" : "Inativo"}
+              </em>
+              {actions && catalog && (
+                <button
+                  type="button"
+                  className={`catalog-icon-button ${item.active ? "lock" : "unlock"}`}
+                  onClick={() =>
+                    void actions.toggle(catalog, item.id, item.title)
+                  }
+                  aria-label={
+                    item.active
+                      ? `Bloquear ${item.title}`
+                      : `Reativar ${item.title}`
+                  }
+                  title={
+                    item.active
+                      ? "Bloquear temporariamente"
+                      : "Reativar cadastro"
+                  }
+                >
+                  <Power size={14} />
                 </button>
-              </article>
-            ))}
-          </PaginatedItems>
-        }
+              )}
+              <button type="button" onClick={() => onEdit(item.id)}>
+                Editar
+              </button>
+            </article>
+          ))}
+        </PaginatedItems>
       </div>
       {editorOpen && (
         <div

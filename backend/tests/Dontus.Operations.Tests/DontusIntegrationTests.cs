@@ -151,6 +151,42 @@ public sealed class DontusIntegrationTests
     }
 
     [Fact]
+    public async Task Users_pages_and_filters_are_fetched_again_from_the_external_environment()
+    {
+        await using var db = Context();
+        var calls = 0;
+        var api = Client(request =>
+        {
+            if (request.Method == HttpMethod.Get) return Task.FromResult(Json(CustomerResponse()));
+            calls++;
+            return Task.FromResult(Json(new
+            {
+                mensagemDeErro = false,
+                usuarios = Enumerable.Range(1, 65).Select(n => new
+                {
+                    id = n,
+                    nome = $"Usuário {n}",
+                    usuario = $"user{n}",
+                    email = $"user{n}@test.local",
+                    superUsuario = n % 2 == 0,
+                    usuarioAtivo = true
+                })
+            }));
+        });
+        var service = new DontusIntegrationService(db, api);
+        var first = JsonSerializer.SerializeToElement(await service.ListUsersAsync("150001", Admin, default));
+        var second = JsonSerializer.SerializeToElement(await service.ListUsersAsync("150001", Admin, default, page: 2));
+        var fifty = JsonSerializer.SerializeToElement(await service.ListUsersAsync("150001", Admin, default, pageSize: 50));
+        var filtered = JsonSerializer.SerializeToElement(await service.ListUsersAsync("150001", Admin, default, name: "usuario 64", type: "supervisor"));
+        Assert.Equal(10, first.GetProperty("users").GetArrayLength());
+        Assert.Equal(11, second.GetProperty("users")[0].GetProperty("Id").GetInt32());
+        Assert.Equal(50, fifty.GetProperty("users").GetArrayLength());
+        Assert.Equal(65, fifty.GetProperty("total").GetInt32());
+        Assert.Equal(64, Assert.Single(filtered.GetProperty("users").EnumerateArray()).GetProperty("Id").GetInt32());
+        Assert.Equal(4, calls);
+    }
+
+    [Fact]
     public async Task Access_requires_an_active_registered_reason_and_nonempty_description_before_any_upstream_call()
     {
         await using var db = Context();

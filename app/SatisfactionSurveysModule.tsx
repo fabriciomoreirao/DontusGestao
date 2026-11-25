@@ -282,7 +282,7 @@ export default function SatisfactionSurveysModule({
             <p>Crie a pesquisa, vincule o setor e monte as perguntas.</p>
           </div>
         ) : (
-          <PaginatedItems label="registros de satisfação">
+          <PaginatedItems mode="cards" label="registros de satisfação">
             {surveys.map(({ item, survey }) => (
               <article key={item.id}>
                 <header>
@@ -853,7 +853,7 @@ function SurveyDetail({
             </section>
             <section className="survey-employee-grid">
               {
-                <PaginatedItems label="registros de satisfação">
+                <PaginatedItems mode="cards" label="registros de satisfação">
                   {survey.assignments.map((entry) => {
                     const list = survey.responses.filter(
                       (response) => response.token === entry.token,

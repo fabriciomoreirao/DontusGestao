@@ -49,10 +49,10 @@ public static class WhatsAppEndpoints
             var actor = await access.ResolveActorAsync(principal.ToIdentity(), ct);
             actor.RequirePermission("chat", "manage"); actor.RequireCapability("chat", "manageWhatsApp");
             var form = await request.ReadFormAsync(ct); var file = form.Files.GetFile("file");
-            if (file is null || file.Length is < 1 or > 10_000_000) return Results.BadRequest(new { detail = "Selecione um arquivo de até 10 MB." });
+            if (file is null || file.Length < 1) return Results.BadRequest(new { detail = "Selecione um arquivo não vazio." });
             using var content = new MemoryStream(); await file.CopyToAsync(content, ct);
             return Results.Ok(new { handle = await service.UploadTemplateSampleAsync(numberId, Path.GetFileName(file.FileName), file.ContentType, content.ToArray(), actor, ct) });
-        }).DisableAntiforgery().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(11_000_000));
+        }).DisableAntiforgery().WithMetadata(new Microsoft.AspNetCore.Mvc.DisableRequestSizeLimitAttribute());
         group.MapPost("/suite", async (RegisterWhatsAppSuiteCommand command, ClaimsPrincipal principal, IAccessControlService access, IWhatsAppAdminService service, CancellationToken ct) =>
         {
             await service.RegisterSuiteAsync(command, await access.ResolveActorAsync(principal.ToIdentity(), ct), ct); return Results.Ok(new { ok = true });

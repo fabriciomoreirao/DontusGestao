@@ -1,6 +1,5 @@
 "use client";
-
-import PaginatedItems from "@/app/PaginatedItems";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import CommentHistory from "@/app/CommentHistory";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
@@ -355,7 +354,7 @@ export default function HrManagementModule({
             </p>
           </div>
         ) : (
-          <PaginatedItems label="registros de RH">
+          <>
             {visible.map(({ item, profile }) => (
               <HrEmployeeCard
                 key={item.id}
@@ -364,7 +363,7 @@ export default function HrManagementModule({
                 onOpen={() => setSelected(item)}
               />
             ))}
-          </PaginatedItems>
+          </>
         )}
       </section>
       {selected && parse(selected.description) && (
@@ -1088,7 +1087,7 @@ function VacationSection({
         {profile.vacations.length === 0 ? (
           <p className="empty-copy">Nenhum período de férias cadastrado.</p>
         ) : (
-          <PaginatedItems label="registros de RH">
+          <>
             {profile.vacations
               .slice()
               .reverse()
@@ -1134,7 +1133,7 @@ function VacationSection({
                   )}
                 </article>
               ))}
-          </PaginatedItems>
+          </>
         )}
       </div>
     </section>
@@ -1249,7 +1248,7 @@ function DocumentSection({
         {profile.documents.length === 0 ? (
           <p className="empty-copy">Nenhum documento registrado.</p>
         ) : (
-          <PaginatedItems label="registros de RH">
+          <>
             {profile.documents
               .slice()
               .reverse()
@@ -1270,7 +1269,7 @@ function DocumentSection({
                   </span>
                 </a>
               ))}
-          </PaginatedItems>
+          </>
         )}
       </div>
     </section>
@@ -1412,19 +1411,11 @@ function DocumentModal({
   const [type, setType] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState("");
-  const readFile = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(new Error("read"));
-      reader.readAsDataURL(file);
-    });
+  const [uploading, setUploading] = useState(false);
+  const readFile = (file: File) => workspaceFileUrl(file, { module: "hr" });
   const submit = async () => {
-    if (!type || files.length === 0) return;
-    if (files.some((file) => file.size > 3 * 1024 * 1024)) {
-      setError("Cada arquivo deve ter no máximo 3 MB.");
-      return;
-    }
+    if (!type || files.length === 0 || uploading) return;
+    setUploading(true);
     try {
       const documents = await Promise.all(
         files.map(async (file) => ({
@@ -1438,7 +1429,9 @@ function DocumentModal({
       );
       await onSave(documents);
     } catch {
-      setError("Não foi possível ler um dos arquivos selecionados.");
+      setError("Não foi possível enviar um dos arquivos selecionados.");
+    } finally {
+      setUploading(false);
     }
   };
   return (
@@ -1476,7 +1469,7 @@ function DocumentModal({
                 ? `${files.length} arquivo(s) selecionado(s)`
                 : undefined
             }
-            hint="Selecione vários arquivos de uma vez. Cada arquivo pode ter no máximo 3 MB."
+            hint="Selecione vários arquivos de uma vez, sem limite de tamanho no sistema."
             onChange={(event) =>
               setFiles((current) => {
                 const incoming = Array.from(event.target.files ?? []);
@@ -1503,7 +1496,7 @@ function DocumentModal({
             <button
               type="button"
               className="primary-button"
-              disabled={busy || !type || files.length === 0}
+              disabled={busy || uploading || !type || files.length === 0}
               onClick={() => void submit()}
             >
               <Upload /> Registrar {files.length || ""} documento(s)

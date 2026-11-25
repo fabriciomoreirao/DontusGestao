@@ -1,4 +1,5 @@
 "use client";
+import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import type { ChatMention } from "@/lib/chat-mentions";
 import ChatTypingIndicator from "@/app/ChatTypingIndicator";
@@ -382,16 +383,14 @@ export default function InternalChatModule({
   );
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
-  const [groupsView, setGroupsView] = useState(
-    Boolean(module.rooms.find((room) => room.id === initialRoomId)?.isGroup),
-  );
+  const [groupsOnly, setGroupsOnly] = useState(false);
   const selectedInitialRoom = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!initialRoomId || selectedInitialRoom.current === initialRoomId) return;
     const room = module.rooms.find((entry) => entry.id === initialRoomId);
     if (room) {
       selectedInitialRoom.current = initialRoomId;
-      setGroupsView(room.isGroup);
+      setGroupsOnly(false);
       setArchivedView(room.isArchived);
     }
   }, [initialRoomId, module.rooms]);
@@ -444,13 +443,13 @@ export default function InternalChatModule({
   const conversations = useMemo(
     () =>
       buildConversations(module, archivedView)
-        .filter((entry) => archivedView || entry.isGroup === groupsView)
+        .filter((entry) => !groupsOnly || entry.isGroup)
         .sort(
           (a, b) =>
             Number(pinnedConversationKeys.includes(b.key)) -
             Number(pinnedConversationKeys.includes(a.key)),
         ),
-    [module, archivedView, groupsView, pinnedConversationKeys],
+    [module, archivedView, groupsOnly, pinnedConversationKeys],
   );
   const presenceNow = useActivityClock();
   const filteredConversations = useMemo(() => {
@@ -472,6 +471,10 @@ export default function InternalChatModule({
     (entry) => entry.key === effectiveSelectedKey,
   );
   const selectedRoom = selectedConversation?.room;
+  useLayoutEffect(() => {
+    if (effectiveSelectedKey && canCreate)
+      composerInput.current?.focus({ preventScroll: true });
+  }, [effectiveSelectedKey, canCreate]);
   const voice = useVoiceRecorder(effectiveSelectedKey);
   const publishTyping = useChatTypingPublisher(
     selectedRoom?.id,
@@ -826,13 +829,11 @@ export default function InternalChatModule({
     if (!images.length) return;
     event.preventDefault();
     if (!canCreate || busy || sendingRef.current) return;
-    const accepted = images.filter(
-      (file) => file.size > 0 && file.size <= 50 * 1024 * 1024,
-    );
+    const accepted = images.filter((file) => file.size > 0);
     const capacity = Math.max(0, 10 - pastedImages.length);
     setSendError(
       accepted.length !== images.length
-        ? "Imagens vazias ou maiores que 50 MB não podem ser enviadas."
+        ? "Imagens vazias ou inválidos não podem ser enviadas."
         : accepted.length > capacity
           ? "É permitido preparar até 10 imagens por envio."
           : "",
@@ -982,9 +983,7 @@ export default function InternalChatModule({
     try {
       const roomId = await ensureRoom();
       if (!roomId) return false;
-      const accepted = Array.from(files).filter(
-        (file) => file.size > 0 && file.size <= 50 * 1024 * 1024,
-      );
+      const accepted = Array.from(files).filter((file) => file.size > 0);
       if (accepted.length !== files.length)
         setSendError(
           "Arquivos vazios ou maiores que 50 MB não podem ser enviados.",
@@ -1099,37 +1098,28 @@ export default function InternalChatModule({
               placeholder="Buscar colaboradores ou grupos..."
             />
           </div>
-          <div className="internal-chat-view-tabs">
+          <div
+            className="internal-chat-list-filters"
+            role="group"
+            aria-label="Filtros das conversas"
+          >
             <button
-              className={!archivedView && !groupsView ? "active" : ""}
-              onClick={() => {
-                setArchivedView(false);
-                setGroupsView(false);
-                setSelectedKey("");
-              }}
+              type="button"
+              className={groupsOnly ? "active" : ""}
+              aria-pressed={groupsOnly}
+              onClick={() => setGroupsOnly((value) => !value)}
             >
-              Conversas
-              <UnreadBadge count={unreadTotals.conversations} />
-            </button>
-            <button
-              className={!archivedView && groupsView ? "active" : ""}
-              onClick={() => {
-                setArchivedView(false);
-                setGroupsView(true);
-                setSelectedKey("");
-              }}
-            >
-              Grupos
+              <UsersRound size={15} />
+              Somente grupos
               <UnreadBadge count={unreadTotals.groups} />
             </button>
             <button
+              type="button"
               className={archivedView ? "active" : ""}
-              onClick={() => {
-                setArchivedView(true);
-                setGroupsView(false);
-                setSelectedKey("");
-              }}
+              aria-pressed={archivedView}
+              onClick={() => setArchivedView((value) => !value)}
             >
+              <Archive size={15} />
               Arquivadas
               <UnreadBadge count={unreadTotals.archived} />
             </button>
@@ -1155,7 +1145,11 @@ export default function InternalChatModule({
               return (
                 <button
                   className={`internal-chat-room ${effectiveSelectedKey === entry.key ? "active" : ""}`}
-                  onClick={() => setSelectedKey(entry.key)}
+                  onClick={() => {
+                    setSelectedKey(entry.key);
+                    if (entry.key === effectiveSelectedKey)
+                      composerInput.current?.focus({ preventScroll: true });
+                  }}
                   key={entry.key}
                 >
                   <Avatar
@@ -1911,7 +1905,7 @@ export default function InternalChatModule({
             if (result) {
               setCreatingGroup(false);
               if (result.id) {
-                setGroupsView(true);
+                setGroupsOnly(false);
                 setArchivedView(false);
                 setSelectedKey(result.id);
               }
@@ -2936,18 +2930,14 @@ function Avatar({
 async function readImage(file?: File) {
   if (
     !file ||
-    !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
-      file.type,
-    ) ||
-    file.size > 2 * 1024 * 1024
+    !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)
   )
     return null;
-  return await new Promise<string | null>((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(file);
-  });
+  try {
+    return await workspaceFileUrl(file, { module: "profile" });
+  } catch {
+    return null;
+  }
 }
 
 function initials(name: string) {

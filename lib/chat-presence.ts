@@ -5,15 +5,11 @@ export type ChatPresence = {
 };
 export function userIsOnline(
   user: { isOnline?: boolean; lastSeenAt?: string | null },
-  now: number,
+  _now: number,
 ) {
-  return (
-    user.isOnline === true &&
-    (!user.lastSeenAt ||
-      (Number.isFinite(Date.parse(user.lastSeenAt)) &&
-        now - Date.parse(user.lastSeenAt) >= -5_000 &&
-        now - Date.parse(user.lastSeenAt) < 75_000))
-  );
+  // The server tracks the system connection, including background tabs and reconnects.
+  // Browser clock drift or a delayed render must not override that status.
+  return user.isOnline === true;
 }
 export function applyChatPresence<
   T extends {
@@ -31,6 +27,12 @@ export function applyChatPresence<
     if (
       !next ||
       (user.isOnline === next.isOnline && user.lastSeenAt === next.lastSeenAt)
+    )
+      return user;
+    if (
+      user.lastSeenAt &&
+      next.lastSeenAt &&
+      Date.parse(next.lastSeenAt) < Date.parse(user.lastSeenAt)
     )
       return user;
     changed = true;

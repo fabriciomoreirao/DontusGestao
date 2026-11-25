@@ -9,8 +9,8 @@ namespace Dontus.Operations.Infrastructure;
 
 public sealed partial class LiaFormService
 {
-    public const long MaximumFileBytes = 50L * 1024 * 1024;
-    public const long MaximumSubmissionBytes = 100L * 1024 * 1024;
+    public const long MaximumFileBytes = long.MaxValue;
+    public const long MaximumSubmissionBytes = long.MaxValue;
 
     private static string CleanFileName(string name) =>
         new((name ?? "").Replace('\\', '/').Split('/').Last().Where(c => !char.IsControl(c)).ToArray());
@@ -25,11 +25,10 @@ public sealed partial class LiaFormService
                 throw new DomainException("O anexo não corresponde a uma pergunta de envio de arquivos.");
             if (CleanFileName(file.FileName).Trim().Length is < 1 or > 240)
                 throw new DomainException("O nome do arquivo deve ter de 1 a 240 caracteres.");
-            if (file.SizeBytes <= 0 || file.SizeBytes > MaximumFileBytes)
-                throw new DomainException("Cada arquivo deve estar preenchido e ter até 50 MB.");
+            if (file.SizeBytes <= 0)
+                throw new DomainException("Cada arquivo deve estar preenchido.");
         }
-        if (uploads.Sum(x => x.SizeBytes) > MaximumSubmissionBytes)
-            throw new DomainException("Os arquivos do formulário devem somar no máximo 100 MB.");
+
     }
 
     private async Task<DateTimeOffset> CompleteSubmissionAsync(LiaFormRequest entry, Dictionary<string, string> answers,
@@ -50,17 +49,7 @@ public sealed partial class LiaFormService
                     SizeBytes = file.SizeBytes,
                     StorageKey = $"lia-forms/{entry.Id:N}/{Guid.NewGuid():N}",
                 };
-                await using var buffered = new MemoryStream();
-                var buffer = new byte[81920];
-                int read;
-                while ((read = await file.Content.ReadAsync(buffer, ct)) > 0)
-                {
-                    if (buffered.Length + read > file.SizeBytes)
-                        throw new DomainException("O tamanho do arquivo recebido é inválido. Selecione o arquivo novamente.");
-                    await buffered.WriteAsync(buffer.AsMemory(0, read), ct);
-                }
-                if (buffered.Length != file.SizeBytes)
-                    throw new DomainException("O arquivo não foi recebido por completo. Tente novamente.");
+                await using var buffered = await AttachmentSpool.ReadAsync(file.Content, file.SizeBytes, ct);
                 var stored = false;
                 if (fileStorage is not null)
                 {
@@ -76,7 +65,7 @@ public sealed partial class LiaFormService
                         logger?.LogWarning(exception, "S3 unavailable for LIA attachment {AttachmentId}; using database storage.", attachment.Id);
                     }
                 }
-                if (!stored) attachment.Content = buffered.ToArray();
+                if (!stored) { if (file.SizeBytes <= AttachmentSpool.DatabaseFallbackBytes) attachment.Content = await AttachmentSpool.BytesAsync(buffered, ct); else { attachment.StorageKey = await AttachmentSpool.PersistAsync(buffered, ct); storedKeys.Add(attachment.StorageKey); } }
                 db.LiaFormAttachments.Add(attachment);
             }
             entry.AnswersJson = JsonSerializer.Serialize(answers);
@@ -91,7 +80,7 @@ public sealed partial class LiaFormService
         {
             foreach (var key in storedKeys)
             {
-                try { await fileStorage!.DeleteAsync(key, CancellationToken.None); }
+                try { if (AttachmentSpool.Resolve(key) is not null) AttachmentSpool.Delete(key); else await fileStorage!.DeleteAsync(key, CancellationToken.None); }
                 catch (Exception cleanupException) { logger?.LogWarning(cleanupException, "Could not remove uncommitted LIA attachment."); }
             }
             if (exception is DbUpdateConcurrencyException)
@@ -109,6 +98,7 @@ public sealed partial class LiaFormService
             throw new DomainException("Seu acesso não permite visualizar a validação dos acompanhamentos.", 403);
         if (!await db.LiaFormRequests.AnyAsync(x => x.Id == attachment.RequestId && x.SubmittedAt != null, ct))
             throw new DomainException("Resposta do formulário não encontrada.", 404);
+        if (AttachmentSpool.Resolve(attachment.StorageKey) is { } path) return new TaskAttachmentDownloadDto("") { FilePath = path, ContentType = attachment.ContentType, FileName = attachment.FileName };
         if (attachment.Content is not null)
             return new TaskAttachmentDownloadDto("") { Content = attachment.Content, FileName = attachment.FileName, ContentType = attachment.ContentType };
         if (fileStorage is null) throw new DomainException("O armazenamento de arquivos está indisponível.", 503);

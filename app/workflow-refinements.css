@@ -94,6 +94,35 @@ label:has(> input[type="checkbox"]) > span:not(.profile-avatar) {
 .commissions-module .commission-filters > .confirmation-control button {
   flex-shrink: 0;
 }
+.app-shell
+  .content
+  :is(.referral-toolbar, .commission-filters)
+  > label.operational-month-filter {
+  display: grid;
+  align-self: end;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+.app-shell
+  .content
+  :is(.referral-toolbar, .commission-filters)
+  > .operational-month-filter
+  input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--input);
+  color: var(--ink);
+  font: inherit;
+}
 .customer-summary-v2.modal {
   width: min(920px, calc(100vw - 32px));
   max-width: 920px;

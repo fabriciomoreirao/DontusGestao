@@ -2,7 +2,6 @@
 
 import PaginatedItems from "@/app/PaginatedItems";
 
-import { findJourneyAgendaType } from "@/lib/agenda-context";
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import {
@@ -49,6 +48,7 @@ import CheckboxMultiSelect from "@/app/CheckboxMultiSelect";
 import AgendaRecurrenceField, {
   type AgendaRecurrenceSelection,
 } from "@/app/AgendaRecurrenceField";
+import { selectableAgendaTypes } from "@/lib/agenda-context";
 
 export type AgendaCalendar = {
   id: string;
@@ -129,7 +129,6 @@ export type QuickAgendaPreset = {
   title?: string;
   description?: string;
   responsibleName?: string;
-  typeName?: string;
   startsAt?: string;
   agendaId?: string;
 };
@@ -1823,7 +1822,7 @@ function CommitmentModal({
           !isMeetingRoomCalendar(item) ||
           item.id === commitment?.agendaId),
     ),
-    types: sourceModule.types.filter((item) => item.active),
+    types: selectableAgendaTypes(sourceModule.types),
     statuses: sourceModule.statuses.filter((item) => item.active),
   };
   const [editing, setEditing] = useState(!commitment);
@@ -1930,33 +1929,14 @@ function CommitmentModal({
             name="agendaTypeId"
             disabled={disabled}
             required
-            defaultValue={
-              commitment?.agendaTypeId ??
-              (preset?.typeName
-                ? (findJourneyAgendaType(activeModule.types, preset.typeName)
-                    ?.id ?? "")
-                : (activeModule.types[0]?.id ?? ""))
-            }
+            defaultValue={commitment?.agendaTypeId ?? ""}
           >
-            <option value="">
-              {preset?.typeName
-                ? `Cadastre o tipo ${preset.typeName}`
-                : "Selecionar..."}
-            </option>
-            {activeModule.types
-              .filter(
-                (item) =>
-                  item.active &&
-                  (!preset?.typeName ||
-                    item.id ===
-                      findJourneyAgendaType(activeModule.types, preset.typeName)
-                        ?.id),
-              )
-              .map((item) => (
-                <option value={item.id} key={item.id}>
-                  {item.name}
-                </option>
-              ))}
+            <option value="">Selecionar...</option>
+            {activeModule.types.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.name}
+              </option>
+            ))}
           </select>
         </label>
         <label>
@@ -2113,6 +2093,75 @@ export function QuickAgendaCommitmentModal(props: {
   onSave: (payload: Record<string, unknown>) => void;
 }) {
   return <CommitmentModal {...props} />;
+}
+
+export function AgendaTypeSelectionModal({
+  types,
+  busy,
+  onClose,
+  onSave,
+}: {
+  types: AgendaType[];
+  busy: boolean;
+  onClose: () => void;
+  onSave: (typeId: string) => Promise<unknown>;
+}) {
+  const [typeId, setTypeId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const activeTypes = selectableAgendaTypes(types);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy || saving || !activeTypes.some((type) => type.id === typeId))
+      return;
+    setSaving(true);
+    try {
+      await onSave(typeId);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <AgendaModal title="Tipo do agendamento" onClose={onClose}>
+      <form className="form-grid agenda-form" onSubmit={submit}>
+        <label className="wide">
+          Tipo *
+          <select
+            name="agendaTypeId"
+            required
+            autoFocus
+            disabled={busy || saving}
+            value={typeId}
+            onChange={(event) => setTypeId(event.target.value)}
+          >
+            <option value="">Selecionar...</option>
+            {activeTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {!activeTypes.length && (
+          <p className="wide" role="status">
+            Nenhum tipo ativo disponível nos cadastros da Agenda.
+          </p>
+        )}
+        <div className="form-actions wide">
+          <button type="button" disabled={saving} onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            className="primary-button"
+            disabled={busy || saving || !typeId}
+            type="submit"
+          >
+            <Save size={16} />
+            {saving ? "Agendando..." : "Agendar"}
+          </button>
+        </div>
+      </form>
+    </AgendaModal>
+  );
 }
 
 function AgendaCommitmentModal({

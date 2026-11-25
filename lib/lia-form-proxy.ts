@@ -13,6 +13,11 @@ export async function liaFormProxy(
     accept: download ? "*/*" : "application/json",
   });
   if (!multipart) headers.set("content-type", "application/json");
+  else headers.set("content-type", request.headers.get("content-type")!);
+  for (const name of ["range", "if-range"]) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
   if (authenticated) {
     const token = request.headers
       .get("cookie")
@@ -45,14 +50,15 @@ export async function liaFormProxy(
         headers,
         cache: "no-store",
         redirect: "manual",
-        signal: apiRequestSignal(request),
+        signal: request.signal,
+        duplex: "half",
         body:
           request.method === "POST"
             ? multipart
-              ? await request.formData()
+              ? request.body
               : await request.text()
             : undefined,
-      },
+      } as RequestInit,
     );
     const outgoing = new Headers({
       "cache-control": "private, no-store",
@@ -62,6 +68,8 @@ export async function liaFormProxy(
       "content-type",
       "content-disposition",
       "content-length",
+      "accept-ranges",
+      "content-range",
     ]) {
       const value = response.headers.get(name);
       if (value) outgoing.set(name, value);

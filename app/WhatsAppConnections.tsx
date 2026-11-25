@@ -45,7 +45,7 @@ export default function WhatsAppConnections({
       )}
       <div className="wa-connections">
         {
-          <PaginatedItems label="conexões">
+          <PaginatedItems mode="cards" label="conexões">
             {state.module.whatsAppNumbers.map((n) => {
               const suite = state.numbers.find((x) => x.id === n.id);
               const connected =

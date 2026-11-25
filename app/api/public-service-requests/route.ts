@@ -19,9 +19,11 @@ async function proxy(request: Request) {
     {
       method: request.method,
       headers,
-      body: request.method === "POST" ? await request.arrayBuffer() : undefined,
+      body: request.method === "POST" ? request.body : undefined,
+      duplex: "half",
+      signal: request.signal,
       cache: "no-store",
-    },
+    } as RequestInit,
   );
   return new Response(response.body, {
     status: response.status,

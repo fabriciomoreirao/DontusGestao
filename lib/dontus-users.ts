@@ -18,6 +18,7 @@ export function dontusUsersPage<T extends DontusUserSearchEntry>(
   search: string,
   type: string,
   requestedPage: number,
+  requestedSize = 10,
 ) {
   const terms = normalize(search).split(/\s+/).filter(Boolean);
   const matching = users.filter((user) => {
@@ -29,7 +30,9 @@ export function dontusUsersPage<T extends DontusUserSearchEntry>(
       (!type || user.isSupervisor === (type === "supervisor"))
     );
   });
-  const pageSize = 10;
+  const pageSize = [10, 30, 50, 100].includes(requestedSize)
+    ? requestedSize
+    : 10;
   const totalPages = Math.max(1, Math.ceil(matching.length / pageSize));
   const page = Math.max(
     1,

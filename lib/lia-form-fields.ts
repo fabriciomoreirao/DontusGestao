@@ -31,9 +31,5 @@ export function validateLiaFiles(
     return "Selecione até 20 arquivos no formulário.";
   if (files.some((file) => file.size === 0))
     return "Há um arquivo vazio. Selecione um arquivo preenchido.";
-  if (files.some((file) => file.size > liaFileLimits.perFile))
-    return "Cada arquivo pode ter até 50 MB.";
-  if (files.reduce((sum, file) => sum + file.size, 0) > liaFileLimits.total)
-    return "Os arquivos do formulário devem somar no máximo 100 MB.";
   return "";
 }

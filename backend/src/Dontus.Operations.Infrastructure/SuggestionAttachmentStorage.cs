@@ -18,15 +18,7 @@ public sealed partial class SuggestionService
             SizeBytes = command.SizeBytes,
             StorageKey = $"suggestions/{command.SuggestionId:N}/{Guid.NewGuid():N}{Path.GetExtension(fileName).ToLowerInvariant()}",
         };
-        await using var buffered = new MemoryStream((int)command.SizeBytes);
-        var buffer = new byte[81920];
-        int read;
-        while ((read = await command.Content.ReadAsync(buffer, cancellationToken)) > 0)
-        {
-            if (buffered.Length + read > MaximumAttachmentSizeBytes) throw new DomainException("Cada anexo deve ter no máximo 25 MB.");
-            await buffered.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-        }
-        if (buffered.Length != command.SizeBytes) throw new DomainException("O tamanho do arquivo recebido não corresponde ao informado. Envie o arquivo novamente.");
+        await using var buffered = await AttachmentSpool.ReadAsync(command.Content, command.SizeBytes, cancellationToken);
         var storedExternally = false;
         if (fileStorage is not null)
         {
@@ -44,13 +36,14 @@ public sealed partial class SuggestionService
         try
         {
             db.SuggestionAttachments.Add(attachment);
-            if (!storedExternally) db.SuggestionAttachmentContents.Add(new SuggestionAttachmentContent { AttachmentId = attachment.Id, Content = buffered.ToArray() });
+            if (!storedExternally) { if (command.SizeBytes <= AttachmentSpool.DatabaseFallbackBytes) db.SuggestionAttachmentContents.Add(new SuggestionAttachmentContent { AttachmentId = attachment.Id, Content = await AttachmentSpool.BytesAsync(buffered, cancellationToken) }); else attachment.StorageKey = await AttachmentSpool.PersistAsync(buffered, cancellationToken); }
             AddAudit(actor, "Attach", "suggestion", command.SuggestionId, new { attachment.Id, attachment.FileName });
             await db.SaveChangesAsync(cancellationToken);
             return attachment.Id;
         }
         catch
         {
+            if (AttachmentSpool.Resolve(attachment.StorageKey) is not null) AttachmentSpool.Delete(attachment.StorageKey);
             if (storedExternally)
             {
                 try { await fileStorage!.DeleteAsync(attachment.StorageKey, cancellationToken); }
