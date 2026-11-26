@@ -331,3 +331,63 @@
     width: 100%;
   }
 }
+
+.app-shell .content .operation-board-panel > .tasks-toolbar.task-search-filters {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.operation-board-footer .task-board-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 12px;
+}
+
+.app-shell .content .tasks-module > .task-workspace-content {
+  padding: 0;
+}
+
+.app-shell .content .tasks-module > .task-workspace-content .task-column {
+  max-width: none;
+}
+
+.task-board-view-controls,
+.task-board-quick-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.task-board-view-controls {
+  margin-inline-start: auto;
+  justify-content: flex-end;
+}
+
+.app-shell .content .operation-board-footer .task-board-quick-filters > label {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  margin: 0;
+  padding: 0;
+  line-height: 1.2;
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.task-board-quick-filters input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  align-self: center;
+  margin: 0;
+  accent-color: var(--primary);
+}

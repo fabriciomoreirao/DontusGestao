@@ -256,7 +256,7 @@ test("mantém os novos fluxos de CRM, evolução, metas e animações", async ()
     operations,
     /commercialArea === "retention" \? functionality === "CRM Retenção" : functionality !== "CRM Retenção"/,
   );
-  assertCode.match(operations, /<label>Funil selecionado<select/);
+  assertCode.match(operations, /<label>\{flow === "crm" \? "Funil" : "Funil selecionado"\}<select/);
   assertCode.doesNotMatch(
     operations,
     /<section className="commercial-active-funnel"/,
@@ -768,7 +768,7 @@ test("integra chamados públicos, período selecionável e rolagem do chat", asy
   assertCode.match(screens, /serviceFollowup/);
   assertCode.match(compose, /PUBLIC_SERVICE_REQUESTS_API_KEY/);
   assertCode.match(chat, /messagesRef/);
-  assertCode.match(chat, /messages\.scrollTo/);
+  assertCode.match(chat, /syncChatEnd\(messages, followingMessages\.current, false\)/);
   assertCode.match(css, /\.enterprise-detail-shell>\.drawer-head/);
   assertCode.match(css, /\.public-service-request-page/);
   assertCode.match(css, /\.external-experience-page/);

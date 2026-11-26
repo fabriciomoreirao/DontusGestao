@@ -579,6 +579,18 @@ export default function WaitingQueueModule({
           </select>
         </label>
         {reminderFilter.control}
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setQuery("");
+            setSector("all");
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </div>
       <div className="waiting-queue-columns single">
         {tab === "waiting" ? (

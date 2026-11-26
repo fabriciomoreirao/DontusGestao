@@ -11,7 +11,6 @@ import {
   Edit3,
   Eye,
   EyeOff,
-  Filter,
   Plus,
   Save,
   Settings,
@@ -451,52 +450,171 @@ export default function AgendaModule({
 
   return (
     <>
-      <header className="page-header agenda-header module-page-header">
-        <div className="module-page-title">
-          <span className="module-page-title-icon">
-            <CalendarDays size={21} />
-          </span>
-          <span className="module-page-copy">
-            <span className="eyebrow">MÓDULO · AGENDA</span>
-            <h1>Agenda</h1>
-            <p>
-              Visualize os compromissos do seu setor e use os filtros para
-              encontrar rapidamente o que precisa.
-            </p>
-          </span>
-        </div>
-        <div className="module-page-actions commercial-header-actions">
-          {onOpenSettings && (
+      <section className="operation-board-panel" aria-label="Painel da agenda">
+        <header className="page-header agenda-header module-page-header">
+          <div className="module-page-title">
+            <span className="module-page-title-icon">
+              <CalendarDays size={21} />
+            </span>
+            <span className="module-page-copy">
+              <span className="eyebrow">MÓDULO · AGENDA</span>
+              <h1>Agenda</h1>
+              <p>
+                Visualize os compromissos do seu setor e use os filtros para
+                encontrar rapidamente o que precisa.
+              </p>
+            </span>
+          </div>
+          <div className="module-page-actions commercial-header-actions">
+            {onOpenSettings && (
+              <button
+                className="icon-button commercial-settings-button"
+                onClick={onOpenSettings}
+                aria-label="Configurar Agenda"
+                title="Configurar Agenda"
+              >
+                <Settings size={18} />
+              </button>
+            )}
+            {module.canManage && (
+              <button
+                className="secondary-button"
+                disabled={setupRequired}
+                onClick={() => setBlocking(true)}
+              >
+                <CalendarDays size={16} /> Bloquear período
+              </button>
+            )}
             <button
-              className="icon-button commercial-settings-button"
-              onClick={onOpenSettings}
-              aria-label="Configurar Agenda"
-              title="Configurar Agenda"
-            >
-              <Settings size={18} />
-            </button>
-          )}
-          {module.canManage && (
-            <button
-              className="secondary-button"
+              className="primary-button"
               disabled={setupRequired}
-              onClick={() => setBlocking(true)}
+              onClick={() => {
+                setSlotPreset(undefined);
+                setCreating(true);
+              }}
             >
-              <CalendarDays size={16} /> Bloquear período
+              <Plus size={17} /> Novo compromisso
             </button>
-          )}
-          <button
-            className="primary-button"
-            disabled={setupRequired}
-            onClick={() => {
-              setSlotPreset(undefined);
-              setCreating(true);
-            }}
-          >
-            <Plus size={17} /> Novo compromisso
-          </button>
-        </div>
-      </header>
+          </div>
+        </header>
+        <section className="agenda-filters operation-filter-panel" aria-label="Filtros da agenda">
+          <div className="agenda-filter-controls">
+            <label className="agenda-filter-field">
+              <span>Agenda</span>
+              <select
+                value={effectiveCalendarFilter}
+                onChange={(event) => setCalendarFilter(event.target.value)}
+              >
+                <option value="all">Todas as agendas</option>
+                {module.calendars
+                  .filter((calendar) => calendar.active)
+                  .map((calendar) => (
+                    <option key={calendar.id} value={calendar.id}>
+                      {calendar.name} · {calendar.departmentName}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="agenda-filter-field">
+              <span>Tipo</span>
+              <select
+                value={effectiveTypeFilter}
+                onChange={(event) => setTypeFilter(event.target.value)}
+              >
+                <option value="all">Todos os tipos</option>
+                {module.types
+                  .filter((type) => type.active)
+                  .map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="agenda-filter-field">
+              <span>Colaborador</span>
+              <SearchablePeopleSelect
+                searchLabel="Colaborador"
+                value={collaboratorFilter}
+                onChange={(event) => setCollaboratorFilter(event.target.value)}
+              >
+                <option value="all">Todos os colaboradores</option>
+                {module.collaborators.map((collaborator) => (
+                  <option
+                    key={`${collaborator.id}-${collaborator.departmentId}`}
+                    value={collaborator.id}
+                  >
+                    {collaborator.name}
+                  </option>
+                ))}
+              </SearchablePeopleSelect>
+            </label>
+            <label
+              className={`agenda-room-visibility ${showMeetingRoomCommitments ? "active" : ""}`}
+              title="Mostrar ou ocultar na Agenda geral somente os compromissos da sala de reunião"
+            >
+              <input
+                type="checkbox"
+                checked={showMeetingRoomCommitments}
+                onChange={(event) =>
+                  setShowMeetingRoomCommitments(event.target.checked)
+                }
+              />
+              <span className="agenda-room-visibility-icon">
+                {showMeetingRoomCommitments ? (
+                  <Eye size={16} />
+                ) : (
+                  <EyeOff size={16} />
+                )}
+              </span>
+              <span>
+                <strong>Sala de reunião</strong>
+                <small>
+                  {showMeetingRoomCommitments
+                    ? "Compromissos visíveis"
+                    : "Compromissos ocultos"}
+                </small>
+              </span>
+            </label>
+          </div>
+          <div className="operation-filter-bottom">
+            <button
+              type="button"
+              className="secondary-button operation-filter-clear"
+              aria-label="Limpar todos os filtros"
+              onClick={() => {
+                setCalendarFilter("all");
+                setTypeFilter("all");
+                setCollaboratorFilter("all");
+                setShowMeetingRoomCommitments(true);
+              }}
+            >
+              Limpar
+            </button>
+          </div>
+        </section>
+        <footer className="operation-board-footer agenda-board-footer">
+          <div className="commercial-view-switch segmented" role="group" aria-label="Modo de visualização">
+            {(
+              [
+                ["month", "Mês"],
+                ["week", "Semana"],
+                ["day", "Dia"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                type="button"
+                className={calendarView === value ? "active" : ""}
+                onClick={() => setCalendarView(value)}
+                aria-pressed={calendarView === value}
+                key={value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </footer>
+      </section>
       {setupRequired && (
         <div className="agenda-setup-note">
           <CalendarDays size={19} />
@@ -509,114 +627,6 @@ export default function AgendaModule({
           </span>
         </div>
       )}
-      <section className="agenda-filters">
-        <div className="agenda-filter-heading">
-          <span>
-            <Filter size={16} />
-          </span>
-          <div>
-            <strong>Filtros da agenda</strong>
-            <small>Refine a visualização dos compromissos</small>
-          </div>
-        </div>
-        <div className="agenda-filter-controls">
-          <label className="agenda-filter-field">
-            <span>Agenda</span>
-            <select
-              value={effectiveCalendarFilter}
-              onChange={(event) => setCalendarFilter(event.target.value)}
-            >
-              <option value="all">Todas as agendas</option>
-              {module.calendars
-                .filter((calendar) => calendar.active)
-                .map((calendar) => (
-                  <option key={calendar.id} value={calendar.id}>
-                    {calendar.name} · {calendar.departmentName}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="agenda-filter-field">
-            <span>Tipo</span>
-            <select
-              value={effectiveTypeFilter}
-              onChange={(event) => setTypeFilter(event.target.value)}
-            >
-              <option value="all">Todos os tipos</option>
-              {module.types
-                .filter((type) => type.active)
-                .map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="agenda-filter-field">
-            <span>Colaborador</span>
-            <SearchablePeopleSelect
-              searchLabel="Colaborador"
-              value={collaboratorFilter}
-              onChange={(event) => setCollaboratorFilter(event.target.value)}
-            >
-              <option value="all">Todos os colaboradores</option>
-              {module.collaborators.map((collaborator) => (
-                <option
-                  key={`${collaborator.id}-${collaborator.departmentId}`}
-                  value={collaborator.id}
-                >
-                  {collaborator.name}
-                </option>
-              ))}
-            </SearchablePeopleSelect>
-          </label>
-          <label
-            className={`agenda-room-visibility ${showMeetingRoomCommitments ? "active" : ""}`}
-            title="Mostrar ou ocultar na Agenda geral somente os compromissos da sala de reunião"
-          >
-            <input
-              type="checkbox"
-              checked={showMeetingRoomCommitments}
-              onChange={(event) =>
-                setShowMeetingRoomCommitments(event.target.checked)
-              }
-            />
-            <span className="agenda-room-visibility-icon">
-              {showMeetingRoomCommitments ? (
-                <Eye size={16} />
-              ) : (
-                <EyeOff size={16} />
-              )}
-            </span>
-            <span>
-              <strong>Sala de reunião</strong>
-              <small>
-                {showMeetingRoomCommitments
-                  ? "Compromissos visíveis"
-                  : "Compromissos ocultos"}
-              </small>
-            </span>
-          </label>
-        </div>
-        <div className="agenda-view-switch" aria-label="Modo de visualização">
-          {(
-            [
-              ["month", "Mês"],
-              ["week", "Semana"],
-              ["day", "Dia"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              type="button"
-              className={calendarView === value ? "active" : ""}
-              onClick={() => setCalendarView(value)}
-              key={value}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </section>
       {calendarView === "month" ? (
         <MonthCalendar
           month={month}

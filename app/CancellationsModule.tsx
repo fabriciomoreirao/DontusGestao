@@ -1,7 +1,7 @@
 "use client";
 import PaginatedItems from "@/app/PaginatedItems";
 import DateRangeFilter from "@/app/DateRangeFilter";
-import { inDateRange } from "@/lib/date-range";
+import { dateKey, inDateRange } from "@/lib/date-range";
 import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import CustomerSelect from "@/app/CustomerSelect";
@@ -325,7 +325,7 @@ export default function CancellationsModule({
   const [query, setQuery] = useState("");
   const [owner, setOwner] = useState("all");
   const [sector, setSector] = useState("all");
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => dateKey(new Date()).slice(0, 7));
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<WorkItem | null>(null);
   const [selected, setSelected] = useState<WorkItem | null>(null);
@@ -1147,11 +1147,26 @@ export default function CancellationsModule({
           ))}
         </select>
         <DateRangeFilter
+          showClear={false}
           value={month}
           onChange={setMonth}
           label="Período das solicitações"
         />
         <strong>{visible.length} registro(s)</strong>
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setQuery("");
+            setOwner("all");
+            setSector("all");
+            setMonth(dateKey(new Date()).slice(0, 7));
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </section>
       <section className="cancellation-board">
         {STAGES.filter((entry) => entry.id === stage).map((column) => (

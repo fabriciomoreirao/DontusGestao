@@ -4176,7 +4176,7 @@ export default function OperationsApp() {
                         showFunctionPeriod) && (
                         <OperationIndicatorsLauncher
                           pageKey={`${active}:${commercialFlow}:${csFlow}`}
-                          period={showFunctionPeriod ? kanbanMonth : undefined}
+                          period={showFunctionPeriod && active !== "support" && !(active === "commercial" && commercialFlow === "crm") ? kanbanMonth : undefined}
                           onPeriodChange={setKanbanMonth}
                           onOpen={
                             canViewOperationIndicators
@@ -4239,6 +4239,8 @@ export default function OperationsApp() {
                         <CommercialLeadsModule
                           key={commercialFlow}
                           flow={commercialFlow}
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
                           catalogs={data.customerModule.catalogs}
                           customers={data.customers}
                           items={kanbanItems}
@@ -4386,6 +4388,9 @@ export default function OperationsApp() {
                       {active === "support" && data.customerModule && (
                         <ServiceRecordsModule
                           items={kanbanItems}
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() => setKanbanMonth(brasiliaMonthKey())}
                           customers={data.customers}
                           catalogs={data.customerModule.catalogs}
                           employees={assignmentEmployees}
@@ -4720,6 +4725,7 @@ export default function OperationsApp() {
                           module={monthTaskModule}
                           month={kanbanMonth}
                           onMonthChange={setKanbanMonth}
+                          onClearPeriod={() => setKanbanMonth(brasiliaMonthKey())}
                           customers={data.customers}
                           user={data.user}
                           canCreate={userCan(data.user, "tasks", "create")}
@@ -9344,140 +9350,159 @@ export function CustomersView({
   );
   return (
     <>
-      <PageHeader
-        eyebrow="MÓDULO · CLIENTES"
-        title="Clientes"
-        description="Controle a base de clientes, redes, franquias e informações de assinatura."
-        action={
-          <span className="commercial-header-actions">
-            {onOpenSettings && (
-              <button
-                className="icon-button commercial-settings-button"
-                type="button"
-                onClick={onOpenSettings}
-                title="Configurar opções do cadastro de clientes"
-                aria-label="Configurar opções do cadastro de clientes"
-              >
-                <Settings size={18} />
-              </button>
-            )}
-            {canCreate && section === "customers" && (
-              <button className="primary-button" onClick={onCreate}>
-                <Plus size={17} /> Cadastrar cliente
-              </button>
-            )}
+      <section className="operation-board-panel" aria-label="Painel de clientes">
+        <PageHeader
+          eyebrow="MÓDULO · CLIENTES"
+          title="Clientes"
+          description="Controle a base de clientes, redes, franquias e informações de assinatura."
+          action={
+            <span className="commercial-header-actions">
+              {onOpenSettings && (
+                <button
+                  className="icon-button commercial-settings-button"
+                  type="button"
+                  onClick={onOpenSettings}
+                  title="Configurar opções do cadastro de clientes"
+                  aria-label="Configurar opções do cadastro de clientes"
+                >
+                  <Settings size={18} />
+                </button>
+              )}
+              {canCreate && section === "customers" && (
+                <button className="primary-button" onClick={onCreate}>
+                  <Plus size={17} /> Cadastrar cliente
+                </button>
+              )}
+            </span>
+          }
+        />
+        <nav
+          className="customer-register-tabs"
+          aria-label="Cadastros de clientes"
+        >
+          <button
+            className={section === "customers" ? "active" : ""}
+            onClick={() => {
+              setSection("customers");
+              setFilter("");
+            }}
+          >
+            <UsersRound size={16} /> Clientes <b>{customers.length}</b>
+          </button>
+          <button
+            className={section === "networks" ? "active" : ""}
+            onClick={() => {
+              setSection("networks");
+              setFilter("");
+            }}
+          >
+            <Users size={16} /> Redes e franquias <b>{networks.length}</b>
+          </button>
+        </nav>
+        <div
+          className={`customer-filter-panel operation-filter-panel ${section === "networks" ? "network-filter" : ""}`}
+        >
+          <div className="operation-filter-search">
+            <label htmlFor="customer-register-search">Pesquisar</label>
+            <div className="field-search">
+            <Search size={17} />
+            <input
+              id="customer-register-search"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              aria-label={
+                section === "networks"
+                  ? "Buscar rede ou franquia"
+                  : "Buscar cliente"
+              }
+              placeholder={
+                section === "networks"
+                  ? "Nome da rede, franquia ou responsável"
+                  : "Nome, ID, documento, e-mail ou telefone"
+              }
+            />
+            </div>
+          </div>
+          {section === "customers" && (
+            <>
+              <label>
+                Status
+                <select
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {[
+                    ...new Set(
+                      catalogs
+                        .filter(
+                          (item) => item.catalog === "status" && item.active,
+                        )
+                        .map((item) => item.name),
+                    ),
+                  ].map((name) => (
+                    <option key={name}>{name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Projeto
+                <select
+                  value={project}
+                  onChange={(event) => setProject(event.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {catalogs
+                    .filter((item) => item.catalog === "project" && item.active)
+                    .map((item) => (
+                      <option key={item.id}>{item.name}</option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Dias de tolerância
+                <select
+                  value={graceDays}
+                  onChange={(event) => setGraceDays(event.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {catalogs
+                    .filter((item) => item.catalog === "graceDays" && item.active)
+                    .map((item) => (
+                      <option key={item.id}>{item.name}</option>
+                    ))}
+                </select>
+              </label>
+            </>
+          )}
+          <div className="operation-filter-bottom">
+            <button
+              className="secondary-button operation-filter-clear"
+              type="button"
+              aria-label="Limpar todos os filtros"
+              onClick={() => {
+                setFilter("");
+                setStatus("");
+                setProject("");
+                setGraceDays("");
+              }}
+            >
+              Limpar
+            </button>
+          </div>
+        </div>
+        <footer className="operation-board-footer customer-board-footer">
+          <span>
+            <b>{section === "customers" ? filtered.length : filteredNetworks.length}</b>{" "}
+            registros
           </span>
-        }
-      />
-      <nav
-        className="customer-register-tabs"
-        aria-label="Cadastros de clientes"
-      >
-        <button
-          className={section === "customers" ? "active" : ""}
-          onClick={() => {
-            setSection("customers");
-            setFilter("");
-          }}
-        >
-          <UsersRound size={16} /> Clientes <b>{customers.length}</b>
-        </button>
-        <button
-          className={section === "networks" ? "active" : ""}
-          onClick={() => {
-            setSection("networks");
-            setFilter("");
-          }}
-        >
-          <Users size={16} /> Redes e franquias <b>{networks.length}</b>
-        </button>
-      </nav>
-      <div
-        className={`customer-filter-panel ${section === "networks" ? "network-filter" : ""}`}
-      >
-        <div className="field-search">
-          <Search size={17} />
-          <input
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            aria-label={
-              section === "networks"
-                ? "Buscar rede ou franquia"
-                : "Buscar cliente"
-            }
-            placeholder={
-              section === "networks"
-                ? "Nome da rede, franquia ou responsável"
-                : "Nome, ID, documento, e-mail ou telefone"
-            }
-          />
-        </div>
-        {section === "customers" && (
-          <>
-            <label>
-              Status
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-              >
-                <option value="">Todos</option>
-                {[
-                  ...new Set(
-                    catalogs
-                      .filter(
-                        (item) => item.catalog === "status" && item.active,
-                      )
-                      .map((item) => item.name),
-                  ),
-                ].map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Projeto
-              <select
-                value={project}
-                onChange={(event) => setProject(event.target.value)}
-              >
-                <option value="">Todos</option>
-                {catalogs
-                  .filter((item) => item.catalog === "project" && item.active)
-                  .map((item) => (
-                    <option key={item.id}>{item.name}</option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Dias de tolerância
-              <select
-                value={graceDays}
-                onChange={(event) => setGraceDays(event.target.value)}
-              >
-                <option value="">Todos</option>
-                {catalogs
-                  .filter((item) => item.catalog === "graceDays" && item.active)
-                  .map((item) => (
-                    <option key={item.id}>{item.name}</option>
-                  ))}
-              </select>
-            </label>
-          </>
-        )}
-        <div className="toolbar-summary">
-          <strong>
-            {section === "customers"
-              ? filtered.length
-              : filteredNetworks.length}
-          </strong>{" "}
-          registros
-        </div>
-      </div>
+        </footer>
+      </section>
       {section === "customers" ? (
         <div className="table-card">
           <div className="data-table customers-table">
             <div className="table-row table-head">
-              <span>ID · Cliente</span>
+              <span>Cliente</span>
               <span>Projeto</span>
               <span>Versão</span>
               <span>Contato</span>
@@ -9507,9 +9532,13 @@ export function CustomersView({
                             ID / documento: {customer.document_masked}
                           </small>
                         )}
-                        <small title={customer.legal_name}>
-                          {customer.legal_name}
-                        </small>
+                        {customer.legal_name.trim() &&
+                          normalizeWorkspaceSearch(customer.legal_name) !==
+                            normalizeWorkspaceSearch(customer.trade_name) && (
+                            <small title={customer.legal_name}>
+                              {customer.legal_name}
+                            </small>
+                          )}
                       </span>
                       {Boolean(customer.strategic) && (
                         <em>
@@ -9519,7 +9548,7 @@ export function CustomersView({
                     </span>
                     <span>{customer.project || "—"}</span>
                     <span>{customer.product_version || "—"}</span>
-                    <span>
+                    <span className="customer-table-contact">
                       <strong>
                         <PhoneLink phone={customer.phone || "—"} />
                       </strong>
@@ -9528,7 +9557,7 @@ export function CustomersView({
                     <span>{customer.subscription || "—"}</span>
                     <span>
                       <b
-                        className={`status-pill ${statusTone(customer.status)}`}
+                        className={`status-pill ${normalizeWorkspaceSearch(customer.status) === "cliente" ? "positive" : statusTone(customer.status)}`}
                       >
                         {customer.status || "Não definido"}
                       </b>
@@ -12305,6 +12334,8 @@ const commercialLabelColor = (label: string) => {
 
 function CommercialLeadsModule({
   flow,
+  period,
+  onPeriodChange,
   catalogs,
   customers,
   items,
@@ -12321,6 +12352,8 @@ function CommercialLeadsModule({
   onOpenSettings,
 }: {
   flow: CommercialFlow;
+  period: string;
+  onPeriodChange: (value: string) => void;
   catalogs: CustomerCatalogOption[];
   customers: Customer[];
   items: WorkItem[];
@@ -12714,10 +12747,17 @@ function CommercialLeadsModule({
       />
     );
 
-  return (
-    <section
-      className={`commercial-leads-module commercial-${view}-view ${flow === "crm" ? "commercial-original-layout" : ""} ${flow === "retention" ? "retention-crm-module" : ""}`}
-    >
+  const canSwitchView = Boolean(activeFunnel && stages.length && flow !== "retention");
+  const clearCrmFilters = () => {
+    setQuery("");
+    chooseFunnel(funnels[0]?.entry.id ?? "");
+    setOwner("all");
+    setTemperature("all");
+    setProductFilter("all");
+    setReminderFilter("all");
+    onPeriodChange(brasiliaMonthKey());
+  };
+  const pageHeader = (
       <PageHeader
         eyebrow={`OPERAÇÃO · ${commercialFlowLabel(flow).toUpperCase()}`}
         title={commercialFlowLabel(flow)}
@@ -12805,7 +12845,8 @@ function CommercialLeadsModule({
           </span>
         }
       />
-      {flow !== "retention" && (
+  );
+  const summary = flow !== "retention" && (
         <section
           className="commercial-value-summary"
           aria-label="Resumo comercial"
@@ -12817,8 +12858,9 @@ function CommercialLeadsModule({
             Valor total <b>{formatMoney(totalPipelineValue)}</b>
           </strong>
         </section>
-      )}
-      <section className="commercial-lead-filters panel">
+  );
+  const filters = (
+      <section className="commercial-lead-filters panel" aria-label="Filtros do CRM">
         <label className="crm-search-field">
           Pesquisar
           <span className="crm-search-control">
@@ -12832,7 +12874,7 @@ function CommercialLeadsModule({
           </span>
         </label>
         <label>
-          Funil selecionado
+          {flow === "crm" ? "Funil" : "Funil selecionado"}
           <select
             value={activeFunnel?.entry.id ?? ""}
             onChange={(event) => chooseFunnel(event.target.value)}
@@ -12916,8 +12958,8 @@ function CommercialLeadsModule({
           </select>
         </label>
       </section>
-      {activeFunnel && stages.length > 0 && flow !== "retention" && (
-        <>
+  );
+  const viewSwitch = canSwitchView && (
           <div
             className="commercial-view-switch segmented"
             role="tablist"
@@ -12936,6 +12978,41 @@ function CommercialLeadsModule({
               <Columns3 size={15} /> Kanban
             </button>
           </div>
+  );
+  return (
+    <section
+      className={`commercial-leads-module commercial-${view}-view ${flow === "crm" ? "commercial-original-layout" : ""} ${flow === "retention" ? "retention-crm-module" : ""}`}
+    >
+      {flow === "crm" ? (
+        <section className="operation-board-panel" aria-label="Painel do CRM Comercial">
+          {pageHeader}
+          {filters}
+          <div className="crm-filter-period">
+            <DateRangeFilter
+              value={period}
+              onChange={onPeriodChange}
+              label="Datas do CRM"
+              showClear={false}
+            />
+            <button type="button" className="secondary-button" aria-label="Limpar todos os filtros" onClick={clearCrmFilters}>
+              Limpar
+            </button>
+          </div>
+          <div className="operation-board-footer">
+            {summary}
+            {viewSwitch}
+          </div>
+        </section>
+      ) : (
+        <>
+          {pageHeader}
+          {summary}
+          {filters}
+          {viewSwitch}
+        </>
+      )}
+      {canSwitchView && (
+        <>
           {view === "list" && (
             <CommercialLeadList
               leads={leads}

@@ -1,6 +1,6 @@
 "use client";
 import DateRangeFilter from "@/app/DateRangeFilter";
-import { overlapsDateRange, dateRangeLabel } from "@/lib/date-range";
+import { dateKey, overlapsDateRange, dateRangeLabel } from "@/lib/date-range";
 
 import PaginatedItems from "@/app/PaginatedItems";
 
@@ -242,7 +242,7 @@ export default function GoalsModule({
     item: WorkItem;
     goal: Goal;
   } | null>(null);
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => dateKey(new Date()).slice(0, 7));
   const [employeeFilter, setEmployeeFilter] = useState("all");
   const [query, setQuery] = useState("");
   const goals = items
@@ -450,6 +450,7 @@ export default function GoalsModule({
         </label>
         {reminderFilter.control}
         <DateRangeFilter
+          showClear={false}
           value={month}
           onChange={setMonth}
           label="Período das metas"
@@ -467,6 +468,19 @@ export default function GoalsModule({
               </option>
             ))}
         </select>
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setQuery("");
+            setEmployeeFilter("all");
+            setMonth(dateKey(new Date()).slice(0, 7));
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </section>
       {summary.error && (
         <p className="form-error" role="alert">

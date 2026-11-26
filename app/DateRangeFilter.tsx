@@ -8,11 +8,13 @@ export default function DateRangeFilter({
   onChange,
   label = "Período",
   className = "",
+  showClear = true,
 }: {
   value: string;
   onChange: (value: string) => void;
   label?: string;
   className?: string;
+  showClear?: boolean;
 }) {
   const { from, to } = dateRangeBounds(value);
   const change = (start: string, end: string) =>
@@ -47,7 +49,7 @@ export default function DateRangeFilter({
           }}
         />
       </label>
-      <button
+      {showClear && <button
         type="button"
         className="secondary-button"
         disabled={!from && !to}
@@ -55,7 +57,7 @@ export default function DateRangeFilter({
         aria-label={`Limpar ${label.toLocaleLowerCase("pt-BR")}`}
       >
         Limpar
-      </button>
+      </button>}
     </div>
   );
 }

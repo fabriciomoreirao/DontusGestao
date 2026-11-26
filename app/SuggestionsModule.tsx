@@ -455,6 +455,19 @@ export default function SuggestionsModule({
         <span className="suggestion-result-count">
           {filtered.length} resultado{filtered.length === 1 ? "" : "s"}
         </span>
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setSearch("");
+            setStatusFilter("");
+            setPriorityFilter("");
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </div>
 
       <div

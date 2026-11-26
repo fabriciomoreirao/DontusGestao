@@ -467,6 +467,7 @@ export default function ReferralsModule({
           ))}
         </select>
         <DateRangeFilter
+          showClear={false}
           value={month}
           onChange={setMonth}
           label="Período das indicações"
@@ -527,6 +528,19 @@ export default function ReferralsModule({
                 }}
               />
             ))}
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setQuery("");
+            setOwner("all");
+            setMonth(dateKey(new Date()).slice(0, 7));
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </section>
       <div className="referral-grid">
         {

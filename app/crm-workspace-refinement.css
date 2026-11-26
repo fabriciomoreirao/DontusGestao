@@ -867,19 +867,19 @@
 }
 
 .app-shell .content .commercial-original-layout.commercial-leads-module
-  > .commercial-lead-filters.panel {
+  > .operation-board-panel > .commercial-lead-filters.panel {
   grid-template-columns: minmax(0, 1.65fr) repeat(5, minmax(0, 1fr)) !important;
   gap: 12px;
   overflow: visible;
 }
 
 .app-shell .content .commercial-original-layout.commercial-leads-module
-  > .commercial-lead-filters.panel::before {
+  > .operation-board-panel > .commercial-lead-filters.panel::before {
   content: none;
 }
 
 .app-shell .content .commercial-original-layout.commercial-leads-module
-  > .commercial-lead-filters.panel > label {
+  > .operation-board-panel > .commercial-lead-filters.panel > label {
   grid-template-rows: auto 42px;
   gap: 6px;
   color: var(--ink);
@@ -890,52 +890,34 @@
 }
 
 .app-shell .content .commercial-original-layout.commercial-leads-module
-  > .commercial-lead-filters.panel :is(input, select, .people-picker-trigger) {
+  > .operation-board-panel > .commercial-lead-filters.panel :is(input, select, .people-picker-trigger) {
   border-radius: 9px;
   font-weight: 500;
 }
 
-.app-shell .content .commercial-original-layout.commercial-leads-module
-  .operation-function-tools,
-.app-shell .content .commercial-original-layout.commercial-leads-module
-  .date-range-filter {
-  align-items: center;
-}
-
-.app-shell .content .commercial-original-layout.commercial-leads-module
-  .date-range-filter > label {
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.app-shell .content .commercial-original-layout.commercial-leads-module
-  .date-range-filter > button {
-  border-color: transparent;
-  background: transparent;
-}
-
 @container crm-workspace (max-width: 1130px) {
   .app-shell .content .commercial-original-layout.commercial-leads-module
-    > .commercial-lead-filters.panel {
+    > .operation-board-panel > .commercial-lead-filters.panel {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 }
 
 @container crm-workspace (max-width: 560px) {
   .app-shell .content .commercial-original-layout.commercial-leads-module
-    > .commercial-lead-filters.panel {
+    > .operation-board-panel > .commercial-lead-filters.panel {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
 
 @container crm-workspace (max-width: 340px) {
   .app-shell .content .commercial-original-layout.commercial-leads-module
-    > .commercial-lead-filters.panel {
+    > .operation-board-panel > .commercial-lead-filters.panel {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+}
+
+.is-drag-scrolling {
+  scroll-snap-type: none;
 }
 
 .commercial-traffic-indicators {
@@ -1007,4 +989,92 @@
   .traffic-kpis strong {
     font-size: 22px;
   }
+}
+
+.operation-board-panel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.app-shell .content .operation-board-panel > .module-page-header,
+.app-shell .content .operation-board-panel > .commercial-lead-filters.panel,
+.app-shell .content .operation-board-panel .commercial-value-summary {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .content .operation-board-panel > .module-page-header {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 16px;
+}
+
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  > .operation-board-panel > .commercial-lead-filters.panel {
+  padding: 12px 16px 0;
+}
+
+.crm-filter-period,
+.operation-board-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px 12px;
+  padding: 10px 16px 12px;
+}
+
+.crm-filter-period .date-range-filter {
+  width: auto;
+  gap: 12px;
+}
+
+.crm-filter-period .date-range-filter > label {
+  flex: 0 1 auto;
+  gap: 6px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.crm-filter-period .date-range-filter input[type="date"] {
+  width: 138px;
+  min-height: 42px;
+  border-radius: 9px;
+}
+
+.crm-filter-period > button {
+  min-height: 42px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.operation-board-footer {
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--line);
+}
+
+.app-shell .content .operation-board-panel .commercial-value-summary {
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  width: auto;
+  padding: 0;
+  gap: 8px 20px;
+}
+
+.app-shell .content .operation-board-panel .commercial-view-switch {
+  display: inline-flex;
+  width: auto;
+  margin: 0;
+  box-shadow: none;
+}
+
+.operation-board-panel .commercial-view-switch > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }

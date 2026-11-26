@@ -1,0 +1,97 @@
+/* Shared visual treatment for grid-based lists and native tables. */
+.app-shell .content {
+  --workspace-table-heading: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  --workspace-table-hover: color-mix(in srgb, var(--primary) 6%, var(--surface));
+}
+
+.app-shell .content :is(
+  .data-table > .table-head,
+  .task-table > .task-table-row.head,
+  .service-list > header,
+  table > thead > tr > th
+) {
+  min-height: 42px;
+  background: var(--workspace-table-heading);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-align: start;
+  text-transform: none;
+}
+
+.app-shell .content table > thead > tr > th {
+  padding-block: 10px;
+}
+
+.app-shell .content :is(
+  .data-table > .table-row:not(.table-head),
+  .task-table > .task-table-row:not(.head),
+  .service-list > article,
+  table > tbody > tr:not(.record-pagination-row) > td
+) {
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.app-shell .content :is(
+  .data-table > button.table-row:not(.table-head),
+  .task-table > button.task-table-row,
+  .service-list > article
+):hover,
+.app-shell .content table > tbody > tr:not(.record-pagination-row):hover > td {
+  background-color: var(--workspace-table-hover);
+}
+
+.app-shell .content :is(
+  .data-table > button.table-row,
+  .task-table > button.task-table-row
+):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.app-shell .content :is(
+  .data-table > .table-row,
+  .task-table > .task-table-row,
+  .service-list > article
+) small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-shell .content .data-table.customers-table {
+  overflow-x: auto;
+}
+
+.app-shell .content .data-table.customers-table > .table-row {
+  min-width: 800px;
+  grid-template-columns: minmax(160px, 1.35fr) minmax(80px, 0.65fr)
+    minmax(120px, 1fr) minmax(150px, 1.1fr) minmax(90px, 0.65fr)
+    minmax(92px, 0.65fr);
+  column-gap: 16px;
+  padding-inline: 16px;
+}
+
+.app-shell .content .customers-table .customer-table-contact .phone-link {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell .content .customers-table .status-pill {
+  border-radius: 999px;
+  padding: 4px 9px;
+}
+
+.app-shell .content .record-page-size,
+.app-shell .content .record-pagination {
+  padding-inline: 16px;
+}
+
+.app-shell .content .record-pagination > div > span {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

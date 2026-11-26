@@ -343,6 +343,17 @@ export default function HrManagementModule({
         </label>
         {reminderFilter.control}
         <strong>{visible.length} colaborador(es)</strong>
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setQuery("");
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </div>
       <section className="hr-board">
         {visible.length === 0 ? (

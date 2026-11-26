@@ -67,7 +67,6 @@ import {
   UserRound,
   UsersRound,
   X,
-  Filter,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import {
@@ -339,6 +338,7 @@ type Props = {
   busy: boolean;
   month: string;
   onMonthChange: (month: string) => void;
+  onClearPeriod: () => void;
   operate: (
     payload: Record<string, unknown>,
     success: string,
@@ -428,6 +428,7 @@ export default function TasksModule({
   busy,
   month,
   onMonthChange,
+  onClearPeriod,
   operate,
   onSendToDevelopment,
   uploadAttachments,
@@ -623,70 +624,39 @@ export default function TasksModule({
 
   return (
     <div className="tasks-module">
-      <header className="tasks-heading module-page-header">
-        <div className="module-page-title">
-          <span className="module-page-title-icon">
-            <Clipboard size={21} />
-          </span>
-          <span className="module-page-copy">
-            <span className="eyebrow">OPERAÇÃO CORPORATIVA</span>
-            <h1>Tarefas</h1>
-            <p>
-              Demandas internas, responsáveis, setores e SLA em um fluxo
-              auditável.
-            </p>
-          </span>
-        </div>
-        <div className="tasks-heading-actions module-page-actions">
-          <DateRangeFilter
-            value={month}
-            onChange={onMonthChange}
-            label="Período das tarefas"
-            className="tasks-heading-period"
-          />
-          <button
-            type="button"
-            className="task-settings-button icon-only"
-            onClick={onOpenSettings}
-            aria-label="Configurar opções de tarefas"
-            title="Configurar tipos, prioridades, SLA, status e Kanban"
-          >
-            <Settings size={17} />
-          </button>
-          {canCreate && (
-            <button
-              className="primary-button"
-              onClick={() => setCreating(true)}
-            >
-              <Plus size={17} /> Nova tarefa
-            </button>
-          )}
-        </div>
-      </header>
-      <section className="task-workspace">
-        <header className="task-workspace-heading">
-          <div>
-            <span>QUADRO ATUAL</span>
-            <strong>{selectedDepartment?.name ?? "Visão consolidada"}</strong>
-            <small>{filtered.length} tarefa(s) nesta visualização</small>
+      <section className="operation-board-panel" aria-label="Painel de tarefas">
+        <header className="tasks-heading module-page-header">
+          <div className="module-page-title">
+            <span className="module-page-title-icon">
+              <Clipboard size={21} />
+            </span>
+            <span className="module-page-copy">
+              <h1>Tarefas</h1>
+            </span>
           </div>
-          <div className="tasks-view-switch">
+          <div className="tasks-heading-actions module-page-actions">
+
             <button
-              className={view === "kanban" ? "active" : ""}
-              onClick={() => setView("kanban")}
+              type="button"
+              className="task-settings-button icon-only"
+              onClick={onOpenSettings}
+              aria-label="Configurar opções de tarefas"
+              title="Configurar tipos, prioridades, SLA, status e Kanban"
             >
-              <Columns3 size={16} /> Kanban
+              <Settings size={17} />
             </button>
-            <button
-              className={view === "list" ? "active" : ""}
-              onClick={() => setView("list")}
-            >
-              <List size={16} /> Lista
-            </button>
+            {canCreate && (
+              <button
+                className="primary-button"
+                onClick={() => setCreating(true)}
+              >
+                <Plus size={17} /> Nova tarefa
+              </button>
+            )}
           </div>
         </header>
         <form
-          className="tasks-toolbar task-search-filters"
+          className="tasks-toolbar task-search-filters operation-filter-panel"
           role="group"
           aria-label="Filtros de tarefas"
           onSubmit={(event) => {
@@ -694,59 +664,6 @@ export default function TasksModule({
             filterResultsRef.current?.focus();
           }}
         >
-          <div className="task-filter-heading">
-            <div className="task-filter-title">
-              <span className="task-filter-icon">
-                <Filter size={23} aria-hidden="true" />
-              </span>
-              <h2>Filtros de pesquisa</h2>
-              <span className="task-filter-subtitle">Refine os resultados</span>
-            </div>
-            <div className="task-filter-actions">
-              <label className="mine-filter">
-                <input
-                  type="checkbox"
-                  checked={onlyMine}
-                  onChange={(event) => setOnlyMine(event.target.checked)}
-                />
-                Somente minhas
-              </label>
-              <label className="mine-filter task-priority-filter">
-                <input
-                  type="checkbox"
-                  checked={onlyPriority}
-                  onChange={(event) => setOnlyPriority(event.target.checked)}
-                />
-                <Flag size={15} />
-                Prioridade
-              </label>
-              <button
-                type="button"
-                className="secondary-button task-filter-reset"
-                onClick={() => {
-                  setQuery("");
-                  setDepartment("");
-                  setPriority("");
-                  setAssignee("");
-                  setClientNotice("Todos");
-                  setOnlyMine(false);
-                  setOnlyPriority(false);
-                  setApprovalFilter("");
-                  reminderFilter.setMode("all");
-                }}
-              >
-                <RotateCcw size={17} aria-hidden="true" />
-                Limpar filtros
-              </button>
-              <button
-                type="submit"
-                className="primary-button task-filter-submit"
-              >
-                <Search size={18} aria-hidden="true" />
-                Filtrar
-              </button>
-            </div>
-          </div>
           <div className="task-filter-controls">
             <label className="task-query-control">
               <span>
@@ -888,48 +805,111 @@ export default function TasksModule({
               </select>
             </label>
           </div>
-        </form>
-        <div
-          className="task-workspace-content"
-          ref={filterResultsRef}
-          tabIndex={-1}
-          role="region"
-          aria-label="Resultados das tarefas"
-        >
-          {view === "kanban" && (
-            <Kanban
-              tasks={filtered}
-              statuses={module.statuses}
-              collaborators={module.collaborators}
-              departmentId={departmentFilter}
-              canEdit={canEdit}
-              canDrag={(task) => canDragTask(task, movementAccessFor(task))}
-              canMoveTo={canMoveTo}
-              busy={busy}
-              onOpen={openTask}
-              onEdit={(task) => openTask(task, true)}
-              onMove={move}
-              onDelete={(task) => {
-                void operate(
-                  {
-                    action: "deleteTask",
-                    taskId: task.id,
-                    version: task.version,
-                  },
-                  "Tarefa excluída com sucesso.",
-                );
+          <div className="operation-filter-bottom">
+            <DateRangeFilter
+              value={month}
+              onChange={onMonthChange}
+              label="Datas das tarefas"
+              showClear={false}
+            />
+            <button
+              type="button"
+              className="secondary-button operation-filter-clear"
+              aria-label="Limpar todos os filtros"
+              onClick={() => {
+                setQuery("");
+                setDepartment("");
+                setPriority("");
+                setAssignee("");
+                setClientNotice("Todos");
+                setOnlyMine(false);
+                setOnlyPriority(false);
+                setApprovalFilter("");
+                reminderFilter.setMode("all");
+                onClearPeriod();
               }}
-            />
-          )}
-          {view === "list" && (
-            <TaskList
-              tasks={filtered}
-              collaborators={module.collaborators}
-              onOpen={openTask}
-            />
-          )}
-        </div>
+            >
+              Limpar
+            </button>
+          </div>
+        </form>
+        <footer className="operation-board-footer">
+          <div className="task-board-summary">
+            <span>{selectedDepartment?.name ?? "Visão consolidada"}</span>
+            <span><b>{filtered.length}</b> {filtered.length === 1 ? "tarefa" : "tarefas"}</span>
+          </div>
+          <div className="task-board-view-controls">
+            <div className="task-board-quick-filters">
+              <label>
+                <input type="checkbox" checked={onlyMine} onChange={(event) => setOnlyMine(event.target.checked)} />
+                Somente minhas
+              </label>
+              <label>
+                <input type="checkbox" checked={onlyPriority} onChange={(event) => setOnlyPriority(event.target.checked)} />
+                Prioridade sinalizada
+              </label>
+            </div>
+          <div className="commercial-view-switch segmented" role="group" aria-label="Visualização das tarefas">
+            <button
+              type="button"
+              className={view === "list" ? "active" : ""}
+              aria-pressed={view === "list"}
+              onClick={() => setView("list")}
+            >
+              <List size={15} /> Lista
+            </button>
+            <button
+              type="button"
+              className={view === "kanban" ? "active" : ""}
+              aria-pressed={view === "kanban"}
+              onClick={() => setView("kanban")}
+            >
+              <Columns3 size={15} /> Kanban
+            </button>
+          </div>
+          </div>
+        </footer>
       </section>
+      <div
+        className="task-workspace-content"
+        ref={filterResultsRef}
+        tabIndex={-1}
+        role="region"
+        aria-label="Resultados das tarefas"
+      >
+        {view === "kanban" && (
+          <Kanban
+            tasks={filtered}
+            statuses={module.statuses}
+            collaborators={module.collaborators}
+            departmentId={departmentFilter}
+            canEdit={canEdit}
+            canDrag={(task) => canDragTask(task, movementAccessFor(task))}
+            canMoveTo={canMoveTo}
+            busy={busy}
+            onOpen={openTask}
+            onEdit={(task) => openTask(task, true)}
+            onMove={move}
+            onDelete={(task) => {
+              void operate(
+                {
+                  action: "deleteTask",
+                  taskId: task.id,
+                  version: task.version,
+                },
+                "Tarefa excluída com sucesso.",
+              );
+            }}
+          />
+        )}
+        {view === "list" && (
+          <TaskList
+            tasks={filtered}
+            collaborators={module.collaborators}
+            onOpen={openTask}
+          />
+        )}
+      </div>
 
       {creating && (
         <CreateTaskModal

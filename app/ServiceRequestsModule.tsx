@@ -388,6 +388,18 @@ export default function ServiceRequestsModule({
         </label>
         {reminderFilter.control}
         <b>{visible.length} chamado(s)</b>
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setQuery("");
+            setSector("all");
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </section>
       <section className={`service-request-board ${mode}`}>
         {stages.map((stage) => (

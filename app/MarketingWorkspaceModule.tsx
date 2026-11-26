@@ -454,6 +454,18 @@ export default function MarketingWorkspaceModule({
             <List size={15} />
           </button>
         </div>
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setQuery("");
+            setOwner("all");
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </section>
       {view === "kanban" ? (
         <div className="standard-kanban marketing-kanban">
