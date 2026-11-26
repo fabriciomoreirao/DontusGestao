@@ -205,8 +205,11 @@ public sealed partial class ChatService(
                 !string.IsNullOrWhiteSpace(x.AppSecretProtected), x.Active)).ToArray(),
             tags.Select(ToTagDto).ToArray(),
             quickReplies.Select(x => new ChatQuickReplyDto(x.Id, x.Shortcut, x.Title, x.Body, x.DepartmentId, x.Active)).ToArray(),
-            metrics with { AverageFirstResponseMinutes = Math.Round(metrics.AverageFirstResponseMinutes, 1),
-                AverageResolutionMinutes = Math.Round(metrics.AverageResolutionMinutes, 1) },
+            metrics with
+            {
+                AverageFirstResponseMinutes = Math.Round(metrics.AverageFirstResponseMinutes, 1),
+                AverageResolutionMinutes = Math.Round(metrics.AverageResolutionMinutes, 1)
+            },
             currentUserId, new ChatInboxPageDto(page, pageSize, total, contactsCount, groupsCount),
             selectedId, selectedMessages.HasMore);
     }
@@ -984,7 +987,8 @@ public sealed partial class ChatService(
 
     private async Task<string> SendWhatsAppTextAsync(ChatWhatsAppNumber number, string phone, string body, CancellationToken cancellationToken)
     {
-        if (number.SuiteStatus == "Vinculado") {
+        if (number.SuiteStatus == "Vinculado")
+        {
             var suiteResult = await SuiteRequestAsync(HttpMethod.Post, "api/v1/waba/send/text", new { phone_number_id = number.PhoneNumberId, to = CampaignPhone(phone), text = body, reply_to = "" }, true, cancellationToken);
             return suiteResult.TryGetProperty("messages", out var messages) && messages.GetArrayLength() > 0 ? Text(messages[0], "id") : "";
         }

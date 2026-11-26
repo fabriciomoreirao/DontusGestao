@@ -69,10 +69,17 @@ public static class RealtimeEndpoints
                             }
                         }
                         var changes = subscription.Take();
-                        await Send(new { type = changes == RealtimeChange.None ? "heartbeat" : "changed",
-                            operations = changes.HasFlag(RealtimeChange.Operations), internalChat = changes.HasFlag(RealtimeChange.InternalChat),
+                        // null asks for the whole chat; an empty list means a previous frame already carried these rooms.
+                        var chatRooms = changes.HasFlag(RealtimeChange.InternalChat) ? subscription.TakeChatRooms() : [];
+                        await Send(new
+                        {
+                            type = changes == RealtimeChange.None ? "heartbeat" : "changed",
+                            operations = changes.HasFlag(RealtimeChange.Operations),
+                            internalChat = changes.HasFlag(RealtimeChange.InternalChat) && (chatRooms is null || chatRooms.Length > 0),
+                            rooms = chatRooms,
                             typing = subscription.Chat ? subscription.TakeTyping() : null,
-                            presence = subscription.Chat && (changes.HasFlag(RealtimeChange.Presence) || changes == RealtimeChange.None) ? broker.GetPresence() : null }, lifetime.Token);
+                            presence = subscription.Chat && (changes.HasFlag(RealtimeChange.Presence) || changes == RealtimeChange.None) ? broker.GetPresence() : null
+                        }, lifetime.Token);
                     }
                 }
                 finally { await lifetime.CancelAsync(); try { await receive; } catch (OperationCanceledException) { } }

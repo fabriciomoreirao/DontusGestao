@@ -10,20 +10,20 @@ public sealed class CommercialCrmTests
     [Fact]
     public async Task Lead_saves_track_stage_entry_without_resetting_it_on_a_comment()
     {
-        await using var db=Context();
-        var service=new OperationsService(db);var actor=Actor("commercial");
-        var id=await service.CreateWorkItemAsync(new("commercial","Lead comercial","Etapa mensal",null,"Cliente","Vendedor","Comercial","P3",null,null,10000,
-            """{"kind":"commercialLead","funnel":"Alpha","stage":"Novo","comments":[]}""",[],null,null),actor);
-        var item=await db.WorkItems.SingleAsync(entry=>entry.Id==id);
-        var detail=System.Text.Json.Nodes.JsonNode.Parse(item.Description)!;
+        await using var db = Context();
+        var service = new OperationsService(db); var actor = Actor("commercial");
+        var id = await service.CreateWorkItemAsync(new("commercial", "Lead comercial", "Etapa mensal", null, "Cliente", "Vendedor", "Comercial", "P3", null, null, 10000,
+            """{"kind":"commercialLead","funnel":"Alpha","stage":"Novo","comments":[]}""", [], null, null), actor);
+        var item = await db.WorkItems.SingleAsync(entry => entry.Id == id);
+        var detail = System.Text.Json.Nodes.JsonNode.Parse(item.Description)!;
         Assert.False(string.IsNullOrEmpty(detail["stageEnteredAt"]?.ToString()));
-        detail["stageEnteredAt"]="2026-10-15T15:00:00Z";item.Description=detail.ToJsonString();await db.SaveChangesAsync();
-        detail["comments"]=new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject{["text"]="Comentário atual"});
-        await service.UpdateWorkItemAsync(new(id,item.Title,item.Owner,item.AmountCents,detail.ToJsonString(),null,item.CustomerName,item.Version),actor);
-        Assert.Equal(DateTimeOffset.Parse("2026-10-15T15:00:00Z"),DateTimeOffset.Parse(System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["stageEnteredAt"]!.ToString()));
-        detail["stage"]="Proposta";
-        await service.UpdateWorkItemAsync(new(id,item.Title,item.Owner,item.AmountCents,detail.ToJsonString(),null,item.CustomerName,item.Version),actor);
-        Assert.True(DateTimeOffset.Parse(System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["stageEnteredAt"]!.ToString())>DateTimeOffset.Parse("2026-10-15T15:00:00Z"));
+        detail["stageEnteredAt"] = "2026-10-15T15:00:00Z"; item.Description = detail.ToJsonString(); await db.SaveChangesAsync();
+        detail["comments"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["text"] = "Comentário atual" });
+        await service.UpdateWorkItemAsync(new(id, item.Title, item.Owner, item.AmountCents, detail.ToJsonString(), null, item.CustomerName, item.Version), actor);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-15T15:00:00Z"), DateTimeOffset.Parse(System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["stageEnteredAt"]!.ToString()));
+        detail["stage"] = "Proposta";
+        await service.UpdateWorkItemAsync(new(id, item.Title, item.Owner, item.AmountCents, detail.ToJsonString(), null, item.CustomerName, item.Version), actor);
+        Assert.True(DateTimeOffset.Parse(System.Text.Json.Nodes.JsonNode.Parse(item.Description)!["stageEnteredAt"]!.ToString()) > DateTimeOffset.Parse("2026-10-15T15:00:00Z"));
     }
 
     [Fact]
@@ -36,15 +36,21 @@ public sealed class CommercialCrmTests
         var support = new TaskDepartment { Name = "Suporte" };
         var otherSales = new TaskDepartment { Name = "Comercial externo" };
         db.TaskDepartments.AddRange(commercial, secondCommercial, inactive, support, otherSales);
-        var users = Enumerable.Range(0, 7).Select(index => new AppUser {
-            Email = $"employee{index}@example.com", DisplayName = $"Colaborador {index}",
-            Department = "Comercial", CreatedBy = "test",
+        var users = Enumerable.Range(0, 7).Select(index => new AppUser
+        {
+            Email = $"employee{index}@example.com",
+            DisplayName = $"Colaborador {index}",
+            Department = "Comercial",
+            CreatedBy = "test",
         }).ToArray();
         users[2].Active = false;
         users[3].BlockedAt = DateTimeOffset.UtcNow;
         db.Users.AddRange(users);
-        void Link(int index, TaskDepartment department, bool primary = false) => db.UserDepartments.Add(new() {
-            UserId = users[index].Id, DepartmentId = department.Id, IsPrimary = primary,
+        void Link(int index, TaskDepartment department, bool primary = false) => db.UserDepartments.Add(new()
+        {
+            UserId = users[index].Id,
+            DepartmentId = department.Id,
+            IsPrimary = primary,
         });
         Link(0, commercial, true);
         Link(0, secondCommercial);

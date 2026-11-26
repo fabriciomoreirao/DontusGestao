@@ -17,8 +17,8 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var canManage = CanManage(actor);
         var memberDepartmentIds = await AccessibleAgendaCalendarIdsAsync(actorUser.Id, cancellationToken);
 
-        var meetingRoomIds = (await db.AgendaCalendars.AsNoTracking().ToListAsync(cancellationToken)).Where(IsMeetingRoom).Select(calendar=>calendar.Id).ToArray();
-        var invitedCommitmentIds = db.AgendaCommitmentParticipants.Where(participant => participant.UserId == actorUser.Id && db.AgendaCommitments.Any(commitment=>commitment.Id==participant.CommitmentId && meetingRoomIds.Contains(commitment.AgendaId))).Select(participant => participant.CommitmentId);
+        var meetingRoomIds = (await db.AgendaCalendars.AsNoTracking().ToListAsync(cancellationToken)).Where(IsMeetingRoom).Select(calendar => calendar.Id).ToArray();
+        var invitedCommitmentIds = db.AgendaCommitmentParticipants.Where(participant => participant.UserId == actorUser.Id && db.AgendaCommitments.Any(commitment => commitment.Id == participant.CommitmentId && meetingRoomIds.Contains(commitment.AgendaId))).Select(participant => participant.CommitmentId);
         var invitedCalendarIds = db.AgendaCommitments.Where(commitment => invitedCommitmentIds.Contains(commitment.Id)).Select(commitment => commitment.AgendaId);
         var calendarsQuery = db.AgendaCalendars.AsNoTracking();
         if (!canManage) calendarsQuery = calendarsQuery.Where(calendar => calendar.Active && (memberDepartmentIds.Contains(calendar.Id) || invitedCalendarIds.Contains(calendar.Id)));
@@ -101,9 +101,11 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
                     type?.Name ?? "Tipo removido", commitment.AgendaStatusId, status?.Name ?? "Status removido", status?.Color ?? "#64748b",
                     commitment.CreatedBy,
                     participants.Where(participant => participant.CommitmentId == commitment.Id).Select(participant => participant.UserId).ToArray(),
-                    commitment.RecurrenceGroupId, commitment.RecurrenceGroupId.HasValue ? groupCounts.GetValueOrDefault(commitment.RecurrenceGroupId.Value, 1) : 1) { StatusChangedAt = commitment.StatusChangedAt ?? commitment.CreatedAt };
+                    commitment.RecurrenceGroupId, commitment.RecurrenceGroupId.HasValue ? groupCounts.GetValueOrDefault(commitment.RecurrenceGroupId.Value, 1) : 1)
+                { StatusChangedAt = commitment.StatusChangedAt ?? commitment.CreatedAt };
             }).ToArray(),
-            canManage) { Alerts = alerts };
+            canManage)
+        { Alerts = alerts };
     }
 
     public async Task<Guid> SaveCalendarAsync(SaveAgendaCalendarCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -240,7 +242,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             if (index > 0 && occurrences[index] < occurrences[index - 1].Add(duration))
                 throw new DomainException("As datas selecionadas geram compromissos com horários sobrepostos.", 409);
             await EnsureAvailabilityAsync(calendar.Id, null, command.ResponsibleUserId, command.Title.Trim(),
-                occurrences[index], occurrences[index].Add(duration), cancellationToken);
+                occurrences[index], occurrences[index].Add(duration), status.Id, cancellationToken);
         }
 
         var recurrenceGroupId = occurrences.Length > 1 ? Guid.NewGuid() : (Guid?)null;
@@ -297,7 +299,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
 
         if (command.StartsAt != commitment.StartsAt || !commitment.Title.StartsWith("Kick off", StringComparison.OrdinalIgnoreCase))
             EnsureUpcomingCommercialSlot(command.Title, command.StartsAt);
-        await EnsureAvailabilityAsync(calendar.Id, commitment.Id, command.ResponsibleUserId, command.Title.Trim(), command.StartsAt, command.EndsAt, cancellationToken);
+        await EnsureAvailabilityAsync(calendar.Id, commitment.Id, command.ResponsibleUserId, command.Title.Trim(), command.StartsAt, command.EndsAt, status.Id, cancellationToken);
 
         commitment.AgendaId = calendar.Id;
         commitment.AgendaTypeId = type.Id;
@@ -321,7 +323,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             ?? throw new DomainException("Compromisso não encontrado.", 404);
         var actorUser = await GetActorUserAsync(actor, cancellationToken);
         actor.RequirePermission("work", "view");
-        var statusCalendar = await db.AgendaCalendars.SingleAsync(calendar=>calendar.Id==commitment.AgendaId,cancellationToken);
+        var statusCalendar = await db.AgendaCalendars.SingleAsync(calendar => calendar.Id == commitment.AgendaId, cancellationToken);
         if (!IsMeetingRoom(statusCalendar) || commitment.ResponsibleUserId != actorUser.Id && !string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase))
             await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
         if (!string.Equals(commitment.CreatedBy, actor.Email, StringComparison.OrdinalIgnoreCase) && commitment.ResponsibleUserId != actorUser.Id)
@@ -329,6 +331,8 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var status = await db.AgendaStatuses.SingleOrDefaultAsync(entry => entry.Id == command.AgendaStatusId && entry.Active, cancellationToken)
             ?? throw new DomainException("Selecione um status ativo.");
 
+        await EnsureAvailabilityAsync(commitment.AgendaId, commitment.Id, commitment.ResponsibleUserId,
+            commitment.Title, commitment.StartsAt, commitment.EndsAt, status.Id, cancellationToken);
         if (commitment.AgendaStatusId != status.Id) commitment.StatusChangedAt = clock.GetUtcNow();
         commitment.AgendaStatusId = status.Id;
         commitment.UpdatedAt = DateTimeOffset.UtcNow;
@@ -350,7 +354,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         await RequireCalendarAccessAsync(commitment.AgendaId, actorUser.Id, actor, cancellationToken);
         await ValidateCalendarParticipantsAsync(calendar.Id, [command.ResponsibleUserId], actorUser.Id, CanManage(actor), cancellationToken);
 
-        await EnsureAvailabilityAsync(commitment.AgendaId, commitment.Id, command.ResponsibleUserId, commitment.Title, commitment.StartsAt, commitment.EndsAt, cancellationToken);
+        await EnsureAvailabilityAsync(commitment.AgendaId, commitment.Id, command.ResponsibleUserId, commitment.Title, commitment.StartsAt, commitment.EndsAt, commitment.AgendaStatusId, cancellationToken);
         var previousResponsibleId = commitment.ResponsibleUserId;
         commitment.ResponsibleUserId = command.ResponsibleUserId;
         commitment.UpdatedAt = DateTimeOffset.UtcNow;
@@ -386,24 +390,26 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var grantedIds = await AccessibleAgendaCalendarIdsAsync(responsibleUserId, cancellationToken);
         var targetManages = (await CalendarManagerIdsAsync(cancellationToken)).Contains(responsibleUserId);
         var calendars = await db.AgendaCalendars.Where(entry => entry.Active && (targetManages || grantedIds.Contains(entry.Id))).OrderBy(entry => entry.Name).ToArrayAsync(cancellationToken);
-        var plans = new List<(AgendaCommitment Commitment, AgendaCalendar Calendar)>();
+        var plans = new List<(AgendaCommitment Commitment, AgendaCalendar Calendar, bool BlocksTime)>();
+        var blockingStatuses = BlockingStatusIds();
         foreach (var commitment in commitments)
         {
             var destination = calendars.FirstOrDefault(entry => entry.Id == commitment.AgendaId)
                 ?? calendars.FirstOrDefault(entry => !IsMeetingRoom(entry));
             if (destination is null) throw new DomainException("Libere uma agenda no cadastro do responsável antes de encaminhar a jornada.");
+            var blocksTime = await blockingStatuses.ContainsAsync(commitment.AgendaStatusId, cancellationToken);
             // Kick offs allow several commercial reservations per slot, but a handoff must still respect the person's availability.
-            if (await db.AgendaCommitments.AnyAsync(entry => !ids.Contains(entry.Id) && entry.ResponsibleUserId == responsibleUserId &&
+            if (blocksTime && await db.AgendaCommitments.AnyAsync(entry => blockingStatuses.Contains(entry.AgendaStatusId) && !ids.Contains(entry.Id) && entry.ResponsibleUserId == responsibleUserId &&
                 entry.StartsAt < commitment.EndsAt && entry.EndsAt > commitment.StartsAt && !entry.Title.StartsWith(CommercialBlockPrefix), cancellationToken))
                 throw new DomainException("O responsável já possui um compromisso neste horário.", 409);
-            if (plans.Any(entry => entry.Commitment.StartsAt < commitment.EndsAt && entry.Commitment.EndsAt > commitment.StartsAt))
+            if (blocksTime && plans.Any(entry => entry.BlocksTime && entry.Commitment.StartsAt < commitment.EndsAt && entry.Commitment.EndsAt > commitment.StartsAt))
                 throw new DomainException("Os compromissos desta jornada possuem horários sobrepostos. Revise a agenda antes de encaminhar.", 409);
-            await EnsureAvailabilityAsync(destination.Id, commitment.Id, responsibleUserId, commitment.Title, commitment.StartsAt, commitment.EndsAt, cancellationToken);
-            plans.Add((commitment, destination));
+            await EnsureAvailabilityAsync(destination.Id, commitment.Id, responsibleUserId, commitment.Title, commitment.StartsAt, commitment.EndsAt, commitment.AgendaStatusId, cancellationToken);
+            plans.Add((commitment, destination, blocksTime));
         }
 
         // No tracked changes occur until every commitment has passed validation.
-        foreach (var (commitment, calendar) in plans)
+        foreach (var (commitment, calendar, _) in plans)
         {
             var previousResponsibleId = commitment.ResponsibleUserId;
             commitment.AgendaId = calendar.Id;
@@ -518,11 +524,18 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             throw new DomainException("Selecione um horário futuro, a partir da data atual, para o agendamento comercial.", 409);
     }
 
-    private async Task EnsureAvailabilityAsync(Guid agendaId, Guid? ignoredId, Guid responsibleUserId, string title, DateTimeOffset startsAt, DateTimeOffset endsAt, CancellationToken cancellationToken)
+    private IQueryable<Guid> BlockingStatusIds() => db.AgendaStatuses
+        .Where(status => status.Name.Trim().ToLower() == "agendado" ||
+            status.Name.Trim().ToLower() == "concluído" || status.Name.Trim().ToLower() == "concluido")
+        .Select(status => status.Id);
+
+    private async Task EnsureAvailabilityAsync(Guid agendaId, Guid? ignoredId, Guid responsibleUserId, string title, DateTimeOffset startsAt, DateTimeOffset endsAt, Guid statusId, CancellationToken cancellationToken)
     {
+        if (!await BlockingStatusIds().ContainsAsync(statusId, cancellationToken)) return;
         var isCommercialBlock = title.StartsWith(CommercialBlockPrefix, StringComparison.OrdinalIgnoreCase);
         if (isCommercialBlock) return;
 
+        var blockingStatuses = BlockingStatusIds();
         var isCommercialKickoff = title.StartsWith("Kick off", StringComparison.OrdinalIgnoreCase);
         if (isCommercialKickoff)
         {
@@ -544,7 +557,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
             var scheduledAtSlot = await db.AgendaCommitments.CountAsync(entry =>
                 entry.Id != ignoredId &&
                 entry.AgendaId == agendaId &&
-                !cancelledStatuses.Contains(entry.AgendaStatusId) &&
+                blockingStatuses.Contains(entry.AgendaStatusId) &&
                 !entry.Title.StartsWith(CommercialBlockPrefix) &&
                 entry.StartsAt >= slotMinute && entry.StartsAt < slotMinuteEnd, cancellationToken);
             if (scheduledAtSlot >= 3) throw new DomainException("Este horário já atingiu o limite de 3 compromissos.", 409);
@@ -554,6 +567,7 @@ public sealed class AgendaService(OperationsDbContext db, TimeProvider? timeProv
         var conflict = await db.AgendaCommitments.AnyAsync(entry =>
             entry.Id != ignoredId &&
             entry.ResponsibleUserId == responsibleUserId &&
+            blockingStatuses.Contains(entry.AgendaStatusId) &&
             entry.StartsAt < endsAt && entry.EndsAt > startsAt, cancellationToken);
         if (conflict) throw new DomainException("O responsável já possui um compromisso neste horário.", 409);
     }

@@ -11,8 +11,44 @@ public sealed class StrategicUnitNoticeTests
     private static OperationsDbContext Context() => new(new DbContextOptionsBuilder<OperationsDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ActorContext Viewer => new("cs@test", "CS", "Colaborador", "CS", [new EffectivePermission("cs", true, false, false, false, false)]);
-    private static WorkItem Network() => new() { Module = "cs", Title = "Rede", Status = "Ativo", RecordType = "Conta estratégica", CreatedBy = "tests",
-        Description = """{"kind":"enterpriseNetwork","units":[{"id":"one","pendingFollowUp":true},{"id":"two","pendingFollowUp":true}],"history":[{"type":"Reunião","text":"Preservar"}]}""" };
+    private static WorkItem Network() => new()
+    {
+        Module = "cs",
+        Title = "Rede",
+        Status = "Ativo",
+        RecordType = "Conta estratégica",
+        CreatedBy = "tests",
+        Description = """{"kind":"enterpriseNetwork","units":[{"id":"one","pendingFollowUp":true},{"id":"two","pendingFollowUp":true}],"history":[{"type":"Reunião","text":"Preservar"}]}"""
+    };
+
+    [Fact]
+    public async Task Embedded_followup_evolves_and_finishes_without_creating_another_work_item()
+    {
+        await using var db = Context();
+        var network = Network(); network.Owner = "CS"; db.Add(network); await db.SaveChangesAsync();
+        var service = new OperationsService(db);
+        var actor = Viewer with { Permissions = [new EffectivePermission("cs", true, false, true, false, false)] };
+        foreach (var phase in new[] { "tracking", "conference", "finished" })
+        {
+            var document = JsonNode.Parse(network.Description)!;
+            var unit = document["units"]![0]!;
+            unit["followUp"] = new JsonObject
+            {
+                ["kind"] = "csJourney", ["track"] = "activation", ["phase"] = phase,
+                ["featuresBase"] = new JsonArray("Agenda"), ["featuresActive"] = new JsonArray("Agenda"),
+                ["follows"] = new JsonArray(new JsonObject { ["text"] = "Evolução preservada", ["createdAt"] = "2026-11-25T15:00:00Z" })
+            };
+            unit["followUpOwner"] = "CS";
+            unit["status"] = phase == "finished" ? "Finalizado" : "Em acompanhamento";
+            await service.UpdateWorkItemAsync(new(network.Id, network.Title, network.Owner, 0, document.ToJsonString(), null, null, network.Version), actor);
+            Assert.Single(await db.WorkItems.ToArrayAsync());
+            Assert.Equal(phase, JsonNode.Parse(network.Description)!["units"]![0]!["followUp"]!["phase"]!.ToString());
+        }
+        db.ChangeTracker.Clear();
+        var saved = JsonNode.Parse((await db.WorkItems.SingleAsync()).Description)!;
+        Assert.Equal("Finalizado", saved["units"]![0]!["status"]!.ToString());
+        Assert.Equal("Evolução preservada", saved["units"]![0]!["followUp"]!["follows"]![0]!["text"]!.ToString());
+    }
 
     [Fact]
     public async Task Opening_one_unit_persists_only_its_notice_and_does_not_create_an_interaction()

@@ -32,8 +32,16 @@ public sealed class FollowupValidationPermissionTests
     public async Task Module_edit_and_validation_view_cannot_modify_or_forward_validation(string module)
     {
         await using var db = Context();
-        var item = new WorkItem { Module = module, RecordType = "Acompanhamento", Title = "Cliente", Owner = "Aprovador", Status = module == "cs" ? "Pendente" : "Validacao", CreatedBy = "tests",
-            Description = $$"""{"kind":"{{(module == "cs" ? "csJourney" : "liaJourney")}}","phase":"validation"}""" };
+        var item = new WorkItem
+        {
+            Module = module,
+            RecordType = "Acompanhamento",
+            Title = "Cliente",
+            Owner = "Aprovador",
+            Status = module == "cs" ? "Pendente" : "Validacao",
+            CreatedBy = "tests",
+            Description = $$"""{"kind":"{{(module == "cs" ? "csJourney" : "liaJourney")}}","phase":"validation"}"""
+        };
         db.WorkItems.Add(item); await db.SaveChangesAsync(); var service = new OperationsService(db);
         foreach (var view in new[] { false, true })
         {

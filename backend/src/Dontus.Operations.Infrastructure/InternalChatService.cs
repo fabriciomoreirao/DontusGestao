@@ -1,24 +1,31 @@
+using System.Data.Common;
 using System.Text.Json;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Dontus.Operations.Infrastructure;
 
 public sealed class InternalChatService(
     OperationsDbContext db,
-    IConfiguration configuration, RealtimeBroker? realtime = null) : IInternalChatService
+    IConfiguration configuration, RealtimeBroker? realtime = null,
+    ILogger<InternalChatService>? logger = null) : IInternalChatService
 {
     private sealed record PollOption(string Text, List<Guid> VoterUserIds);
     private sealed record PollPayload(string Question, List<PollOption> Options);
     private sealed record PinPayload(Guid MessageId, bool Pinned);
     private static readonly JsonSerializerOptions ChatJsonOptions = new(JsonSerializerDefaults.Web);
     private const long MaxAttachmentBytes = long.MaxValue;
+    // Sem limite prático para o uso interno (antes eram 4.000 caracteres). A trava só evita que uma
+    // colagem enorme por engano seja gravada e depois enviada a todos os participantes em cada atualização.
+    public const int MaxMessageLength = 100_000;
+    private const string MessageTooLong = "A mensagem é grande demais. Divida o texto em mensagens menores.";
     private readonly string filesRoot = Path.GetFullPath(configuration["InternalChat:FilesPath"]
         ?? Path.Combine(AppContext.BaseDirectory, "internal-chat-files"));
 
-    public async Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30, Guid? roomId = null)
+    public async Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30, Guid? roomId = null, Guid? changedMessageId = null)
     {
         actor.RequirePermission("internalChat", "view");
         var snapshotAt = DateTimeOffset.UtcNow;
@@ -26,8 +33,17 @@ public sealed class InternalChatService(
         var users = await db.Users.AsNoTracking()
             .Where(user => user.Active && user.BlockedAt == null)
             .OrderBy(user => user.DisplayName)
-            .Select(user => new { user.Id, user.DisplayName, user.Email, user.Department, user.JobTitle,
-                user.IsCoordinator, user.UpdatedAt, HasPhoto = user.PhotoDataUrl != "" })
+            .Select(user => new
+            {
+                user.Id,
+                user.DisplayName,
+                user.Email,
+                user.Department,
+                user.JobTitle,
+                user.IsCoordinator,
+                user.UpdatedAt,
+                HasPhoto = user.PhotoDataUrl != ""
+            })
             .ToDictionaryAsync(user => user.Id, cancellationToken);
         var userPhotos = users.ToDictionary(entry => entry.Key,
             entry => ProfilePhotoUrls.For(entry.Key, entry.Value.UpdatedAt, entry.Value.HasPhoto));
@@ -44,19 +60,21 @@ public sealed class InternalChatService(
             .ToListAsync(cancellationToken);
         var historySince = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(historyDays, 30, 36500));
         var messages = await db.InternalChatMessages.AsNoTracking()
-            .Where(message => roomIds.Contains(message.RoomId) && (message.CreatedAt >= historySince || message.UpdatedAt >= historySince || message.EditedAt >= historySince || message.DeletedAt >= historySince || message.Type == "pin"
-                || db.InternalChatMessageReceipts.Any(receipt => receipt.MessageId == message.Id && receipt.ReadAt >= historySince)))
+            .Where(message => roomIds.Contains(message.RoomId) && (changedMessageId.HasValue
+                ? message.Id == changedMessageId.Value
+                : message.CreatedAt >= historySince || message.UpdatedAt >= historySince || message.EditedAt >= historySince || message.DeletedAt >= historySince || message.Type == "pin"
+                    || db.InternalChatMessageReceipts.Any(receipt => receipt.MessageId == message.Id && receipt.ReadAt >= historySince)))
             .OrderByDescending(message => message.CreatedAt)
             .ToListAsync(cancellationToken);
 
         // Unread state must include messages older than the loaded history window.
         var unreadByRoom = await (from message in db.InternalChatMessages.AsNoTracking()
-            join member in db.InternalChatRoomMembers.AsNoTracking() on message.RoomId equals member.RoomId
-            where member.UserId == actorUser.Id && roomIds.Contains(message.RoomId) && message.SenderUserId != actorUser.Id
-                && message.Type != "pin" && message.DeletedAt == null && message.CreatedAt >= member.JoinedAt
-                && message.CreatedAt > (member.LastReadAt ?? member.JoinedAt)
-            group message by message.RoomId into roomMessages
-            select new { RoomId = roomMessages.Key, Count = roomMessages.Count() })
+                                  join member in db.InternalChatRoomMembers.AsNoTracking() on message.RoomId equals member.RoomId
+                                  where member.UserId == actorUser.Id && roomIds.Contains(message.RoomId) && message.SenderUserId != actorUser.Id
+                                      && message.Type != "pin" && message.DeletedAt == null && message.CreatedAt >= member.JoinedAt
+                                      && message.CreatedAt > (member.LastReadAt ?? member.JoinedAt)
+                                  group message by message.RoomId into roomMessages
+                                  select new { RoomId = roomMessages.Key, Count = roomMessages.Count() })
             .ToDictionaryAsync(entry => entry.RoomId, entry => entry.Count, cancellationToken);
         var membersByRoom = members.ToLookup(member => member.RoomId);
         var messagesByRoom = messages.ToLookup(message => message.RoomId);
@@ -134,7 +152,8 @@ public sealed class InternalChatService(
                 room.CreatedByUserId == actorUser.Id || roomMembers.Any(member => member.UserId == actorUser.Id && member.IsAdmin),
                 actorMembership.ArchivedAt.HasValue,
                 unreadByRoom.GetValueOrDefault(room.Id),
-                room.LastMessageAt, roomMembers.Select(member => member.UserId).ToArray(), roomMessages) { IsMuted = actorMembership.IsMuted };
+                room.LastMessageAt, roomMembers.Select(member => member.UserId).ToArray(), roomMessages)
+            { IsMuted = actorMembership.IsMuted, MessagesPartial = changedMessageId.HasValue };
         }).ToArray();
 
         return new InternalChatModuleDto(
@@ -209,6 +228,7 @@ public sealed class InternalChatService(
         }));
         AddAudit(actor, "Create", "internal_chat_room", room.Id.ToString(), new { room.IsGroup, MemberCount = validMemberIds.Length + 1 });
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(room.Id);
         return room.Id;
     }
 
@@ -221,13 +241,13 @@ public sealed class InternalChatService(
         if (type is not ("text" or "sticker"))
             throw new DomainException("Tipo de mensagem inválido.");
         var body = (command.Body ?? "").Trim();
-        var maxLength = type == "sticker" ? 32 : 4000;
+        var maxLength = type == "sticker" ? 32 : MaxMessageLength;
         if (body.Length == 0 || body.Length > maxLength)
-            throw new DomainException(type == "sticker" ? "Selecione uma figurinha válida." : "Digite uma mensagem de até 4.000 caracteres.");
+            throw new DomainException(type == "sticker" ? "Selecione uma figurinha válida." : MessageTooLong);
         var participants = await (from member in db.InternalChatRoomMembers
-            join person in db.Users on member.UserId equals person.Id
-            where member.RoomId == room.Id && person.Active && person.BlockedAt == null
-            select new { person.Id, person.DisplayName }).ToDictionaryAsync(person => person.Id, person => person.DisplayName, cancellationToken);
+                                  join person in db.Users on member.UserId equals person.Id
+                                  where member.RoomId == room.Id && person.Active && person.BlockedAt == null
+                                  select new { person.Id, person.DisplayName }).ToDictionaryAsync(person => person.Id, person => person.DisplayName, cancellationToken);
         var mentions = InternalChatMentions.Validate(body, command.Mentions, participants);
         if (type != "text" && mentions.Count > 0) throw new DomainException("Marcações são permitidas apenas em mensagens de texto.");
         await ValidateReplyAsync(room.Id, actorUser.Id, command.ReplyToMessageId, cancellationToken);
@@ -251,6 +271,7 @@ public sealed class InternalChatService(
         }
         db.InternalChatMessages.Add(message);
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(room.Id);
         return message.Id;
     }
 
@@ -273,12 +294,13 @@ public sealed class InternalChatService(
         var message = await OwnMessageAsync(command.RoomId, command.MessageId, command.Version, actor, cancellationToken);
         if (message.Type != "text") throw new DomainException("Apenas mensagens de texto podem ser editadas.");
         var body = command.Body.Trim();
-        if (body.Length is 0 or > 4000) throw new DomainException("Digite uma mensagem de até 4.000 caracteres.");
+        if (body.Length is 0 or > MaxMessageLength) throw new DomainException(MessageTooLong);
         if (message.Body == body) return;
         message.MentionsJson = JsonSerializer.Serialize(InternalChatMentions.Reconcile(message.Body, body, message.MentionsJson));
         message.Body = body; message.EditedAt = DateTimeOffset.UtcNow; message.UpdatedAt = message.EditedAt.Value; message.Version++;
         db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = "EditMessage", Resource = "internal_chat_message", ResourceId = message.Id.ToString(), Module = "internalChat", DetailsJson = JsonSerializer.Serialize(new { message.RoomId, message.EditedAt, message.SenderUserId }) });
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(message.RoomId);
     }
 
     public async Task DeleteMessageAsync(DeleteInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -287,6 +309,7 @@ public sealed class InternalChatService(
         message.DeletedAt = DateTimeOffset.UtcNow; message.UpdatedAt = message.DeletedAt.Value; message.Version++;
         db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = "DeleteMessage", Resource = "internal_chat_message", ResourceId = message.Id.ToString(), Module = "internalChat", DetailsJson = JsonSerializer.Serialize(new { message.RoomId, message.DeletedAt, message.SenderUserId }) });
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(message.RoomId);
     }
 
     public async Task<Guid> CreatePollAsync(CreateInternalChatPollCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -317,6 +340,7 @@ public sealed class InternalChatService(
         await AddVisibleMessageAsync(room, message, actorUser.Id, cancellationToken);
         AddAudit(actor, "Create", "internal_chat_poll", message.Id.ToString(), new { room.Id, OptionCount = options.Length });
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(room.Id);
         return message.Id;
     }
 
@@ -340,6 +364,7 @@ public sealed class InternalChatService(
         message.UpdatedAt = DateTimeOffset.UtcNow;
         AddAudit(actor, "Vote", "internal_chat_poll", message.Id.ToString(), new { room.Id, command.OptionIndex });
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(room.Id);
     }
 
     public async Task SetMessagePinnedAsync(SetInternalChatMessagePinnedCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -359,6 +384,7 @@ public sealed class InternalChatService(
         });
         AddAudit(actor, command.Pinned ? "Pin" : "Unpin", "internal_chat_message", command.MessageId.ToString(), new { room.Id });
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(room.Id);
     }
 
     private async Task ValidateReplyAsync(Guid roomId, Guid actorUserId, Guid? messageId, CancellationToken cancellationToken)
@@ -403,8 +429,8 @@ public sealed class InternalChatService(
         var storageKey = $"{room.Id:N}/{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
         var fullPath = ResolveStoragePath(storageKey);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        try { await using var target = new FileStream(fullPath,FileMode.CreateNew,FileAccess.Write,FileShare.None,81920,true);await AttachmentSpool.CopyVerifiedAsync(command.Content,target,command.SizeBytes,cancellationToken); }
-        catch { File.Delete(fullPath);throw; }
+        try { await using var target = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true); await AttachmentSpool.CopyVerifiedAsync(command.Content, target, command.SizeBytes, cancellationToken); }
+        catch { File.Delete(fullPath); throw; }
 
         var type = contentType.StartsWith("image/", StringComparison.Ordinal) ? "image"
             : contentType.StartsWith("video/", StringComparison.Ordinal) ? "video"
@@ -441,6 +467,8 @@ public sealed class InternalChatService(
             File.Delete(fullPath);
             throw;
         }
+        // Outside the try: a failed notification must not delete the file of a saved message.
+        await NotifyRoomAsync(room.Id);
         return message.Id;
     }
 
@@ -452,6 +480,7 @@ public sealed class InternalChatService(
             ?? throw new DomainException("Você não participa desta conversa.", 403);
         membership.IsMuted = command.Muted;
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(command.RoomId);
     }
 
     public async Task SetArchivedAsync(SetInternalChatRoomArchivedCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -464,6 +493,7 @@ public sealed class InternalChatService(
         membership.ArchivedAt = command.Archived ? DateTimeOffset.UtcNow : null;
         AddAudit(actor, command.Archived ? "Archive" : "Unarchive", "internal_chat_room", command.RoomId.ToString(), new { });
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(command.RoomId);
     }
 
     public async Task MarkReadAsync(MarkInternalChatRoomReadCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -497,6 +527,7 @@ public sealed class InternalChatService(
                 UPDATE internal_chat_room_members SET "LastReadAt" = GREATEST("LastReadAt", {readThroughAt})
                 WHERE "RoomId" = {command.RoomId} AND "UserId" = {actorUser.Id};
                 """, cancellationToken);
+            await NotifyRoomAsync(command.RoomId);
             return;
         }
         var unread = await db.InternalChatMessages.AsNoTracking().Where(message => message.RoomId == command.RoomId
@@ -505,9 +536,10 @@ public sealed class InternalChatService(
             && !db.InternalChatMessageReceipts.Any(receipt => receipt.MessageId == message.Id && receipt.UserId == actorUser.Id))
             .Select(message => message.Id).ToArrayAsync(cancellationToken);
         db.InternalChatMessageReceipts.AddRange(unread.Select(id => new InternalChatMessageReceipt
-            { RoomId = command.RoomId, MessageId = id, UserId = actorUser.Id, ReadAt = readAt }));
+        { RoomId = command.RoomId, MessageId = id, UserId = actorUser.Id, ReadAt = readAt }));
         if (!membership.LastReadAt.HasValue || membership.LastReadAt < readThroughAt) membership.LastReadAt = readThroughAt;
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(command.RoomId);
     }
 
     public async Task SetMessageReactionAsync(SetInternalChatMessageReactionCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -535,8 +567,12 @@ public sealed class InternalChatService(
                 : await db.Database.ExecuteSqlInterpolatedAsync($"""
                     DELETE FROM internal_chat_message_reactions WHERE "MessageId" = {message.Id} AND "UserId" = {user.Id} AND "Emoji" = {emoji};
                     """, cancellationToken);
-            if (changed > 0) await db.InternalChatMessages.Where(entry => entry.Id == message.Id)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(entry => entry.UpdatedAt, reactedAt), cancellationToken);
+            if (changed > 0)
+            {
+                await db.InternalChatMessages.Where(entry => entry.Id == message.Id)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(entry => entry.UpdatedAt, reactedAt), cancellationToken);
+                await NotifyRoomAsync(message.RoomId);
+            }
             return;
         }
         var existing = await db.InternalChatMessageReactions.SingleOrDefaultAsync(entry => entry.MessageId == message.Id && entry.UserId == user.Id, cancellationToken);
@@ -551,6 +587,7 @@ public sealed class InternalChatService(
             var tracked = await db.InternalChatMessages.SingleAsync(entry => entry.Id == message.Id, cancellationToken);
             tracked.UpdatedAt = reactedAt;
             await db.SaveChangesAsync(cancellationToken);
+            await NotifyRoomAsync(message.RoomId);
         }
     }
 
@@ -593,6 +630,8 @@ public sealed class InternalChatService(
         room.UpdatedAt = DateTimeOffset.UtcNow; room.Version++;
         AddAudit(actor, leavingOnly ? "Leave" : "Update", "internal_chat_group_members", room.Id.ToString(), new { Added = additions, Removed = removeId });
         await db.SaveChangesAsync(cancellationToken);
+        // The removed person is no longer a member, so they are notified explicitly to drop the room.
+        await NotifyRoomAsync(room.Id, removeId.HasValue ? new[] { removeId.Value } : Array.Empty<Guid>());
     }
 
     public async Task UpdateGroupAsync(UpdateInternalChatGroupCommand command, ActorContext actor, CancellationToken cancellationToken = default)
@@ -618,6 +657,7 @@ public sealed class InternalChatService(
         room.UpdatedAt = DateTimeOffset.UtcNow;
         AddAudit(actor, "Update", "internal_chat_group", room.Id.ToString(), new { room.Name, HasPhoto = room.PhotoDataUrl.Length > 0 });
         await db.SaveChangesAsync(cancellationToken);
+        await NotifyRoomAsync(room.Id);
     }
 
     public async Task<InternalChatAttachmentDto> GetAttachmentAsync(Guid messageId, ActorContext actor, CancellationToken cancellationToken = default)
@@ -634,6 +674,34 @@ public sealed class InternalChatService(
         var fullPath = ResolveStoragePath(message.StorageKey);
         if (!File.Exists(fullPath)) throw new DomainException("O arquivo não está mais disponível.", 404);
         return new InternalChatAttachmentDto(fullPath, message.FileName, message.ContentType);
+    }
+
+    // Substitui os triggers do chat: um aviso por ação, enviado depois do commit
+    // para que quem recebe leia o dado já gravado. Mesmo formato do trigger, mais o roomId.
+    private async Task NotifyRoomAsync(Guid roomId, params Guid[] alsoNotify)
+    {
+        try
+        {
+            if (db.Database.ProviderName?.Contains("Npgsql") == true)
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    SELECT pg_notify('dontus_realtime', json_build_object('topic', 'chat', 'userId', recipient, 'roomId', {roomId})::text)
+                    FROM (SELECT "UserId" AS recipient FROM internal_chat_room_members WHERE "RoomId" = {roomId}
+                          UNION SELECT unnest({alsoNotify})) recipients;
+                    """, CancellationToken.None);
+                return;
+            }
+            var members = await db.InternalChatRoomMembers.AsNoTracking()
+                .Where(member => member.RoomId == roomId).Select(member => member.UserId)
+                .ToListAsync(CancellationToken.None);
+            foreach (var userId in members.Concat(alsoNotify).Distinct())
+                realtime?.Publish(JsonSerializer.Serialize(new { topic = "chat", userId, roomId }));
+        }
+        catch (Exception error) when (error is DbException or TimeoutException)
+        {
+            // A gravação já foi confirmada; a tela se corrige na próxima sincronização.
+            logger?.LogWarning(error, "Não foi possível avisar a conversa {RoomId}.", roomId);
+        }
     }
 
     private async Task<AppUser> GetActorUserAsync(ActorContext actor, CancellationToken cancellationToken) =>
@@ -663,7 +731,7 @@ public sealed class InternalChatService(
     {
         var photo = value?.Trim() ?? "";
         if (photo.Length == 0) return "";
-        if(System.Text.RegularExpressions.Regex.IsMatch(photo,@"^/api/workspace-files/[0-9a-f-]{36}$"))return photo;
+        if (System.Text.RegularExpressions.Regex.IsMatch(photo, @"^/api/workspace-files/[0-9a-f-]{36}$")) return photo;
         if (
             !(photo.StartsWith("data:image/png;base64,", StringComparison.OrdinalIgnoreCase) ||
               photo.StartsWith("data:image/jpeg;base64,", StringComparison.OrdinalIgnoreCase) ||

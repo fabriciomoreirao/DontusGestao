@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Dontus.Operations.Application;
 using Dontus.Operations.Domain;
 using Dontus.Operations.Infrastructure;
@@ -8,6 +9,31 @@ namespace Dontus.Operations.Tests;
 
 public sealed class CsJourneyAssignmentTests
 {
+    [Fact]
+    public async Task Embedded_unit_handoff_preserves_the_network_owner_and_transfers_its_agenda()
+    {
+        var f = await Fixture(false); await using var db = f.Db;
+        var followUp = JsonNode.Parse(f.Journey.Description)!;
+        var document = new JsonObject
+        {
+            ["kind"] = "enterpriseNetwork",
+            ["units"] = new JsonArray(new JsonObject
+            {
+                ["id"] = "one", ["name"] = "Unidade", ["customerId"] = f.Customer.Id.ToString(),
+                ["followUpOwner"] = f.Source.DisplayName, ["followUp"] = followUp
+            })
+        };
+        f.Journey.Description = document.ToJsonString(); f.Journey.RecordType = "Conta estratégica";
+        await db.SaveChangesAsync();
+        document["units"]![0]!["followUpOwner"] = f.Target.DisplayName;
+        await new OperationsService(db).UpdateWorkItemAsync(new(f.Journey.Id, f.Journey.Title, f.Source.DisplayName,
+            0, document.ToJsonString(), null, null, f.Journey.Version), f.Actor);
+        Assert.Equal(f.Source.DisplayName, f.Journey.Owner);
+        Assert.Equal(f.Target.DisplayName, f.Customer.CsOwner);
+        Assert.All(f.Commitments, entry => Assert.Equal(f.Target.Id, entry.ResponsibleUserId));
+        Assert.Single(await db.WorkItems.ToArrayAsync());
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -35,7 +61,7 @@ public sealed class CsJourneyAssignmentTests
     {
         var f = await Fixture(false);
         await using var db = f.Db;
-        db.AgendaCommitments.Add(new AgendaCommitment { AgendaId = f.Commitments[0].AgendaId, ResponsibleUserId = f.Target.Id, Title = "Ocupado", StartsAt = f.Commitments[1].StartsAt, EndsAt = f.Commitments[1].EndsAt, CreatedBy = "tests" });
+        db.AgendaCommitments.Add(new AgendaCommitment { AgendaId = f.Commitments[0].AgendaId, ResponsibleUserId = f.Target.Id, AgendaStatusId = f.Commitments[0].AgendaStatusId, Title = "Ocupado", StartsAt = f.Commitments[1].StartsAt, EndsAt = f.Commitments[1].EndsAt, CreatedBy = "tests" });
         await db.SaveChangesAsync();
         var agendaId = f.Commitments[0].AgendaId;
         var error = await Assert.ThrowsAsync<DomainException>(() => new OperationsService(db).UpdateWorkItemAsync(Command(f), f.Actor));
@@ -96,10 +122,20 @@ public sealed class CsJourneyAssignmentTests
         var target = new AppUser { Email = "cs@tests.local", DisplayName = "Responsável CS", CreatedBy = "tests" };
         var calendar = new AgendaCalendar { Name = "Comercial", DepartmentId = sourceDepartment.Id };
         var customer = new Customer { LegalName = "Cliente", TradeName = "Cliente", CsOwner = source.DisplayName, CreatedBy = "tests" };
-        var first = new AgendaCommitment { AgendaId = calendar.Id, Title = "Kick off · Cliente", StartsAt = DateTimeOffset.Parse("2026-10-27T14:00:00Z"), EndsAt = DateTimeOffset.Parse("2026-10-27T15:00:00Z"), ResponsibleUserId = source.Id, CreatedBy = source.Email };
-        var second = new AgendaCommitment { AgendaId = calendar.Id, Title = "Treinamento · Cliente", StartsAt = first.StartsAt.AddDays(1), EndsAt = first.EndsAt.AddDays(1), ResponsibleUserId = source.Id, CreatedBy = source.Email };
-        var journey = new WorkItem { Module = "cs", RecordType = "Acompanhamento", Title = "Cliente", Owner = source.DisplayName, CustomerId = customer.Id, Status = "Pendente", CreatedBy = source.Email,
-            Description = JsonSerializer.Serialize(new { kind = "csJourney", track = "activation", phase = "validation", checkedAt = "2026-10-26T12:00:00Z", firstMeetingCommitmentId = first.Id, trainingCommitmentId = second.Id, follows = Array.Empty<object>() }) };
+        var status = new AgendaStatus { Name = "Agendado" }; db.Add(status);
+        var first = new AgendaCommitment { AgendaStatusId = status.Id, AgendaId = calendar.Id, Title = "Kick off · Cliente", StartsAt = DateTimeOffset.Parse("2026-10-27T14:00:00Z"), EndsAt = DateTimeOffset.Parse("2026-10-27T15:00:00Z"), ResponsibleUserId = source.Id, CreatedBy = source.Email };
+        var second = new AgendaCommitment { AgendaStatusId = status.Id, AgendaId = calendar.Id, Title = "Treinamento · Cliente", StartsAt = first.StartsAt.AddDays(1), EndsAt = first.EndsAt.AddDays(1), ResponsibleUserId = source.Id, CreatedBy = source.Email };
+        var journey = new WorkItem
+        {
+            Module = "cs",
+            RecordType = "Acompanhamento",
+            Title = "Cliente",
+            Owner = source.DisplayName,
+            CustomerId = customer.Id,
+            Status = "Pendente",
+            CreatedBy = source.Email,
+            Description = JsonSerializer.Serialize(new { kind = "csJourney", track = "activation", phase = "validation", checkedAt = "2026-10-26T12:00:00Z", firstMeetingCommitmentId = first.Id, trainingCommitmentId = second.Id, follows = Array.Empty<object>() })
+        };
         db.AddRange(sourceDepartment, department, source, target, calendar, customer, first, second, journey);
         db.UserDepartments.AddRange(new UserDepartment { UserId = source.Id, DepartmentId = sourceDepartment.Id, IsPrimary = true }, new UserDepartment { UserId = target.Id, DepartmentId = department.Id, IsPrimary = true });
         db.AgendaCommitmentParticipants.AddRange(new AgendaCommitmentParticipant { CommitmentId = first.Id, UserId = source.Id }, new AgendaCommitmentParticipant { CommitmentId = second.Id, UserId = source.Id });

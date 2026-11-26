@@ -16,7 +16,10 @@ test("compila a Central de Operações com metadados e ativos da marca", async (
   assert.match(app, /Usuários e grupos/i);
   assert.match(app, /Permissões do grupo/i);
   assert.match(css, /@media \(max-width: 680px\)/);
-  assert.doesNotMatch(`${layout}${app}`, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+  assert.doesNotMatch(
+    `${layout}${app}`,
+    /codex-preview|Your site is taking shape|react-loading-skeleton/i,
+  );
   await Promise.all([
     access(new URL("../public/dontus-logo.png", import.meta.url)),
     access(new URL("../public/dontus-mark.png", import.meta.url)),
@@ -31,7 +34,10 @@ test("mantém a identidade, a persistência e a API C# no produto final", async 
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/operations/route.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../app/api/operations/route.ts", import.meta.url),
+      "utf8",
+    ),
   ]);
   assert.match(page, /OperationsApp/);
   assert.match(layout, /Dontus \| Central de Operações/);

@@ -3,8 +3,15 @@ import PaginatedItems from "@/app/PaginatedItems";
 import SaleObservation from "@/app/SaleObservation";
 
 import { AgendaTypeSelectionModal } from "@/app/AgendaModule";
-import { LIA_FINAL_FOLLOWUP_DAYS, liaFinalFollowupDays } from "@/lib/lia-followup";
-import { liaCalendarDate, liaDateFilterError, matchesLiaDates } from "@/lib/lia-date-filter";
+import {
+  LIA_FINAL_FOLLOWUP_DAYS,
+  liaFinalFollowupDays,
+} from "@/lib/lia-followup";
+import {
+  liaCalendarDate,
+  liaDateFilterError,
+  matchesLiaDates,
+} from "@/lib/lia-date-filter";
 import PhoneLink from "@/app/PhoneLink";
 import CommentInput, { CommentContent } from "@/app/CommentInput";
 
@@ -12,109 +19,2239 @@ import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
-import { CalendarDays, Check, Copy, Columns3, Upload, ChevronRight, ClipboardCheck, Clock3, List, MessageSquareText, Pencil, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  Copy,
+  Columns3,
+  Upload,
+  ChevronRight,
+  ClipboardCheck,
+  Clock3,
+  List,
+  MessageSquareText,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AgendaModuleData } from "@/app/AgendaModule";
-import { LiaClientForms, LiaFormStatus, useLiaFormRequests } from "@/app/LiaForms";
+import {
+  LiaClientForms,
+  LiaFormStatus,
+  useLiaFormRequests,
+} from "@/app/LiaForms";
 import LiaPromptAdjustmentsModule from "@/app/LiaPromptAdjustmentsModule";
-import { activeLiaStages, liaStageForStatus, liaContractedPlan, liaCanReassign, type LiaCatalog } from "@/lib/lia-journey";
+import {
+  activeLiaStages,
+  liaStageForStatus,
+  liaContractedPlan,
+  liaCanReassign,
+  type LiaCatalog,
+} from "@/lib/lia-journey";
 import LiaClientEntryModal from "@/app/LiaClientEntryModal";
 import LiaValidationCard from "@/app/LiaValidationCard";
-import LiaClientEditModal, { type LiaClientEdit } from "@/app/LiaClientEditModal";
+import LiaClientEditModal, {
+  type LiaClientEdit,
+} from "@/app/LiaClientEditModal";
 import LiaResponsibleModal from "@/app/LiaResponsibleModal";
 import LiaFinalConference from "@/app/LiaFinalConference";
 import "./lia-journey.css";
 
-type Item = { id:string; module:string; record_type:string; title:string; customer_id:string|null; customer_name:string; owner:string; team:string; status:string; priority:string; amount_cents:number; description:string; version:number; updated_at:string; created_at:string };
-type Employee = { id:string; displayName:string; departmentName:string; photoDataUrl?:string; active:boolean };
+type Item = {
+  id: string;
+  module: string;
+  record_type: string;
+  title: string;
+  customer_id: string | null;
+  customer_name: string;
+  owner: string;
+  team: string;
+  status: string;
+  priority: string;
+  amount_cents: number;
+  description: string;
+  version: number;
+  updated_at: string;
+  created_at: string;
+};
+type Employee = {
+  id: string;
+  displayName: string;
+  departmentName: string;
+  photoDataUrl?: string;
+  active: boolean;
+};
 type Catalog = LiaCatalog;
-type Operation = (payload: Record<string, unknown>, success: string) => Promise<unknown>;
-type CommonProps = { items:Item[]; employees:Employee[]; catalogs?:Catalog[]; currentUser:string; canEdit:boolean; canCreate?:boolean; canCoordinate?:boolean; canViewValidation?:boolean; canValidate?:boolean; busy:boolean; operate:Operation; onOpenSettings?:()=>void; agendaModule?:AgendaModuleData|null };
-type Detail = { kind?:string; saleObservation?:string; liaPlan?:string; products?:Array<{product?:string;plan?:string}>; validationConfirmedAt?:string; validationConfirmedBy?:string; clientId?:string; whatsapp?:string; crmUrl?:string; startDate?:string; finalFollowupStartedAt?:string; kickoffDate?:string; kickoffTime?:string; kickoffReadUrl?:string; checklist?:Array<{id:string;label:string;done:boolean}>; testChecklist?:Array<{id:string;label:string;done:boolean}>; issues?:Array<{id:string;text:string;resolved:boolean}>; history?:Array<{id:string;text:string;at:string;author:string;type?:string}>; requestType?:string; sector?:string };
+type Operation = (
+  payload: Record<string, unknown>,
+  success: string,
+) => Promise<unknown>;
+type CommonProps = {
+  items: Item[];
+  employees: Employee[];
+  catalogs?: Catalog[];
+  currentUser: string;
+  canEdit: boolean;
+  canCreate?: boolean;
+  canCoordinate?: boolean;
+  canViewValidation?: boolean;
+  canValidate?: boolean;
+  busy: boolean;
+  operate: Operation;
+  onOpenSettings?: () => void;
+  agendaModule?: AgendaModuleData | null;
+};
+type Detail = {
+  kind?: string;
+  saleObservation?: string;
+  liaPlan?: string;
+  products?: Array<{ product?: string; plan?: string }>;
+  validationConfirmedAt?: string;
+  validationConfirmedBy?: string;
+  clientId?: string;
+  whatsapp?: string;
+  crmUrl?: string;
+  startDate?: string;
+  finalFollowupStartedAt?: string;
+  kickoffDate?: string;
+  kickoffTime?: string;
+  kickoffReadUrl?: string;
+  checklist?: Array<{ id: string; label: string; done: boolean }>;
+  testChecklist?: Array<{ id: string; label: string; done: boolean }>;
+  issues?: Array<{ id: string; text: string; resolved: boolean }>;
+  history?: Array<{
+    id: string;
+    text: string;
+    at: string;
+    author: string;
+    type?: string;
+  }>;
+  requestType?: string;
+  sector?: string;
+};
 
-function parseDetail(value:string): Detail { try { const parsed=JSON.parse(value); return parsed && typeof parsed==="object" ? parsed : {}; } catch { return {}; } }
-function daysSince(value?:string) { if(!value) return 0; return Math.max(0,Math.floor((Date.now()-new Date(value).getTime())/86400000)); }
-function mergeDetail(item:Item, detail:Detail) { return { action:"updateWorkItem", id:item.id, title:item.title, owner:item.owner, customerName:item.customer_name, amountCents:item.amount_cents, version:item.version, description:JSON.stringify(detail) }; }
-
-export function LiaJourneyModule(props:CommonProps) {
-  const {items,employees,catalogs=[],currentUser,canEdit,canCreate=canEdit,canCoordinate=false,canViewValidation=false,canValidate=false,busy,operate,onOpenSettings,agendaModule}=props;
-  const {requests:formRequests,refresh:refreshForms,error:formsError}=useLiaFormRequests();
-  const reminderFilter = useReminderFilter("lia");
-  const records=useMemo(()=>items.filter(i=>i.module==="lia"&&i.record_type!=="Ajuste de Prompt"&&(i.status!=="Validacao"||canViewValidation)),[items,canViewValidation]);
-  const [tab,setTab]=useState(canViewValidation?"validation":"onboarding"); const [query,setQuery]=useState(""); const [owner,setOwner]=useState(""); const [selectedSnapshot,setSelected]=useState<Item|null>(null); const [comment,setComment]=useState(""); const [startDate,setStartDate]=useState(""); const [endDate,setEndDate]=useState(""); const [promptAdjustments,setPromptAdjustments]=useState(false); const [creating,setCreating]=useState(false);
-  const [changingOwner,setChangingOwner]=useState(false);
-  const [editingClient,setEditingClient]=useState(false);
-  const [allClients,setAllClients]=useState(false);
-  const [view,setView]=useState<"board"|"list">("board"); const [bulkOpen,setBulkOpen]=useState(false); const [copiedPhone,setCopiedPhone]=useState(false); const [copyError,setCopyError]=useState("");
-  const freshSelected=selectedSnapshot?records.find(item=>item.id===selectedSnapshot.id):undefined;
-  const selected=freshSelected&&freshSelected.version>=selectedSnapshot!.version?freshSelected:selectedSnapshot;
-  const liaStages=activeLiaStages(catalogs).filter(stage=>stage.key!=="validation"||canViewValidation);
-  const stage=liaStages.find(s=>s.key===tab)??liaStages[0];
-  const dateError=liaDateFilterError(startDate,endDate);
-  const filtered=records.filter(i=>(allClients ? (!dateError&&(!startDate||liaCalendarDate(parseDetail(i.description).startDate||i.created_at)>=startDate)&&(!endDate||liaCalendarDate(parseDetail(i.description).startDate||i.created_at)<=endDate)) : matchesLiaDates(i,startDate,endDate))&&reminderFilter.matches({entityId:i.id,clientId:parseDetail(i.description).clientId,title:i.customer_name||i.title}) && (!query || `${i.title} ${parseDetail(i.description).clientId} ${i.customer_id} ${i.customer_name} ${i.owner}`.toLowerCase().includes(query.toLowerCase())) && (!owner || i.owner===owner));
-  const visible=allClients?filtered:filtered.filter(i=>liaStageForStatus(i.status,liaStages).key===stage.key);
-  async function update(item:Item, patch:Partial<Detail>, success:string){ const detail={...parseDetail(item.description),...patch}; const result=await operate(mergeDetail(item,detail),success); if(result)setSelected({...item,description:JSON.stringify(detail),version:item.version+1}); return Boolean(result); }
-  async function status(item:Item,next:string,version=item.version,reason?:string){ const current=parseDetail(item.description);const history=[...(current.history??[]),{id:crypto.randomUUID(),text:`Etapa alterada de ${item.status} para ${next}.`,at:new Date().toISOString(),author:currentUser}];const saved=await operate({...mergeDetail(item,{...current,history}),version},"Mudança de etapa registrada no histórico.");if(!saved)return false;const result=await operate({action:"transitionWorkItem",id:item.id,nextStatus:next,boardMove:true,version:version+1,confirmed:true,reason},"Etapa atualizada com sucesso."); if(result)setSelected({...item,status:next,description:JSON.stringify({...current,history}),version:version+2}); return Boolean(result); }
-  async function scheduleKickoff(item:Item,patch:Partial<Detail>){const detail={...parseDetail(item.description),...patch};const saved=await operate({...mergeDetail(item,detail),version:item.version},"Dados do Kick off registrados.");if(!saved)return false;const moved=await operate({action:"transitionWorkItem",id:item.id,nextStatus:"KickoffAgendado",version:item.version+1,confirmed:true},"Kick off agendado e etapa atualizada.");if(moved)setSelected({...item,status:"KickoffAgendado",description:JSON.stringify(detail),version:item.version+2});return Boolean(moved)}
-  async function completeKickoff(item:Item,patch:Partial<Detail>){const detail={...parseDetail(item.description),...patch};const saved=await operate({...mergeDetail(item,detail),version:item.version},"Kick off realizado e histórico registrado.");if(!saved)return false;const moved=await operate({action:"transitionWorkItem",id:item.id,nextStatus:"ConfiguracaoInicial",version:item.version+1,confirmed:true},"Cliente encaminhado para configuração inicial.");if(moved)setSelected({...item,status:"ConfiguracaoInicial",description:JSON.stringify(detail),version:item.version+2});return Boolean(moved)}
-  async function addComment(){ if(!selected||!comment.trim())return; const d=parseDetail(selected.description); const saved=await update(selected,{history:[...(d.history??[]),{type: "Comentário", id:crypto.randomUUID(),text:comment,at:new Date().toISOString(),author:currentUser}]},"Comentário registrado."); if(saved)setComment(""); }
-  async function checkValidation(item:Item,liaPlan:string){const detail=parseDetail(item.description);const at=new Date().toISOString();return update(item,{liaPlan,validationConfirmedAt:at,validationConfirmedBy:currentUser,history:[...(detail.history??[]),{id:crypto.randomUUID(),text:`Dados e plano conferidos por ${currentUser}.`,at,author:currentUser}]} ,"Dados conferidos. Selecione o responsável para encaminhar.")}
-  async function confirmValidation(item:Item,owner:string,liaPlan:string){
-    const detail=parseDetail(item.description);if(!detail.validationConfirmedAt||!formRequests.some(entry=>entry.workItemId===item.id))return false;
-    const next={...detail,liaPlan,history:[...(detail.history??[]),{id:crypto.randomUUID(),text:`Cliente direcionado para ${owner} após a conferência dos dados.`,at:new Date().toISOString(),author:currentUser}]};
-    const saved=await operate({...mergeDetail(item,next),owner},"Responsável definido.");if(!saved)return false;
-    return status({...item,owner,description:JSON.stringify(next),version:item.version+1},detail.kickoffDate&&detail.kickoffTime?"KickoffAgendado":"AguardandoKickoff");
+function parseDetail(value: string): Detail {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
   }
-  async function saveClient(data:LiaClientEdit){if(!selected||!canEditClient)return false;const detail=parseDetail(selected.description);const next={...detail,whatsapp:data.whatsapp,liaPlan:data.liaPlan,sector:data.origin,history:[...(detail.history??[]),{id:crypto.randomUUID(),text:"Dados cadastrais do acompanhamento atualizados.",at:new Date().toISOString(),author:currentUser}]};const result=await operate({...mergeDetail(selected,next),requireConfirmation:true,title:data.name,customerName:data.name,owner:data.owner},"Dados do cliente atualizados.");if(result)setSelected({...selected,title:data.name,customer_name:data.name,owner:data.owner,description:JSON.stringify(next),version:selected.version+1});return Boolean(result)}
-  async function copyPhone(value:string){try{await navigator.clipboard.writeText(value.replace(/\D/g,""));setCopiedPhone(true);setCopyError("");window.setTimeout(()=>setCopiedPhone(false),1800)}catch{setCopyError("Não foi possível copiar o número. Selecione o WhatsApp para copiar manualmente.")}}
-  const nextStatus:Record<string,string>={KickoffAgendado:"ConfiguracaoInicial",ConfiguracaoInicial:"EmTesteCliente",EmTesteCliente:"AguardandoAprovacao",EmAjustes:"AguardandoAprovacao",AguardandoAprovacao:"ConfigurandoCRC",ConfigurandoCRC:"AcompanhamentoFinal",EmProducaoAssistida:"AcompanhamentoFinal",ImplantacaoPrincipalConcluida:"AcompanhamentoFinal",AcompanhamentoFinal:"ConferenciaFinal"};
-  const finalDays=liaFinalFollowupDays(selected?parseDetail(selected.description).finalFollowupStartedAt:undefined);
-  const canSendConference=selected?.status==="AcompanhamentoFinal"&&finalDays>=LIA_FINAL_FOLLOWUP_DAYS;
-  const canReviewConference=canEdit&&canCoordinate&&selected?.status==="ConferenciaFinal";
-  const selectedCanEdit=selected?.status==="Validacao"?canValidate:canEdit;
-  const canEditClient=Boolean(selectedCanEdit&&selected&&(selected.status==="Validacao"||liaCanReassign(selected.owner,currentUser)));
-  const canReassign=Boolean(canEditClient&&(selected?.status!=="Validacao"||parseDetail(selected.description).validationConfirmedAt));
-  const canAssignValidation=Boolean(canValidate&&selected?.status==="Validacao");
-  async function changeOwner(owner:string){if(!selected||!canReassign)return false;const detail=parseDetail(selected.description);const next={...detail,history:[...(detail.history??[]),{id:crypto.randomUUID(),text:`Responsável alterado de ${selected.owner} para ${owner}.`,at:new Date().toISOString(),author:currentUser}]};const result=await operate({...mergeDetail(selected,next),owner},"Responsável atualizado.");if(result)setSelected({...selected,owner,description:JSON.stringify(next),version:selected.version+1});return Boolean(result)}
-  if(promptAdjustments)return <LiaPromptAdjustmentsModule items={items} employees={employees} catalogs={catalogs} currentUser={currentUser} canEdit={canEdit} busy={busy} operate={operate} onBack={()=>setPromptAdjustments(false)} onOpenSettings={onOpenSettings}/>;
-  return <section className="journey-module task-visual-standard lia-journey-module">
-    <header className="journey-page-head module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><ClipboardCheck size={21}/></span><span className="module-page-copy"><p className="eyebrow">OPERAÇÃO · LIA</p><h1>Acompanhamento LIA</h1><p>Onboarding, configuração, testes e ativação em uma jornada auditável.</p></span></div><div className="button-row module-page-actions"><button type="button" className="secondary-button lia-clients-button" aria-pressed={allClients} onClick={()=>{setAllClients(value=>!value);setView("list");setStartDate("");setEndDate("")}}><List size={16}/>{allClients?"Voltar às etapas":"Clientes"}</button><button className="secondary-button lia-prompt-button" onClick={()=>setPromptAdjustments(true)}><List size={16}/> Ajustes Prompt</button>{canCreate&&<button className="primary-button" onClick={()=>setCreating(true)}><Plus size={16}/> Inserir cliente</button>}{onOpenSettings&&<button className="icon-button" onClick={onOpenSettings} title="Configurações da LIA"><Settings size={18}/></button>}</div></header>
-    {!allClients&&<div className="lia-workspace-tabs"><nav className="journey-tabs" aria-label="Etapas do acompanhamento LIA" style={{gridTemplateColumns:liaStages.map(stage=>`minmax(0,${Math.max(22,stage.label.length+10)}fr)`).join(" ")}}>{liaStages.map(s=><button key={s.key} className={tab===s.key?"active":""} onClick={()=>setTab(s.key)}><strong className="lia-tab-name">{s.label}</strong><span className="lia-tab-count">{filtered.filter(i=>liaStageForStatus(i.status,liaStages).key===s.key).length}</span></button>)}</nav>{tab==="completed"&&canCreate&&<button type="button" className="primary-button lia-upload-completed" onClick={()=>setBulkOpen(true)}><Upload size={16}/> Subir clientes</button>}</div>}
-    <div className="journey-filterbar reminder-filter-toolbar compact-operational-filters lia-compact-filters"><label><Search size={16}/><input aria-label="Pesquisar cliente, ID ou responsável" placeholder="Pesquisar cliente, ID ou responsável" value={query} onChange={e=>setQuery(e.target.value)}/></label>{reminderFilter.control}<select aria-label="Filtrar responsável LIA" value={owner} onChange={e=>setOwner(e.target.value)}><option value="">Todos os responsáveis</option>{employees.filter(e=>e.active).map(e=><option key={e.id}>{e.displayName}</option>)}</select><label><span>Data inicial · adicionado a partir de</span><input type="date" value={startDate} max={endDate||undefined} aria-invalid={Boolean(dateError)} aria-describedby={dateError?"lia-date-error":undefined} onChange={e=>setStartDate(e.target.value)}/></label><label><span>{allClients?"Data final · adicionado até":"Data final · concluído até"}</span><input type="date" value={endDate} min={startDate||undefined} aria-invalid={Boolean(dateError)} aria-describedby={dateError?"lia-date-error":"lia-date-help"} onChange={e=>setEndDate(e.target.value)}/></label><button type="button" className="secondary-button" onClick={()=>{setStartDate("");setEndDate("")}}>Limpar datas</button><div className="view-switch" aria-label="Visualização dos clientes LIA"><button type="button" aria-label="Visualizar em cards" aria-pressed={view==="board"} className={view==="board"?"active":""} onClick={()=>{setAllClients(false);setView("board")}}><Columns3 size={17}/></button><button type="button" aria-label="Visualizar em lista" aria-pressed={view==="list"} className={view==="list"?"active":""} onClick={()=>setView("list")}><List size={17}/></button></div><strong>{visible.length} cliente(s)</strong></div>
-    {dateError?<p id="lia-date-error" className="form-error" role="alert">{dateError}</p>:<p id="lia-date-help" className="lia-date-help">{allClients?"Período de entrada do cliente no acompanhamento, incluindo todas as etapas.":"A data inicial considera a entrada no acompanhamento. A data final considera apenas clientes concluídos, pela data de conclusão."}</p>}
-    {formsError&&<p className="form-error" role="alert">Não foi possível atualizar os formulários: {formsError} <button type="button" onClick={()=>void refreshForms()}>Tentar novamente</button></p>}
-    {view==="list"?<div className="lia-client-table"><table><thead><tr><th>Cliente / ID</th><th>Plano LIA</th><th>Responsável</th><th>Etapa</th><th>Início</th><th>Valor</th><th>Formulário</th><th>WhatsApp</th><th>Origem</th><th>Atualização</th><th>Dados e histórico</th></tr></thead><tbody><PaginatedItems key={allClients?"all":tab} table label="clientes LIA">{visible.map(item=>{const detail=parseDetail(item.description);return <tr key={item.id}><td><button type="button" onClick={()=>setSelected(item)}><strong>{item.customer_name||item.title}</strong><small>ID {detail.clientId||item.customer_id||item.id.slice(0,6)}</small></button></td><td>{liaContractedPlan(detail)||"Não informado"}</td><td>{item.owner||"Fila compartilhada"}</td><td>{liaStageForStatus(item.status,liaStages).label.replace(/^\d+\. /,"")}</td><td>{(detail.startDate||item.created_at).slice(0,10).split("-").reverse().join("/")}</td><td>{(item.amount_cents/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</td><td><LiaFormStatus requests={formRequests.filter(entry=>entry.workItemId===item.id)}/></td><td><PhoneLink phone={detail.whatsapp||"Não informado"}/></td><td>{detail.sector||item.team||"Não informado"}</td><td>{new Date(item.updated_at).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</td><td><details className="lia-row-details"><summary>Ver todos os dados</summary><dl><dt>Kick off</dt><dd>{detail.kickoffDate||"Não agendado"} {detail.kickoffTime||""}</dd><dt>Conferência dos dados</dt><dd>{detail.validationConfirmedAt?new Date(detail.validationConfirmedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"}):"Pendente"} {detail.validationConfirmedBy||""}</dd><dt>Início do acompanhamento final</dt><dd>{detail.finalFollowupStartedAt||"Não iniciado"}</dd><dt>CRM</dt><dd>{detail.crmUrl||"Não informado"}</dd><dt>Read do Kick off</dt><dd>{detail.kickoffReadUrl||"Não informado"}</dd><dt>Checklist de configuração</dt><dd>{(detail.checklist??[]).map(e=><p key={e.id}>{e.done?"Concluído":"Pendente"} · {e.label}</p>)}</dd><dt>Checklist de testes</dt><dd>{(detail.testChecklist??[]).map(e=><p key={e.id}>{e.done?"Concluído":"Pendente"} · {e.label}</p>)}</dd><dt>Pendências</dt><dd>{(detail.issues??[]).map(e=><p key={e.id}>{e.resolved?"Resolvida":"Aberta"} · {e.text}</p>)}</dd><dt>Histórico</dt><dd>{(detail.history??[]).map(e=><p key={e.id}>{new Date(e.at).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})} · {e.author}: {e.text}</p>)}</dd></dl><button type="button" className="secondary-button compact" onClick={()=>setSelected(item)}>Abrir cliente</button></details></td></tr>})}</PaginatedItems></tbody></table>{!visible.length&&<p className="empty-state">Nenhum cliente nesta etapa.</p>}</div>:<div className="journey-board">{visible.map(item=>{const d=parseDetail(item.description);const responsible=employees.find(employee=>employee.displayName===item.owner);const lastInteraction=(d.history??[]).at(-1)?.at||d.startDate||item.created_at;return <article data-reminder-entity-id={item.id} className="journey-card" key={item.id} role="button" tabIndex={0} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();setSelected(item)}}} onClick={()=>setSelected(item)}><div className="journey-card-top"><span className="journey-avatar">{(item.customer_name||item.title).slice(0,2).toUpperCase()}</span><span className="status-pill">{liaStageForStatus(item.status,liaStages).label.replace(/^\d+\. /,"")}</span></div><h3>{item.customer_name||item.title}</h3><small>ID {d.clientId||item.customer_id||item.id.slice(0,6)}</small><span className="lia-plan-chip">Plano LIA: {liaContractedPlan(d)||"Não informado"}</span><div className="journey-meta"><span><CalendarDays size={14}/>{daysSince(d.startDate||item.created_at)} dias em acompanhamento</span><span className={daysSince(lastInteraction)>=5?"journey-inactive-alert":""}><Clock3 size={14}/>{daysSince(lastInteraction)} dia(s) sem interação</span><span className="journey-owner-chip" data-collaborator-name={item.owner}><i style={responsible?.photoDataUrl?{backgroundImage:`url("${responsible.photoDataUrl}")`}:undefined}/>{item.owner||"Fila compartilhada"}</span></div><SaleObservation text={d.saleObservation} compact /><div className="lia-card-form-state"><LiaFormStatus requests={formRequests.filter(entry=>entry.workItemId===item.id)}/>{formRequests.some(entry=>entry.workItemId===item.id&&entry.submittedAt)&&<a href={`/lia-form-responses/${item.id}`} target="_blank" rel="noopener noreferrer" onClick={event=>event.stopPropagation()}>Ver respostas ↗</a>}</div><footer><span><PhoneLink phone={d.whatsapp||"WhatsApp não informado"}/></span><ChevronRight size={17}/></footer></article>})}{!visible.length&&<div className="empty-state"><ClipboardCheck/><strong>Nenhum cliente nesta etapa.</strong></div>}</div>}
-    {selected&&<div className="drawer-backdrop" onMouseDown={()=>{setSelected(null);setEditingClient(false);setChangingOwner(false)}}><aside className="journey-drawer" onMouseDown={e=>e.stopPropagation()}><header><div><p className="eyebrow">ACOMPANHAMENTO LIA</p><h2>{selected.customer_name||selected.title}</h2><span>ID {parseDetail(selected.description).clientId||selected.customer_id||selected.id.slice(0,6)} · {daysSince(parseDetail(selected.description).startDate||selected.created_at)} dias</span></div><button className="icon-button" aria-label="Fechar" onClick={()=>{setSelected(null);setEditingClient(false);setChangingOwner(false)}}><X/></button></header><div className="journey-drawer-body">
-      <SaleObservation text={parseDetail(selected.description).saleObservation} /><LiaClientForms workItemId={selected.id} clientName={selected.customer_name||selected.title} requests={formRequests.filter(entry=>entry.workItemId===selected.id)} canEdit={selectedCanEdit} onRefresh={refreshForms}/>
-      <section className="journey-summary-grid lia-summary-grid"><div><span>Status / etapa</span>{selectedCanEdit?<select aria-label="Alterar etapa LIA" value={liaStageForStatus(selected.status,liaStages).key} disabled={busy||selected.status==="Validacao"} onChange={event=>{const target=liaStages.find(entry=>entry.key===event.target.value);if(target)void status(selected,target.target)}}>{liaStages.map(entry=><option value={entry.key} key={entry.key} disabled={(selected.status==="ConferenciaFinal"&&entry.key!=="conference")||(entry.key==="completed"&&selected.status!=="Concluida")||(entry.key==="conference"&&!canSendConference&&selected.status!=="ConferenciaFinal")}>{entry.label}</option>)}</select>:<strong>{liaStageForStatus(selected.status,liaStages).label}</strong>}</div><div><span>Responsável</span><div className="lia-owner-field"><strong data-collaborator-name={selected.owner} title={selected.owner}>{selected.owner||"Fila compartilhada"}</strong>{canReassign&&<button type="button" className="icon-button" aria-label="Alterar responsável LIA" onClick={()=>setChangingOwner(true)}><Pencil size={15}/></button>}</div></div><div><span>WhatsApp</span><div className="lia-whatsapp-copy"><PhoneLink phone={parseDetail(selected.description).whatsapp||"Não informado"}/>{parseDetail(selected.description).whatsapp&&<button type="button" className="icon-button" aria-label={copiedPhone?"Número copiado":"Copiar número do WhatsApp"} onClick={()=>void copyPhone(parseDetail(selected.description).whatsapp!)}>{copiedPhone?<Check size={16}/>:<Copy size={16}/>}</button>}</div></div><div><span>Plano LIA contratado</span><strong>{liaContractedPlan(parseDetail(selected.description))||"Não informado"}</strong></div><div><span>Origem</span><strong>{parseDetail(selected.description).sector||"Inserção manual"}</strong></div></section>
-      {copyError&&<p className="form-error" role="alert">{copyError}</p>}
-      {parseDetail(selected.description).validationConfirmedAt&&<p className="lia-validation-stamp">Conferido por {parseDetail(selected.description).validationConfirmedBy} · {new Date(parseDetail(selected.description).validationConfirmedAt!).toLocaleString("pt-BR")}</p>}
-      {canViewValidation&&selected.status==="Validacao"&&<LiaValidationCard key={`${selected.id}:${selected.owner}:${liaContractedPlan(parseDetail(selected.description))}:${Boolean(parseDetail(selected.description).validationConfirmedAt)}`} owner={selected.owner} plan={liaContractedPlan(parseDetail(selected.description))} employees={employees} catalogs={catalogs} busy={busy} canAssign={canAssignValidation} hasForm={formRequests.some(entry=>entry.workItemId===selected.id)} checked={Boolean(parseDetail(selected.description).validationConfirmedAt)} onCheck={plan=>checkValidation(selected,plan)} onAssign={(owner,plan)=>confirmValidation(selected,owner,plan)}/>}
-      {selectedCanEdit&&(selected.status==="AguardandoKickoff"||selected.status==="KickoffAgendado")?<LiaKickoff item={selected} detail={parseDetail(selected.description)} agendaModule={agendaModule} operate={operate} onScheduled={p=>scheduleKickoff(selected,p)} onCompleted={p=>completeKickoff(selected,p)}/>:null}
-      {selectedCanEdit&&selected.status==="ConfiguracaoInicial"?<LiaChecklist item={selected} detail={parseDetail(selected.description)} configuredItems={catalogs.filter(entry=>entry.active&&entry.catalog==="liaChecklistItem").map(entry=>entry.name)} onUpdate={p=>update(selected,p,"Checklist atualizado.")}/>:null}
-      {selectedCanEdit&&["EmTesteCliente","EmAjustes"].includes(selected.status)?<><LiaTestChecklist detail={parseDetail(selected.description)} configuredItems={catalogs.filter(entry=>entry.active&&["liaTestChecklistItem","liaChecklistItem"].includes(entry.catalog)).map(entry=>entry.name)} onUpdate={p=>update(selected,p,"Checklist de testes atualizado.")}/><LiaIssues item={selected} detail={parseDetail(selected.description)} onUpdate={p=>update(selected,p,"Teste atualizado.")}/></>:null}
-      {selected.status==="AguardandoAprovacao"&&canEdit&&<section className="journey-action-card lia-approval-actions"><h3>Validação da LIA</h3><p>A coordenação pode aprovar o avanço ou reprovar, devolvendo para ajustes com o motivo registrado.</p><div className="button-row"><button className="danger-button" disabled={busy} onClick={async()=>{const reason=prompt("Informe o motivo da reprovação");if(!reason?.trim())return;const detail=parseDetail(selected.description);const saved=await update(selected,{history:[...(detail.history??[]),{id:crypto.randomUUID(),text:`Reprovado pela coordenação: ${reason.trim()}`,at:new Date().toISOString(),author:currentUser}]},"Reprovação registrada.");if(saved)await status({...selected,version:selected.version+1},"EmAjustes",selected.version+1)}}><X size={15}/> Reprovar</button><button className="primary-button" disabled={busy} onClick={()=>void status(selected,"ConfigurandoCRC")}><Check size={15}/> Aprovar</button></div></section>}
-      {selected.status==="AcompanhamentoFinal"&&<section className="journey-action-card"><h3>Acompanhamento Final</h3><p>{finalDays} de {LIA_FINAL_FOLLOWUP_DAYS} dias de observação. O envio para conferência fica disponível após esse período. A conclusão exige aprovação.</p></section>}
-      {selected.status==="ConferenciaFinal"&&<LiaFinalConference key={selected.id} busy={busy} canReview={canReviewConference} onDecision={(approved,reason)=>status(selected,approved?"Concluida":"AcompanhamentoFinal",selected.version,reason)}/>}
-      <section data-comment-composer="true" className="journey-comments"><h3><MessageSquareText size={17}/> Comentários e histórico</h3><CommentInput disabled={busy||!selectedCanEdit} data-comment-input="true" value={comment} onChange={e=>setComment(e.target.value)} placeholder="Registre a interação, decisão ou retorno do cliente."/><button className="primary-button compact" disabled={busy||!selectedCanEdit||!comment.trim()} onClick={addComment}>Publicar comentário</button>{(parseDetail(selected.description).history??[]).slice().reverse().map(h=><div data-reminder-entity-id={h.id} className="history-row" key={h.id}><strong>{h.author}</strong><span>{new Date(h.at).toLocaleString("pt-BR")}</span><p><CommentContent text={h.text}/></p></div>)}</section>
-    </div><footer>{canEditClient&&<button className="secondary-button compact" disabled={busy} onClick={()=>setEditingClient(true)}><Pencil size={15}/>Editar</button>}{canEdit&&selectedCanEdit&&<><button className="secondary-button compact danger-action" disabled={busy||(!canCoordinate&&formRequests.some(entry=>entry.workItemId===selected.id&&entry.submittedAt))} title={!canCoordinate&&formRequests.some(entry=>entry.workItemId===selected.id&&entry.submittedAt)?"Somente coordenadores podem excluir cards com formulário preenchido":undefined} onClick={()=>operate({action:"deleteWorkItem",id:selected.id},"Acompanhamento excluído.").then(result=>{if(result)setSelected(null)})}><Trash2 size={15}/>Excluir</button></>}{selectedCanEdit&&nextStatus[selected.status]&&<button disabled={busy||(nextStatus[selected.status]==="ConferenciaFinal"&&!canSendConference)} className="primary-button" onClick={()=>status(selected,nextStatus[selected.status])}><Check size={16}/>{selected.status==="AcompanhamentoFinal"?"Enviar para conferência":"Avançar etapa"}</button>}</footer></aside></div>}
-    {editingClient&&selected&&canEditClient&&<LiaClientEditModal key={selected.id} initial={{name:selected.customer_name||selected.title,owner:selected.owner,whatsapp:parseDetail(selected.description).whatsapp||"",liaPlan:liaContractedPlan(parseDetail(selected.description)),origin:parseDetail(selected.description).sector||""}} employees={employees} catalogs={catalogs} busy={busy} canChangeOwner={canReassign} onClose={()=>setEditingClient(false)} onSave={saveClient}/>}
-    {changingOwner&&selected&&canReassign&&<LiaResponsibleModal owner={selected.owner} employees={employees} busy={busy} onClose={()=>setChangingOwner(false)} onSave={changeOwner}/>}
-    {(creating||bulkOpen)&&<LiaClientEntryModal existingIds={records.map(item=>parseDetail(item.description).clientId||item.customer_id||"")} employees={employees} catalogs={catalogs} currentUser={currentUser} busy={busy} completed={bulkOpen} onClose={()=>{setCreating(false);setBulkOpen(false)}} onSave={payload=>operate(payload,bulkOpen?"Cliente concluído importado.":"Cliente inserido para validação.")}/>}
-
-  </section>;
+}
+function daysSince(value?: string) {
+  if (!value) return 0;
+  return Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).getTime()) / 86400000),
+  );
+}
+function mergeDetail(item: Item, detail: Detail) {
+  return {
+    action: "updateWorkItem",
+    id: item.id,
+    title: item.title,
+    owner: item.owner,
+    customerName: item.customer_name,
+    amountCents: item.amount_cents,
+    version: item.version,
+    description: JSON.stringify(detail),
+  };
 }
 
-function LiaKickoff({item,detail,agendaModule,operate,onScheduled,onCompleted}:{item:Item;detail:Detail;agendaModule?:AgendaModuleData|null;operate:Operation;onScheduled:(p:Partial<Detail>)=>Promise<boolean>;onCompleted:(p:Partial<Detail>)=>Promise<boolean>}){const [date,setDate]=useState(detail.kickoffDate||"");const [time,setTime]=useState(detail.kickoffTime||"");const [link,setLink]=useState(detail.kickoffReadUrl||"");const [scheduleOpen,setScheduleOpen]=useState(false);async function schedule(typeId:string){if(!date||!time)return;const normalize=(v:string)=>v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();const calendar=agendaModule?.calendars.find(v=>v.active&&/lia|ativacao/.test(normalize(`${v.name} ${v.departmentName}`)))??agendaModule?.calendars.find(v=>v.active);const type=agendaModule?.types.find(type=>type.active&&type.id===typeId);const statusValue=agendaModule?.statuses.find(v=>v.active&&/agend|pendente/.test(normalize(v.name)))??agendaModule?.statuses.find(v=>v.active);const responsible=agendaModule?.collaborators.find(v=>v.name===item.owner&&Boolean(calendar&&v.agendaIds?.includes(calendar.id)))??agendaModule?.collaborators.find(v=>Boolean(calendar&&v.agendaIds?.includes(calendar.id)));if(!calendar||!type||!statusValue||!responsible){alert("Configure uma agenda, tipo, status e responsável ativos para a LIA.");return;}const startsAt=new Date(`${date}T${time}:00`).toISOString();const endsAt=new Date(new Date(startsAt).getTime()+60*60*1000).toISOString();const created=await operate({action:"createAgendaCommitment",agendaId:calendar.id,agendaTypeId:type.id,agendaStatusId:statusValue.id,responsibleUserId:responsible.id,title:`Kick Off LIA - ID: ${detail.clientId||item.customer_id||item.id.slice(0,6)}`,description:`Kick off do acompanhamento LIA de ${item.customer_name||item.title}`,startsAt,endsAt,participantUserIds:[],recurrence:"none"},"Kick off agendado e incluído na agenda.");if(created){const saved=await onScheduled({kickoffDate:date,kickoffTime:time});if(saved)setScheduleOpen(false)}}async function complete(){await onCompleted({kickoffDate:date,kickoffTime:time,kickoffReadUrl:link,history:[...(detail.history??[]),{id:crypto.randomUUID(),text:`Kick off realizado${link?`. Read: ${link}`:""}.`,at:new Date().toISOString(),author:item.owner||"Responsável"}]})}return <><section className="journey-action-card"><h3>Kick off</h3><p>Registre o agendamento e, após a reunião, preserve o link do Read.</p><div className="field-grid"><label>Data<input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>Horário<input type="time" value={time} onChange={e=>setTime(e.target.value)}/></label></div><label>Link do Read (opcional)<input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://app.read.ai/..."/></label><div className="button-row"><button className="secondary-button compact" disabled={!date||!time} onClick={()=>setScheduleOpen(true)}>Agendar na agenda</button><button className="primary-button compact" disabled={!date||!time} onClick={()=>void complete()}>Marcar realizado</button></div></section>{scheduleOpen&&<AgendaTypeSelectionModal types={agendaModule?.types??[]} busy={false} onClose={()=>setScheduleOpen(false)} onSave={schedule}/>}</>}
-function LiaChecklist({detail,configuredItems,onUpdate}:{item:Item;detail:Detail;configuredItems?:string[];onUpdate:(p:Partial<Detail>)=>void}){const [manual,setManual]=useState("");const base=detail.checklist?.length?detail.checklist:(configuredItems??[]).map((label,i)=>({id:String(i),label,done:false}));const add=()=>{if(!manual.trim())return;onUpdate({checklist:[...base,{id:crypto.randomUUID(),label:manual.trim(),done:false}]});setManual("")};return <section className="journey-action-card"><h3>Checklist de configuração inicial</h3><p>Use os modelos cadastrados nas configurações ou inclua itens manuais para este cliente.</p><div className="inline-add"><input value={manual} onChange={e=>setManual(e.target.value)} placeholder="Adicionar item manualmente" onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();add()}}}/><button type="button" onClick={add} disabled={!manual.trim()}><Plus size={16}/></button></div><div className="check-list">{base.map((x,i)=><label key={x.id}><input type="checkbox" checked={x.done} onChange={()=>onUpdate({checklist:base.map((v,j)=>j===i?{...v,done:!v.done}:v)})}/><span>{x.label}</span></label>)}</div></section>}
-function LiaTestChecklist({detail,configuredItems,onUpdate}:{detail:Detail;configuredItems?:string[];onUpdate:(p:Partial<Detail>)=>void}){const [manual,setManual]=useState("");const entries=detail.testChecklist?.length?detail.testChecklist:[...new Set(configuredItems??[])].map((label,index)=>({id:`test-${index}`,label,done:false}));const add=()=>{const label=manual.trim();if(!label)return;onUpdate({testChecklist:[...entries,{id:crypto.randomUUID(),label,done:false}]});setManual("")};return <section className="journey-action-card lia-test-checklist"><header><div><span className="eyebrow">VALIDAÇÃO DE TESTES</span><h3>Checklist de conclusão</h3><p>Confirme os cenários de teste antes de encaminhar a implantação.</p></div><b>{entries.filter(entry=>entry.done).length}/{entries.length}</b></header><div className="inline-add"><input value={manual} onChange={event=>setManual(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();add()}}} placeholder="Adicionar cenário de teste"/><button type="button" onClick={add} disabled={!manual.trim()}><Plus size={16}/> Adicionar</button></div><div className="check-list">{entries.map((entry,index)=><label className={entry.done?"done":""} key={entry.id}><input type="checkbox" checked={entry.done} onChange={()=>onUpdate({testChecklist:entries.map((current,currentIndex)=>currentIndex===index?{...current,done:!current.done}:current)})}/><span>{entry.label}</span><button type="button" aria-label={`Excluir ${entry.label}`} onClick={event=>{event.preventDefault();onUpdate({testChecklist:entries.filter(current=>current.id!==entry.id)})}}><Trash2 size={14}/></button></label>)}</div></section>}
-function LiaIssues({detail,onUpdate}:{item:Item;detail:Detail;onUpdate:(p:Partial<Detail>)=>void}){const [text,setText]=useState("");const issues=detail.issues??[];return <section className="journey-action-card"><h3>Testes do cliente · 7 dias</h3><div className="inline-add"><input value={text} onChange={e=>setText(e.target.value)} placeholder="Descreva um erro ou validação"/><button onClick={()=>{if(text.trim()){onUpdate({issues:[...issues,{id:crypto.randomUUID(),text:text.trim(),resolved:false}]});setText("")}}}><Plus/></button></div>{issues.map((x,i)=><label className="issue-row" key={x.id}><input type="checkbox" checked={x.resolved} onChange={()=>onUpdate({issues:issues.map((v,j)=>j===i?{...v,resolved:!v.resolved}:v)})}/><span className={x.resolved?"done":""}>{x.text}</span><b>{x.resolved?"Ajustado":"Em aberto"}</b></label>)}</section>}
+export function LiaJourneyModule(props: CommonProps) {
+  const {
+    items,
+    employees,
+    catalogs = [],
+    currentUser,
+    canEdit,
+    canCreate = canEdit,
+    canCoordinate = false,
+    canViewValidation = false,
+    canValidate = false,
+    busy,
+    operate,
+    onOpenSettings,
+    agendaModule,
+  } = props;
+  const {
+    requests: formRequests,
+    refresh: refreshForms,
+    error: formsError,
+  } = useLiaFormRequests();
+  const reminderFilter = useReminderFilter("lia");
+  const records = useMemo(
+    () =>
+      items.filter(
+        (i) =>
+          i.module === "lia" &&
+          i.record_type !== "Ajuste de Prompt" &&
+          (i.status !== "Validacao" || canViewValidation),
+      ),
+    [items, canViewValidation],
+  );
+  const [tab, setTab] = useState(
+    canViewValidation ? "validation" : "onboarding",
+  );
+  const [query, setQuery] = useState("");
+  const [owner, setOwner] = useState("");
+  const [selectedSnapshot, setSelected] = useState<Item | null>(null);
+  const [comment, setComment] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [promptAdjustments, setPromptAdjustments] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [changingOwner, setChangingOwner] = useState(false);
+  const [editingClient, setEditingClient] = useState(false);
+  const [allClients, setAllClients] = useState(false);
+  const [view, setView] = useState<"board" | "list">("board");
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [copiedPhone, setCopiedPhone] = useState(false);
+  const [copyError, setCopyError] = useState("");
+  const freshSelected = selectedSnapshot
+    ? records.find((item) => item.id === selectedSnapshot.id)
+    : undefined;
+  const selected =
+    freshSelected && freshSelected.version >= selectedSnapshot!.version
+      ? freshSelected
+      : selectedSnapshot;
+  const liaStages = activeLiaStages(catalogs).filter(
+    (stage) => stage.key !== "validation" || canViewValidation,
+  );
+  const stage = liaStages.find((s) => s.key === tab) ?? liaStages[0];
+  const dateError = liaDateFilterError(startDate, endDate);
+  const filtered = records.filter(
+    (i) =>
+      (allClients
+        ? !dateError &&
+          (!startDate ||
+            liaCalendarDate(
+              parseDetail(i.description).startDate || i.created_at,
+            ) >= startDate) &&
+          (!endDate ||
+            liaCalendarDate(
+              parseDetail(i.description).startDate || i.created_at,
+            ) <= endDate)
+        : matchesLiaDates(i, startDate, endDate)) &&
+      reminderFilter.matches({
+        entityId: i.id,
+        clientId: parseDetail(i.description).clientId,
+        title: i.customer_name || i.title,
+      }) &&
+      (!query ||
+        `${i.title} ${parseDetail(i.description).clientId} ${i.customer_id} ${i.customer_name} ${i.owner}`
+          .toLowerCase()
+          .includes(query.toLowerCase())) &&
+      (!owner || i.owner === owner),
+  );
+  const visible = allClients
+    ? filtered
+    : filtered.filter(
+        (i) => liaStageForStatus(i.status, liaStages).key === stage.key,
+      );
+  async function update(item: Item, patch: Partial<Detail>, success: string) {
+    const detail = { ...parseDetail(item.description), ...patch };
+    const result = await operate(mergeDetail(item, detail), success);
+    if (result)
+      setSelected({
+        ...item,
+        description: JSON.stringify(detail),
+        version: item.version + 1,
+      });
+    return Boolean(result);
+  }
+  async function status(
+    item: Item,
+    next: string,
+    version = item.version,
+    reason?: string,
+  ) {
+    const current = parseDetail(item.description);
+    const history = [
+      ...(current.history ?? []),
+      {
+        id: crypto.randomUUID(),
+        text: `Etapa alterada de ${item.status} para ${next}.`,
+        at: new Date().toISOString(),
+        author: currentUser,
+      },
+    ];
+    const saved = await operate(
+      { ...mergeDetail(item, { ...current, history }), version },
+      "Mudança de etapa registrada no histórico.",
+    );
+    if (!saved) return false;
+    const result = await operate(
+      {
+        action: "transitionWorkItem",
+        id: item.id,
+        nextStatus: next,
+        boardMove: true,
+        version: version + 1,
+        confirmed: true,
+        reason,
+      },
+      "Etapa atualizada com sucesso.",
+    );
+    if (result)
+      setSelected({
+        ...item,
+        status: next,
+        description: JSON.stringify({ ...current, history }),
+        version: version + 2,
+      });
+    return Boolean(result);
+  }
+  async function scheduleKickoff(item: Item, patch: Partial<Detail>) {
+    const detail = { ...parseDetail(item.description), ...patch };
+    const saved = await operate(
+      { ...mergeDetail(item, detail), version: item.version },
+      "Dados do Kick off registrados.",
+    );
+    if (!saved) return false;
+    const moved = await operate(
+      {
+        action: "transitionWorkItem",
+        id: item.id,
+        nextStatus: "KickoffAgendado",
+        version: item.version + 1,
+        confirmed: true,
+      },
+      "Kick off agendado e etapa atualizada.",
+    );
+    if (moved)
+      setSelected({
+        ...item,
+        status: "KickoffAgendado",
+        description: JSON.stringify(detail),
+        version: item.version + 2,
+      });
+    return Boolean(moved);
+  }
+  async function completeKickoff(item: Item, patch: Partial<Detail>) {
+    const detail = { ...parseDetail(item.description), ...patch };
+    const saved = await operate(
+      { ...mergeDetail(item, detail), version: item.version },
+      "Kick off realizado e histórico registrado.",
+    );
+    if (!saved) return false;
+    const moved = await operate(
+      {
+        action: "transitionWorkItem",
+        id: item.id,
+        nextStatus: "ConfiguracaoInicial",
+        version: item.version + 1,
+        confirmed: true,
+      },
+      "Cliente encaminhado para configuração inicial.",
+    );
+    if (moved)
+      setSelected({
+        ...item,
+        status: "ConfiguracaoInicial",
+        description: JSON.stringify(detail),
+        version: item.version + 2,
+      });
+    return Boolean(moved);
+  }
+  async function addComment() {
+    if (!selected || !comment.trim()) return;
+    const d = parseDetail(selected.description);
+    const saved = await update(
+      selected,
+      {
+        history: [
+          ...(d.history ?? []),
+          {
+            type: "Comentário",
+            id: crypto.randomUUID(),
+            text: comment,
+            at: new Date().toISOString(),
+            author: currentUser,
+          },
+        ],
+      },
+      "Comentário registrado.",
+    );
+    if (saved) setComment("");
+  }
+  async function checkValidation(item: Item, liaPlan: string) {
+    const detail = parseDetail(item.description);
+    const at = new Date().toISOString();
+    return update(
+      item,
+      {
+        liaPlan,
+        validationConfirmedAt: at,
+        validationConfirmedBy: currentUser,
+        history: [
+          ...(detail.history ?? []),
+          {
+            id: crypto.randomUUID(),
+            text: `Dados e plano conferidos por ${currentUser}.`,
+            at,
+            author: currentUser,
+          },
+        ],
+      },
+      "Dados conferidos. Selecione o responsável para encaminhar.",
+    );
+  }
+  async function confirmValidation(item: Item, owner: string, liaPlan: string) {
+    const detail = parseDetail(item.description);
+    if (
+      !detail.validationConfirmedAt ||
+      !formRequests.some((entry) => entry.workItemId === item.id)
+    )
+      return false;
+    const next = {
+      ...detail,
+      liaPlan,
+      history: [
+        ...(detail.history ?? []),
+        {
+          id: crypto.randomUUID(),
+          text: `Cliente direcionado para ${owner} após a conferência dos dados.`,
+          at: new Date().toISOString(),
+          author: currentUser,
+        },
+      ],
+    };
+    const saved = await operate(
+      { ...mergeDetail(item, next), owner },
+      "Responsável definido.",
+    );
+    if (!saved) return false;
+    return status(
+      {
+        ...item,
+        owner,
+        description: JSON.stringify(next),
+        version: item.version + 1,
+      },
+      detail.kickoffDate && detail.kickoffTime
+        ? "KickoffAgendado"
+        : "AguardandoKickoff",
+    );
+  }
+  async function saveClient(data: LiaClientEdit) {
+    if (!selected || !canEditClient) return false;
+    const detail = parseDetail(selected.description);
+    const next = {
+      ...detail,
+      whatsapp: data.whatsapp,
+      liaPlan: data.liaPlan,
+      sector: data.origin,
+      history: [
+        ...(detail.history ?? []),
+        {
+          id: crypto.randomUUID(),
+          text: "Dados cadastrais do acompanhamento atualizados.",
+          at: new Date().toISOString(),
+          author: currentUser,
+        },
+      ],
+    };
+    const result = await operate(
+      {
+        ...mergeDetail(selected, next),
+        requireConfirmation: true,
+        title: data.name,
+        customerName: data.name,
+        owner: data.owner,
+      },
+      "Dados do cliente atualizados.",
+    );
+    if (result)
+      setSelected({
+        ...selected,
+        title: data.name,
+        customer_name: data.name,
+        owner: data.owner,
+        description: JSON.stringify(next),
+        version: selected.version + 1,
+      });
+    return Boolean(result);
+  }
+  async function copyPhone(value: string) {
+    try {
+      await navigator.clipboard.writeText(value.replace(/\D/g, ""));
+      setCopiedPhone(true);
+      setCopyError("");
+      window.setTimeout(() => setCopiedPhone(false), 1800);
+    } catch {
+      setCopyError(
+        "Não foi possível copiar o número. Selecione o WhatsApp para copiar manualmente.",
+      );
+    }
+  }
+  const nextStatus: Record<string, string> = {
+    KickoffAgendado: "ConfiguracaoInicial",
+    ConfiguracaoInicial: "EmTesteCliente",
+    EmTesteCliente: "AguardandoAprovacao",
+    EmAjustes: "AguardandoAprovacao",
+    AguardandoAprovacao: "ConfigurandoCRC",
+    ConfigurandoCRC: "AcompanhamentoFinal",
+    EmProducaoAssistida: "AcompanhamentoFinal",
+    ImplantacaoPrincipalConcluida: "AcompanhamentoFinal",
+    AcompanhamentoFinal: "ConferenciaFinal",
+  };
+  const finalDays = liaFinalFollowupDays(
+    selected
+      ? parseDetail(selected.description).finalFollowupStartedAt
+      : undefined,
+  );
+  const canSendConference =
+    selected?.status === "AcompanhamentoFinal" &&
+    finalDays >= LIA_FINAL_FOLLOWUP_DAYS;
+  const canReviewConference =
+    canEdit && canCoordinate && selected?.status === "ConferenciaFinal";
+  const selectedCanEdit =
+    selected?.status === "Validacao" ? canValidate : canEdit;
+  const canEditClient = Boolean(
+    selectedCanEdit &&
+    selected &&
+    (selected.status === "Validacao" ||
+      liaCanReassign(selected.owner, currentUser)),
+  );
+  const canReassign = Boolean(
+    canEditClient &&
+    (selected?.status !== "Validacao" ||
+      parseDetail(selected.description).validationConfirmedAt),
+  );
+  const canAssignValidation = Boolean(
+    canValidate && selected?.status === "Validacao",
+  );
+  async function changeOwner(owner: string) {
+    if (!selected || !canReassign) return false;
+    const detail = parseDetail(selected.description);
+    const next = {
+      ...detail,
+      history: [
+        ...(detail.history ?? []),
+        {
+          id: crypto.randomUUID(),
+          text: `Responsável alterado de ${selected.owner} para ${owner}.`,
+          at: new Date().toISOString(),
+          author: currentUser,
+        },
+      ],
+    };
+    const result = await operate(
+      { ...mergeDetail(selected, next), owner },
+      "Responsável atualizado.",
+    );
+    if (result)
+      setSelected({
+        ...selected,
+        owner,
+        description: JSON.stringify(next),
+        version: selected.version + 1,
+      });
+    return Boolean(result);
+  }
+  if (promptAdjustments)
+    return (
+      <LiaPromptAdjustmentsModule
+        items={items}
+        employees={employees}
+        catalogs={catalogs}
+        currentUser={currentUser}
+        canEdit={canEdit}
+        busy={busy}
+        operate={operate}
+        onBack={() => setPromptAdjustments(false)}
+        onOpenSettings={onOpenSettings}
+      />
+    );
+  return (
+    <section className="journey-module task-visual-standard lia-journey-module">
+      <header className="journey-page-head module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <ClipboardCheck size={21} />
+          </span>
+          <span className="module-page-copy">
+            <p className="eyebrow">OPERAÇÃO · LIA</p>
+            <h1>Acompanhamento LIA</h1>
+            <p>
+              Onboarding, configuração, testes e ativação em uma jornada
+              auditável.
+            </p>
+          </span>
+        </div>
+        <div className="button-row module-page-actions">
+          <button
+            type="button"
+            className="secondary-button lia-clients-button"
+            aria-pressed={allClients}
+            onClick={() => {
+              setAllClients((value) => !value);
+              setView("list");
+              setStartDate("");
+              setEndDate("");
+            }}
+          >
+            <List size={16} />
+            {allClients ? "Voltar às etapas" : "Clientes"}
+          </button>
+          <button
+            className="secondary-button lia-prompt-button"
+            onClick={() => setPromptAdjustments(true)}
+          >
+            <List size={16} /> Ajustes Prompt
+          </button>
+          {canCreate && (
+            <button
+              className="primary-button"
+              onClick={() => setCreating(true)}
+            >
+              <Plus size={16} /> Inserir cliente
+            </button>
+          )}
+          {onOpenSettings && (
+            <button
+              className="icon-button"
+              onClick={onOpenSettings}
+              title="Configurações da LIA"
+            >
+              <Settings size={18} />
+            </button>
+          )}
+        </div>
+      </header>
+      {!allClients && (
+        <div className="lia-workspace-tabs">
+          <nav
+            className="journey-tabs"
+            aria-label="Etapas do acompanhamento LIA"
+            style={{
+              gridTemplateColumns: liaStages
+                .map(
+                  (stage) =>
+                    `minmax(0,${Math.max(22, stage.label.length + 10)}fr)`,
+                )
+                .join(" "),
+            }}
+          >
+            {liaStages.map((s) => (
+              <button
+                key={s.key}
+                className={tab === s.key ? "active" : ""}
+                onClick={() => setTab(s.key)}
+              >
+                <strong className="lia-tab-name">{s.label}</strong>
+                <span className="lia-tab-count">
+                  {
+                    filtered.filter(
+                      (i) =>
+                        liaStageForStatus(i.status, liaStages).key === s.key,
+                    ).length
+                  }
+                </span>
+              </button>
+            ))}
+          </nav>
+          {tab === "completed" && canCreate && (
+            <button
+              type="button"
+              className="primary-button lia-upload-completed"
+              onClick={() => setBulkOpen(true)}
+            >
+              <Upload size={16} /> Subir clientes
+            </button>
+          )}
+        </div>
+      )}
+      <div className="journey-filterbar reminder-filter-toolbar compact-operational-filters lia-compact-filters">
+        <label>
+          <Search size={16} />
+          <input
+            aria-label="Pesquisar cliente, ID ou responsável"
+            placeholder="Pesquisar cliente, ID ou responsável"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        {reminderFilter.control}
+        <select
+          aria-label="Filtrar responsável LIA"
+          value={owner}
+          onChange={(e) => setOwner(e.target.value)}
+        >
+          <option value="">Todos os responsáveis</option>
+          {employees
+            .filter((e) => e.active)
+            .map((e) => (
+              <option key={e.id}>{e.displayName}</option>
+            ))}
+        </select>
+        <label>
+          <span>Data inicial · adicionado a partir de</span>
+          <input
+            type="date"
+            value={startDate}
+            max={endDate || undefined}
+            aria-invalid={Boolean(dateError)}
+            aria-describedby={dateError ? "lia-date-error" : undefined}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+        </label>
+        <label>
+          <span>
+            {allClients
+              ? "Data final · adicionado até"
+              : "Data final · concluído até"}
+          </span>
+          <input
+            type="date"
+            value={endDate}
+            min={startDate || undefined}
+            aria-invalid={Boolean(dateError)}
+            aria-describedby={dateError ? "lia-date-error" : "lia-date-help"}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => {
+            setStartDate("");
+            setEndDate("");
+          }}
+        >
+          Limpar datas
+        </button>
+        <div className="view-switch" aria-label="Visualização dos clientes LIA">
+          <button
+            type="button"
+            aria-label="Visualizar em cards"
+            aria-pressed={view === "board"}
+            className={view === "board" ? "active" : ""}
+            onClick={() => {
+              setAllClients(false);
+              setView("board");
+            }}
+          >
+            <Columns3 size={17} />
+          </button>
+          <button
+            type="button"
+            aria-label="Visualizar em lista"
+            aria-pressed={view === "list"}
+            className={view === "list" ? "active" : ""}
+            onClick={() => setView("list")}
+          >
+            <List size={17} />
+          </button>
+        </div>
+        <strong>{visible.length} cliente(s)</strong>
+      </div>
+      {dateError ? (
+        <p id="lia-date-error" className="form-error" role="alert">
+          {dateError}
+        </p>
+      ) : (
+        <p id="lia-date-help" className="lia-date-help">
+          {allClients
+            ? "Período de entrada do cliente no acompanhamento, incluindo todas as etapas."
+            : "A data inicial considera a entrada no acompanhamento. A data final considera apenas clientes concluídos, pela data de conclusão."}
+        </p>
+      )}
+      {formsError && (
+        <p className="form-error" role="alert">
+          Não foi possível atualizar os formulários: {formsError}{" "}
+          <button type="button" onClick={() => void refreshForms()}>
+            Tentar novamente
+          </button>
+        </p>
+      )}
+      {view === "list" ? (
+        <div className="lia-client-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente / ID</th>
+                <th>Plano LIA</th>
+                <th>Responsável</th>
+                <th>Etapa</th>
+                <th>Início</th>
+                <th>Valor</th>
+                <th>Formulário</th>
+                <th>WhatsApp</th>
+                <th>Origem</th>
+                <th>Atualização</th>
+                <th>Dados e histórico</th>
+              </tr>
+            </thead>
+            <tbody>
+              <PaginatedItems
+                key={allClients ? "all" : tab}
+                table
+                label="clientes LIA"
+              >
+                {visible.map((item) => {
+                  const detail = parseDetail(item.description);
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        <button type="button" onClick={() => setSelected(item)}>
+                          <strong>{item.customer_name || item.title}</strong>
+                          <small>
+                            ID{" "}
+                            {detail.clientId ||
+                              item.customer_id ||
+                              item.id.slice(0, 6)}
+                          </small>
+                        </button>
+                      </td>
+                      <td>{liaContractedPlan(detail) || "Não informado"}</td>
+                      <td>{item.owner || "Fila compartilhada"}</td>
+                      <td>
+                        {liaStageForStatus(
+                          item.status,
+                          liaStages,
+                        ).label.replace(/^\d+\. /, "")}
+                      </td>
+                      <td>
+                        {(detail.startDate || item.created_at)
+                          .slice(0, 10)
+                          .split("-")
+                          .reverse()
+                          .join("/")}
+                      </td>
+                      <td>
+                        {(item.amount_cents / 100).toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </td>
+                      <td>
+                        <LiaFormStatus
+                          requests={formRequests.filter(
+                            (entry) => entry.workItemId === item.id,
+                          )}
+                        />
+                      </td>
+                      <td>
+                        <PhoneLink phone={detail.whatsapp || "Não informado"} />
+                      </td>
+                      <td>{detail.sector || item.team || "Não informado"}</td>
+                      <td>
+                        {new Date(item.updated_at).toLocaleString("pt-BR", {
+                          timeZone: "America/Sao_Paulo",
+                        })}
+                      </td>
+                      <td>
+                        <details className="lia-row-details">
+                          <summary>Ver todos os dados</summary>
+                          <dl>
+                            <dt>Kick off</dt>
+                            <dd>
+                              {detail.kickoffDate || "Não agendado"}{" "}
+                              {detail.kickoffTime || ""}
+                            </dd>
+                            <dt>Conferência dos dados</dt>
+                            <dd>
+                              {detail.validationConfirmedAt
+                                ? new Date(
+                                    detail.validationConfirmedAt,
+                                  ).toLocaleString("pt-BR", {
+                                    timeZone: "America/Sao_Paulo",
+                                  })
+                                : "Pendente"}{" "}
+                              {detail.validationConfirmedBy || ""}
+                            </dd>
+                            <dt>Início do acompanhamento final</dt>
+                            <dd>
+                              {detail.finalFollowupStartedAt || "Não iniciado"}
+                            </dd>
+                            <dt>CRM</dt>
+                            <dd>{detail.crmUrl || "Não informado"}</dd>
+                            <dt>Read do Kick off</dt>
+                            <dd>{detail.kickoffReadUrl || "Não informado"}</dd>
+                            <dt>Checklist de configuração</dt>
+                            <dd>
+                              {(detail.checklist ?? []).map((e) => (
+                                <p key={e.id}>
+                                  {e.done ? "Concluído" : "Pendente"} ·{" "}
+                                  {e.label}
+                                </p>
+                              ))}
+                            </dd>
+                            <dt>Checklist de testes</dt>
+                            <dd>
+                              {(detail.testChecklist ?? []).map((e) => (
+                                <p key={e.id}>
+                                  {e.done ? "Concluído" : "Pendente"} ·{" "}
+                                  {e.label}
+                                </p>
+                              ))}
+                            </dd>
+                            <dt>Pendências</dt>
+                            <dd>
+                              {(detail.issues ?? []).map((e) => (
+                                <p key={e.id}>
+                                  {e.resolved ? "Resolvida" : "Aberta"} ·{" "}
+                                  {e.text}
+                                </p>
+                              ))}
+                            </dd>
+                            <dt>Histórico</dt>
+                            <dd>
+                              {(detail.history ?? []).map((e) => (
+                                <p key={e.id}>
+                                  {new Date(e.at).toLocaleString("pt-BR", {
+                                    timeZone: "America/Sao_Paulo",
+                                  })}{" "}
+                                  · {e.author}: {e.text}
+                                </p>
+                              ))}
+                            </dd>
+                          </dl>
+                          <button
+                            type="button"
+                            className="secondary-button compact"
+                            onClick={() => setSelected(item)}
+                          >
+                            Abrir cliente
+                          </button>
+                        </details>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </PaginatedItems>
+            </tbody>
+          </table>
+          {!visible.length && (
+            <p className="empty-state">Nenhum cliente nesta etapa.</p>
+          )}
+        </div>
+      ) : (
+        <div className="journey-board">
+          <PaginatedItems mode="kanban" label="cards">
+            {visible.map((item) => {
+              const d = parseDetail(item.description);
+              const responsible = employees.find(
+                (employee) => employee.displayName === item.owner,
+              );
+              const lastInteraction =
+                (d.history ?? []).at(-1)?.at || d.startDate || item.created_at;
+              return (
+                <article
+                  data-reminder-entity-id={item.id}
+                  className="journey-card"
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      setSelected(item);
+                    }
+                  }}
+                  onClick={() => setSelected(item)}
+                >
+                  <div className="journey-card-top">
+                    <span className="journey-avatar">
+                      {(item.customer_name || item.title)
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </span>
+                    <span className="status-pill">
+                      {liaStageForStatus(item.status, liaStages).label.replace(
+                        /^\d+\. /,
+                        "",
+                      )}
+                    </span>
+                  </div>
+                  <h3>{item.customer_name || item.title}</h3>
+                  <small>
+                    ID {d.clientId || item.customer_id || item.id.slice(0, 6)}
+                  </small>
+                  <span className="lia-plan-chip">
+                    Plano LIA: {liaContractedPlan(d) || "Não informado"}
+                  </span>
+                  <div className="journey-meta">
+                    <span>
+                      <CalendarDays size={14} />
+                      {daysSince(d.startDate || item.created_at)} dias em
+                      acompanhamento
+                    </span>
+                    <span
+                      className={
+                        daysSince(lastInteraction) >= 5
+                          ? "journey-inactive-alert"
+                          : ""
+                      }
+                    >
+                      <Clock3 size={14} />
+                      {daysSince(lastInteraction)} dia(s) sem interação
+                    </span>
+                    <span
+                      className="journey-owner-chip"
+                      data-collaborator-name={item.owner}
+                    >
+                      <i
+                        style={
+                          responsible?.photoDataUrl
+                            ? {
+                                backgroundImage: `url("${responsible.photoDataUrl}")`,
+                              }
+                            : undefined
+                        }
+                      />
+                      {item.owner || "Fila compartilhada"}
+                    </span>
+                  </div>
+                  <SaleObservation text={d.saleObservation} compact />
+                  <div className="lia-card-form-state">
+                    <LiaFormStatus
+                      requests={formRequests.filter(
+                        (entry) => entry.workItemId === item.id,
+                      )}
+                    />
+                    {formRequests.some(
+                      (entry) =>
+                        entry.workItemId === item.id && entry.submittedAt,
+                    ) && (
+                      <a
+                        href={`/lia-form-responses/${item.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        Ver respostas ↗
+                      </a>
+                    )}
+                  </div>
+                  <footer>
+                    <span>
+                      <PhoneLink
+                        phone={d.whatsapp || "WhatsApp não informado"}
+                      />
+                    </span>
+                    <ChevronRight size={17} />
+                  </footer>
+                </article>
+              );
+            })}
+          </PaginatedItems>
+          {!visible.length && (
+            <div className="empty-state">
+              <ClipboardCheck />
+              <strong>Nenhum cliente nesta etapa.</strong>
+            </div>
+          )}
+        </div>
+      )}
+      {selected && (
+        <div
+          className="drawer-backdrop"
+          onMouseDown={() => {
+            setSelected(null);
+            setEditingClient(false);
+            setChangingOwner(false);
+          }}
+        >
+          <aside
+            className="journey-drawer"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">ACOMPANHAMENTO LIA</p>
+                <h2>{selected.customer_name || selected.title}</h2>
+                <span>
+                  ID{" "}
+                  {parseDetail(selected.description).clientId ||
+                    selected.customer_id ||
+                    selected.id.slice(0, 6)}{" "}
+                  ·{" "}
+                  {daysSince(
+                    parseDetail(selected.description).startDate ||
+                      selected.created_at,
+                  )}{" "}
+                  dias
+                </span>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="Fechar"
+                onClick={() => {
+                  setSelected(null);
+                  setEditingClient(false);
+                  setChangingOwner(false);
+                }}
+              >
+                <X />
+              </button>
+            </header>
+            <div className="journey-drawer-body">
+              <SaleObservation
+                text={parseDetail(selected.description).saleObservation}
+              />
+              <LiaClientForms
+                workItemId={selected.id}
+                clientName={selected.customer_name || selected.title}
+                requests={formRequests.filter(
+                  (entry) => entry.workItemId === selected.id,
+                )}
+                canEdit={selectedCanEdit}
+                onRefresh={refreshForms}
+              />
+              <section className="journey-summary-grid lia-summary-grid">
+                <div>
+                  <span>Status / etapa</span>
+                  {selectedCanEdit ? (
+                    <select
+                      aria-label="Alterar etapa LIA"
+                      value={liaStageForStatus(selected.status, liaStages).key}
+                      disabled={busy || selected.status === "Validacao"}
+                      onChange={(event) => {
+                        const target = liaStages.find(
+                          (entry) => entry.key === event.target.value,
+                        );
+                        if (target) void status(selected, target.target);
+                      }}
+                    >
+                      {liaStages.map((entry) => (
+                        <option
+                          value={entry.key}
+                          key={entry.key}
+                          disabled={
+                            (selected.status === "ConferenciaFinal" &&
+                              entry.key !== "conference") ||
+                            (entry.key === "completed" &&
+                              selected.status !== "Concluida") ||
+                            (entry.key === "conference" &&
+                              !canSendConference &&
+                              selected.status !== "ConferenciaFinal")
+                          }
+                        >
+                          {entry.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <strong>
+                      {liaStageForStatus(selected.status, liaStages).label}
+                    </strong>
+                  )}
+                </div>
+                <div>
+                  <span>Responsável</span>
+                  <div className="lia-owner-field">
+                    <strong
+                      data-collaborator-name={selected.owner}
+                      title={selected.owner}
+                    >
+                      {selected.owner || "Fila compartilhada"}
+                    </strong>
+                    {canReassign && (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label="Alterar responsável LIA"
+                        onClick={() => setChangingOwner(true)}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span>WhatsApp</span>
+                  <div className="lia-whatsapp-copy">
+                    <PhoneLink
+                      phone={
+                        parseDetail(selected.description).whatsapp ||
+                        "Não informado"
+                      }
+                    />
+                    {parseDetail(selected.description).whatsapp && (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={
+                          copiedPhone
+                            ? "Número copiado"
+                            : "Copiar número do WhatsApp"
+                        }
+                        onClick={() =>
+                          void copyPhone(
+                            parseDetail(selected.description).whatsapp!,
+                          )
+                        }
+                      >
+                        {copiedPhone ? <Check size={16} /> : <Copy size={16} />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span>Plano LIA contratado</span>
+                  <strong>
+                    {liaContractedPlan(parseDetail(selected.description)) ||
+                      "Não informado"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Origem</span>
+                  <strong>
+                    {parseDetail(selected.description).sector ||
+                      "Inserção manual"}
+                  </strong>
+                </div>
+              </section>
+              {copyError && (
+                <p className="form-error" role="alert">
+                  {copyError}
+                </p>
+              )}
+              {parseDetail(selected.description).validationConfirmedAt && (
+                <p className="lia-validation-stamp">
+                  Conferido por{" "}
+                  {parseDetail(selected.description).validationConfirmedBy} ·{" "}
+                  {new Date(
+                    parseDetail(selected.description).validationConfirmedAt!,
+                  ).toLocaleString("pt-BR")}
+                </p>
+              )}
+              {canViewValidation && selected.status === "Validacao" && (
+                <LiaValidationCard
+                  key={`${selected.id}:${selected.owner}:${liaContractedPlan(parseDetail(selected.description))}:${Boolean(parseDetail(selected.description).validationConfirmedAt)}`}
+                  owner={selected.owner}
+                  plan={liaContractedPlan(parseDetail(selected.description))}
+                  employees={employees}
+                  catalogs={catalogs}
+                  busy={busy}
+                  canAssign={canAssignValidation}
+                  hasForm={formRequests.some(
+                    (entry) => entry.workItemId === selected.id,
+                  )}
+                  checked={Boolean(
+                    parseDetail(selected.description).validationConfirmedAt,
+                  )}
+                  onCheck={(plan) => checkValidation(selected, plan)}
+                  onAssign={(owner, plan) =>
+                    confirmValidation(selected, owner, plan)
+                  }
+                />
+              )}
+              {selectedCanEdit &&
+              (selected.status === "AguardandoKickoff" ||
+                selected.status === "KickoffAgendado") ? (
+                <LiaKickoff
+                  item={selected}
+                  detail={parseDetail(selected.description)}
+                  agendaModule={agendaModule}
+                  operate={operate}
+                  onScheduled={(p) => scheduleKickoff(selected, p)}
+                  onCompleted={(p) => completeKickoff(selected, p)}
+                />
+              ) : null}
+              {selectedCanEdit && selected.status === "ConfiguracaoInicial" ? (
+                <LiaChecklist
+                  item={selected}
+                  detail={parseDetail(selected.description)}
+                  configuredItems={catalogs
+                    .filter(
+                      (entry) =>
+                        entry.active && entry.catalog === "liaChecklistItem",
+                    )
+                    .map((entry) => entry.name)}
+                  onUpdate={(p) => update(selected, p, "Checklist atualizado.")}
+                />
+              ) : null}
+              {selectedCanEdit &&
+              ["EmTesteCliente", "EmAjustes"].includes(selected.status) ? (
+                <>
+                  <LiaTestChecklist
+                    detail={parseDetail(selected.description)}
+                    configuredItems={catalogs
+                      .filter(
+                        (entry) =>
+                          entry.active &&
+                          ["liaTestChecklistItem", "liaChecklistItem"].includes(
+                            entry.catalog,
+                          ),
+                      )
+                      .map((entry) => entry.name)}
+                    onUpdate={(p) =>
+                      update(selected, p, "Checklist de testes atualizado.")
+                    }
+                  />
+                  <LiaIssues
+                    item={selected}
+                    detail={parseDetail(selected.description)}
+                    onUpdate={(p) => update(selected, p, "Teste atualizado.")}
+                  />
+                </>
+              ) : null}
+              {selected.status === "AguardandoAprovacao" && canEdit && (
+                <section className="journey-action-card lia-approval-actions">
+                  <h3>Validação da LIA</h3>
+                  <p>
+                    A coordenação pode aprovar o avanço ou reprovar, devolvendo
+                    para ajustes com o motivo registrado.
+                  </p>
+                  <div className="button-row">
+                    <button
+                      className="danger-button"
+                      disabled={busy}
+                      onClick={async () => {
+                        const reason = prompt("Informe o motivo da reprovação");
+                        if (!reason?.trim()) return;
+                        const detail = parseDetail(selected.description);
+                        const saved = await update(
+                          selected,
+                          {
+                            history: [
+                              ...(detail.history ?? []),
+                              {
+                                id: crypto.randomUUID(),
+                                text: `Reprovado pela coordenação: ${reason.trim()}`,
+                                at: new Date().toISOString(),
+                                author: currentUser,
+                              },
+                            ],
+                          },
+                          "Reprovação registrada.",
+                        );
+                        if (saved)
+                          await status(
+                            { ...selected, version: selected.version + 1 },
+                            "EmAjustes",
+                            selected.version + 1,
+                          );
+                      }}
+                    >
+                      <X size={15} /> Reprovar
+                    </button>
+                    <button
+                      className="primary-button"
+                      disabled={busy}
+                      onClick={() => void status(selected, "ConfigurandoCRC")}
+                    >
+                      <Check size={15} /> Aprovar
+                    </button>
+                  </div>
+                </section>
+              )}
+              {selected.status === "AcompanhamentoFinal" && (
+                <section className="journey-action-card">
+                  <h3>Acompanhamento Final</h3>
+                  <p>
+                    {finalDays} de {LIA_FINAL_FOLLOWUP_DAYS} dias de observação.
+                    O envio para conferência fica disponível após esse período.
+                    A conclusão exige aprovação.
+                  </p>
+                </section>
+              )}
+              {selected.status === "ConferenciaFinal" && (
+                <LiaFinalConference
+                  key={selected.id}
+                  busy={busy}
+                  canReview={canReviewConference}
+                  onDecision={(approved, reason) =>
+                    status(
+                      selected,
+                      approved ? "Concluida" : "AcompanhamentoFinal",
+                      selected.version,
+                      reason,
+                    )
+                  }
+                />
+              )}
+              <section
+                data-comment-composer="true"
+                className="journey-comments"
+              >
+                <h3>
+                  <MessageSquareText size={17} /> Comentários e histórico
+                </h3>
+                <CommentInput
+                  disabled={busy || !selectedCanEdit}
+                  data-comment-input="true"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Registre a interação, decisão ou retorno do cliente."
+                />
+                <button
+                  className="primary-button compact"
+                  disabled={busy || !selectedCanEdit || !comment.trim()}
+                  onClick={addComment}
+                >
+                  Publicar comentário
+                </button>
+                {(parseDetail(selected.description).history ?? [])
+                  .slice()
+                  .reverse()
+                  .map((h) => (
+                    <div
+                      data-reminder-entity-id={h.id}
+                      className="history-row"
+                      key={h.id}
+                    >
+                      <strong>{h.author}</strong>
+                      <span>{new Date(h.at).toLocaleString("pt-BR")}</span>
+                      <p>
+                        <CommentContent text={h.text} />
+                      </p>
+                    </div>
+                  ))}
+              </section>
+            </div>
+            <footer>
+              {canEditClient && (
+                <button
+                  className="secondary-button compact"
+                  disabled={busy}
+                  onClick={() => setEditingClient(true)}
+                >
+                  <Pencil size={15} />
+                  Editar
+                </button>
+              )}
+              {canEdit && selectedCanEdit && (
+                <>
+                  <button
+                    className="secondary-button compact danger-action"
+                    disabled={
+                      busy ||
+                      (!canCoordinate &&
+                        formRequests.some(
+                          (entry) =>
+                            entry.workItemId === selected.id &&
+                            entry.submittedAt,
+                        ))
+                    }
+                    title={
+                      !canCoordinate &&
+                      formRequests.some(
+                        (entry) =>
+                          entry.workItemId === selected.id && entry.submittedAt,
+                      )
+                        ? "Somente coordenadores podem excluir cards com formulário preenchido"
+                        : undefined
+                    }
+                    onClick={() =>
+                      operate(
+                        { action: "deleteWorkItem", id: selected.id },
+                        "Acompanhamento excluído.",
+                      ).then((result) => {
+                        if (result) setSelected(null);
+                      })
+                    }
+                  >
+                    <Trash2 size={15} />
+                    Excluir
+                  </button>
+                </>
+              )}
+              {selectedCanEdit && nextStatus[selected.status] && (
+                <button
+                  disabled={
+                    busy ||
+                    (nextStatus[selected.status] === "ConferenciaFinal" &&
+                      !canSendConference)
+                  }
+                  className="primary-button"
+                  onClick={() => status(selected, nextStatus[selected.status])}
+                >
+                  <Check size={16} />
+                  {selected.status === "AcompanhamentoFinal"
+                    ? "Enviar para conferência"
+                    : "Avançar etapa"}
+                </button>
+              )}
+            </footer>
+          </aside>
+        </div>
+      )}
+      {editingClient && selected && canEditClient && (
+        <LiaClientEditModal
+          key={selected.id}
+          initial={{
+            name: selected.customer_name || selected.title,
+            owner: selected.owner,
+            whatsapp: parseDetail(selected.description).whatsapp || "",
+            liaPlan: liaContractedPlan(parseDetail(selected.description)),
+            origin: parseDetail(selected.description).sector || "",
+          }}
+          employees={employees}
+          catalogs={catalogs}
+          busy={busy}
+          canChangeOwner={canReassign}
+          onClose={() => setEditingClient(false)}
+          onSave={saveClient}
+        />
+      )}
+      {changingOwner && selected && canReassign && (
+        <LiaResponsibleModal
+          owner={selected.owner}
+          employees={employees}
+          busy={busy}
+          onClose={() => setChangingOwner(false)}
+          onSave={changeOwner}
+        />
+      )}
+      {(creating || bulkOpen) && (
+        <LiaClientEntryModal
+          existingIds={records.map(
+            (item) =>
+              parseDetail(item.description).clientId || item.customer_id || "",
+          )}
+          employees={employees}
+          catalogs={catalogs}
+          currentUser={currentUser}
+          busy={busy}
+          completed={bulkOpen}
+          onClose={() => {
+            setCreating(false);
+            setBulkOpen(false);
+          }}
+          onSave={(payload) =>
+            operate(
+              payload,
+              bulkOpen
+                ? "Cliente concluído importado."
+                : "Cliente inserido para validação.",
+            )
+          }
+        />
+      )}
+    </section>
+  );
+}
 
-export function MarketingManagementModule({items,employees,currentUser,canEdit,busy,operate,onOpenSettings}:CommonProps){
-  const stages=["Recebida","Em planejamento","Em produção","Em revisão","Concluída"]; const records=items.filter(i=>i.module==="marketing"); const [query,setQuery]=useState("");const [selected,setSelected]=useState<Item|null>(null);const [create,setCreate]=useState(false);const [title,setTitle]=useState("");const [summary,setSummary]=useState("");const [comment,setComment]=useState("");
-  async function saveDetail(item:Item,d:Detail,msg:string){await operate(mergeDetail(item,d),msg);setSelected({...item,description:JSON.stringify(d)})}
-  return <section className="journey-module task-visual-standard"><header className="journey-page-head module-page-header"><div className="module-page-title"><span className="module-page-title-icon"><CalendarDays size={21}/></span><span className="module-page-copy"><p className="eyebrow">OPERAÇÃO · MARKETING</p><h1>Gestão de Marketing</h1><p>Solicitações dos setores organizadas em um fluxo visual.</p></span></div><div className="button-row module-page-actions"><button className="icon-button" onClick={onOpenSettings}><Settings size={18}/></button><button className="primary-button" onClick={()=>setCreate(true)}><Plus size={17}/>Nova solicitação</button></div></header><div className="journey-filterbar"><label><Search/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Pesquisar solicitação ou setor"/></label><strong>{records.length} solicitação(ões)</strong></div><div className="standard-kanban">{stages.map(stage=><section className="standard-kanban-column" key={stage}><header><strong>{stage}</strong><span>{records.filter(i=>i.status===stage).length}</span></header>{records.filter(i=>i.status===stage&&(!query||`${i.title} ${i.team}`.toLowerCase().includes(query.toLowerCase()))).map(i=><article data-reminder-entity-id={i.id} className="standard-card" onClick={()=>setSelected(i)} key={i.id}><small>{i.record_type}</small><h3>{i.title}</h3><p>{parseDetail(i.description).sector||i.team}</p><footer><span>{i.owner||"Fila compartilhada"}</span><ChevronRight/></footer></article>)}</section>)}</div>
-  {create&&<div className="modal-backdrop"><form className="standard-modal" onSubmit={async e=>{e.preventDefault();await operate({action:"createWorkItem",module:"marketing",recordType:"Solicitação",title,owner:currentUser,team:"Marketing",priority:"P3",amountCents:0,description:JSON.stringify({kind:"marketingRequest",startDate:new Date().toISOString(),history:[],checklist:[],summary})},"Solicitação criada.");setCreate(false);setTitle("");setSummary("")} }><header><div><p className="eyebrow">MARKETING</p><h2>Nova solicitação</h2></div><button type="button" className="icon-button" onClick={()=>setCreate(false)}><X/></button></header><label>Título<input required value={title} onChange={e=>setTitle(e.target.value)}/></label><label>Resumo<textarea required value={summary} onChange={e=>setSummary(e.target.value)}/></label><footer><button type="button" className="secondary-button" onClick={()=>setCreate(false)}>Cancelar</button><button className="primary-button">Criar solicitação</button></footer></form></div>}
-  {selected&&<div className="drawer-backdrop" onMouseDown={()=>setSelected(null)}><aside className="journey-drawer" onMouseDown={e=>e.stopPropagation()}><header><div><p className="eyebrow">GESTÃO DE MARKETING</p><h2>{selected.title}</h2></div><button className="icon-button" onClick={()=>setSelected(null)}><X/></button></header><div className="journey-drawer-body"><section className="journey-action-card"><label>Etapa<select value={selected.status} onChange={e=>operate({action:"moveWorkItem",id:selected.id,status:e.target.value},"Etapa atualizada.").then(()=>setSelected({...selected,status:e.target.value}))}>{stages.map(s=><option key={s}>{s}</option>)}</select></label></section><LiaChecklist item={selected} detail={parseDetail(selected.description)} onUpdate={p=>saveDetail(selected,{...parseDetail(selected.description),...p},"Checklist atualizado.")}/><section data-comment-composer="true" className="journey-comments"><h3>Comentários</h3><CommentInput disabled={busy} data-comment-input="true" value={comment} onChange={e=>setComment(e.target.value)}/><button className="primary-button compact" disabled={busy||!comment.trim()} onClick={()=>{const d=parseDetail(selected.description);saveDetail(selected,{...d,history:[...(d.history??[]),{type: "Comentário", id:crypto.randomUUID(),text:comment,at:new Date().toISOString(),author:currentUser}]},"Comentário incluído.");setComment("")}}>Comentar</button></section></div><footer>{canEdit&&<><button className="secondary-button compact" onClick={()=>{const nextTitle=prompt("Título da solicitação",selected.title);if(!nextTitle?.trim())return;const current=parseDetail(selected.description);const nextSummary=prompt("Resumo da solicitação",String((current as Detail & {summary?:string}).summary??""))??String((current as Detail & {summary?:string}).summary??"");operate({action:"updateWorkItem",requireConfirmation:true,id:selected.id,title:nextTitle.trim(),owner:selected.owner,customerName:selected.customer_name,amountCents:selected.amount_cents,version:selected.version,description:JSON.stringify({...current,summary:nextSummary})},"Solicitação atualizada.").then(result=>{if(result)setSelected({...selected,title:nextTitle.trim(),description:JSON.stringify({...current,summary:nextSummary})})})}}><Pencil size={15}/>Editar</button><button className="danger-button compact" onClick={()=>operate({action:"deleteWorkItem",id:selected.id},"Solicitação excluída.").then(result=>{if(result)setSelected(null)})}><Trash2 size={15}/>Excluir</button></>}</footer></aside></div>}
-  </section>
+function LiaKickoff({
+  item,
+  detail,
+  agendaModule,
+  operate,
+  onScheduled,
+  onCompleted,
+}: {
+  item: Item;
+  detail: Detail;
+  agendaModule?: AgendaModuleData | null;
+  operate: Operation;
+  onScheduled: (p: Partial<Detail>) => Promise<boolean>;
+  onCompleted: (p: Partial<Detail>) => Promise<boolean>;
+}) {
+  const [date, setDate] = useState(detail.kickoffDate || "");
+  const [time, setTime] = useState(detail.kickoffTime || "");
+  const [link, setLink] = useState(detail.kickoffReadUrl || "");
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  async function schedule(typeId: string) {
+    if (!date || !time) return;
+    const normalize = (v: string) =>
+      v
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    const calendar =
+      agendaModule?.calendars.find(
+        (v) =>
+          v.active &&
+          /lia|ativacao/.test(normalize(`${v.name} ${v.departmentName}`)),
+      ) ?? agendaModule?.calendars.find((v) => v.active);
+    const type = agendaModule?.types.find(
+      (type) => type.active && type.id === typeId,
+    );
+    const statusValue =
+      agendaModule?.statuses.find(
+        (v) => v.active && /agend|pendente/.test(normalize(v.name)),
+      ) ?? agendaModule?.statuses.find((v) => v.active);
+    const responsible =
+      agendaModule?.collaborators.find(
+        (v) =>
+          v.name === item.owner &&
+          Boolean(calendar && v.agendaIds?.includes(calendar.id)),
+      ) ??
+      agendaModule?.collaborators.find((v) =>
+        Boolean(calendar && v.agendaIds?.includes(calendar.id)),
+      );
+    if (!calendar || !type || !statusValue || !responsible) {
+      alert(
+        "Configure uma agenda, tipo, status e responsável ativos para a LIA.",
+      );
+      return;
+    }
+    const startsAt = new Date(`${date}T${time}:00`).toISOString();
+    const endsAt = new Date(
+      new Date(startsAt).getTime() + 60 * 60 * 1000,
+    ).toISOString();
+    const created = await operate(
+      {
+        action: "createAgendaCommitment",
+        agendaId: calendar.id,
+        agendaTypeId: type.id,
+        agendaStatusId: statusValue.id,
+        responsibleUserId: responsible.id,
+        title: `Kick Off LIA - ID: ${detail.clientId || item.customer_id || item.id.slice(0, 6)}`,
+        description: `Kick off do acompanhamento LIA de ${item.customer_name || item.title}`,
+        startsAt,
+        endsAt,
+        participantUserIds: [],
+        recurrence: "none",
+      },
+      "Kick off agendado e incluído na agenda.",
+    );
+    if (created) {
+      const saved = await onScheduled({ kickoffDate: date, kickoffTime: time });
+      if (saved) setScheduleOpen(false);
+    }
+  }
+  async function complete() {
+    await onCompleted({
+      kickoffDate: date,
+      kickoffTime: time,
+      kickoffReadUrl: link,
+      history: [
+        ...(detail.history ?? []),
+        {
+          id: crypto.randomUUID(),
+          text: `Kick off realizado${link ? `. Read: ${link}` : ""}.`,
+          at: new Date().toISOString(),
+          author: item.owner || "Responsável",
+        },
+      ],
+    });
+  }
+  return (
+    <>
+      <section className="journey-action-card">
+        <h3>Kick off</h3>
+        <p>
+          Registre o agendamento e, após a reunião, preserve o link do Read.
+        </p>
+        <div className="field-grid">
+          <label>
+            Data
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </label>
+          <label>
+            Horário
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+            />
+          </label>
+        </div>
+        <label>
+          Link do Read (opcional)
+          <input
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder="https://app.read.ai/..."
+          />
+        </label>
+        <div className="button-row">
+          <button
+            className="secondary-button compact"
+            disabled={!date || !time}
+            onClick={() => setScheduleOpen(true)}
+          >
+            Agendar na agenda
+          </button>
+          <button
+            className="primary-button compact"
+            disabled={!date || !time}
+            onClick={() => void complete()}
+          >
+            Marcar realizado
+          </button>
+        </div>
+      </section>
+      {scheduleOpen && (
+        <AgendaTypeSelectionModal
+          types={agendaModule?.types ?? []}
+          busy={false}
+          onClose={() => setScheduleOpen(false)}
+          onSave={schedule}
+        />
+      )}
+    </>
+  );
+}
+function LiaChecklist({
+  detail,
+  configuredItems,
+  onUpdate,
+}: {
+  item: Item;
+  detail: Detail;
+  configuredItems?: string[];
+  onUpdate: (p: Partial<Detail>) => void;
+}) {
+  const [manual, setManual] = useState("");
+  const base = detail.checklist?.length
+    ? detail.checklist
+    : (configuredItems ?? []).map((label, i) => ({
+        id: String(i),
+        label,
+        done: false,
+      }));
+  const add = () => {
+    if (!manual.trim()) return;
+    onUpdate({
+      checklist: [
+        ...base,
+        { id: crypto.randomUUID(), label: manual.trim(), done: false },
+      ],
+    });
+    setManual("");
+  };
+  return (
+    <section className="journey-action-card">
+      <h3>Checklist de configuração inicial</h3>
+      <p>
+        Use os modelos cadastrados nas configurações ou inclua itens manuais
+        para este cliente.
+      </p>
+      <div className="inline-add">
+        <input
+          value={manual}
+          onChange={(e) => setManual(e.target.value)}
+          placeholder="Adicionar item manualmente"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              add();
+            }
+          }}
+        />
+        <button type="button" onClick={add} disabled={!manual.trim()}>
+          <Plus size={16} />
+        </button>
+      </div>
+      <div className="check-list">
+        {base.map((x, i) => (
+          <label key={x.id}>
+            <input
+              type="checkbox"
+              checked={x.done}
+              onChange={() =>
+                onUpdate({
+                  checklist: base.map((v, j) =>
+                    j === i ? { ...v, done: !v.done } : v,
+                  ),
+                })
+              }
+            />
+            <span>{x.label}</span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+function LiaTestChecklist({
+  detail,
+  configuredItems,
+  onUpdate,
+}: {
+  detail: Detail;
+  configuredItems?: string[];
+  onUpdate: (p: Partial<Detail>) => void;
+}) {
+  const [manual, setManual] = useState("");
+  const entries = detail.testChecklist?.length
+    ? detail.testChecklist
+    : [...new Set(configuredItems ?? [])].map((label, index) => ({
+        id: `test-${index}`,
+        label,
+        done: false,
+      }));
+  const add = () => {
+    const label = manual.trim();
+    if (!label) return;
+    onUpdate({
+      testChecklist: [
+        ...entries,
+        { id: crypto.randomUUID(), label, done: false },
+      ],
+    });
+    setManual("");
+  };
+  return (
+    <section className="journey-action-card lia-test-checklist">
+      <header>
+        <div>
+          <span className="eyebrow">VALIDAÇÃO DE TESTES</span>
+          <h3>Checklist de conclusão</h3>
+          <p>
+            Confirme os cenários de teste antes de encaminhar a implantação.
+          </p>
+        </div>
+        <b>
+          {entries.filter((entry) => entry.done).length}/{entries.length}
+        </b>
+      </header>
+      <div className="inline-add">
+        <input
+          value={manual}
+          onChange={(event) => setManual(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              add();
+            }
+          }}
+          placeholder="Adicionar cenário de teste"
+        />
+        <button type="button" onClick={add} disabled={!manual.trim()}>
+          <Plus size={16} /> Adicionar
+        </button>
+      </div>
+      <div className="check-list">
+        {entries.map((entry, index) => (
+          <label className={entry.done ? "done" : ""} key={entry.id}>
+            <input
+              type="checkbox"
+              checked={entry.done}
+              onChange={() =>
+                onUpdate({
+                  testChecklist: entries.map((current, currentIndex) =>
+                    currentIndex === index
+                      ? { ...current, done: !current.done }
+                      : current,
+                  ),
+                })
+              }
+            />
+            <span>{entry.label}</span>
+            <button
+              type="button"
+              aria-label={`Excluir ${entry.label}`}
+              onClick={(event) => {
+                event.preventDefault();
+                onUpdate({
+                  testChecklist: entries.filter(
+                    (current) => current.id !== entry.id,
+                  ),
+                });
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+function LiaIssues({
+  detail,
+  onUpdate,
+}: {
+  item: Item;
+  detail: Detail;
+  onUpdate: (p: Partial<Detail>) => void;
+}) {
+  const [text, setText] = useState("");
+  const issues = detail.issues ?? [];
+  return (
+    <section className="journey-action-card">
+      <h3>Testes do cliente · 7 dias</h3>
+      <div className="inline-add">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Descreva um erro ou validação"
+        />
+        <button
+          onClick={() => {
+            if (text.trim()) {
+              onUpdate({
+                issues: [
+                  ...issues,
+                  {
+                    id: crypto.randomUUID(),
+                    text: text.trim(),
+                    resolved: false,
+                  },
+                ],
+              });
+              setText("");
+            }
+          }}
+        >
+          <Plus />
+        </button>
+      </div>
+      {issues.map((x, i) => (
+        <label className="issue-row" key={x.id}>
+          <input
+            type="checkbox"
+            checked={x.resolved}
+            onChange={() =>
+              onUpdate({
+                issues: issues.map((v, j) =>
+                  j === i ? { ...v, resolved: !v.resolved } : v,
+                ),
+              })
+            }
+          />
+          <span className={x.resolved ? "done" : ""}>{x.text}</span>
+          <b>{x.resolved ? "Ajustado" : "Em aberto"}</b>
+        </label>
+      ))}
+    </section>
+  );
+}
+
+export function MarketingManagementModule({
+  items,
+  employees,
+  currentUser,
+  canEdit,
+  busy,
+  operate,
+  onOpenSettings,
+}: CommonProps) {
+  const stages = [
+    "Recebida",
+    "Em planejamento",
+    "Em produção",
+    "Em revisão",
+    "Concluída",
+  ];
+  const records = items.filter((i) => i.module === "marketing");
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<Item | null>(null);
+  const [create, setCreate] = useState(false);
+  const [title, setTitle] = useState("");
+  const [summary, setSummary] = useState("");
+  const [comment, setComment] = useState("");
+  async function saveDetail(item: Item, d: Detail, msg: string) {
+    await operate(mergeDetail(item, d), msg);
+    setSelected({ ...item, description: JSON.stringify(d) });
+  }
+  return (
+    <section className="journey-module task-visual-standard">
+      <header className="journey-page-head module-page-header">
+        <div className="module-page-title">
+          <span className="module-page-title-icon">
+            <CalendarDays size={21} />
+          </span>
+          <span className="module-page-copy">
+            <p className="eyebrow">OPERAÇÃO · MARKETING</p>
+            <h1>Gestão de Marketing</h1>
+            <p>Solicitações dos setores organizadas em um fluxo visual.</p>
+          </span>
+        </div>
+        <div className="button-row module-page-actions">
+          <button className="icon-button" onClick={onOpenSettings}>
+            <Settings size={18} />
+          </button>
+          <button className="primary-button" onClick={() => setCreate(true)}>
+            <Plus size={17} />
+            Nova solicitação
+          </button>
+        </div>
+      </header>
+      <div className="journey-filterbar">
+        <label>
+          <Search />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Pesquisar solicitação ou setor"
+          />
+        </label>
+        <strong>{records.length} solicitação(ões)</strong>
+      </div>
+      <div className="standard-kanban">
+        {stages.map((stage) => (
+          <section className="standard-kanban-column" key={stage}>
+            <header>
+              <strong>{stage}</strong>
+              <span>{records.filter((i) => i.status === stage).length}</span>
+            </header>
+            <PaginatedItems mode="kanban" label="cards">
+              {records
+                .filter(
+                  (i) =>
+                    i.status === stage &&
+                    (!query ||
+                      `${i.title} ${i.team}`
+                        .toLowerCase()
+                        .includes(query.toLowerCase())),
+                )
+                .map((i) => (
+                  <article
+                    data-reminder-entity-id={i.id}
+                    className="standard-card"
+                    onClick={() => setSelected(i)}
+                    key={i.id}
+                  >
+                    <small>{i.record_type}</small>
+                    <h3>{i.title}</h3>
+                    <p>{parseDetail(i.description).sector || i.team}</p>
+                    <footer>
+                      <span>{i.owner || "Fila compartilhada"}</span>
+                      <ChevronRight />
+                    </footer>
+                  </article>
+                ))}
+            </PaginatedItems>
+          </section>
+        ))}
+      </div>
+      {create && (
+        <div className="modal-backdrop">
+          <form
+            className="standard-modal"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              await operate(
+                {
+                  action: "createWorkItem",
+                  module: "marketing",
+                  recordType: "Solicitação",
+                  title,
+                  owner: currentUser,
+                  team: "Marketing",
+                  priority: "P3",
+                  amountCents: 0,
+                  description: JSON.stringify({
+                    kind: "marketingRequest",
+                    startDate: new Date().toISOString(),
+                    history: [],
+                    checklist: [],
+                    summary,
+                  }),
+                },
+                "Solicitação criada.",
+              );
+              setCreate(false);
+              setTitle("");
+              setSummary("");
+            }}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">MARKETING</p>
+                <h2>Nova solicitação</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setCreate(false)}
+              >
+                <X />
+              </button>
+            </header>
+            <label>
+              Título
+              <input
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </label>
+            <label>
+              Resumo
+              <textarea
+                required
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+              />
+            </label>
+            <footer>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setCreate(false)}
+              >
+                Cancelar
+              </button>
+              <button className="primary-button">Criar solicitação</button>
+            </footer>
+          </form>
+        </div>
+      )}
+      {selected && (
+        <div className="drawer-backdrop" onMouseDown={() => setSelected(null)}>
+          <aside
+            className="journey-drawer"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">GESTÃO DE MARKETING</p>
+                <h2>{selected.title}</h2>
+              </div>
+              <button className="icon-button" onClick={() => setSelected(null)}>
+                <X />
+              </button>
+            </header>
+            <div className="journey-drawer-body">
+              <section className="journey-action-card">
+                <label>
+                  Etapa
+                  <select
+                    value={selected.status}
+                    onChange={(e) =>
+                      operate(
+                        {
+                          action: "moveWorkItem",
+                          id: selected.id,
+                          status: e.target.value,
+                        },
+                        "Etapa atualizada.",
+                      ).then(() =>
+                        setSelected({ ...selected, status: e.target.value }),
+                      )
+                    }
+                  >
+                    {stages.map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                </label>
+              </section>
+              <LiaChecklist
+                item={selected}
+                detail={parseDetail(selected.description)}
+                onUpdate={(p) =>
+                  saveDetail(
+                    selected,
+                    { ...parseDetail(selected.description), ...p },
+                    "Checklist atualizado.",
+                  )
+                }
+              />
+              <section
+                data-comment-composer="true"
+                className="journey-comments"
+              >
+                <h3>Comentários</h3>
+                <CommentInput
+                  disabled={busy}
+                  data-comment-input="true"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                />
+                <button
+                  className="primary-button compact"
+                  disabled={busy || !comment.trim()}
+                  onClick={() => {
+                    const d = parseDetail(selected.description);
+                    saveDetail(
+                      selected,
+                      {
+                        ...d,
+                        history: [
+                          ...(d.history ?? []),
+                          {
+                            type: "Comentário",
+                            id: crypto.randomUUID(),
+                            text: comment,
+                            at: new Date().toISOString(),
+                            author: currentUser,
+                          },
+                        ],
+                      },
+                      "Comentário incluído.",
+                    );
+                    setComment("");
+                  }}
+                >
+                  Comentar
+                </button>
+              </section>
+            </div>
+            <footer>
+              {canEdit && (
+                <>
+                  <button
+                    className="secondary-button compact"
+                    onClick={() => {
+                      const nextTitle = prompt(
+                        "Título da solicitação",
+                        selected.title,
+                      );
+                      if (!nextTitle?.trim()) return;
+                      const current = parseDetail(selected.description);
+                      const nextSummary =
+                        prompt(
+                          "Resumo da solicitação",
+                          String(
+                            (current as Detail & { summary?: string })
+                              .summary ?? "",
+                          ),
+                        ) ??
+                        String(
+                          (current as Detail & { summary?: string }).summary ??
+                            "",
+                        );
+                      operate(
+                        {
+                          action: "updateWorkItem",
+                          requireConfirmation: true,
+                          id: selected.id,
+                          title: nextTitle.trim(),
+                          owner: selected.owner,
+                          customerName: selected.customer_name,
+                          amountCents: selected.amount_cents,
+                          version: selected.version,
+                          description: JSON.stringify({
+                            ...current,
+                            summary: nextSummary,
+                          }),
+                        },
+                        "Solicitação atualizada.",
+                      ).then((result) => {
+                        if (result)
+                          setSelected({
+                            ...selected,
+                            title: nextTitle.trim(),
+                            description: JSON.stringify({
+                              ...current,
+                              summary: nextSummary,
+                            }),
+                          });
+                      });
+                    }}
+                  >
+                    <Pencil size={15} />
+                    Editar
+                  </button>
+                  <button
+                    className="danger-button compact"
+                    onClick={() =>
+                      operate(
+                        { action: "deleteWorkItem", id: selected.id },
+                        "Solicitação excluída.",
+                      ).then((result) => {
+                        if (result) setSelected(null);
+                      })
+                    }
+                  >
+                    <Trash2 size={15} />
+                    Excluir
+                  </button>
+                </>
+              )}
+            </footer>
+          </aside>
+        </div>
+      )}
+    </section>
+  );
 }

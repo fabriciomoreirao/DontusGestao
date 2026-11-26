@@ -45,20 +45,20 @@ public sealed partial class ChatService
         var history = actor.HasPermission("chat", "manage") || actor.HasCapability("chat", "viewHistory");
         var departments = await VisibleDepartmentIdsAsync(actor, all, cancellationToken);
         return await (from c in db.ChatConversations.AsNoTracking()
-            join contact in db.ChatContacts.AsNoTracking() on c.ContactId equals contact.Id
-            where (all || departments.Contains(c.DepartmentId)) && (history || c.Status != "Encerrada")
-                && (allReports || c.AssigneeUserId == userId) && c.CreatedAt >= start && c.CreatedAt < end
-            orderby c.CreatedAt descending, c.Id descending
-            select new ChatConversationDto(c.Id, c.Number, c.Protocol,
-                new ChatContactDto(contact.Id, contact.Name, contact.Phone, "", null, contact.CompanyName, ""),
-                c.ChannelId, "", c.DepartmentId, "", c.QueueId, "", c.AssigneeUserId, "", c.Subject,
-                c.IsGroup, c.GroupName, Array.Empty<string>(), c.Status, c.Priority, c.Favorite, c.UnreadCount,
-                c.CreatedAt, c.LastMessageAt, c.FirstResponseAt, c.ClosedAt, null, "", c.Sentiment, c.Version,
-                c.SatisfactionScore, c.SatisfactionComment, c.SatisfactionRespondedAt,
-                Array.Empty<ChatMessageDto>(), Array.Empty<ChatTagDto>(),
-                db.ChatTransfers.Where(t => t.ConversationId == c.Id)
-                    .Select(t => new ChatTransferDto(t.Id, t.FromDepartmentId, t.ToDepartmentId,
-                        t.FromChannelId, t.ToChannelId, "", "", t.CreatedAt)).ToArray()))
+                      join contact in db.ChatContacts.AsNoTracking() on c.ContactId equals contact.Id
+                      where (all || departments.Contains(c.DepartmentId)) && (history || c.Status != "Encerrada")
+                          && (allReports || c.AssigneeUserId == userId) && c.CreatedAt >= start && c.CreatedAt < end
+                      orderby c.CreatedAt descending, c.Id descending
+                      select new ChatConversationDto(c.Id, c.Number, c.Protocol,
+                          new ChatContactDto(contact.Id, contact.Name, contact.Phone, "", null, contact.CompanyName, ""),
+                          c.ChannelId, "", c.DepartmentId, "", c.QueueId, "", c.AssigneeUserId, "", c.Subject,
+                          c.IsGroup, c.GroupName, Array.Empty<string>(), c.Status, c.Priority, c.Favorite, c.UnreadCount,
+                          c.CreatedAt, c.LastMessageAt, c.FirstResponseAt, c.ClosedAt, null, "", c.Sentiment, c.Version,
+                          c.SatisfactionScore, c.SatisfactionComment, c.SatisfactionRespondedAt,
+                          Array.Empty<ChatMessageDto>(), Array.Empty<ChatTagDto>(),
+                          db.ChatTransfers.Where(t => t.ConversationId == c.Id)
+                              .Select(t => new ChatTransferDto(t.Id, t.FromDepartmentId, t.ToDepartmentId,
+                                  t.FromChannelId, t.ToChannelId, "", "", t.CreatedAt)).ToArray()))
             .ToListAsync(cancellationToken);
     }
 }

@@ -13,7 +13,11 @@ services:
     volumes:
       - dontus_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dontus} -d ${POSTGRES_DB:-dontus}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-dontus} -d ${POSTGRES_DB:-dontus}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -45,6 +49,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       Database__CommandTimeoutSeconds: ${DATABASE_COMMAND_TIMEOUT_SECONDS:-90}
+      Redis__ConnectionString: ${REDIS_CONNECTION_STRING:-}
       TZ: America/Sao_Paulo
       Authentication__DevelopmentBypass: ${DEVELOPMENT_AUTH_BYPASS:-false}
       Authentication__LocalPasswordEnabled: ${LOCAL_AUTH_ENABLED:-true}

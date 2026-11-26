@@ -46,9 +46,20 @@ public static class SalesCelebrationService
         detail["wonAt"] = DateTimeOffset.UtcNow.ToString("O");
         item.Description = detail.ToJsonString();
         if (detail["notifyPublicWin"] is JsonValue flag && flag.TryGetValue<bool>(out var notify) && !notify) return;
-        db.AuditEvents.Add(new AuditEvent { ActorEmail = actor.Email, Action = AuditAction, Resource = "work_item", ResourceId = item.Id.ToString(), Module = "commercial",
-            DetailsJson = JsonSerializer.Serialize(new { customerName = Text(detail, "customer") is { Length: > 0 } customer ? customer : string.IsNullOrWhiteSpace(item.CustomerName) ? item.Title : item.CustomerName,
-                clientId = Text(detail, "clientId"), seller = Text(detail, "seller") is { Length: > 0 } seller ? seller : item.Owner }) });
+        db.AuditEvents.Add(new AuditEvent
+        {
+            ActorEmail = actor.Email,
+            Action = AuditAction,
+            Resource = "work_item",
+            ResourceId = item.Id.ToString(),
+            Module = "commercial",
+            DetailsJson = JsonSerializer.Serialize(new
+            {
+                customerName = Text(detail, "customer") is { Length: > 0 } customer ? customer : string.IsNullOrWhiteSpace(item.CustomerName) ? item.Title : item.CustomerName,
+                clientId = Text(detail, "clientId"),
+                seller = Text(detail, "seller") is { Length: > 0 } seller ? seller : item.Owner
+            })
+        });
     }
 
     public static async Task<IReadOnlyCollection<SaleCelebrationDto>> RecentAsync(OperationsDbContext db, CancellationToken ct)

@@ -16,57 +16,57 @@ internal static class CommissionDecisionPolicy
     private static decimal Number(JsonObject detail, string key) => decimal.TryParse(Text(detail, key), NumberStyles.Number, CultureInfo.InvariantCulture, out var n) ? n : 0;
     private static string Money(long cents) => (cents / 100m).ToString("C", CultureInfo.GetCultureInfo("pt-BR"));
     private static long Round(decimal value) => checked((long)decimal.Round(value, 0, MidpointRounding.AwayFromZero));
-    internal static string? RecordStatus(string description) => Text(Detail(description),"decision") switch
-    { "approved"=>"Aprovada", "rejected"=>"Reprovada", "pending"=>"Pendente", _=>null };
+    internal static string? RecordStatus(string description) => Text(Detail(description), "decision") switch
+    { "approved" => "Aprovada", "rejected" => "Reprovada", "pending" => "Pendente", _ => null };
 
     public static async Task<(string Description, long Amount)> PrepareAsync(OperationsDbContext db, string module, string? description,
         string? previousDescription, long amount, ActorContext actor, CancellationToken ct, string? creatorEmail = null)
     {
         if (module is not ("commissions" or "referrals")) return (description ?? "", amount);
         var detail = Detail(description ?? "{}"); var before = Detail(previousDescription ?? "{}");
-        var manual = module == "commissions" && Text(detail,"manual") == "true";
-        if (module == "commissions" && Text(before,"manual") == "true" && !manual) throw new DomainException("Preserve a identificação do lançamento manual.");
+        var manual = module == "commissions" && Text(detail, "manual") == "true";
+        if (module == "commissions" && Text(before, "manual") == "true" && !manual) throw new DomainException("Preserve a identificação do lançamento manual.");
         if (manual)
         {
-            if (!actor.HasPermission(module,"approve") && !actor.HasPermission(module,"manage")) throw new DomainException("Lançamentos manuais exigem supervisão de comissões.",403);
-            if (previousDescription is not null && Text(before,"manual") != "true") throw new DomainException("Adicione um novo lançamento para informar uma comissão manual.");
-            if (!Guid.TryParse(Text(detail,"employeeId"),out var employeeId)) throw new DomainException("Selecione o usuário responsável.");
-            var employee=await db.Users.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==employeeId&&x.Active&&x.BlockedAt==null,ct)
+            if (!actor.HasPermission(module, "approve") && !actor.HasPermission(module, "manage")) throw new DomainException("Lançamentos manuais exigem supervisão de comissões.", 403);
+            if (previousDescription is not null && Text(before, "manual") != "true") throw new DomainException("Adicione um novo lançamento para informar uma comissão manual.");
+            if (!Guid.TryParse(Text(detail, "employeeId"), out var employeeId)) throw new DomainException("Selecione o usuário responsável.");
+            var employee = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == employeeId && x.Active && x.BlockedAt == null, ct)
                 ?? throw new DomainException("Selecione um responsável ativo.");
-            if(Text(detail,"scope") is not ("commercial" or "cs" or "lia") || !DateOnly.TryParseExact(Text(detail,"competence")+"-01","yyyy-MM-dd",out _))
+            if (Text(detail, "scope") is not ("commercial" or "cs" or "lia") || !DateOnly.TryParseExact(Text(detail, "competence") + "-01", "yyyy-MM-dd", out _))
                 throw new DomainException("Informe o setor e a competência.");
-            if(Text(detail,"customerName").Trim().Length is < 3 or > 240 || Text(detail,"product").Trim().Length is < 1 or > 200 || Text(detail,"manualCustomerCode").Length>80 || Text(detail,"manualReason").Trim().Length is < 3 or > 4000)
+            if (Text(detail, "customerName").Trim().Length is < 3 or > 240 || Text(detail, "product").Trim().Length is < 1 or > 200 || Text(detail, "manualCustomerCode").Length > 80 || Text(detail, "manualReason").Trim().Length is < 3 or > 4000)
                 throw new DomainException("Informe cliente, produto e justificativa do lançamento manual.");
-            if(Cents(detail,"saleValueCents") is < 0 or > 100000000000 || Cents(detail,"manualCommissionCents") is <= 0 or > 100000000000)
+            if (Cents(detail, "saleValueCents") is < 0 or > 100000000000 || Cents(detail, "manualCommissionCents") is <= 0 or > 100000000000)
                 throw new DomainException("Informe valores válidos para o cliente e a comissão manual.");
-            detail["employeeName"]=employee.DisplayName;
-            foreach(var key in new[]{"manualCreatedBy","manualCreatedByEmail","manualCreatedAt"})
-                detail[key]=before[key]?.DeepClone() ?? JsonValue.Create(key=="manualCreatedBy"?actor.DisplayName:key=="manualCreatedByEmail"?actor.Email:DateTimeOffset.UtcNow.ToString("O"));
-            detail["ruleLabel"]=$"Comissão manual: {Money(Cents(detail,"manualCommissionCents"))}. Justificativa: {Text(detail,"manualReason")}";
-            if(Text(detail,"decision") is not ("approved" or "rejected"))
-            { detail["decision"]="pending";detail["commissionCents"]=0;return(detail.ToJsonString(),0); }
+            detail["employeeName"] = employee.DisplayName;
+            foreach (var key in new[] { "manualCreatedBy", "manualCreatedByEmail", "manualCreatedAt" })
+                detail[key] = before[key]?.DeepClone() ?? JsonValue.Create(key == "manualCreatedBy" ? actor.DisplayName : key == "manualCreatedByEmail" ? actor.Email : DateTimeOffset.UtcNow.ToString("O"));
+            detail["ruleLabel"] = $"Comissão manual: {Money(Cents(detail, "manualCommissionCents"))}. Justificativa: {Text(detail, "manualReason")}";
+            if (Text(detail, "decision") is not ("approved" or "rejected"))
+            { detail["decision"] = "pending"; detail["commissionCents"] = 0; return (detail.ToJsonString(), 0); }
         }
         var referral = module == "referrals"; var field = referral ? "phase" : "decision";
         var next = Text(detail, field); var previous = Text(before, field);
-        var pending = !referral && !manual && Text(detail,"kind") == "commissionRecord" && next == "pending";
-        if (!referral && !manual && Text(detail,"kind") == "commissionRecord")
+        var pending = !referral && !manual && Text(detail, "kind") == "commissionRecord" && next == "pending";
+        if (!referral && !manual && Text(detail, "kind") == "commissionRecord")
         {
             if (Text(detail, "scope") == "commercial") await CommercialCommissionSource.PrepareAsync(db, detail, ct);
-            if (Number(detail,"saleValueCents") is < 0 or > 100000000000)
+            if (Number(detail, "saleValueCents") is < 0 or > 100000000000)
                 throw new DomainException("Informe um valor base válido para o cliente.");
-            if (Guid.TryParse(Text(detail,"sourceId"),out var sourceId) && Text(detail,"scope") is "cs" or "lia")
+            if (Guid.TryParse(Text(detail, "sourceId"), out var sourceId) && Text(detail, "scope") is "cs" or "lia")
             {
-                var source=await db.WorkItems.AsNoTracking().SingleOrDefaultAsync(item=>item.Id==sourceId,ct);
-                if(source is not null && source.Module == Text(detail,"scope"))
+                var source = await db.WorkItems.AsNoTracking().SingleOrDefaultAsync(item => item.Id == sourceId, ct);
+                if (source is not null && source.Module == Text(detail, "scope"))
                 {
-                    var start=CsJourneyTimeline.CommissionDate(source.Module,Detail(source.Description),source.CreatedAt);
-                    if(start is null && next != "rejected") throw new DomainException("O cliente precisa entrar em acompanhamento com uma data de início válida para gerar comissão.");
-                    if(start is not null)
+                    var start = CsJourneyTimeline.CommissionDate(source.Module, Detail(source.Description), source.CreatedAt);
+                    if (start is null && next != "rejected") throw new DomainException("O cliente precisa entrar em acompanhamento com uma data de início válida para gerar comissão.");
+                    if (start is not null)
                     {
-                        var today=DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTimeOffset.UtcNow,"America/Sao_Paulo").DateTime);
-                        if(start>today)throw new DomainException("O início do acompanhamento não pode estar no futuro.");
-                        detail["competence"]=start.Value.ToString("yyyy-MM",CultureInfo.InvariantCulture);
-                        detail["routedAt"]=$"{start:yyyy-MM-dd}T00:00:00-03:00";
+                        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTimeOffset.UtcNow, "America/Sao_Paulo").DateTime);
+                        if (start > today) throw new DomainException("O início do acompanhamento não pode estar no futuro.");
+                        detail["competence"] = start.Value.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+                        detail["routedAt"] = $"{start:yyyy-MM-dd}T00:00:00-03:00";
                     }
                     if (source.Module == "lia")
                     {
@@ -154,13 +154,13 @@ internal static class CommissionDecisionPolicy
             if (proposed < 0) throw new DomainException("O valor da comissão é inválido.");
             label = type == "percentage" ? $"{rate}% sobre {Money(sale)} = {Money(proposed)}{tierLabel}" : $"{Money(proposed)} fixos por lançamento";
         }
-        if (manual) { proposed=Cents(detail,"manualCommissionCents"); label=Text(detail,"ruleLabel"); }
+        if (manual) { proposed = Cents(detail, "manualCommissionCents"); label = Text(detail, "ruleLabel"); }
         if (next == "approved" && rule is null && !manual) throw new DomainException("Configure a regra de comissionamento antes de aprovar.");
         detail[referral ? "decisionReason" : "reason"] = pending ? "" : reason;
         detail[referral ? "reviewer" : "decidedBy"] = pending ? "" : actor.DisplayName;
         detail[referral ? "decisionAt" : "decidedAt"] = pending ? "" : DateTimeOffset.UtcNow.ToString("O");
-        if(pending && (previousDescription is null || Cents(before,"saleValueCents") != sale))
-        { detail["baseValueEditedAt"]=DateTimeOffset.UtcNow.ToString("O");detail["baseValueEditedBy"]=actor.DisplayName; }
+        if (pending && (previousDescription is null || Cents(before, "saleValueCents") != sale))
+        { detail["baseValueEditedAt"] = DateTimeOffset.UtcNow.ToString("O"); detail["baseValueEditedBy"] = actor.DisplayName; }
         detail["commissionCents"] = next == "approved" ? proposed : 0;
         detail[referral ? "commissionLabel" : "ruleLabel"] = label;
         detail["ruleSnapshot"] = rule?.DeepClone();

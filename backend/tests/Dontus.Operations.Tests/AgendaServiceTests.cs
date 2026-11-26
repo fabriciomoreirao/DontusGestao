@@ -8,36 +8,66 @@ namespace Dontus.Operations.Tests;
 public sealed class AgendaServiceTests
 {
     [Theory]
-    [InlineData("creator",true)]
-    [InlineData("responsible",true)]
-    [InlineData("manager",true)]
-    [InlineData("participant",false)]
-    public async Task Creator_responsible_and_calendar_manager_can_edit_all_commitment_information(string role,bool allowed)
+    [InlineData("creator", true)]
+    [InlineData("responsible", true)]
+    [InlineData("manager", true)]
+    [InlineData("participant", false)]
+    public async Task Creator_responsible_and_calendar_manager_can_edit_all_commitment_information(string role, bool allowed)
     {
-        var (db,service,command,actor)=await RecurrenceContext();await using var context=db;
-        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));
-        var commitment=await db.AgendaCommitments.SingleAsync();
-        if(role!="creator")commitment.CreatedBy="original@test";
-        if(role is "manager" or "participant")
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        var id = Assert.Single(await service.CreateCommitmentAsync(command, actor));
+        var commitment = await db.AgendaCommitments.SingleAsync();
+        if (role != "creator") commitment.CreatedBy = "original@test";
+        if (role is "manager" or "participant")
         {
-            var responsible=new AppUser { Email="another@test",DisplayName="Outro responsável",CreatedBy="tests" };db.Add(responsible);
-            db.UserAgendaCalendarAccesses.Add(new UserAgendaCalendarAccess { UserId=responsible.Id,CalendarId=command.AgendaId });
-            commitment.ResponsibleUserId=responsible.Id;
-            db.AgendaCommitmentParticipants.Add(new AgendaCommitmentParticipant { CommitmentId=id,UserId=responsible.Id });
+            var responsible = new AppUser { Email = "another@test", DisplayName = "Outro responsável", CreatedBy = "tests" }; db.Add(responsible);
+            db.UserAgendaCalendarAccesses.Add(new UserAgendaCalendarAccess { UserId = responsible.Id, CalendarId = command.AgendaId });
+            commitment.ResponsibleUserId = responsible.Id;
+            db.AgendaCommitmentParticipants.Add(new AgendaCommitmentParticipant { CommitmentId = id, UserId = responsible.Id });
         }
         await db.SaveChangesAsync();
-        if(role=="manager")actor=actor with { Permissions=[new("work",true,true,true,false,true)] };
-        var update=new UpdateAgendaCommitmentCommand(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,commitment.ResponsibleUserId,
-            "Título revisado","Descrição revisada",command.StartsAt.AddHours(2),command.EndsAt.AddHours(3),[command.ResponsibleUserId]);
-        if(!allowed)
+        if (role == "manager") actor = actor with { Permissions = [new("work", true, true, true, false, true)] };
+        var update = new UpdateAgendaCommitmentCommand(id, command.AgendaId, command.AgendaTypeId, command.AgendaStatusId, commitment.ResponsibleUserId,
+            "Título revisado", "Descrição revisada", command.StartsAt.AddHours(2), command.EndsAt.AddHours(3), [command.ResponsibleUserId]);
+        if (!allowed)
         {
-            Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateCommitmentAsync(update,actor))).StatusCode);
-            Assert.Equal(command.Title,commitment.Title);return;
+            Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateCommitmentAsync(update, actor))).StatusCode);
+            Assert.Equal(command.Title, commitment.Title); return;
         }
-        await service.UpdateCommitmentAsync(update,actor);
-        Assert.Equal(update.Title,commitment.Title);Assert.Equal(update.Description,commitment.Description);
-        Assert.Equal(update.StartsAt,commitment.StartsAt);Assert.Equal(update.EndsAt,commitment.EndsAt);
-        Assert.Contains(await db.AgendaCommitmentParticipants.Where(x=>x.CommitmentId==id).ToArrayAsync(),x=>x.UserId==command.ResponsibleUserId);
+        await service.UpdateCommitmentAsync(update, actor);
+        Assert.Equal(update.Title, commitment.Title); Assert.Equal(update.Description, commitment.Description);
+        Assert.Equal(update.StartsAt, commitment.StartsAt); Assert.Equal(update.EndsAt, commitment.EndsAt);
+        Assert.Contains(await db.AgendaCommitmentParticipants.Where(x => x.CommitmentId == id).ToArrayAsync(), x => x.UserId == command.ResponsibleUserId);
+    }
+
+    [Theory]
+    [InlineData("Agendado", true)]
+    [InlineData("Concluído", true)]
+    [InlineData("Concluido", true)]
+    [InlineData("Cancelado", false)]
+    [InlineData("Reagendar", false)]
+    [InlineData("Reservado", false)]
+    [InlineData("Pendente", false)]
+    public async Task Only_scheduled_and_completed_statuses_occupy_the_responsible_time(string name, bool blocked)
+    {
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        var status = new AgendaStatus { Name = name }; db.Add(status);
+        var existing = ExistingSlot(command, actor); existing.AgendaStatusId = status.Id; db.Add(existing);
+        await db.SaveChangesAsync();
+        if (blocked) Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.CreateCommitmentAsync(command, actor))).StatusCode);
+        else Assert.Single(await service.CreateCommitmentAsync(command, actor));
+    }
+
+    [Fact]
+    public async Task Changing_a_free_status_to_scheduled_checks_the_responsible_availability()
+    {
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        await service.CreateCommitmentAsync(command, actor);
+        var free = new AgendaStatus { Name = "Reagendar" }; db.Add(free); await db.SaveChangesAsync();
+        var id = Assert.Single(await service.CreateCommitmentAsync(command with { AgendaStatusId = free.Id }, actor));
+        var error = await Assert.ThrowsAsync<DomainException>(() => service.ChangeCommitmentStatusAsync(new(id, command.AgendaStatusId), actor));
+        Assert.Equal(409, error.StatusCode);
+        Assert.Equal(free.Id, (await db.AgendaCommitments.SingleAsync(entry => entry.Id == id)).AgendaStatusId);
     }
 
     [Fact]
@@ -188,9 +218,17 @@ public sealed class AgendaServiceTests
         var (db, service, command, actor) = await RecurrenceContext();
         await using var context = db;
         var conflictStart = command.StartsAt.AddDays(4);
-        db.AgendaCommitments.Add(new AgendaCommitment { AgendaId = command.AgendaId, AgendaTypeId = command.AgendaTypeId,
-            AgendaStatusId = command.AgendaStatusId, ResponsibleUserId = command.ResponsibleUserId,
-            Title = "Horário ocupado", StartsAt = conflictStart, EndsAt = conflictStart.AddHours(1), CreatedBy = actor.Email });
+        db.AgendaCommitments.Add(new AgendaCommitment
+        {
+            AgendaId = command.AgendaId,
+            AgendaTypeId = command.AgendaTypeId,
+            AgendaStatusId = command.AgendaStatusId,
+            ResponsibleUserId = command.ResponsibleUserId,
+            Title = "Horário ocupado",
+            StartsAt = conflictStart,
+            EndsAt = conflictStart.AddHours(1),
+            CreatedBy = actor.Email
+        });
         await db.SaveChangesAsync();
         command = command with { Recurrence = "dates", RecurrenceDates = [new(2026, 10, 28), new(2026, 10, 31)] };
         Assert.Equal(409, (await Assert.ThrowsAsync<DomainException>(() => service.CreateCommitmentAsync(command, actor))).StatusCode);
@@ -302,26 +340,26 @@ public sealed class AgendaServiceTests
     {
         var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
         var sector = await db.TaskDepartments.SingleAsync();
-        var second = new AgendaCalendar { Name = "Agenda restrita", DepartmentId = sector.Id };db.Add(second);await db.SaveChangesAsync();
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.CreateCommitmentAsync(command with { AgendaId=second.Id },actor))).StatusCode);
-        var otherSector = new TaskDepartment { Name="Outro setor" };db.Add(otherSector);
-        var link=await db.UserDepartments.SingleAsync();db.UserDepartments.Remove(link);db.UserDepartments.Add(new UserDepartment { UserId=command.ResponsibleUserId, DepartmentId=otherSector.Id,IsPrimary=true });await db.SaveChangesAsync();
-        var module=await service.GetModuleAsync(actor);Assert.Equal(command.AgendaId,Assert.Single(module.Calendars).Id);
-        Assert.Contains(module.Collaborators,x=>x.Id==command.ResponsibleUserId&&x.AgendaIds!.Contains(command.AgendaId));
-        Assert.Single(await service.CreateCommitmentAsync(command,actor));
+        var second = new AgendaCalendar { Name = "Agenda restrita", DepartmentId = sector.Id }; db.Add(second); await db.SaveChangesAsync();
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.CreateCommitmentAsync(command with { AgendaId = second.Id }, actor))).StatusCode);
+        var otherSector = new TaskDepartment { Name = "Outro setor" }; db.Add(otherSector);
+        var link = await db.UserDepartments.SingleAsync(); db.UserDepartments.Remove(link); db.UserDepartments.Add(new UserDepartment { UserId = command.ResponsibleUserId, DepartmentId = otherSector.Id, IsPrimary = true }); await db.SaveChangesAsync();
+        var module = await service.GetModuleAsync(actor); Assert.Equal(command.AgendaId, Assert.Single(module.Calendars).Id);
+        Assert.Contains(module.Collaborators, x => x.Id == command.ResponsibleUserId && x.AgendaIds!.Contains(command.AgendaId));
+        Assert.Single(await service.CreateCommitmentAsync(command, actor));
     }
 
     [Fact]
     public async Task Revoking_calendar_access_blocks_reads_and_all_commitment_mutations()
     {
-        var (db, service, command, actor) = await RecurrenceContext();await using var context=db;
-        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));
-        db.UserAgendaCalendarAccesses.RemoveRange(await db.UserAgendaCalendarAccesses.ToArrayAsync());await db.SaveChangesAsync();
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        var id = Assert.Single(await service.CreateCommitmentAsync(command, actor));
+        db.UserAgendaCalendarAccesses.RemoveRange(await db.UserAgendaCalendarAccesses.ToArrayAsync()); await db.SaveChangesAsync();
         Assert.Empty((await service.GetModuleAsync(actor)).Calendars);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.ChangeCommitmentStatusAsync(new(id,command.AgendaStatusId),actor))).StatusCode);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.AssignCommitmentAsync(new(id,command.ResponsibleUserId),actor))).StatusCode);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.DeleteCommitmentAsync(id,actor))).StatusCode);
-        Assert.Equal(403,(await Assert.ThrowsAsync<DomainException>(()=>service.UpdateCommitmentAsync(new(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,command.ResponsibleUserId,command.Title,command.Description,command.StartsAt,command.EndsAt,[]),actor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.ChangeCommitmentStatusAsync(new(id, command.AgendaStatusId), actor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.AssignCommitmentAsync(new(id, command.ResponsibleUserId), actor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.DeleteCommitmentAsync(id, actor))).StatusCode);
+        Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.UpdateCommitmentAsync(new(id, command.AgendaId, command.AgendaTypeId, command.AgendaStatusId, command.ResponsibleUserId, command.Title, command.Description, command.StartsAt, command.EndsAt, []), actor))).StatusCode);
     }
 
     [Theory]
@@ -373,13 +411,13 @@ public sealed class AgendaServiceTests
     [Fact]
     public async Task Scheduled_alert_survives_description_edit_and_ends_only_when_status_changes()
     {
-        var (db,_,command,actor)=await RecurrenceContext();await using var context=db;
-        var service=new AgendaService(db,new AlertClock());
-        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));var commitment=await db.AgendaCommitments.SingleAsync();commitment.StatusChangedAt=DateTimeOffset.Parse("2026-11-01T12:00:00-03:00");await db.SaveChangesAsync();
-        Assert.Equal(id,Assert.Single((await service.GetModuleAsync(actor)).Alerts).Id);
-        await service.UpdateCommitmentAsync(new(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,command.ResponsibleUserId,command.Title,"Nova descrição",command.StartsAt,command.EndsAt,[]),actor);
+        var (db, _, command, actor) = await RecurrenceContext(); await using var context = db;
+        var service = new AgendaService(db, new AlertClock());
+        var id = Assert.Single(await service.CreateCommitmentAsync(command, actor)); var commitment = await db.AgendaCommitments.SingleAsync(); commitment.StatusChangedAt = DateTimeOffset.Parse("2026-11-01T12:00:00-03:00"); await db.SaveChangesAsync();
+        Assert.Equal(id, Assert.Single((await service.GetModuleAsync(actor)).Alerts).Id);
+        await service.UpdateCommitmentAsync(new(id, command.AgendaId, command.AgendaTypeId, command.AgendaStatusId, command.ResponsibleUserId, command.Title, "Nova descrição", command.StartsAt, command.EndsAt, []), actor);
         Assert.Single((await service.GetModuleAsync(actor)).Alerts);
-        var final=new AgendaStatus{Name="Concluído"};db.Add(final);await db.SaveChangesAsync();await service.ChangeCommitmentStatusAsync(new(id,final.Id),actor);Assert.Empty((await service.GetModuleAsync(actor)).Alerts);
+        var final = new AgendaStatus { Name = "Concluído" }; db.Add(final); await db.SaveChangesAsync(); await service.ChangeCommitmentStatusAsync(new(id, final.Id), actor); Assert.Empty((await service.GetModuleAsync(actor)).Alerts);
     }
 
     [Theory]
@@ -394,67 +432,73 @@ public sealed class AgendaServiceTests
     [InlineData("2026-11-01T12:00:00-03:00", "2026-11-09T23:59:59-03:00", true)]
     public async Task Scheduled_alert_requires_three_previous_Brasilia_dates_for_appointment_and_status(string startsAt, string changedAt, bool expected)
     {
-        var (db,_,command,actor)=await RecurrenceContext();await using var context=db;
-        var commitment=ExistingSlot(command,actor);
-        commitment.StartsAt=DateTimeOffset.Parse(startsAt);commitment.EndsAt=commitment.StartsAt.AddHours(1);
-        commitment.StatusChangedAt=DateTimeOffset.Parse(changedAt);
-        db.Add(commitment);await db.SaveChangesAsync();
-        var view=await new AgendaService(db,new AlertClock()).GetModuleAsync(actor);
-        Assert.Equal(expected,view.Alerts.Any());
-        if(expected)Assert.Equal(commitment.Id,Assert.Single(view.Alerts).Id);
+        var (db, _, command, actor) = await RecurrenceContext(); await using var context = db;
+        var commitment = ExistingSlot(command, actor);
+        commitment.StartsAt = DateTimeOffset.Parse(startsAt); commitment.EndsAt = commitment.StartsAt.AddHours(1);
+        commitment.StatusChangedAt = DateTimeOffset.Parse(changedAt);
+        db.Add(commitment); await db.SaveChangesAsync();
+        var view = await new AgendaService(db, new AlertClock()).GetModuleAsync(actor);
+        Assert.Equal(expected, view.Alerts.Any());
+        if (expected) Assert.Equal(commitment.Id, Assert.Single(view.Alerts).Id);
     }
 
     [Fact]
     public async Task Scheduled_alert_uses_Brasilia_midnight_and_legacy_creation_date_fallback()
     {
-        var (db,_,command,actor)=await RecurrenceContext();await using var context=db;
-        var commitment=ExistingSlot(command,actor);
-        commitment.StartsAt=DateTimeOffset.Parse("2026-11-10T02:30:00Z");commitment.EndsAt=commitment.StartsAt.AddHours(1);
-        commitment.CreatedAt=DateTimeOffset.Parse("2026-11-01T12:00:00-03:00");
-        db.Add(commitment);await db.SaveChangesAsync();
-        Assert.Empty((await new AgendaService(db,new AlertClock("2026-11-12T02:59:59Z")).GetModuleAsync(actor)).Alerts);
-        Assert.Single((await new AgendaService(db,new AlertClock("2026-11-12T03:00:00Z")).GetModuleAsync(actor)).Alerts);
-        commitment.CreatedAt=DateTimeOffset.Parse("2026-11-12T00:00:00-03:00");await db.SaveChangesAsync();
-        Assert.Empty((await new AgendaService(db,new AlertClock()).GetModuleAsync(actor)).Alerts);
+        var (db, _, command, actor) = await RecurrenceContext(); await using var context = db;
+        var commitment = ExistingSlot(command, actor);
+        commitment.StartsAt = DateTimeOffset.Parse("2026-11-10T02:30:00Z"); commitment.EndsAt = commitment.StartsAt.AddHours(1);
+        commitment.CreatedAt = DateTimeOffset.Parse("2026-11-01T12:00:00-03:00");
+        db.Add(commitment); await db.SaveChangesAsync();
+        Assert.Empty((await new AgendaService(db, new AlertClock("2026-11-12T02:59:59Z")).GetModuleAsync(actor)).Alerts);
+        Assert.Single((await new AgendaService(db, new AlertClock("2026-11-12T03:00:00Z")).GetModuleAsync(actor)).Alerts);
+        commitment.CreatedAt = DateTimeOffset.Parse("2026-11-12T00:00:00-03:00"); await db.SaveChangesAsync();
+        Assert.Empty((await new AgendaService(db, new AlertClock()).GetModuleAsync(actor)).Alerts);
     }
 
     [Fact]
     public async Task Scheduled_alert_disappears_when_rescheduled_and_is_only_visible_to_its_responsible()
     {
-        var (db,_,command,actor)=await RecurrenceContext();await using var context=db;
-        var service=new AgendaService(db,new AlertClock());
-        var id=Assert.Single(await service.CreateCommitmentAsync(command,actor));
-        var commitment=await db.AgendaCommitments.SingleAsync();commitment.StatusChangedAt=DateTimeOffset.Parse("2026-11-01T12:00:00-03:00");await db.SaveChangesAsync();
+        var (db, _, command, actor) = await RecurrenceContext(); await using var context = db;
+        var service = new AgendaService(db, new AlertClock());
+        var id = Assert.Single(await service.CreateCommitmentAsync(command, actor));
+        var commitment = await db.AgendaCommitments.SingleAsync(); commitment.StatusChangedAt = DateTimeOffset.Parse("2026-11-01T12:00:00-03:00"); await db.SaveChangesAsync();
         Assert.Single((await service.GetModuleAsync(actor)).Alerts);
-        var future=DateTimeOffset.Parse("2026-11-20T10:00:00-03:00");
-        await service.UpdateCommitmentAsync(new(id,command.AgendaId,command.AgendaTypeId,command.AgendaStatusId,command.ResponsibleUserId,command.Title,command.Description,future,future.AddHours(1),[]),actor);
+        var future = DateTimeOffset.Parse("2026-11-20T10:00:00-03:00");
+        await service.UpdateCommitmentAsync(new(id, command.AgendaId, command.AgendaTypeId, command.AgendaStatusId, command.ResponsibleUserId, command.Title, command.Description, future, future.AddHours(1), []), actor);
         Assert.Empty((await service.GetModuleAsync(actor)).Alerts);
-        commitment.StartsAt=command.StartsAt;commitment.EndsAt=command.EndsAt;
-        var other=new AppUser{Email="other@test",DisplayName="Outro responsável",CreatedBy="tests"};db.Add(other);commitment.ResponsibleUserId=other.Id;await db.SaveChangesAsync();
+        commitment.StartsAt = command.StartsAt; commitment.EndsAt = command.EndsAt;
+        var other = new AppUser { Email = "other@test", DisplayName = "Outro responsável", CreatedBy = "tests" }; db.Add(other); commitment.ResponsibleUserId = other.Id; await db.SaveChangesAsync();
         Assert.Empty((await service.GetModuleAsync(actor)).Alerts);
     }
 
-    private sealed class AlertClock(string now="2026-11-12T12:00:00-03:00") : TimeProvider
+    private sealed class AlertClock(string now = "2026-11-12T12:00:00-03:00") : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.Parse(now);
     }
     [Fact]
     public async Task Meeting_invitation_shares_only_invited_booking_without_granting_room_access()
     {
-        var (db,service,command,actor)=await RecurrenceContext();await using var context=db;
-        var calendar=await db.AgendaCalendars.SingleAsync();calendar.Name="Sala de reunião";(await db.Users.SingleAsync()).IsCoordinator=true;
-        var invited=new AppUser{Email="invited@test",DisplayName="Convidado",CreatedBy="tests"};db.Add(invited);await db.SaveChangesAsync();
-        var booking=Assert.Single(await service.CreateCommitmentAsync(command with{ParticipantUserIds=[invited.Id]},actor));
-        await service.CreateCommitmentAsync(command with{StartsAt=command.StartsAt.AddHours(2),EndsAt=command.EndsAt.AddHours(2)},actor);
-        var invitedActor=new ActorContext(invited.Email,invited.DisplayName,"Colaborador","Outro setor",[new("work",true,false,false,false,false)]);
-        var view=await service.GetModuleAsync(invitedActor);Assert.Equal(booking,Assert.Single(view.Commitments).Id);Assert.Equal(command.AgendaTypeId,view.Commitments.Single().AgendaTypeId);
-        Assert.Empty(await db.UserAgendaCalendarAccesses.Where(grant=>grant.UserId==invited.Id).ToArrayAsync());
+        var (db, service, command, actor) = await RecurrenceContext(); await using var context = db;
+        var calendar = await db.AgendaCalendars.SingleAsync(); calendar.Name = "Sala de reunião"; (await db.Users.SingleAsync()).IsCoordinator = true;
+        var invited = new AppUser { Email = "invited@test", DisplayName = "Convidado", CreatedBy = "tests" }; db.Add(invited); await db.SaveChangesAsync();
+        var booking = Assert.Single(await service.CreateCommitmentAsync(command with { ParticipantUserIds = [invited.Id] }, actor));
+        await service.CreateCommitmentAsync(command with { StartsAt = command.StartsAt.AddHours(2), EndsAt = command.EndsAt.AddHours(2) }, actor);
+        var invitedActor = new ActorContext(invited.Email, invited.DisplayName, "Colaborador", "Outro setor", [new("work", true, false, false, false, false)]);
+        var view = await service.GetModuleAsync(invitedActor); Assert.Equal(booking, Assert.Single(view.Commitments).Id); Assert.Equal(command.AgendaTypeId, view.Commitments.Single().AgendaTypeId);
+        Assert.Empty(await db.UserAgendaCalendarAccesses.Where(grant => grant.UserId == invited.Id).ToArrayAsync());
     }
 
     private static AgendaCommitment ExistingSlot(CreateAgendaCommitmentCommand command, ActorContext actor) => new()
     {
-        AgendaId = command.AgendaId, AgendaTypeId = command.AgendaTypeId, AgendaStatusId = command.AgendaStatusId,
-        ResponsibleUserId = command.ResponsibleUserId, Title = "Compromisso existente", StartsAt = command.StartsAt, EndsAt = command.EndsAt, CreatedBy = actor.Email,
+        AgendaId = command.AgendaId,
+        AgendaTypeId = command.AgendaTypeId,
+        AgendaStatusId = command.AgendaStatusId,
+        ResponsibleUserId = command.ResponsibleUserId,
+        Title = "Compromisso existente",
+        StartsAt = command.StartsAt,
+        EndsAt = command.EndsAt,
+        CreatedBy = actor.Email,
     };
     private sealed class SchedulingClock : TimeProvider
     {

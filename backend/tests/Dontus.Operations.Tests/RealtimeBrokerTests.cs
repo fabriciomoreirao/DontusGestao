@@ -32,12 +32,12 @@ public sealed class RealtimeBrokerTests
     [Fact]
     public void Heartbeats_refresh_the_last_seen_snapshot_while_a_person_stays_connected()
     {
-        var clock=new Clock();var broker=new RealtimeBroker(clock);broker.SetAvailable(true);
-        using var viewer=broker.Subscribe(Guid.NewGuid(),true);var user=Guid.NewGuid();var connection=Guid.NewGuid();
-        broker.Publish(Presence(connection,user,true,clock.Now));viewer.Take();
-        clock.Now=clock.Now.AddSeconds(15);broker.Publish(Presence(connection,user,true,clock.Now));Assert.Equal(RealtimeChange.None,viewer.Take());
-        clock.Now=clock.Now.AddSeconds(15);broker.Publish(Presence(connection,user,true,clock.Now));
-        Assert.Equal(RealtimeChange.Presence,viewer.Take());Assert.True(broker.GetPresence(user).IsOnline);Assert.Equal(clock.Now,broker.GetPresence(user).LastSeenAt);
+        var clock = new Clock(); var broker = new RealtimeBroker(clock); broker.SetAvailable(true);
+        using var viewer = broker.Subscribe(Guid.NewGuid(), true); var user = Guid.NewGuid(); var connection = Guid.NewGuid();
+        broker.Publish(Presence(connection, user, true, clock.Now)); viewer.Take();
+        clock.Now = clock.Now.AddSeconds(15); broker.Publish(Presence(connection, user, true, clock.Now)); Assert.Equal(RealtimeChange.None, viewer.Take());
+        clock.Now = clock.Now.AddSeconds(15); broker.Publish(Presence(connection, user, true, clock.Now));
+        Assert.Equal(RealtimeChange.Presence, viewer.Take()); Assert.True(broker.GetPresence(user).IsOnline); Assert.Equal(clock.Now, broker.GetPresence(user).LastSeenAt);
     }
 
     [Fact]
@@ -112,5 +112,35 @@ public sealed class RealtimeBrokerTests
         Assert.True(offline.Disconnected.IsCancellationRequested);
         broker.SetAvailable(true); using var online = broker.Subscribe(Guid.NewGuid(), true);
         Assert.False(online.Disconnected.IsCancellationRequested);
+    }
+
+    private static string Chat(Guid user, Guid? room) => room is { } id
+        ? System.Text.Json.JsonSerializer.Serialize(new { topic = "chat", userId = user, roomId = id })
+        : System.Text.Json.JsonSerializer.Serialize(new { topic = "chat", userId = user });
+
+    [Fact]
+    public void Chat_notifications_collect_the_changed_rooms_per_connection_and_only_for_their_user()
+    {
+        var broker = new RealtimeBroker(); broker.SetAvailable(true);
+        var user = Guid.NewGuid(); var first = Guid.NewGuid(); var second = Guid.NewGuid();
+        using var mine = broker.Subscribe(user, true); using var other = broker.Subscribe(Guid.NewGuid(), true);
+        broker.Publish(Chat(user, first)); broker.Publish(Chat(user, second)); broker.Publish(Chat(user, first));
+        Assert.Equal(RealtimeChange.InternalChat, mine.Take());
+        Assert.Equal(new[] { first, second }.OrderBy(id => id), mine.TakeChatRooms()!.OrderBy(id => id));
+        Assert.Empty(mine.TakeChatRooms()!);
+        Assert.Equal(RealtimeChange.None, other.Take());
+    }
+
+    [Fact]
+    public void Chat_notifications_without_a_room_or_past_the_limit_reload_the_whole_chat()
+    {
+        var broker = new RealtimeBroker(); broker.SetAvailable(true); var user = Guid.NewGuid();
+        using var socket = broker.Subscribe(user, true);
+        broker.Publish(Chat(user, Guid.NewGuid())); broker.Publish(Chat(user, null));
+        Assert.Null(socket.TakeChatRooms());
+        for (var index = 0; index <= RealtimeBroker.Subscription.MaxPendingChatRooms; index++) broker.Publish(Chat(user, Guid.NewGuid()));
+        Assert.Null(socket.TakeChatRooms());
+        broker.Publish(Chat(user, Guid.NewGuid()));
+        Assert.Single(socket.TakeChatRooms()!);
     }
 }

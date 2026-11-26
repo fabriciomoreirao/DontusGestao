@@ -22,26 +22,26 @@ public static class GoalProgress
 {
     private static JsonObject Detail(string value) { try { return JsonNode.Parse(value) as JsonObject ?? new(); } catch { return new(); } }
     private static string Text(JsonObject value, string key) => value[key]?.ToString() ?? "";
-    private static decimal Number(JsonObject value, string key) => decimal.TryParse(Text(value,key), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : 0;
-    private static string Normalize(string value) => string.Concat(value.Normalize(NormalizationForm.FormD).Where(c=>CharUnicodeInfo.GetUnicodeCategory(c)!=UnicodeCategory.NonSpacingMark)).Trim().ToLowerInvariant();
-    private static DateOnly? Day(string value) => DateOnly.TryParseExact(value,"yyyy-MM-dd",out var day) ? day
-        : DateTimeOffset.TryParse(value,CultureInfo.InvariantCulture,DateTimeStyles.None,out var timestamp) ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(timestamp,"America/Sao_Paulo").DateTime) : null;
-    private static string First(params string[] values) => values.FirstOrDefault(value=>!string.IsNullOrWhiteSpace(value)) ?? "";
-    private static HashSet<string> Features(JsonObject detail,string key) => (detail[key] as JsonArray ?? new()).SelectMany(value=>(value?.ToString()??"").Split(',')).Select(Normalize).Where(value=>value!="").ToHashSet();
+    private static decimal Number(JsonObject value, string key) => decimal.TryParse(Text(value, key), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : 0;
+    private static string Normalize(string value) => string.Concat(value.Normalize(NormalizationForm.FormD).Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)).Trim().ToLowerInvariant();
+    private static DateOnly? Day(string value) => DateOnly.TryParseExact(value, "yyyy-MM-dd", out var day) ? day
+        : DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var timestamp) ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(timestamp, "America/Sao_Paulo").DateTime) : null;
+    private static string First(params string[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? "";
+    private static HashSet<string> Features(JsonObject detail, string key) => (detail[key] as JsonArray ?? new()).SelectMany(value => (value?.ToString() ?? "").Split(',')).Select(Normalize).Where(value => value != "").ToHashSet();
 
-    public static void Validate(string module,string? description)
+    public static void Validate(string module, string? description)
     {
-        if(module!="goals")return;
-        var goal=Detail(description??"");
-        if(Text(goal,"kind")!="performanceGoal")throw new DomainException("Informe os dados da meta.");
-        if(Text(goal,"metric") is not ("salesValue" or "salesCount" or "referralCount" or "usageScore" or "clientCount"))throw new DomainException("Selecione um dos tipos de meta disponíveis.");
-        if(Text(goal,"cadence") is not ("daily" or "monthly" or "annual" or "weekly"))throw new DomainException("Selecione o período da meta.");
-        var start=Day(Text(goal,"periodStart"));var end=Day(Text(goal,"periodEnd"));
-        if(start is null||end is null||start>end||Number(goal,"target")<=0)throw new DomainException("Informe uma data inicial válida e uma meta maior que zero.");
-        var metric=Text(goal,"metric");var target=Number(goal,"target");
-        if(metric is "salesCount" or "referralCount" or "clientCount" && target%1!=0)throw new DomainException("A quantidade da meta deve ser um número inteiro.");
-        if(metric=="usageScore"&&target>100)throw new DomainException("A meta de score deve estar entre 0,01% e 100%.");
-        if(metric is "salesValue" or "usageScore" && decimal.Round(target,2)!=target)throw new DomainException("Use no máximo duas casas decimais na meta.");
+        if (module != "goals") return;
+        var goal = Detail(description ?? "");
+        if (Text(goal, "kind") != "performanceGoal") throw new DomainException("Informe os dados da meta.");
+        if (Text(goal, "metric") is not ("salesValue" or "salesCount" or "referralCount" or "usageScore" or "clientCount")) throw new DomainException("Selecione um dos tipos de meta disponíveis.");
+        if (Text(goal, "cadence") is not ("daily" or "monthly" or "annual" or "weekly")) throw new DomainException("Selecione o período da meta.");
+        var start = Day(Text(goal, "periodStart")); var end = Day(Text(goal, "periodEnd"));
+        if (start is null || end is null || start > end || Number(goal, "target") <= 0) throw new DomainException("Informe uma data inicial válida e uma meta maior que zero.");
+        var metric = Text(goal, "metric"); var target = Number(goal, "target");
+        if (metric is "salesCount" or "referralCount" or "clientCount" && target % 1 != 0) throw new DomainException("A quantidade da meta deve ser um número inteiro.");
+        if (metric == "usageScore" && target > 100) throw new DomainException("A meta de score deve estar entre 0,01% e 100%.");
+        if (metric is "salesValue" or "usageScore" && decimal.Round(target, 2) != target) throw new DomainException("Use no máximo duas casas decimais na meta.");
         GoalScope.Validate(goal, metric);
     }
 
@@ -90,7 +90,10 @@ public static class GoalProgress
             target > 0 ? Math.Round(actual / target * 100, 0, MidpointRounding.AwayFromZero) : 0, target > 0 && actual >= target,
             Text(goal, "active") != "false", employee, department, Text(goal, "periodStart"), Text(goal, "periodEnd"))
         {
-            Version = item.Version, FunnelId = scope.FunnelId, FunnelName = scope.FunnelName, ModuleName = scope.ModuleLabel,
+            Version = item.Version,
+            FunnelId = scope.FunnelId,
+            FunnelName = scope.FunnelName,
+            ModuleName = scope.ModuleLabel,
             History = includeHistory ? History(values, metric, start.Value, end.Value, asOf ?? Day(DateTimeOffset.UtcNow.ToString("O"))!.Value) : [],
         };
     }

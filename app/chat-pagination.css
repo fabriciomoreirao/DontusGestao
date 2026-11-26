@@ -1,9 +1,66 @@
-.chat-pagination { flex: 0 0 auto; display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--line); background: var(--surface); font-size: 12px; color: var(--muted); }
-.chat-pagination > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.chat-pagination button, .chat-earlier-button, .chat-load-error button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; }
-.chat-pagination button:disabled, .chat-earlier-button:disabled { opacity: .5; cursor: default; }
-.chat-pagination button:focus-visible, .chat-earlier-button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.chat-earlier-button { display: flex; margin: 0 auto 12px; }
-.chat-load-state { padding: 32px; text-align: center; color: var(--muted); }
-.chat-load-error { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; margin-bottom: 12px; background: var(--surface); color: var(--danger); border: 1px solid var(--line); border-radius: 8px; }
-.conversation-list[aria-busy="true"] { opacity: .6; pointer-events: none; }
+.chat-pagination {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--muted);
+}
+.chat-pagination > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.chat-pagination button,
+.chat-earlier-button,
+.chat-load-error button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.chat-pagination button:disabled,
+.chat-earlier-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chat-pagination button:focus-visible,
+.chat-earlier-button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.chat-earlier-button {
+  display: flex;
+  margin: 0 auto 12px;
+}
+.chat-load-state {
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+}
+.chat-load-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  color: var(--danger);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.conversation-list[aria-busy="true"] {
+  opacity: 0.6;
+  pointer-events: none;
+}

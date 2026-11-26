@@ -140,7 +140,11 @@ public sealed class ReferralCommissionRulesService(OperationsDbContext db)
 
     private void Audit(ActorContext actor, string action, Guid userId, object details) => db.AuditEvents.Add(new AuditEvent
     {
-        ActorEmail = actor.Email, Action = action, Resource = "referralCommissionRules", ResourceId = userId.ToString(),
-        Module = "referrals", DetailsJson = JsonSerializer.Serialize(details, Json),
+        ActorEmail = actor.Email,
+        Action = action,
+        Resource = "referralCommissionRules",
+        ResourceId = userId.ToString(),
+        Module = "referrals",
+        DetailsJson = JsonSerializer.Serialize(details, Json),
     });
 }

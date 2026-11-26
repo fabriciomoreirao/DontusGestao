@@ -1,8 +1,10 @@
 using Dontus.Operations.Application;
+using Dontus.Operations.Infrastructure.Redis;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 namespace Dontus.Operations.Infrastructure;
 
@@ -37,6 +39,15 @@ public static class DependencyInjection
         services.AddScoped<EmployeeProfileService>();
         services.AddSingleton<RealtimeBroker>();
         services.AddSingleton<OperationsWorkspaceCache>();
+
+        // Redis só para o cache de sessão do login. Sem Redis:ConnectionString, a autenticação consulta o banco direto.
+        var redisConnectionString = configuration["Redis:ConnectionString"];
+        if (!string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            services.AddSingleton<IConnectionMultiplexer>(_ =>
+                ConnectionMultiplexer.Connect(RedisLocalSessionCache.CreateOptions(redisConnectionString)));
+            services.AddSingleton<ILocalSessionCache, RedisLocalSessionCache>();
+        }
         services.AddScoped<RealtimePresencePublisher>();
         services.AddScoped<InternalChatTypingService>();
         services.AddHostedService<RealtimeListener>();

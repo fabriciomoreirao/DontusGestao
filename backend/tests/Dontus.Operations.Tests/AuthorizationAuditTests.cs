@@ -27,8 +27,17 @@ public sealed class AuthorizationAuditTests
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ActorContext Actor(string module, bool edit = false, bool create = false, bool approve = false) =>
         new("user@test.local", "Pessoa Teste", "Colaboradores", "Suporte", [new(module, true, create, edit, approve, false)]);
-    private static WorkItem Item(string module) => new() { Module = module, RecordType = "Registro", Title = "Registro protegido",
-        Status = "Pendente", CreatedBy = "owner@test.local", Owner = "Pessoa Teste", CustomerName = "recipient@test.local", Description = "{}" };
+    private static WorkItem Item(string module) => new()
+    {
+        Module = module,
+        RecordType = "Registro",
+        Title = "Registro protegido",
+        Status = "Pendente",
+        CreatedBy = "owner@test.local",
+        Owner = "Pessoa Teste",
+        CustomerName = "recipient@test.local",
+        Description = "{}"
+    };
     private static CreateWorkItemCommand Create(string module) => new(module, "Registro", "Novo", null, null, null, null, "P3", null, null, 0, "{}", [], null, null);
     private static UpdateWorkItemCommand Update(WorkItem item, string description = "{}") => new(item.Id, item.Title, item.Owner,
         item.AmountCents, description, null, null, item.Version);
@@ -69,8 +78,13 @@ public sealed class AuthorizationAuditTests
         await using var db = Context();
         var source = Item("serviceRequests"); source.Status = sourceStatus;
         db.WorkItems.Add(source); await db.SaveChangesAsync();
-        var command = Create(module) with { RecordType = type, Description = description, OriginType = "serviceRequests",
-            OriginId = validSource ? source.Id : Guid.NewGuid() };
+        var command = Create(module) with
+        {
+            RecordType = type,
+            Description = description,
+            OriginType = "serviceRequests",
+            OriginId = validSource ? source.Id : Guid.NewGuid()
+        };
         var service = new OperationsService(db);
         if (allowed) Assert.NotEqual(Guid.Empty, await service.CreateWorkItemAsync(command, Actor("serviceRequests", edit: true)));
         else Assert.Equal(403, (await Assert.ThrowsAsync<DomainException>(() => service.CreateWorkItemAsync(command, Actor("serviceRequests", edit: true)))).StatusCode);

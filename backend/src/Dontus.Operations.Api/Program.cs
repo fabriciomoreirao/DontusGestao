@@ -125,7 +125,7 @@ app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken can
         ? Results.Ok(new { status = "ready" })
         : Results.Problem(statusCode: 503, title: "Banco indisponível"));
 
-app.MapGet("/api/public-overview", async (string? month, HttpResponse response, OperationsDbContext db, CancellationToken cancellationToken) =>
+app.MapGet("/api/public-overview", async (string? month, string? from, string? to, bool? range, HttpResponse response, OperationsDbContext db, CancellationToken cancellationToken) =>
 {
     response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
     var localNow = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3));
@@ -134,14 +134,21 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         : new DateTime(localNow.Year, localNow.Month, 1);
     var localStart = new DateTimeOffset(reference.Year, reference.Month, 1, 0, 0, 0, TimeSpan.FromHours(-3));
     var localEnd = localStart.AddMonths(1);
+    if (range == true)
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var style = System.Globalization.DateTimeStyles.None;
+        var hasFrom = DateOnly.TryParseExact(from, "yyyy-MM-dd", culture, style, out var fromDate);
+        var hasTo = DateOnly.TryParseExact(to, "yyyy-MM-dd", culture, style, out var toDate);
+        if (!string.IsNullOrEmpty(from) && !hasFrom || !string.IsNullOrEmpty(to) && !hasTo || hasFrom && hasTo && fromDate > toDate)
+            return Results.Problem(statusCode: 400, title: "Informe um período válido.");
+        localStart = hasFrom ? new DateTimeOffset(fromDate.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(-3))
+            : DateTimeOffset.UnixEpoch.ToOffset(TimeSpan.FromHours(-3));
+        localEnd = hasTo ? new DateTimeOffset(toDate.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(-3)).AddDays(1)
+            : DateTimeOffset.MaxValue;
+    }
     var monthStart = localStart.ToUniversalTime();
     var monthEnd = localEnd.ToUniversalTime();
-    var chartEnd = localNow.Year == reference.Year && localNow.Month == reference.Month
-        ? new DateTimeOffset(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, localNow.Offset).AddDays(1)
-        : localEnd;
-    var days = Enumerable.Range(0, Math.Max(1, (int)(chartEnd - localStart).TotalDays))
-        .Select(index => localStart.AddDays(index).Date)
-        .ToList();
 
     var departments = await db.TaskDepartments.AsNoTracking()
         .Where(entry => entry.Active)
@@ -175,6 +182,25 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
              ((entry.CreatedAt >= monthStart && entry.CreatedAt < monthEnd) || (entry.UpdatedAt >= monthStart && entry.UpdatedAt < monthEnd))))
         .Select(entry => new { entry.Module, entry.RecordType, entry.Team, entry.Owner, entry.Status, entry.AmountCents, entry.Description, entry.CreatedAt, entry.UpdatedAt })
         .ToListAsync(cancellationToken);
+
+    var chartStart = localStart;
+    if (range == true && string.IsNullOrEmpty(from))
+    {
+        var earliest = tasks.Select(entry => entry.CreatedAt).Concat(commitments.Select(entry => entry.StartsAt))
+            .Concat(workItems.Where(entry => entry.Module != "goals").Select(entry => entry.CreatedAt)).DefaultIfEmpty(localNow).Min().ToOffset(TimeSpan.FromHours(-3));
+        chartStart = new DateTimeOffset(earliest.Year, earliest.Month, earliest.Day, 0, 0, 0, earliest.Offset);
+    }
+    var chartEnd = localEnd;
+    if (range == true && string.IsNullOrEmpty(to))
+    {
+        var latest = tasks.Select(entry => entry.CreatedAt).Concat(commitments.Select(entry => entry.StartsAt))
+            .Concat(workItems.Where(entry => entry.Module != "goals").Select(entry => entry.UpdatedAt)).Append(localNow).Max().ToOffset(TimeSpan.FromHours(-3));
+        chartEnd = new DateTimeOffset(latest.Year, latest.Month, latest.Day, 0, 0, 0, latest.Offset).AddDays(1);
+    }
+    else if (range != true && localEnd > localNow && chartStart <= localNow)
+        chartEnd = new DateTimeOffset(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, localNow.Offset).AddDays(1);
+    var days = Enumerable.Range(0, Math.Max(1, (int)(chartEnd - chartStart).TotalDays))
+        .Select(index => chartStart.AddDays(index).Date).ToList();
 
     var services = workItems.Where(entry => entry.Module == "support")
         .Select(entry => ParsePublicService(entry.Team, entry.Owner, entry.Status, entry.Description, entry.CreatedAt))
@@ -302,15 +328,15 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
     }).ToList();
 
     var topAttendanceCollaborators = users.Select(user => new
-        {
-            name = user.DisplayName,
-            photo = user.PhotoDataUrl,
-            department = (from membership in memberships
-                join department in departments on membership.DepartmentId equals department.Id
-                where membership.UserId == user.Id && membership.IsPrimary
-                select department.Name).FirstOrDefault() ?? "Setor não informado",
-            count = services.Count(entry => SameMetric(entry.Responsible, user.DisplayName))
-        })
+    {
+        name = user.DisplayName,
+        photo = user.PhotoDataUrl,
+        department = (from membership in memberships
+                      join department in departments on membership.DepartmentId equals department.Id
+                      where membership.UserId == user.Id && membership.IsPrimary
+                      select department.Name).FirstOrDefault() ?? "Setor não informado",
+        count = services.Count(entry => SameMetric(entry.Responsible, user.DisplayName))
+    })
         .Where(entry => entry.count > 0)
         .OrderByDescending(entry => entry.count)
         .ThenBy(entry => entry.name)
@@ -341,7 +367,12 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         performanceGoals,
         saleEvents = await SalesCelebrationService.RecentAsync(db, cancellationToken),
         month = localStart.ToString("yyyy-MM"),
-        monthLabel = localStart.ToString("MMMM 'de' yyyy", new System.Globalization.CultureInfo("pt-BR")),
+        monthLabel = range == true
+            ? string.IsNullOrEmpty(from) && string.IsNullOrEmpty(to) ? "Todos os períodos"
+                : string.IsNullOrEmpty(from) ? $"Até {localEnd.AddDays(-1):dd/MM/yyyy}"
+                : string.IsNullOrEmpty(to) ? $"A partir de {localStart:dd/MM/yyyy}"
+                : $"{localStart:dd/MM/yyyy} a {localEnd.AddDays(-1):dd/MM/yyyy}"
+            : localStart.ToString("MMMM 'de' yyyy", new System.Globalization.CultureInfo("pt-BR")),
         refreshAfterSeconds = 15,
         overview = new
         {
@@ -483,7 +514,8 @@ app.MapPost("/api/public-surveys/{token}", async (string token, PublicSurveyResp
         var employeeName = assignment["employeeName"]?.GetValue<string>() ?? "Equipe Dontus";
         responses.Add(JsonSerializer.SerializeToNode(new
         {
-            id = Guid.NewGuid().ToString(), token,
+            id = Guid.NewGuid().ToString(),
+            token,
             employeeId = assignment["employeeId"]?.GetValue<string>() ?? "",
             employeeName,
             respondentName = request.RespondentName?.Trim() ?? "",
@@ -706,9 +738,19 @@ app.MapPost("/api/public-service-requests", async (HttpContext context, IConfigu
     }
     var detail = JsonSerializer.SerializeToNode(new
     {
-        kind = "serviceRequest", clientId, fullName, whatsapp, selectedType, summary,
-        aiClassification = classification.Stage, aiReason = classification.Reason, aiConfidence = classification.Confidence, aiSource = classification.Source,
-        attachments, comments = Array.Empty<object>(), history = new[] { new { text = $"Chamado recebido e classificado como {classification.Stage}.", at = DateTimeOffset.UtcNow, by = "Triagem inteligente" } },
+        kind = "serviceRequest",
+        clientId,
+        fullName,
+        whatsapp,
+        selectedType,
+        summary,
+        aiClassification = classification.Stage,
+        aiReason = classification.Reason,
+        aiConfidence = classification.Confidence,
+        aiSource = classification.Source,
+        attachments,
+        comments = Array.Empty<object>(),
+        history = new[] { new { text = $"Chamado recebido e classificado como {classification.Stage}.", at = DateTimeOffset.UtcNow, by = "Triagem inteligente" } },
         submittedAt = DateTimeOffset.UtcNow,
     })!.AsObject();
     var protocol = await creationService.CreateAsync(item, detail, cancellationToken);
@@ -799,7 +841,7 @@ taskFiles.MapGet("/attachments/{attachmentId:guid}", async (
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var download = await taskService.GetAttachmentDownloadAsync(attachmentId, actor, cancellationToken);
-    if(download.FilePath is not null)return Results.File(download.FilePath,download.ContentType,download.FileName,enableRangeProcessing:true);
+    if (download.FilePath is not null) return Results.File(download.FilePath, download.ContentType, download.FileName, enableRangeProcessing: true);
     if (download.Content is not null)
         return Results.File(download.Content, download.ContentType, download.FileName, enableRangeProcessing: true);
     return Results.Redirect(download.Url);
@@ -854,7 +896,7 @@ suggestionFiles.MapGet("/attachments/{attachmentId:guid}", async (
 {
     var actor = await accessControl.ResolveActorAsync(principal.ToIdentity(), cancellationToken);
     var download = await suggestionService.GetAttachmentDownloadAsync(attachmentId, actor, cancellationToken);
-    if(download.FilePath is not null)return Results.File(download.FilePath,download.ContentType,download.FileName,enableRangeProcessing:true);
+    if (download.FilePath is not null) return Results.File(download.FilePath, download.ContentType, download.FileName, enableRangeProcessing: true);
     if (download.Content is not null)
         return Results.File(download.Content, download.ContentType, download.FileName, enableRangeProcessing: true);
     return Results.Redirect(download.Url);
@@ -938,7 +980,7 @@ internalChatFiles.MapGet("/photos/{kind}/{id:guid}", async (
                 && db.Users.Any(user => user.Id == member.UserId && user.Email == actor.Email)))
             .Select(room => room.PhotoDataUrl).SingleOrDefaultAsync(cancellationToken);
     }
-    if(photo?.StartsWith("/api/workspace-files/",StringComparison.Ordinal)==true)return Results.Redirect(photo);
+    if (photo?.StartsWith("/api/workspace-files/", StringComparison.Ordinal) == true) return Results.Redirect(photo);
     if (string.IsNullOrEmpty(photo) || !photo.StartsWith("data:image/", StringComparison.Ordinal)) return Results.NotFound();
     var separator = photo.IndexOf(";base64,", StringComparison.Ordinal);
     if (separator < 0) return Results.NotFound();
@@ -1019,110 +1061,110 @@ app.MapPost("/api/integrations/whatsapp/webhook", async (
     var root = document.RootElement;
     if (!root.TryGetProperty("entry", out var entries)) return Results.Ok();
     foreach (var entry in entries.EnumerateArray())
-    foreach (var change in entry.GetProperty("changes").EnumerateArray())
-    {
-        var value = change.GetProperty("value");
-        var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() ?? "" : "";
-        var historicalField = field == "history";
-        var phoneNumberId = value.TryGetProperty("metadata", out var metadata) &&
-                            metadata.TryGetProperty("phone_number_id", out var phoneId)
-            ? phoneId.GetString() ?? ""
-            : "";
-        var wabaId = entry.TryGetProperty("id", out var entryId) ? entryId.GetString() ?? "" : "";
-        if (!await chatService.VerifyWebhookSignatureAsync(
-                string.IsNullOrWhiteSpace(phoneNumberId) ? wabaId : phoneNumberId,
-                payload,
-                request.Headers["X-Hub-Signature-256"].ToString(),
-                cancellationToken))
-            return Results.StatusCode(StatusCodes.Status401Unauthorized);
-
-        await ((IWhatsAppAdminService)chatService).ProcessWhatsAppStatusAsync(value, cancellationToken);
-        if (value.TryGetProperty("messages", out var messages))
+        foreach (var change in entry.GetProperty("changes").EnumerateArray())
         {
-            var contactName = value.TryGetProperty("contacts", out var contacts) && contacts.GetArrayLength() > 0
-                ? contacts[0].GetProperty("profile").GetProperty("name").GetString() ?? ""
+            var value = change.GetProperty("value");
+            var field = change.TryGetProperty("field", out var fieldElement) ? fieldElement.GetString() ?? "" : "";
+            var historicalField = field == "history";
+            var phoneNumberId = value.TryGetProperty("metadata", out var metadata) &&
+                                metadata.TryGetProperty("phone_number_id", out var phoneId)
+                ? phoneId.GetString() ?? ""
                 : "";
-            foreach (var message in messages.EnumerateArray())
-            {
-                var externalId = message.GetProperty("id").GetString() ?? Guid.NewGuid().ToString("N");
-                var type = message.GetProperty("type").GetString() ?? "unknown";
-                await chatService.ReceiveWebhookAsync(new ReceiveWhatsAppWebhookCommand(
-                    externalId, phoneNumberId, externalId,
-                    message.GetProperty("from").GetString() ?? "", contactName, "Entrada", type,
-                    WhatsAppMessageBody(message, type, "recebido"),
-                    WhatsAppTimestamp(message), historicalField, payload), cancellationToken);
-            }
-        }
+            var wabaId = entry.TryGetProperty("id", out var entryId) ? entryId.GetString() ?? "" : "";
+            if (!await chatService.VerifyWebhookSignatureAsync(
+                    string.IsNullOrWhiteSpace(phoneNumberId) ? wabaId : phoneNumberId,
+                    payload,
+                    request.Headers["X-Hub-Signature-256"].ToString(),
+                    cancellationToken))
+                return Results.StatusCode(StatusCodes.Status401Unauthorized);
 
-        JsonElement echoes;
-        if (value.TryGetProperty("message_echoes", out echoes) ||
-            value.TryGetProperty("smb_message_echoes", out echoes))
-        {
-            var echoContactName = value.TryGetProperty("contacts", out var echoContacts) &&
-                                  echoContacts.GetArrayLength() > 0 &&
-                                  echoContacts[0].TryGetProperty("profile", out var echoProfile) &&
-                                  echoProfile.TryGetProperty("username", out var echoUsername)
-                ? echoUsername.GetString() ?? ""
-                : "";
-            foreach (var message in echoes.EnumerateArray())
+            await ((IWhatsAppAdminService)chatService).ProcessWhatsAppStatusAsync(value, cancellationToken);
+            if (value.TryGetProperty("messages", out var messages))
             {
-                var externalId = message.GetProperty("id").GetString() ?? Guid.NewGuid().ToString("N");
-                var type = message.GetProperty("type").GetString() ?? "unknown";
-                var contactPhone = message.TryGetProperty("to", out var recipient)
-                    ? recipient.GetString() ?? ""
-                    : message.TryGetProperty("from", out var sender) ? sender.GetString() ?? "" : "";
-                await chatService.ReceiveWebhookAsync(new ReceiveWhatsAppWebhookCommand(
-                    $"echo:{externalId}", phoneNumberId, externalId,
-                    contactPhone, echoContactName, "Saida", type,
-                    WhatsAppMessageBody(message, type, "enviado pelo WhatsApp Business"),
-                    WhatsAppTimestamp(message), historicalField, payload),
-                    cancellationToken);
-            }
-        }
-
-        if (value.TryGetProperty("history", out var historyChunks))
-        {
-            var businessPhone = metadata.ValueKind == JsonValueKind.Object &&
-                                metadata.TryGetProperty("display_phone_number", out var displayPhone)
-                ? new string((displayPhone.GetString() ?? "").Where(char.IsDigit).ToArray())
-                : "";
-            foreach (var chunk in historyChunks.EnumerateArray())
-            {
-                if (!chunk.TryGetProperty("threads", out var threads)) continue;
-                foreach (var thread in threads.EnumerateArray())
+                var contactName = value.TryGetProperty("contacts", out var contacts) && contacts.GetArrayLength() > 0
+                    ? contacts[0].GetProperty("profile").GetProperty("name").GetString() ?? ""
+                    : "";
+                foreach (var message in messages.EnumerateArray())
                 {
-                    var contactPhone = thread.TryGetProperty("id", out var threadId) ? threadId.GetString() ?? "" : "";
-                    var contactName = "";
-                    if (thread.TryGetProperty("context", out var context))
+                    var externalId = message.GetProperty("id").GetString() ?? Guid.NewGuid().ToString("N");
+                    var type = message.GetProperty("type").GetString() ?? "unknown";
+                    await chatService.ReceiveWebhookAsync(new ReceiveWhatsAppWebhookCommand(
+                        externalId, phoneNumberId, externalId,
+                        message.GetProperty("from").GetString() ?? "", contactName, "Entrada", type,
+                        WhatsAppMessageBody(message, type, "recebido"),
+                        WhatsAppTimestamp(message), historicalField, payload), cancellationToken);
+                }
+            }
+
+            JsonElement echoes;
+            if (value.TryGetProperty("message_echoes", out echoes) ||
+                value.TryGetProperty("smb_message_echoes", out echoes))
+            {
+                var echoContactName = value.TryGetProperty("contacts", out var echoContacts) &&
+                                      echoContacts.GetArrayLength() > 0 &&
+                                      echoContacts[0].TryGetProperty("profile", out var echoProfile) &&
+                                      echoProfile.TryGetProperty("username", out var echoUsername)
+                    ? echoUsername.GetString() ?? ""
+                    : "";
+                foreach (var message in echoes.EnumerateArray())
+                {
+                    var externalId = message.GetProperty("id").GetString() ?? Guid.NewGuid().ToString("N");
+                    var type = message.GetProperty("type").GetString() ?? "unknown";
+                    var contactPhone = message.TryGetProperty("to", out var recipient)
+                        ? recipient.GetString() ?? ""
+                        : message.TryGetProperty("from", out var sender) ? sender.GetString() ?? "" : "";
+                    await chatService.ReceiveWebhookAsync(new ReceiveWhatsAppWebhookCommand(
+                        $"echo:{externalId}", phoneNumberId, externalId,
+                        contactPhone, echoContactName, "Saida", type,
+                        WhatsAppMessageBody(message, type, "enviado pelo WhatsApp Business"),
+                        WhatsAppTimestamp(message), historicalField, payload),
+                        cancellationToken);
+                }
+            }
+
+            if (value.TryGetProperty("history", out var historyChunks))
+            {
+                var businessPhone = metadata.ValueKind == JsonValueKind.Object &&
+                                    metadata.TryGetProperty("display_phone_number", out var displayPhone)
+                    ? new string((displayPhone.GetString() ?? "").Where(char.IsDigit).ToArray())
+                    : "";
+                foreach (var chunk in historyChunks.EnumerateArray())
+                {
+                    if (!chunk.TryGetProperty("threads", out var threads)) continue;
+                    foreach (var thread in threads.EnumerateArray())
                     {
-                        if (context.TryGetProperty("wa_id", out var waId) && !string.IsNullOrWhiteSpace(waId.GetString()))
-                            contactPhone = waId.GetString()!;
-                        else if (string.IsNullOrWhiteSpace(contactPhone) &&
-                                 context.TryGetProperty("user_id", out var userId))
-                            contactPhone = userId.GetString() ?? "";
-                        if (context.TryGetProperty("username", out var username))
-                            contactName = username.GetString() ?? "";
-                    }
-                    if (!thread.TryGetProperty("messages", out var historyMessages)) continue;
-                    foreach (var message in historyMessages.EnumerateArray())
-                    {
-                        var externalId = message.GetProperty("id").GetString() ?? Guid.NewGuid().ToString("N");
-                        var type = message.GetProperty("type").GetString() ?? "unknown";
-                        var from = message.TryGetProperty("from", out var fromElement)
-                            ? new string((fromElement.GetString() ?? "").Where(char.IsDigit).ToArray())
-                            : "";
-                        var direction = !string.IsNullOrWhiteSpace(businessPhone) && from == businessPhone
-                            ? "Saida"
-                            : "Entrada";
-                        await chatService.ReceiveWebhookAsync(new ReceiveWhatsAppWebhookCommand(
-                            $"history:{externalId}", phoneNumberId, externalId, contactPhone, contactName,
-                            direction, type, WhatsAppMessageBody(message, type, "importado"),
-                            WhatsAppTimestamp(message), true, payload), cancellationToken);
+                        var contactPhone = thread.TryGetProperty("id", out var threadId) ? threadId.GetString() ?? "" : "";
+                        var contactName = "";
+                        if (thread.TryGetProperty("context", out var context))
+                        {
+                            if (context.TryGetProperty("wa_id", out var waId) && !string.IsNullOrWhiteSpace(waId.GetString()))
+                                contactPhone = waId.GetString()!;
+                            else if (string.IsNullOrWhiteSpace(contactPhone) &&
+                                     context.TryGetProperty("user_id", out var userId))
+                                contactPhone = userId.GetString() ?? "";
+                            if (context.TryGetProperty("username", out var username))
+                                contactName = username.GetString() ?? "";
+                        }
+                        if (!thread.TryGetProperty("messages", out var historyMessages)) continue;
+                        foreach (var message in historyMessages.EnumerateArray())
+                        {
+                            var externalId = message.GetProperty("id").GetString() ?? Guid.NewGuid().ToString("N");
+                            var type = message.GetProperty("type").GetString() ?? "unknown";
+                            var from = message.TryGetProperty("from", out var fromElement)
+                                ? new string((fromElement.GetString() ?? "").Where(char.IsDigit).ToArray())
+                                : "";
+                            var direction = !string.IsNullOrWhiteSpace(businessPhone) && from == businessPhone
+                                ? "Saida"
+                                : "Entrada";
+                            await chatService.ReceiveWebhookAsync(new ReceiveWhatsAppWebhookCommand(
+                                $"history:{externalId}", phoneNumberId, externalId, contactPhone, contactName,
+                                direction, type, WhatsAppMessageBody(message, type, "importado"),
+                                WhatsAppTimestamp(message), true, payload), cancellationToken);
+                        }
                     }
                 }
             }
         }
-    }
     return Results.Ok();
 }).DisableAntiforgery();
 
@@ -1208,17 +1250,17 @@ operations.MapPost("", async (
             break;
 
         case "saveReferralCommissionRules":
-        {
-            var revision = await referralCommissionRules.SaveAsync(request.CollaboratorId ?? throw new DomainException("Colaborador obrigatório."),
-                request.ReferralRules ?? [], actor, cancellationToken);
-            return Results.Ok(new { ok = true, referralRulesRevision = revision, customerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) });
-        }
+            {
+                var revision = await referralCommissionRules.SaveAsync(request.CollaboratorId ?? throw new DomainException("Colaborador obrigatório."),
+                    request.ReferralRules ?? [], actor, cancellationToken);
+                return Results.Ok(new { ok = true, referralRulesRevision = revision, customerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) });
+            }
         case "copyReferralCommissionRules":
-        {
-            var revision = await referralCommissionRules.CopyAsync(request.CollaboratorId ?? throw new DomainException("Colaborador obrigatório."),
-                request.TargetCollaboratorIds ?? [], request.ReferralRulesRevision ?? "", actor, cancellationToken);
-            return Results.Ok(new { ok = true, referralRulesRevision = revision, customerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) });
-        }
+            {
+                var revision = await referralCommissionRules.CopyAsync(request.CollaboratorId ?? throw new DomainException("Colaborador obrigatório."),
+                    request.TargetCollaboratorIds ?? [], request.ReferralRulesRevision ?? "", actor, cancellationToken);
+                return Results.Ok(new { ok = true, referralRulesRevision = revision, customerModule = await service.GetCustomerModuleAsync(actor, cancellationToken) });
+            }
 
         case "deleteCustomerCatalog":
             await service.DeleteCustomerCatalogAsync(request.Id ?? throw new DomainException("Cadastro obrigatório."), actor, cancellationToken);
@@ -1469,7 +1511,7 @@ operations.MapPost("", async (
             break;
 
         case "deleteSuggestionAttachment":
-            await suggestionService.DeleteAttachmentAsync(request.Id ?? throw new DomainException("Anexo obrigatório."),actor,cancellationToken);
+            await suggestionService.DeleteAttachmentAsync(request.Id ?? throw new DomainException("Anexo obrigatório."), actor, cancellationToken);
             break;
         case "deleteSuggestion":
             await suggestionService.DeleteSuggestionAsync(
@@ -1923,8 +1965,14 @@ operations.MapPost("", async (
     // Chat commands only need the chat projection; rebuilding every module here
     // can time out after a message has already been persisted.
     if (request.Action?.Contains("InternalChat", StringComparison.Ordinal) == true)
-        return Results.Ok(new { ok = true, id, internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken,
-            roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId) });
+        return Results.Ok(new
+        {
+            ok = true,
+            id,
+            internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken,
+            roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId,
+            changedMessageId: request.Action == "sendInternalChatMessage" && request.ChatMessageDelta ? id : null)
+        });
     if (request.Action?.Contains("Chat", StringComparison.Ordinal) == true
         || request.Action is "completeWhatsAppCoexistence" or "retryWhatsAppCoexistence")
         return Results.Ok(new { ok = true, id });
@@ -1936,8 +1984,13 @@ operations.MapPost("", async (
         && actor.HasPermission("tasks", "view"))
     {
         // A task mutation does not require rebuilding chats, calendars or administrative data.
-        var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
-            ["taskModule"] = await taskService.GetModuleAsync(actor, cancellationToken) };
+        var result = new Dictionary<string, object?>
+        {
+            ["ok"] = true,
+            ["id"] = id,
+            ["createdProtocol"] = createdProtocol,
+            ["taskModule"] = await taskService.GetModuleAsync(actor, cancellationToken)
+        };
         if (request.Action == "communicateWithClient" && actor.HasPermission("notices", "view"))
             result["noticesModule"] = await service.GetNoticesModuleAsync(actor, cancellationToken);
         if (request.Action is "createTask" or "updateTask" or "deleteTask" or "changeTaskStatus" or "requestTaskApproval")
@@ -1955,9 +2008,15 @@ operations.MapPost("", async (
         // Generic card edits do not change chat rooms, task catalogs or administrative access.
         // Preserve those client projections instead of rebuilding all of them on every keystroke/save.
         var changed = await service.GetSnapshotAsync(actor, cancellationToken, includeWorkspaceDetails: false, knownWorkItemVersions: request.KnownWorkItemVersions);
-        var result = new Dictionary<string, object?> { ["ok"] = true, ["id"] = id, ["createdProtocol"] = createdProtocol,
-            ["customers"] = changed.Customers, ["approvals"] = changed.Approvals,
-            ["moduleCounts"] = changed.ModuleCounts };
+        var result = new Dictionary<string, object?>
+        {
+            ["ok"] = true,
+            ["id"] = id,
+            ["createdProtocol"] = createdProtocol,
+            ["customers"] = changed.Customers,
+            ["approvals"] = changed.Approvals,
+            ["moduleCounts"] = changed.ModuleCounts
+        };
         OperationsResponseProjection.AddItems(result, changed.Items, request.KnownWorkItemVersions);
         if (actor.HasPermission("diary", "view")) result["diaryModule"] = await service.GetDiaryModuleAsync(actor, cancellationToken);
         if (request.ResponsibleUserId.HasValue && actor.HasPermission("work", "view"))
@@ -2326,6 +2385,7 @@ sealed record ServiceRequestClassification(string Stage, string Priority, string
 
 public sealed class OperationsRequest
 {
+    public bool ChatMessageDelta { get; init; }
     public Dictionary<Guid, long>? KnownWorkItemVersions { get; init; }
     public Guid? CollaboratorId { get; init; }
     public IReadOnlyCollection<ReferralCommissionRuleInput>? ReferralRules { get; init; }

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+.git/
+.vs/
+.dotnet/
+.pnpm-store/
+**/bin/
+**/obj/
+**/.vs/
+package-lock.json
+*.tsbuildinfo
+.env
+.env.*

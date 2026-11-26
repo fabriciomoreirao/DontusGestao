@@ -39,9 +39,21 @@ public sealed class CommissionConfirmationService(OperationsDbContext db, IDataP
             query = query.Where(x => x.EmployeeUserId == userId || x.EmployeeUserId == null && (x.EmployeeKey == userId.ToString() || x.EmployeeKey == actor.Email.ToLower()));
         }
         var entries = await query.OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
-        return entries.Select(x => new { x.Id, x.EmployeeName, x.Competence, x.CreatedAt, x.AgreedAt, x.InvalidatedAt,
+        return entries.Select(x => new
+        {
+            x.Id,
+            x.EmployeeName,
+            x.Competence,
+            x.CreatedAt,
+            x.AgreedAt,
+            x.InvalidatedAt,
             status = x.InvalidatedAt.HasValue ? "invalidated" : x.AgreedAt.HasValue ? "agreed" : "pending",
-            totalCents = Snapshot(x).TotalCents, x.SignedByName, x.SignedByEmail, pdfAvailable = x.AgreedAt.HasValue, token = Protector.Unprotect(x.ProtectedToken) });
+            totalCents = Snapshot(x).TotalCents,
+            x.SignedByName,
+            x.SignedByEmail,
+            pdfAvailable = x.AgreedAt.HasValue,
+            token = Protector.Unprotect(x.ProtectedToken)
+        });
     }
 
     public async Task<object> GenerateAsync(GenerateCommissionConfirmation command, ActorContext actor, CancellationToken ct)
@@ -107,8 +119,19 @@ public sealed class CommissionConfirmationService(OperationsDbContext db, IDataP
             var existing = await db.CommissionConfirmations.FirstOrDefaultAsync(x => x.Module == command.Module && x.Scope == command.Scope &&
                 x.Competence == command.Competence && x.EmployeeKey == key && x.InvalidatedAt == null && x.SnapshotJson == json, ct);
             var token = existing is null ? Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant() : Protector.Unprotect(existing.ProtectedToken);
-            var entry = existing ?? new CommissionConfirmation { Module = command.Module, Scope = command.Scope, Competence = command.Competence,
-                EmployeeKey = key, EmployeeUserId = group.UserId, EmployeeName = group.Name, SnapshotJson = json, TokenHash = Hash(token), ProtectedToken = Protector.Protect(token), CreatedBy = actor.Email };
+            var entry = existing ?? new CommissionConfirmation
+            {
+                Module = command.Module,
+                Scope = command.Scope,
+                Competence = command.Competence,
+                EmployeeKey = key,
+                EmployeeUserId = group.UserId,
+                EmployeeName = group.Name,
+                SnapshotJson = json,
+                TokenHash = Hash(token),
+                ProtectedToken = Protector.Protect(token),
+                CreatedBy = actor.Email
+            };
             if (existing is null)
             {
                 db.CommissionConfirmations.Add(entry); Audit(actor.Email, "GenerateConfirmation", entry);
@@ -125,9 +148,17 @@ public sealed class CommissionConfirmationService(OperationsDbContext db, IDataP
         var owner = await RequireAccessAsync(entry, actor, false, ct);
         if (entry.InvalidatedAt.HasValue) throw new DomainException("Este relatório foi atualizado. Solicite um novo link de confirmação.", 409);
         if (!entry.AgreedAt.HasValue) await ValidateVersionsAsync(entry, ct);
-        return new { report = Snapshot(entry), entry.CreatedAt, entry.AgreedAt, canSign = owner, viewerName = actor.DisplayName,
+        return new
+        {
+            report = Snapshot(entry),
+            entry.CreatedAt,
+            entry.AgreedAt,
+            canSign = owner,
+            viewerName = actor.DisplayName,
             signature = entry.AgreedAt.HasValue ? new { entry.SignedByName, entry.SignedByEmail, entry.SignedByUserId, strokes = JsonSerializer.Deserialize<List<SignatureStroke>>(entry.SignatureJson), browser = JsonSerializer.Deserialize<JsonObject>(entry.BrowserJson), entry.EvidenceHash } : null,
-            pdfAvailable = entry.AgreedAt.HasValue, status = entry.AgreedAt.HasValue ? "agreed" : "pending" };
+            pdfAvailable = entry.AgreedAt.HasValue,
+            status = entry.AgreedAt.HasValue ? "agreed" : "pending"
+        };
     }
 
     public async Task<DateTimeOffset> AgreeAsync(string token, AgreeCommissionConfirmation command, ActorContext actor, string userAgent, CancellationToken ct)
@@ -186,7 +217,7 @@ public sealed class CommissionConfirmationService(OperationsDbContext db, IDataP
             throw new DomainException("Desenhe sua rubrica no quadro de assinatura.");
         if (strokes.SelectMany(x => x.Points).Any(p => p is null || !double.IsFinite(p.X) || !double.IsFinite(p.Y) || p.X < 0 || p.X > 1 || p.Y < 0 || p.Y > 1))
             throw new DomainException("A rubrica contém coordenadas inválidas.");
-        var distance = strokes.Sum(s => s.Points.Zip(s.Points.Skip(1), (a, b) => Math.Sqrt(Math.Pow(a.X-b.X,2)+Math.Pow(a.Y-b.Y,2))).Sum());
+        var distance = strokes.Sum(s => s.Points.Zip(s.Points.Skip(1), (a, b) => Math.Sqrt(Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2))).Sum());
         if (distance < .15) throw new DomainException("Desenhe uma rubrica completa antes de confirmar.");
         var browser = command.Browser;
         if (browser is null || string.IsNullOrWhiteSpace(userAgent) || userAgent.Length > 2000 ||
@@ -220,6 +251,12 @@ public sealed class CommissionConfirmationService(OperationsDbContext db, IDataP
     }
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
     private static CommissionReportSnapshot Snapshot(CommissionConfirmation entry) => JsonSerializer.Deserialize<CommissionReportSnapshot>(entry.SnapshotJson)!;
-    private void Audit(string email, string action, CommissionConfirmation entry) => db.AuditEvents.Add(new AuditEvent {
-        ActorEmail = email, Action = action, Module = entry.Module, Resource = "commission_confirmation", ResourceId = entry.Id.ToString() });
+    private void Audit(string email, string action, CommissionConfirmation entry) => db.AuditEvents.Add(new AuditEvent
+    {
+        ActorEmail = email,
+        Action = action,
+        Module = entry.Module,
+        Resource = "commission_confirmation",
+        ResourceId = entry.Id.ToString()
+    });
 }

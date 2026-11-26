@@ -1,20 +1,138 @@
-.app-shell .internal-chat-list-filters{display:flex;flex-wrap:wrap;gap:8px;padding:0 12px 12px}
-.app-shell .internal-chat-list-filters>button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-size:12px;cursor:pointer}
-.app-shell .internal-chat-list-filters>button.active{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 12%,var(--surface));color:var(--primary)}
-.app-shell .internal-chat-list-filters>button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
-.app-shell .content .enterprise-reference-page .enterprise-notes{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;width:100%;padding:18px;box-sizing:border-box}
-.enterprise-notes>header{display:flex;align-items:center;gap:9px;color:var(--primary);font-size:14px}
-.enterprise-notes>dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:14px 24px;width:100%;min-width:0;margin:0}
-.enterprise-notes>dl>div{display:grid;align-content:start;gap:4px;min-width:0}
-.enterprise-notes dt{font-size:12px;font-weight:750;color:var(--muted);overflow-wrap:anywhere}
-.enterprise-notes dd{margin:0;font-size:14px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink)}
-.enterprise-notes .enterprise-note-paragraph{grid-column:1/-1}
-.public-application-card .job-description-sections{gap:18px;padding:20px}
-.public-application-card .job-description-section{display:grid;gap:8px;min-width:0}
-.public-application-card .job-description-section+section{padding-top:16px;border-top:1px solid #d8e6f1}
-.public-application-card .job-description-section h2{margin:0;font-size:16px;font-weight:800;line-height:1.4}
-.public-application-card .job-description-section :is(p,li){font-size:14px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;color:#27445e}
-.public-application-card .job-description-section ul{margin:0;padding-left:20px;display:grid;gap:6px}
-.public-application-card .job-description-section strong{font-weight:800;color:#17324d}
-.public-application-form>h2{margin:8px 0;font-size:20px;color:#17324d}
-.public-vacancy-list{display:grid;gap:12px}.public-vacancy-list>a{display:grid;gap:7px;padding:18px;border:1px solid #d8e6f1;border-radius:12px;background:#f5faff;color:#17324d;text-decoration:none}.public-vacancy-list strong{font-size:18px}.public-vacancy-list small{color:#087fea;font-weight:700}
+.app-shell .internal-chat-list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.app-shell .internal-chat-list-filters > button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.app-shell .internal-chat-list-filters > button.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--primary);
+}
+.app-shell .internal-chat-list-filters > button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.app-shell .content .enterprise-reference-page .enterprise-notes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  width: 100%;
+  padding: 18px;
+  box-sizing: border-box;
+}
+.enterprise-notes > header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--primary);
+  font-size: 14px;
+}
+.enterprise-notes > dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 14px 24px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+.enterprise-notes > dl > div {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+}
+.enterprise-notes dt {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.enterprise-notes dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+.enterprise-notes .enterprise-note-paragraph {
+  grid-column: 1/-1;
+}
+.public-application-card .job-description-sections {
+  gap: 18px;
+  padding: 20px;
+}
+.public-application-card .job-description-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.public-application-card .job-description-section + section {
+  padding-top: 16px;
+  border-top: 1px solid #d8e6f1;
+}
+.public-application-card .job-description-section h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+.public-application-card .job-description-section :is(p, li) {
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #27445e;
+}
+.public-application-card .job-description-section ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+.public-application-card .job-description-section strong {
+  font-weight: 800;
+  color: #17324d;
+}
+.public-application-form > h2 {
+  margin: 8px 0;
+  font-size: 20px;
+  color: #17324d;
+}
+.public-vacancy-list {
+  display: grid;
+  gap: 12px;
+}
+.public-vacancy-list > a {
+  display: grid;
+  gap: 7px;
+  padding: 18px;
+  border: 1px solid #d8e6f1;
+  border-radius: 12px;
+  background: #f5faff;
+  color: #17324d;
+  text-decoration: none;
+}
+.public-vacancy-list strong {
+  font-size: 18px;
+}
+.public-vacancy-list small {
+  color: #087fea;
+  font-weight: 700;
+}

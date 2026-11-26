@@ -121,6 +121,42 @@ public sealed class WhatsAppAdministrationTests
         Assert.DoesNotContain(f.Handler.Requests, r => r.Url.EndsWith("/send/template"));
     }
 
+    [Fact]
+    public async Task Admin_state_counts_each_campaign_and_skips_recipient_lists_on_refresh()
+    {
+        await using var f = await Fixture.Create();
+        var first = await f.AddTemplate();
+        var second = new WhatsAppTemplate { NumberId = f.Number.Id, Name = "aviso", Status = "APPROVED" };
+        f.Db.WhatsAppTemplates.Add(second);
+        var campaign = new WhatsAppCampaign { NumberId = f.Number.Id, Name = "Novembro", Status = "Enviando" };
+        var other = new WhatsAppCampaign { NumberId = f.Number.Id, Name = "Sem envios" };
+        f.Db.WhatsAppCampaigns.AddRange(campaign, other);
+        foreach (var (template, phone, status) in new[]
+        {
+            (first, "5511900000001", "Entregue"), (first, "5511900000002", "Lida"), (first, "5511900000003", "Erro"),
+            (second, "5511900000001", "Pendente"), (second, "5511900000002", "Incerta"), (second, "5511900000003", "Aceita pela Meta"),
+        })
+            f.Db.WhatsAppCampaignDeliveries.Add(new() { CampaignId = campaign.Id, TemplateId = template.Id, Phone = phone, Status = status });
+        f.Db.ChatContacts.Add(new ChatContact { Name = "Maria", Phone = "5511900000001" });
+        await f.Db.SaveChangesAsync();
+
+        using var full = JsonDocument.Parse(JsonSerializer.Serialize(await f.Service.GetWhatsAppAdminAsync(Admin, default)));
+        var campaigns = full.RootElement.GetProperty("campaigns").EnumerateArray().ToDictionary(x => x.GetProperty("Name").GetString()!);
+        var stats = campaigns["Novembro"];
+        Assert.Equal(2, stats.GetProperty("templateCount").GetInt32());
+        Assert.Equal(3, stats.GetProperty("recipientCount").GetInt32());
+        Assert.Equal(5, stats.GetProperty("total").GetInt32()); // a pendente ainda não conta
+        Assert.Equal(3, stats.GetProperty("successful").GetInt32());
+        Assert.Equal(2, stats.GetProperty("errors").GetInt32());
+        Assert.Equal(0, campaigns["Sem envios"].GetProperty("total").GetInt32());
+        Assert.NotEmpty(full.RootElement.GetProperty("contacts").EnumerateArray());
+
+        using var refresh = JsonDocument.Parse(JsonSerializer.Serialize(await f.Service.GetWhatsAppAdminAsync(Admin, default, includeRecipients: false)));
+        Assert.Empty(refresh.RootElement.GetProperty("contacts").EnumerateArray());
+        Assert.Empty(refresh.RootElement.GetProperty("customers").EnumerateArray());
+        Assert.Equal(2, refresh.RootElement.GetProperty("campaigns").GetArrayLength());
+    }
+
     private static SaveWhatsAppTemplateCommand Command(Guid numberId) => new(numberId, "lembrete", "pt_BR", "Campanhas", "MARKETING", "Olá {{1}}, temos novidades. Responda SAIR para não receber mensagens.", "NONE", "", "", [new("destinatario", "Maria")], []);
 
     private sealed class Fixture : IAsyncDisposable
@@ -130,7 +166,8 @@ public sealed class WhatsAppAdministrationTests
         public required FakeMeta Handler { get; init; }
         public required ChatWhatsAppNumber Number { get; init; }
         public async Task<WhatsAppTemplate> AddTemplate() { var t = new WhatsAppTemplate { NumberId = Number.Id, MetaId = "template-123", Name = "retorno", Category = "MARKETING", Body = "Olá {{1}}, temos novidades.", Status = "APPROVED", VariablesJson = """[{"key":"destinatario","example":"Maria"}]""" }; Db.WhatsAppTemplates.Add(t); await Db.SaveChangesAsync(); return t; }
-        public static async Task<Fixture> Create() {
+        public static async Task<Fixture> Create()
+        {
             var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
             var protection = new EphemeralDataProtectionProvider();
             var handler = new FakeMeta();
@@ -149,7 +186,8 @@ public sealed class WhatsAppAdministrationTests
     {
         public string TemplateStatus { get; set; } = "APPROVED";
         public List<(string Url, string Body, string Key)> Requests { get; } = [];
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
             var path = request.RequestUri!.ToString();
             var key = request.Headers.TryGetValues("X-Security-ID", out var security) ? security.Single() : request.Headers.TryGetValues("chatwoot-api-key", out var suite) ? suite.Single() : "";
             Requests.Add((path, request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct), key));

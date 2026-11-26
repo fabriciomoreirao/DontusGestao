@@ -975,6 +975,8 @@ namespace Dontus.Operations.Infrastructure.Migrations
 
                     b.HasIndex("ConversationId", "CreatedAt");
 
+                    b.HasIndex("UpdatedAt", "Id");
+
                     b.ToTable("chat_messages", (string)null);
                 });
 

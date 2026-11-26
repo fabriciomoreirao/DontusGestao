@@ -137,8 +137,11 @@ public sealed class ChatServiceTests
         var rows = await SeedInboxAsync(db, 12);
         var timestamp = DateTimeOffset.UtcNow.AddHours(-1);
         foreach (var conversation in rows)
-            db.ChatMessages.AddRange(Enumerable.Range(0, 120).Select(i => new ChatMessage {
-                ConversationId = conversation.Id, Body = $"Mensagem {i}", CreatedAt = timestamp,
+            db.ChatMessages.AddRange(Enumerable.Range(0, 120).Select(i => new ChatMessage
+            {
+                ConversationId = conversation.Id,
+                Body = $"Mensagem {i}",
+                CreatedAt = timestamp,
             }));
         await db.SaveChangesAsync();
         var module = await service.GetModuleAsync(actor);
@@ -212,10 +215,17 @@ public sealed class ChatServiceTests
         var contact = new ChatContact { Name = "Cliente de validação", Phone = "5511999990000" };
         db.ChatContacts.Add(contact);
         var at = DateTimeOffset.UtcNow;
-        var rows = Enumerable.Range(0, count).Select(i => new ChatConversation {
-            Number = i + 1, Protocol = $"CHAT-TEST-{i:D5}", ContactId = contact.Id,
-            ChannelId = channel.Id, DepartmentId = channel.DepartmentId, QueueId = channel.DefaultQueueId!.Value,
-            Subject = $"Assunto {i}", CreatedAt = at.AddMinutes(-i), LastMessageAt = at.AddMinutes(-i),
+        var rows = Enumerable.Range(0, count).Select(i => new ChatConversation
+        {
+            Number = i + 1,
+            Protocol = $"CHAT-TEST-{i:D5}",
+            ContactId = contact.Id,
+            ChannelId = channel.Id,
+            DepartmentId = channel.DepartmentId,
+            QueueId = channel.DefaultQueueId!.Value,
+            Subject = $"Assunto {i}",
+            CreatedAt = at.AddMinutes(-i),
+            LastMessageAt = at.AddMinutes(-i),
         }).ToArray();
         db.ChatConversations.AddRange(rows);
         await db.SaveChangesAsync();

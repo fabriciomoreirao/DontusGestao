@@ -28,6 +28,27 @@ A API aplica automaticamente as migrations do Entity Framework na inicializaçã
 
 ### Atualização em tempo real
 
+Os filtros antes limitados ao mês permitem selecionar **De** e **Até**, incluindo
+os dois dias no horário de Brasília, atravessar meses/anos ou limpar os limites.
+O período do quadro fica nas ações da funcionalidade, ao lado de **Indicadores**.
+Os controles quebram linha em telas menores e o cabeçalho global mantém a navegação.
+Os quadros CRM e Kanban exibem inicialmente **10 cards por coluna**. **Ver mais**
+acrescenta dez cards naquela coluna e informa quantos ainda estão ocultos. Pesquisa
+e filtros consideram todos os registros; contadores e totais continuam completos.
+Listas, indicadores, totais e painel público usam o período informado. Em
+Comissões, as faixas continuam sendo calculadas por competência e as confirmações
+são separadas por mês, mesmo quando a consulta abrange vários meses.
+
+Em **Contas estratégicas**, **Abrir acompanhamento** mantém a evolução,
+agendamentos, conferência e finalização dentro da própria unidade, sem criar um
+card em Acompanhamentos. Os vínculos antigos continuam disponíveis pela unidade.
+No **Processo seletivo**, o quadro usa as etapas do processo, com etapas padrão
+quando não houver configuração, e mantém visíveis candidaturas de etapas antigas.
+O card mostra contato, currículo e evolução, com **Agendar entrevista** no topo.
+Na **Agenda**, somente os status **Agendado** e **Concluído** ocupam o horário do
+responsável; os demais liberam esse horário. A troca para um status que ocupa
+horário também verifica conflitos.
+
 As listas oferecem o seletor **10 / 30 / 50 / 100** no canto superior esquerdo,
 com dez registros por padrão e retorno a dez ao reabrir a página. Pesquisa, filtros
 e indicadores consideram o conjunto completo antes da paginação. O WhatsApp e o
@@ -88,11 +109,18 @@ A sincronização informa as versões dos registros já carregados. A API consul
 
 As requisições internas da operação aguardam até **120 segundos** por padrão, incluindo o carregamento inicial, o chat e os formulários. Configure `API_REQUEST_TIMEOUT_SECONDS` (30–600 segundos) para ajustar o prazo. As consultas ao PostgreSQL usam `DATABASE_COMMAND_TIMEOUT_SECONDS` (padrão 90 segundos). Recrie os serviços web e api após alterar essas variáveis; proxies externos também precisam permitir esse prazo. A desconexão do cliente cancela a requisição pendente ao backend.
 
+A validação da sessão de login pode usar Redis como cache: configure `REDIS_CONNECTION_STRING` (por exemplo, `endpoint-primario:6379`; acrescente `,ssl=true` se o Redis exigir TLS) e recrie o serviço api. Cada sessão fica no Redis por até 120 minutos; logout, bloqueio, exclusão, edição de colaborador e recuperação de senha removem as sessões do usuário na hora. Sem a variável, ou com o Redis indisponível, a API valida a sessão no PostgreSQL normalmente. O Redis é usado somente para a sessão; os demais caches continuam na memória da API.
+
 O workspace mantém uma conexão WebSocket autenticada em `/api/realtime`, na mesma origem da aplicação (`wss` em HTTPS). O chat e o snapshot operacional atualizam após mudanças, sem as antigas consultas a cada 1,5 e 10–15 segundos. Avisos de chat chegam somente às conexões dos participantes; o socket não transporta mensagens, arquivos ou credenciais. As projeções HTTP continuam aplicando as permissões de cada usuário. Rajadas de avisos são agrupadas em filas independentes: o chat pode atualizar durante uma gravação ou consulta operacional. Suas ações retornam apenas a conversa alterada; respostas antigas não substituem dados mais recentes.
 
 O **Chat interno** oferece contadores vermelhos com a soma das mensagens não lidas em **Conversas**, **Grupos** e **Arquivadas**, sem filtro de lembretes. Arquivar não confirma leitura, e novas mensagens mantêm o arquivamento do destinatário. A leitura exige abrir a conversa com a janela em foco e chegar ao fim das mensagens; confirma somente até a última mensagem exibida. O horário de visualização registra a leitura real.
 
 O campo de mensagem mantém os rascunhos em uma assinatura própria, sem redesenhar o histórico a cada tecla. Ao abrir uma conversa, são exibidas as 100 mensagens mais recentes. **Mostrar mensagens anteriores** revela o histórico já carregado em lotes de 100 e mantém a posição da rolagem; depois, o carregamento busca os períodos anteriores. Trocar de conversa preserva o texto, e uma falha de envio restaura a mensagem junto do que foi digitado enquanto aguardava.
+
+Ao enviar texto, a mensagem aparece imediatamente com **Enviando…** até a confirmação
+do servidor. A confirmação acrescenta somente a mensagem enviada, preserva o histórico
+e evita duplicatas. A digitação também evita recalcular o layout dos formulários e
+dos controles de todas as mensagens a cada tecla.
 
 Em **Acompanhamentos**, os cards de CS permanecem na etapa gravada independentemente dos dias decorridos. O limite da carga geral não remove clientes antigos; usuários com consulta ao módulo veem os cards autorizados e podem filtrar explicitamente o responsável. Ao informar um ID já existente em Ativação, **Abrir card existente** localiza sua etapa, limpa os filtros e abre os detalhes, preservando o histórico. **Tarefas** apresenta o quadro logo após o cabeçalho, sem a faixa de indicadores resumidos.
 

@@ -1,13 +1,14 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Dontus.Operations.Application;
+using Dontus.Operations.Infrastructure.Redis;
 using Dontus.Operations.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dontus.Operations.Infrastructure;
 
 public sealed class LocalAuthenticationService(OperationsDbContext db, IPasswordRecoveryEmailSender passwordRecoveryEmailSender,
-    IAccessControlService accessControl, TimeProvider? clock = null) : ILocalAuthenticationService
+    IAccessControlService accessControl, TimeProvider? clock = null, ILocalSessionCache? sessionCache = null) : ILocalAuthenticationService
 {
     public async Task<LocalLoginResult> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
     {
@@ -36,20 +37,43 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
     public async Task<AuthenticatedIdentity?> ResolveSessionAsync(string token, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(token)) return null;
+
         var tokenHash = PasswordSecurity.HashToken(token);
+        var now = (clock ?? TimeProvider.System).GetUtcNow();
+
+        // 1º: sessão já validada há pouco? Responde pelo Redis, sem ir ao banco.
+        if (sessionCache is not null && await sessionCache.GetAsync(tokenHash) is { } cached && cached.ExpiresAt > now)
+            return ToIdentity(cached, EmployeeAccessPolicy.RequireAllowed(cached.AccessScheduleJson, now));
+
+        // 2º: não estava no cache (ou o Redis está fora do ar), busca no banco.
+        var generation = sessionCache is null ? null : await sessionCache.GetGenerationAsync();
         var session = await db.LocalAuthSessions.AsNoTracking()
             .Where(entry => entry.TokenHash == tokenHash && entry.RevokedAt == null && entry.ExpiresAt > DateTimeOffset.UtcNow)
             .Join(db.Users.AsNoTracking(), entry => entry.UserId, user => user.Id, (entry, user) => new
-            { entry.Id, entry.AuthorizationJson, user.Email, user.DisplayName, user.Active, user.BlockedAt, user.AccessScheduleJson })
-            .SingleOrDefaultAsync(cancellationToken);
+            {
+                entry.Id,
+                entry.UserId,
+                entry.ExpiresAt,
+                entry.AuthorizationJson,
+                user.Email,
+                user.DisplayName,
+                user.Active,
+                user.BlockedAt,
+                user.AccessScheduleJson }
+            ).SingleOrDefaultAsync(cancellationToken);
+
         if (session is null || !session.Active || session.BlockedAt.HasValue) return null;
-        var allowedUntil = EmployeeAccessPolicy.RequireAllowed(session.AccessScheduleJson, (clock ?? TimeProvider.System).GetUtcNow());
+
+        var allowedUntil = EmployeeAccessPolicy.RequireAllowed(session.AccessScheduleJson, now);
+
         ActorContext actor;
         if (string.IsNullOrEmpty(session.AuthorizationJson))
         {
             // Sessions created before the migration acquire their snapshot once, without forcing a logout.
             actor = await accessControl.ResolveActorAsync(new(session.Email, session.DisplayName), cancellationToken);
+
             var existing = await db.LocalAuthSessions.SingleAsync(entry => entry.Id == session.Id, cancellationToken);
+
             if (string.IsNullOrEmpty(existing.AuthorizationJson))
             {
                 existing.AuthorizationJson = JsonSerializer.Serialize(actor);
@@ -58,12 +82,23 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
             else actor = JsonSerializer.Deserialize<ActorContext>(existing.AuthorizationJson)!;
         }
         else actor = JsonSerializer.Deserialize<ActorContext>(session.AuthorizationJson)!;
-        return new AuthenticatedIdentity(session.Email, session.DisplayName)
-        {
-            SessionId = session.Id,
-            SessionActor = actor with { Email = session.Email, DisplayName = session.DisplayName, AccessAllowedUntil = allowedUntil },
-        };
+
+        var entry = new CachedLocalSession(session.Id, session.UserId, session.Email, session.DisplayName,
+            session.AccessScheduleJson, session.ExpiresAt, actor);
+        if (sessionCache is not null && generation.HasValue) await sessionCache.SetAsync(tokenHash, entry, generation.Value, now);
+        return ToIdentity(entry, allowedUntil);
     }
+
+    private static AuthenticatedIdentity ToIdentity(CachedLocalSession session, DateTimeOffset? allowedUntil) =>
+        new(session.Email, session.DisplayName)
+        {
+            SessionId = session.SessionId,
+            SessionActor = session.Actor with {
+                Email = session.Email,
+                DisplayName = session.DisplayName,
+                AccessAllowedUntil = allowedUntil
+            },
+        };
 
     public async Task ChangePasswordAsync(string email, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
     {
@@ -96,6 +131,7 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
         foreach (var session in activeSessions) session.RevokedAt = DateTimeOffset.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
+        if (sessionCache is not null) await sessionCache.RemoveUserAsync(user.Id);
     }
 
     public async Task ResetEmployeePasswordAsync(Guid userId, ActorContext actor, CancellationToken cancellationToken = default)
@@ -107,8 +143,11 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
         await RequestPasswordRecoveryAsync(user.Email, cancellationToken);
         db.AuditEvents.Add(new AuditEvent
         {
-            ActorEmail = actor.Email, Action = "ResetPassword", Resource = "employee",
-            ResourceId = user.Id.ToString(), Module = "admin",
+            ActorEmail = actor.Email,
+            Action = "ResetPassword",
+            Resource = "employee",
+            ResourceId = user.Id.ToString(),
+            Module = "admin",
         });
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -116,11 +155,13 @@ public sealed class LocalAuthenticationService(OperationsDbContext db, IPassword
     public async Task SignOutAsync(string token, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(token)) return;
+        var tokenHash = PasswordSecurity.HashToken(token);
         var session = await db.LocalAuthSessions.SingleOrDefaultAsync(
-            entry => entry.TokenHash == PasswordSecurity.HashToken(token), cancellationToken);
+            entry => entry.TokenHash == tokenHash, cancellationToken);
         if (session is null || session.RevokedAt is not null) return;
         session.RevokedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+        if (sessionCache is not null) await sessionCache.RemoveTokenAsync(tokenHash);
     }
 
     internal static void ValidatePassword(string password)
