@@ -12,6 +12,15 @@ import type { ChatDraftStore } from "@/lib/chat-drafts";
 import useChatDraftInput from "@/app/useChatDraftInput";
 import { chatMentionQuery } from "@/lib/chat-mentions";
 
+// Navegadores com field-sizing: content (Chrome e Edge) já cuidam da altura pelo CSS.
+// Nos demais, ajusta a altura ao conteúdo; o limite máximo e a rolagem vêm do CSS.
+function fitComposer(element: HTMLTextAreaElement | null) {
+  if (!element || CSS.supports("field-sizing", "content")) return;
+  element.style.height = "auto";
+  const borders = element.offsetHeight - element.clientHeight;
+  element.style.height = `${element.scrollHeight + borders}px`;
+}
+
 export default function InternalChatDraftComposer({
   drafts,
   conversationKey,
@@ -41,6 +50,22 @@ export default function InternalChatDraftComposer({
     inputRef,
     onTyping,
   );
+  // A caixa cresce sozinha com o texto (field-sizing no CSS). Onde o navegador não tem
+  // field-sizing, fitComposer ajusta a altura ao digitar, ao trocar de conversa e quando
+  // o rascunho muda por fora (enviar, limpar, mencionar).
+  useEffect(() => {
+    let frame = 0;
+    const fit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => fitComposer(inputRef.current));
+    };
+    fit();
+    const unsubscribe = drafts.subscribe(fit);
+    return () => {
+      cancelAnimationFrame(frame);
+      unsubscribe();
+    };
+  }, [drafts, conversationKey, inputRef]);
   const listId = useId();
   const [query, setQuery] = useState<ReturnType<typeof chatMentionQuery>>(null);
   const [active, setActive] = useState(0);
@@ -74,7 +99,6 @@ export default function InternalChatDraftComposer({
       label = `@${person.name}`;
     const next =
       before.slice(0, query.start) + label + " " + before.slice(query.end);
-    if (next.length > 4000) return;
     input(next);
     drafts.setMentions(conversationKey, [
       ...drafts.getMentions(conversationKey),
@@ -141,6 +165,7 @@ export default function InternalChatDraftComposer({
           onChange={(event) => {
             input(event.target.value);
             updateQuery(event.currentTarget);
+            fitComposer(event.currentTarget);
           }}
           onClick={(event) => updateQuery(event.currentTarget)}
           onBlur={() => {
@@ -149,7 +174,6 @@ export default function InternalChatDraftComposer({
           }}
           onPaste={onPaste}
           placeholder="Escreva uma mensagem... use @ para mencionar"
-          maxLength={4000}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing) return;
             if (query && queryKey === conversationKey) {

@@ -18,6 +18,10 @@ public sealed class InternalChatService(
     private sealed record PinPayload(Guid MessageId, bool Pinned);
     private static readonly JsonSerializerOptions ChatJsonOptions = new(JsonSerializerDefaults.Web);
     private const long MaxAttachmentBytes = long.MaxValue;
+    // Sem limite prático para o uso interno (antes eram 4.000 caracteres). A trava só evita que uma
+    // colagem enorme por engano seja gravada e depois enviada a todos os participantes em cada atualização.
+    public const int MaxMessageLength = 100_000;
+    private const string MessageTooLong = "A mensagem é grande demais. Divida o texto em mensagens menores.";
     private readonly string filesRoot = Path.GetFullPath(configuration["InternalChat:FilesPath"]
         ?? Path.Combine(AppContext.BaseDirectory, "internal-chat-files"));
 
@@ -235,9 +239,9 @@ public sealed class InternalChatService(
         if (type is not ("text" or "sticker"))
             throw new DomainException("Tipo de mensagem inválido.");
         var body = (command.Body ?? "").Trim();
-        var maxLength = type == "sticker" ? 32 : 4000;
+        var maxLength = type == "sticker" ? 32 : MaxMessageLength;
         if (body.Length == 0 || body.Length > maxLength)
-            throw new DomainException(type == "sticker" ? "Selecione uma figurinha válida." : "Digite uma mensagem de até 4.000 caracteres.");
+            throw new DomainException(type == "sticker" ? "Selecione uma figurinha válida." : MessageTooLong);
         var participants = await (from member in db.InternalChatRoomMembers
                                   join person in db.Users on member.UserId equals person.Id
                                   where member.RoomId == room.Id && person.Active && person.BlockedAt == null
@@ -288,7 +292,7 @@ public sealed class InternalChatService(
         var message = await OwnMessageAsync(command.RoomId, command.MessageId, command.Version, actor, cancellationToken);
         if (message.Type != "text") throw new DomainException("Apenas mensagens de texto podem ser editadas.");
         var body = command.Body.Trim();
-        if (body.Length is 0 or > 4000) throw new DomainException("Digite uma mensagem de até 4.000 caracteres.");
+        if (body.Length is 0 or > MaxMessageLength) throw new DomainException(MessageTooLong);
         if (message.Body == body) return;
         message.MentionsJson = JsonSerializer.Serialize(InternalChatMentions.Reconcile(message.Body, body, message.MentionsJson));
         message.Body = body; message.EditedAt = DateTimeOffset.UtcNow; message.UpdatedAt = message.EditedAt.Value; message.Version++;
