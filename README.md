@@ -57,6 +57,12 @@ Na **Agenda**, somente os status **Agendado** e **Concluído** ocupam o horário
 responsável; os demais liberam esse horário. A troca para um status que ocupa
 horário também verifica conflitos.
 
+Nos **Acompanhamentos de ativação e retenção**, as features de base contratada,
+em uso e Plus permanecem visíveis nos cards a partir de **Acompanhamento**, inclusive
+na conferência e após o encerramento. As seleções são preservadas nas mudanças de
+etapa e só podem ser alteradas em **Acompanhamento** ou **Conferência**, com
+salvamento automático e validação da regra pelo servidor.
+
 As listas oferecem o seletor **10 / 30 / 50 / 100** no canto superior esquerdo,
 com dez registros por padrão e retorno a dez ao reabrir a página. Pesquisa, filtros
 e indicadores consideram o conjunto completo antes da paginação. O WhatsApp e o
