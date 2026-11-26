@@ -33,6 +33,7 @@ builder.Services.AddScoped<WorkspaceFileStorage>();
 builder.Services.AddScoped<PublicRecruitmentService>();
 builder.Services.AddScoped<RecordPages>();
 builder.Services.AddScoped<OperationsService>();
+builder.Services.AddScoped<CommercialFollowupService>();
 builder.Services.AddScoped<TaskService>();
 builder.Services.Configure<FormOptions>(options =>
 {
@@ -1183,6 +1184,7 @@ operations.MapPost("", async (
     ILocalAuthenticationService authentication,
     IAccessControlService accessControl,
     ServiceRequestRoutingService serviceRequestRouting,
+    CommercialFollowupService commercialFollowup,
     CancellationTaskService cancellationTasks,
     ReferralCommissionRulesService referralCommissionRules,
     CancellationToken cancellationToken) =>
@@ -1211,6 +1213,11 @@ operations.MapPost("", async (
 
     switch (request.Action?.Trim())
     {
+        case "sendCommercialAgendaFollowup":
+            id = await commercialFollowup.SendAsync(new(request.Id ?? throw new DomainException("Card comercial obrigatório."),
+                request.Version ?? 0, request.CommercialFollowupTrack ?? "", request.CommercialClientId, request.ProductVersion,
+                request.Owner, request.AgendaId, request.ResponsibleUserId, request.StartsAt, request.Description), actor, cancellationToken);
+            break;
         case "routeServiceRequest":
             id = await serviceRequestRouting.RouteAsync(request.Id ?? throw new DomainException("Chamado obrigatório."),
                 request.Version ?? 0, request.RouteTarget ?? "", request.TaskDraft, actor, cancellationToken);
@@ -2003,7 +2010,7 @@ operations.MapPost("", async (
     }
     if ((request.Action is "addSuggestionComment" or "updateSuggestionComment" or "deleteSuggestionAttachment") && actor.HasPermission("suggestions", "view"))
         return Results.Ok(new { ok = true, id, suggestionModule = await suggestionService.GetModuleAsync(actor, cancellationToken) });
-    if (request.Action is "createWorkItem" or "updateWorkItem" or "transitionWorkItem" or "deleteWorkItem" or "acknowledgeStrategicUnit")
+    if (request.Action is "createWorkItem" or "updateWorkItem" or "transitionWorkItem" or "deleteWorkItem" or "acknowledgeStrategicUnit" or "sendCommercialAgendaFollowup")
     {
         // Generic card edits do not change chat rooms, task catalogs or administrative access.
         // Preserve those client projections instead of rebuilding all of them on every keystroke/save.
@@ -2385,6 +2392,8 @@ sealed record ServiceRequestClassification(string Stage, string Priority, string
 
 public sealed class OperationsRequest
 {
+    public string? CommercialFollowupTrack { get; init; }
+    public string? CommercialClientId { get; init; }
     public bool ChatMessageDelta { get; init; }
     public Dictionary<Guid, long>? KnownWorkItemVersions { get; init; }
     public Guid? CollaboratorId { get; init; }

@@ -1522,6 +1522,8 @@ public sealed partial class OperationsService(OperationsDbContext db) : IOperati
             throw new DomainException("O registro foi alterado por outro usuário. Atualize a tela e tente novamente.", 409);
 
         command = FollowupValidationPolicy.Prepare(item, command, actor);
+        if (item.Module == "cs")
+            command = command with { Description = CsJourneyFeaturesPolicy.PreserveAndValidate(item, command.Description) };
         command = await LiaJourneyValidationPolicy.PrepareUpdateAsync(db, item, command, actor, cancellationToken);
         if (string.IsNullOrWhiteSpace(command.Title))
             throw new DomainException("Informe o título do registro.");

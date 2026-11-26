@@ -2412,6 +2412,7 @@ export default function OperationsApp() {
         message:
           caught instanceof Error ? caught.message : "Falha na operação.",
       });
+      if (payload.action === "sendCommercialAgendaFollowup") throw caught;
       return false;
     } finally {
       setBusy(false);
@@ -2871,40 +2872,43 @@ export default function OperationsApp() {
     payload: Record<string, unknown>,
     success: string,
   ): Promise<OperationResult> =>
-    new Promise((resolve) => {
-      const choosingWin = payload.action === "chooseCommercialWinNotification";
-      const win = pendingWinChoice(
-        dataRef.current?.items.find((item) => item.id === payload.id),
-        choosingWin ? { ...payload, action: "createWorkItem" } : payload,
-        dataRef.current?.customerModule?.catalogs ?? [],
-      );
-      if (
-        win &&
-        (choosingWin || typeof payload.notifyPublicWin !== "boolean")
-      ) {
-        setWinNotification({
-          payload,
-          success,
-          resolve,
-          customer: win.customer_name || win.title,
+    payload.action === "sendCommercialAgendaFollowup"
+      ? executeOperation(payload, success)
+      : new Promise((resolve) => {
+          const choosingWin =
+            payload.action === "chooseCommercialWinNotification";
+          const win = pendingWinChoice(
+            dataRef.current?.items.find((item) => item.id === payload.id),
+            choosingWin ? { ...payload, action: "createWorkItem" } : payload,
+            dataRef.current?.customerModule?.catalogs ?? [],
+          );
+          if (
+            win &&
+            (choosingWin || typeof payload.notifyPublicWin !== "boolean")
+          ) {
+            setWinNotification({
+              payload,
+              success,
+              resolve,
+              customer: win.customer_name || win.title,
+            });
+            return;
+          }
+          if (choosingWin) {
+            resolve({});
+            return;
+          }
+          const action = String(payload.action ?? "").toLowerCase();
+          // Atualizações rápidas (comentários, status, kanban e marcações) são aplicadas diretamente.
+          // A confirmação central fica restrita a exclusões e edições abertas pelos botões dos cards.
+          const requiresConfirmation =
+            action.startsWith("delete") || payload.requireConfirmation === true;
+          if (!requiresConfirmation) {
+            void executeOperation(payload, success).then(resolve);
+            return;
+          }
+          setConfirmation({ payload, success, resolve });
         });
-        return;
-      }
-      if (choosingWin) {
-        resolve({});
-        return;
-      }
-      const action = String(payload.action ?? "").toLowerCase();
-      // Atualizações rápidas (comentários, status, kanban e marcações) são aplicadas diretamente.
-      // A confirmação central fica restrita a exclusões e edições abertas pelos botões dos cards.
-      const requiresConfirmation =
-        action.startsWith("delete") || payload.requireConfirmation === true;
-      if (!requiresConfirmation) {
-        void executeOperation(payload, success).then(resolve);
-        return;
-      }
-      setConfirmation({ payload, success, resolve });
-    });
 
   const cancelOperation = () => {
     const request = confirmation;
@@ -12619,6 +12623,7 @@ function CommercialLeadsModule({
         ? "Contato concluído e retorno ao acompanhamento iniciado."
         : "Lead movido com sucesso.",
     );
+    if (moved && flow === "crm" && targetStage?.won) setSelected(leadItem);
     if (!moved || !completesRetentionReturn) return;
     const sourceJourney = items.find(
       (entry) => entry.id === lead.sourceJourneyId,
@@ -16050,12 +16055,16 @@ function CommercialLeadDrawer({
     campaignId: lead.campaignId ?? "",
   });
   const [linkCopied, setLinkCopied] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(
+    () =>
+      flow === "crm" &&
+      !lead.onboarding &&
+      stages.some((entry) => entry.name === lead.stage && entry.won),
+  );
   const [showAvailability, setShowAvailability] = useState(false);
   const [followUpTrack, setFollowUpTrack] = useState<FollowUpTrack>(
     flow === "retention" ? "retention" : "activation",
   );
-  const [liaPlan, setLiaPlan] = useState(liaContractedPlan(lead));
   const schedulingNow = useActivityClock();
   const minimumScheduleDate = commercialDateKey(schedulingNow);
   const [slotDate, setSlotDate] = useState(minimumScheduleDate);
@@ -16075,6 +16084,8 @@ function CommercialLeadDrawer({
     lead.onboarding?.version || lead.version || "",
   );
   const [clientIdError, setClientIdError] = useState("");
+  const [routingBusy, setRoutingBusy] = useState(false);
+  const routingInFlight = useRef(false);
   const linkedCustomer =
     customers.find((entry) => entry.id === item.customer_id) ??
     customers.find(
@@ -16294,215 +16305,88 @@ function CommercialLeadDrawer({
       });
   };
   const sendToOnboarding = async (
-    scheduled?: {
-      date: string;
-      time: string;
-      startsAt: string;
-      commitmentId?: string;
-    },
+    scheduled?: { date: string; time: string; description: string },
     details?: { clientId: string; version: string },
   ) => {
+    if (routingInFlight.current) return false;
     const cleanClientId = (details?.clientId ?? clientId).replace(/\D/g, "");
-    if (!/^\d{6}$/.test(cleanClientId)) {
-      setClientIdError("Informe o ID do cliente com 6 números.");
-      return false;
-    }
-    const isLia = followUpTrack === "lia";
-    if (isLia && !liaPlan.trim()) {
-      setClientIdError(
-        "Informe o plano LIA contratado antes de encaminhar o cliente.",
+    const version = (details?.version ?? releaseVersion).trim();
+    if (scheduled && !/^\d{6}$/.test(cleanClientId))
+      throw new Error("Informe o ID do cliente com 6 números.");
+    if (scheduled && !version) throw new Error("Informe a versão do cliente.");
+    const responsible = scheduled
+      ? (agendaModule?.collaborators.find(
+          (entry) =>
+            entry.agendaIds?.includes(activationCalendar?.id ?? "") &&
+            (entry.id === destinationEmployee?.id ||
+              entry.name === destinationEmployee?.displayName),
+        ) ??
+        agendaModule?.collaborators.find((entry) =>
+          entry.agendaIds?.includes(activationCalendar?.id ?? ""),
+        ))
+      : undefined;
+    if (scheduled && !activationCalendar)
+      throw new Error(
+        "Nenhuma agenda do destino está disponível para agendamento.",
       );
-      return false;
-    }
-    const journey = isLia
-      ? {
-          kind: "liaJourney",
-          sourceLeadId: item.id,
-          liaPlan: liaPlan.trim(),
-          whatsapp: lead.phone,
-          products: lead.products,
-          clientId: cleanClientId,
-          startDate: new Date().toISOString(),
-          kickoffDate: scheduled?.date ?? "",
-          kickoffTime: scheduled?.time ?? "",
-          sector: "Comercial",
-          requestType: "Cliente ganho",
-          history: [
-            {
-              id: crypto.randomUUID(),
-              text: "Cliente encaminhado pelo CRM para a LIA.",
-              at: new Date().toISOString(),
-              author: lead.seller || item.owner,
-            },
-          ],
-        }
-      : {
-          kind: "csJourney",
-          track: followUpTrack,
-          phase: "validation",
-          sourceLeadId: item.id,
-          clientId: cleanClientId,
-          scheduledAt: scheduled?.startsAt ?? "",
-          scheduling: scheduled ? "scheduled" : "not-scheduled",
-          commerciallyApproved: true,
-          firstMeetingAt: scheduled?.startsAt ?? "",
-          firstMeetingTime: scheduled?.time ?? "",
-          firstMeetingCommitmentId: scheduled?.commitmentId,
-          trainingAt: "",
-          rescheduledAt: "",
-          status: "Pendente",
-          featuresBase: [],
-          featuresActive: [],
-          featuresPlus: [],
-          labels: [],
-          follows: [
-            {
-              kind: "Origem comercial",
-              text: scheduled
-                ? `Cliente enviado para acompanhamento de ${followUpTrackLabel(followUpTrack)} com Kick off agendado em ${scheduled.date} às ${scheduled.time}.`
-                : `Cliente enviado para acompanhamento de ${followUpTrackLabel(followUpTrack)}.`,
-              createdAt: new Date().toISOString(),
-              actor: lead.seller || item.owner,
-            },
-          ],
-        };
-    const created = await onAgendaOperation(
-      {
-        action: "createWorkItem",
-        module: isLia ? "lia" : "cs",
-        recordType: isLia
-          ? "Projeto LIA"
-          : followUpTrack === "activation"
-            ? "Acompanhamento de ativação"
-            : "Acompanhamento de retenção",
-        title: item.title,
-        customerId: linkedCustomer?.id ?? item.customer_id,
-        customerName: lead.customer || item.customer_name,
-        owner: isLia ? "Fila compartilhada" : destinationOwner,
-        team: isLia
-          ? "LIA"
-          : followUpTrack === "activation"
-            ? "Sucesso do Cliente · Ativação"
-            : "Sucesso do Cliente · Retenção",
-        status: isLia ? "Validacao" : undefined,
-        priority: "P3",
-        amountCents: item.amount_cents,
-        description: JSON.stringify(journey),
-      },
-      `Cliente enviado para acompanhamento ${followUpTrackLabel(followUpTrack)}.`,
-    );
-    if (created) {
-      if (linkedCustomer)
-        await onAgendaOperation(
-          {
-            action: "updateCustomer",
-            id: linkedCustomer.id,
-            status: "Cliente",
-            documentMasked: cleanClientId,
-            productVersion: details?.version ?? releaseVersion,
-            owner: lead.seller || item.owner,
-            ...(isLia ? {} : { csOwner: destinationOwner }),
-            monthlyRevenueCents: item.amount_cents,
-          },
-          "Lead convertido em cliente.",
-        );
-      await saveLead({
-        ...lead,
-        ...(isLia ? { liaPlan: liaPlan.trim() } : {}),
-        clientId: cleanClientId,
-        stage: wonStage,
-        onboarding: {
-          status: scheduled ? "scheduled" : "sent",
-          date: scheduled?.date,
-          time: scheduled?.time,
-          commitmentId: scheduled?.commitmentId,
-          sentAt: new Date().toISOString(),
-          clientId: cleanClientId,
-          version: details?.version ?? releaseVersion,
-          commerciallyApproved: true,
+    if (scheduled && !responsible)
+      throw new Error(
+        "Nenhum responsável está vinculado à agenda do destino. Confira o cadastro da Agenda.",
+      );
+    if (
+      scheduled &&
+      !availableSlotsFor(scheduled.date, schedulingNow).includes(scheduled.time)
+    )
+      throw new Error(
+        "Este horário não está mais disponível. Escolha outro horário.",
+      );
+    routingInFlight.current = true;
+    setRoutingBusy(true);
+    try {
+      const result = await onAgendaOperation(
+        {
+          action: "sendCommercialAgendaFollowup",
+          id: item.id,
+          version: item.version,
+          commercialFollowupTrack: followUpTrack,
+          commercialClientId: cleanClientId || undefined,
+          productVersion: version || undefined,
+          owner: destinationOwner,
+          ...(scheduled
+            ? {
+                agendaId: activationCalendar!.id,
+                responsibleUserId: responsible!.id,
+                startsAt: commercialSlotStartsAt(
+                  scheduled.date,
+                  scheduled.time,
+                ),
+                description: scheduled.description,
+              }
+            : {}),
         },
-      });
+        scheduled
+          ? "Treinamento agendado e cliente encaminhado com sucesso."
+          : "Cliente encaminhado para acompanhamento.",
+      );
+      if (!result)
+        throw new Error(
+          "Não foi possível concluir o encaminhamento. Tente novamente.",
+        );
+      return true;
+    } finally {
+      routingInFlight.current = false;
+      setRoutingBusy(false);
     }
   };
-  const scheduleOnboarding = async ({
-    description,
-    customerId,
-    version,
-  }: {
+  const scheduleOnboarding = (details: {
     description: string;
     customerId: string;
     version: string;
-  }) => {
-    const cleanClientId = customerId.replace(/\D/g, "");
-    if (!/^\d{6}$/.test(cleanClientId)) {
-      setClientIdError("Informe o ID do cliente com 6 números.");
-      return false;
-    }
-    if (!version.trim()) return false;
-    if (followUpTrack === "lia" && !liaPlan.trim()) {
-      setClientIdError("Informe o plano LIA contratado antes de agendar.");
-      return false;
-    }
-    const type = findJourneyAgendaType(
-      agendaModule?.types ?? [],
-      "Treinamento",
+  }) =>
+    sendToOnboarding(
+      { date: slotDate, time: slot, description: details.description },
+      { clientId: details.customerId, version: details.version },
     );
-    const status = agendaModule?.statuses.find((entry) => entry.active);
-    const responsible =
-      agendaModule?.collaborators.find(
-        (entry) =>
-          Boolean(
-            activationCalendar &&
-            entry.agendaIds?.includes(activationCalendar.id),
-          ) &&
-          (entry.id === destinationEmployee?.id ||
-            entry.name === destinationEmployee?.displayName),
-      ) ??
-      agendaModule?.collaborators.find((entry) =>
-        Boolean(
-          activationCalendar &&
-          entry.agendaIds?.includes(activationCalendar.id),
-        ),
-      );
-    if (!activationCalendar || !type || !status || !responsible || !slot)
-      return false;
-    if (!availableSlotsFor(slotDate, Date.now()).includes(slot)) {
-      setClientIdError(
-        "Este horário não está mais disponível. Escolha outro horário.",
-      );
-      setShowScheduleModal(false);
-      return false;
-    }
-    const startsAt = commercialSlotStartsAt(slotDate, slot);
-    const endsAt = new Date(
-      new Date(startsAt).getTime() + 60 * 60 * 1000,
-    ).toISOString();
-    const created = await onAgendaOperation(
-      {
-        action: "createAgendaCommitment",
-        agendaId: activationCalendar.id,
-        agendaTypeId: type.id,
-        agendaStatusId: status.id,
-        responsibleUserId: responsible.id,
-        title: `Kick off (${version.trim()}) - ID: ${cleanClientId}`,
-        description:
-          description || `Kick off comercial de ${lead.customer || item.title}`,
-        startsAt,
-        endsAt,
-        participantUserIds: [],
-        recurrence: "none",
-      },
-      "Kick off agendado com sucesso.",
-    );
-    if (created) {
-      await sendToOnboarding(
-        { date: slotDate, time: slot, startsAt, commitmentId: created.id },
-        { clientId: cleanClientId, version: version.trim() },
-      );
-      return true;
-    }
-    return false;
-  };
   const qualifyAndCopy = async () => {
     const target = crmFunnels.find(
       (entry) => entry.entry.id === targetFunnelId,
@@ -16647,10 +16531,14 @@ function CommercialLeadDrawer({
           }}
           onSave={saveLead}
           onSendToOnboarding={async () => {
-            await sendToOnboarding(undefined, {
-              clientId: lead.clientId || clientId,
-              version: lead.version || releaseVersion,
-            });
+            try {
+              await sendToOnboarding(undefined, {
+                clientId: lead.clientId || clientId,
+                version: lead.version || releaseVersion,
+              });
+            } catch {
+              // The operation already displays the backend error in the notification toast.
+            }
           }}
         />
         {editing && (
@@ -17189,7 +17077,12 @@ function CommercialLeadDrawer({
                             },
                           ],
                         }).then((saved) => {
-                          if (saved) setShowOnboarding(true);
+                          if (saved) {
+                            setCheckingSlots(false);
+                            setShowAvailability(false);
+                            setSlot("");
+                            setShowOnboarding(true);
+                          }
                         });
                       }}
                     >
@@ -17290,43 +17183,7 @@ function CommercialLeadDrawer({
                     )}
                   </select>
                 </label>
-                {showOnboarding && (
-                  <>
-                    <label>
-                      ID do cliente *
-                      <input
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={clientId}
-                        onChange={(event) => {
-                          setClientId(
-                            event.target.value.replace(/\D/g, "").slice(0, 6),
-                          );
-                          setClientIdError("");
-                        }}
-                        placeholder="000000"
-                      />
-                    </label>
-                    <label>
-                      Versão *
-                      <input
-                        value={releaseVersion}
-                        onChange={(event) =>
-                          setReleaseVersion(event.target.value)
-                        }
-                        placeholder="Ex.: Essencial"
-                      />
-                    </label>
-                  </>
-                )}
               </div>
-              {showOnboarding && followUpTrack === "lia" && (
-                <LiaPlanField
-                  catalogs={catalogs}
-                  value={liaPlan}
-                  onChange={setLiaPlan}
-                />
-              )}
               <p>
                 {!showOnboarding
                   ? "Consulte os horários disponíveis do CS antes de fechar a oportunidade."
@@ -17343,20 +17200,22 @@ function CommercialLeadDrawer({
                 <div className="drawer-actions">
                   <button
                     className="secondary-button"
-                    disabled={
-                      busy ||
-                      !clientId ||
-                      !releaseVersion ||
-                      (followUpTrack === "lia" && !liaPlan.trim())
-                    }
+                    disabled={busy || routingBusy}
                     onClick={() =>
-                      void sendToOnboarding(undefined, {
-                        clientId,
-                        version: releaseVersion,
-                      })
+                      void sendToOnboarding()
+                        .then((sent) => {
+                          if (sent) onClose();
+                        })
+                        .catch((error: unknown) =>
+                          setClientIdError(
+                            error instanceof Error
+                              ? error.message
+                              : "Não foi possível encaminhar o cliente.",
+                          ),
+                        )
                     }
                   >
-                    Enviar sem agendamento
+                    {routingBusy ? "Enviando…" : "Enviar sem agendamento"}
                   </button>
                   <button
                     className="primary-button"
@@ -17453,9 +17312,7 @@ function CommercialLeadDrawer({
                     <button
                       type="button"
                       className="primary-button commercial-schedule-submit"
-                      disabled={
-                        busy || (followUpTrack === "lia" && !liaPlan.trim())
-                      }
+                      disabled={busy || routingBusy}
                       onClick={() => setShowScheduleModal(true)}
                     >
                       Agendar e enviar
@@ -17772,7 +17629,7 @@ function CommercialLeadDrawer({
             time={slot}
             initialClientId={clientId}
             initialVersion={releaseVersion}
-            busy={busy}
+            busy={busy || routingBusy}
             onClose={() => setShowScheduleModal(false)}
             onConfirm={async (details) => {
               setClientId(details.clientId);
@@ -18895,15 +18752,39 @@ function CommercialAgendaScheduleModal({
   const [description, setDescription] = useState("");
   const [clientId, setClientId] = useState(initialClientId);
   const [version, setVersion] = useState(initialVersion);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const submittingRef = useRef(false);
   const valid =
     /^\d{6}$/.test(clientId.replace(/\D/g, "")) && Boolean(version.trim());
   return (
     <ModalShell
-      title="Agendar e enviar para Onboarding"
+      title="Agendar e enviar para acompanhamento"
       subtitle={`${calendarName} · ${date} às ${time}`}
       onClose={onClose}
     >
-      <div className="form-grid">
+      <form
+        className="form-grid"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (!valid || busy || submittingRef.current) return;
+          submittingRef.current = true;
+          setSubmitting(true);
+          setError("");
+          try {
+            await onConfirm({ description, clientId, version });
+          } catch (caught) {
+            setError(
+              caught instanceof Error
+                ? caught.message
+                : "Não foi possível agendar e enviar. Tente novamente.",
+            );
+          } finally {
+            submittingRef.current = false;
+            setSubmitting(false);
+          }
+        }}
+      >
         <label>
           Versão *
           <input
@@ -18933,19 +18814,25 @@ function CommercialAgendaScheduleModal({
             placeholder="Adicione os detalhes para a agenda."
           />
         </label>
+        {error && (
+          <p className="commercial-schedule-error wide" role="alert">
+            {error}
+          </p>
+        )}
         <div className="form-actions wide">
-          <button type="button" onClick={onClose}>
+          <button type="button" onClick={onClose} disabled={submitting || busy}>
             Cancelar
           </button>
           <button
             className="primary-button"
-            disabled={busy || !valid}
-            onClick={() => void onConfirm({ description, clientId, version })}
+            type="submit"
+            disabled={busy || submitting || !valid}
           >
-            <Save size={15} /> Agendar e enviar
+            <Save size={15} />{" "}
+            {submitting ? "Agendando e enviando…" : "Agendar e enviar"}
           </button>
         </div>
-      </div>
+      </form>
     </ModalShell>
   );
 }
