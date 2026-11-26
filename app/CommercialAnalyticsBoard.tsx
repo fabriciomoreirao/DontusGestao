@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { dateRangeBounds, dateKey, dateRangeLabel } from "@/lib/date-range";
 
 import PaginatedItems from "@/app/PaginatedItems";
 import { useMemo, useState } from "react";
@@ -92,11 +94,19 @@ export default function CommercialAnalyticsBoard({
       (stage === "all" || entry.stage === stage) &&
       (origin === "all" || entry.origin === origin),
   );
+  const periodMode = mode === "month" ? "range" : "week";
+  const bounds = dateRangeBounds(month);
+  const sourceDates = source
+    .flatMap((entry) => [entry.createdDate, entry.saleDate])
+    .filter(Boolean)
+    .sort();
+  const effectiveRange = `${bounds.from || sourceDates[0] || dateKey(new Date())}..${bounds.to || [dateKey(new Date()), ...sourceDates].sort().at(-1)}`;
   const period = commercialAnalyticsPeriod(
-    mode,
-    mode === "month" ? month : week,
+    periodMode,
+    mode === "month" ? effectiveRange : week,
   );
-  const previousPeriod = previousCommercialPeriod(period, mode);
+  if (mode === "month") period.label = dateRangeLabel(month);
+  const previousPeriod = previousCommercialPeriod(period, periodMode);
   const current = summarizeCommercialPeriod(entries, period),
     previous = summarizeCommercialPeriod(entries, previousPeriod);
   const { cohort, sales, open, revenue, pipeline, ticket, conversion } =
@@ -142,7 +152,7 @@ export default function CommercialAnalyticsBoard({
       label: cursor.label,
       value: summarizeCommercialPeriod(entries, cursor).revenue,
     });
-    cursor = previousCommercialPeriod(cursor, mode);
+    cursor = previousCommercialPeriod(cursor, periodMode);
   }
   const stale = open.filter(
     (entry) => now - Date.parse(entry.item.updated_at) > 7 * 86400000,
@@ -266,22 +276,16 @@ export default function CommercialAnalyticsBoard({
                 setMode(event.target.value as "month" | "week")
               }
             >
-              <option value="month">Mensal</option>
+              <option value="month">Período</option>
               <option value="week">Semanal</option>
             </select>
           </label>
           {mode === "month" ? (
-            <label>
-              Mês
-              <input
-                type="month"
-                aria-label="Mês dos indicadores"
-                value={month}
-                onChange={(event) => {
-                  if (event.target.value) setMonth(event.target.value);
-                }}
-              />
-            </label>
+            <DateRangeFilter
+              value={month}
+              onChange={setMonth}
+              label="Período dos indicadores"
+            />
           ) : (
             <label>
               Semana de

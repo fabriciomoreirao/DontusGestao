@@ -1,5 +1,11 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { inDateRange, dateRangeLabel } from "@/lib/date-range";
 import { workspaceFileUrl } from "@/lib/workspace-upload";
+import {
+  DEFAULT_RECRUITMENT_STAGES,
+  recruitmentStages,
+} from "@/lib/recruitment";
 
 import CustomerSelect from "@/app/CustomerSelect";
 
@@ -266,6 +272,7 @@ import {
   CLIENT_CHECKLIST_EVENT,
   CLIENT_RECORD_EVENT,
   REMINDER_COMPOSER_EVENT,
+  openAgendaComposer,
   ReminderCardEnhancer,
   type ReminderContext,
 } from "@/app/ReminderAction";
@@ -1233,6 +1240,9 @@ export default function OperationsApp() {
       : (new URLSearchParams(window.location.search).get("room") ?? ""),
   );
   const [kanbanMonth, setKanbanMonth] = useState(() => brasiliaMonthKey());
+  const showFunctionPeriod =
+    kanbanModules.has(active) &&
+    !["tasks", "lia", "referrals", "cancellations"].includes(active);
   const [reminderClock, setReminderClock] = useState(() => Date.now());
   const [locationSearch, setLocationSearch] = useState("");
   const presenceCache = useRef<ChatPresence[]>([]);
@@ -2234,8 +2244,9 @@ export default function OperationsApp() {
     success: string,
   ): Promise<OperationResult> => {
     if (String(payload.action ?? "").includes("InternalChat")) {
+      const backgroundSend = payload.action === "sendInternalChatMessage";
       chatRevision.current += 1;
-      setChatBusy((current) => current + 1);
+      if (!backgroundSend) setChatBusy((current) => current + 1);
       try {
         const response = await fetch("/api/operations", {
           method: "POST",
@@ -2279,7 +2290,7 @@ export default function OperationsApp() {
         });
         return false;
       } finally {
-        setChatBusy((current) => current - 1);
+        if (!backgroundSend) setChatBusy((current) => current - 1);
       }
     }
     const previousSaleItem = dataRef.current?.items.find(
@@ -2532,7 +2543,8 @@ export default function OperationsApp() {
 
   const workItems = data?.items;
   const kanbanItems = useMemo(() => {
-    if (!workItems || !kanbanModules.has(active)) return workItems ?? [];
+    if (!workItems || !kanbanModules.has(active) || active === "cancellations")
+      return workItems ?? [];
     const currentMonth = brasiliaMonthKey();
     const requestedCard = new URLSearchParams(window.location.search).get(
       "card",
@@ -2559,8 +2571,8 @@ export default function OperationsApp() {
         }
       }
       const matchesMonth =
-        brasiliaMonthKey(item.created_at) === kanbanMonth ||
-        brasiliaMonthKey(item.updated_at) === kanbanMonth;
+        inDateRange(item.created_at, kanbanMonth) ||
+        inDateRange(item.updated_at, kanbanMonth);
       if (active === "commercial" && commercialFlow === "crm") {
         const terminal = /(ganh|perdid|cancel|finaliz|conclu)/i.test(
           `${item.status} ${item.description}`,
@@ -2593,8 +2605,8 @@ export default function OperationsApp() {
                   linkedTaskId &&
                   (task.id === linkedTaskId || task.protocol === linkedTaskId),
                 ) ||
-                brasiliaMonthKey(task.createdAt) === kanbanMonth ||
-                brasiliaMonthKey(task.updatedAt) === kanbanMonth,
+                inDateRange(task.createdAt, kanbanMonth) ||
+                inDateRange(task.updatedAt, kanbanMonth),
             ),
           }
         : null,
@@ -2607,8 +2619,8 @@ export default function OperationsApp() {
             ...suggestionModule,
             suggestions: suggestionModule.suggestions.filter(
               (entry) =>
-                brasiliaMonthKey(entry.createdAt) === kanbanMonth ||
-                brasiliaMonthKey(entry.updatedAt) === kanbanMonth,
+                inDateRange(entry.createdAt, kanbanMonth) ||
+                inDateRange(entry.updatedAt, kanbanMonth),
             ),
           }
         : null,
@@ -3764,6 +3776,7 @@ export default function OperationsApp() {
           <div
             className={[
               "app-shell",
+              active === "internalChat" ? "internal-chat-active" : "",
               theme === "dark" ? "theme-dark" : "theme-light",
               backgroundImage && active !== "internalChat"
                 ? "has-workspace-background"
@@ -3889,7 +3902,7 @@ export default function OperationsApp() {
             )}
 
             <main
-              className="main"
+              className={`main ${active === "internalChat" ? "internal-chat-active" : ""}`}
               style={
                 active === "internalChat" ? undefined : workspaceBackgroundStyle
               }
@@ -3939,25 +3952,6 @@ export default function OperationsApp() {
                   onSelectResult={selectGlobalSearchResult}
                 />
                 <div className="topbar-actions">
-                  {kanbanModules.has(active) &&
-                    active !== "tasks" &&
-                    active !== "lia" &&
-                    active !== "referrals" &&
-                    !indicatorsOpen && (
-                      <label className="topbar-month-filter">
-                        <span>Mês</span>
-                        <input
-                          aria-label="Filtrar mês do quadro"
-                          type="month"
-                          value={kanbanMonth}
-                          onChange={(event) =>
-                            setKanbanMonth(
-                              event.target.value || brasiliaMonthKey(),
-                            )
-                          }
-                        />
-                      </label>
-                    )}
                   <button
                     className="icon-button background-shortcut"
                     onClick={() =>
@@ -4127,7 +4121,7 @@ export default function OperationsApp() {
               <div
                 id="workspace-content"
                 tabIndex={-1}
-                className={`content ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}
+                className={`content ${active === "internalChat" ? "internal-chat-active" : ""} ${(indicatorsOpen && canViewOperationIndicators) || historyClientId ? "indicators-page-active" : ""}`}
               >
                 <Suspense
                   fallback={
@@ -4178,13 +4172,20 @@ export default function OperationsApp() {
                     )
                   ) : (
                     <>
-                      {operationContext && canViewOperationIndicators && (
+                      {((operationContext && canViewOperationIndicators) ||
+                        showFunctionPeriod) && (
                         <OperationIndicatorsLauncher
                           pageKey={`${active}:${commercialFlow}:${csFlow}`}
-                          onOpen={() => {
-                            setGeneralIndicators(false);
-                            openIndicatorsPage();
-                          }}
+                          period={showFunctionPeriod ? kanbanMonth : undefined}
+                          onPeriodChange={setKanbanMonth}
+                          onOpen={
+                            canViewOperationIndicators
+                              ? () => {
+                                  setGeneralIndicators(false);
+                                  openIndicatorsPage();
+                                }
+                              : undefined
+                          }
                           onGeneral={
                             active === "cs" && csFlow === "onboarding"
                               ? () => {
@@ -8058,10 +8059,14 @@ function OperationIndicatorsLauncher({
   pageKey,
   onOpen,
   onGeneral,
+  period,
+  onPeriodChange,
 }: {
   pageKey: string;
-  onOpen: () => void;
+  onOpen?: () => void;
   onGeneral?: () => void;
+  period?: string;
+  onPeriodChange: (value: string) => void;
 }) {
   const [target, setTarget] = useState<Element | null>(null);
   useEffect(() => {
@@ -8081,15 +8086,28 @@ function OperationIndicatorsLauncher({
   }, [pageKey]);
   return target
     ? createPortal(
-        <>
-          <button
-            type="button"
-            className="operation-indicators-button"
-            onClick={onOpen}
-          >
-            <ChartNoAxesCombined size={17} />
-            <span>Indicadores</span>
-          </button>
+        <div
+          className="operation-function-tools"
+          role="group"
+          aria-label="Pesquisa e indicadores"
+        >
+          {onOpen && (
+            <button
+              type="button"
+              className="operation-indicators-button"
+              onClick={onOpen}
+            >
+              <ChartNoAxesCombined size={17} />
+              <span>Indicadores</span>
+            </button>
+          )}
+          {period !== undefined && (
+            <DateRangeFilter
+              value={period}
+              onChange={onPeriodChange}
+              label="Período do quadro"
+            />
+          )}
           {onGeneral && (
             <button
               type="button"
@@ -8100,7 +8118,7 @@ function OperationIndicatorsLauncher({
               <span>Indicadores gerais</span>
             </button>
           )}
-        </>,
+        </div>,
         target,
       )
     : null;
@@ -10253,7 +10271,7 @@ function ModuleView({
                   {statusItems.length === 0 ? (
                     <p className="column-empty">Solte um card aqui</p>
                   ) : (
-                    <PaginatedItems mode="cards" label="registros">
+                    <PaginatedItems mode="kanban" label="registros">
                       {statusItems.map((item) => (
                         <WorkCard
                           key={item.id}
@@ -11209,14 +11227,6 @@ const commercialColors = [
   "#22c55e",
   "#14b8a6",
   "#06b6d4",
-];
-const DEFAULT_RECRUITMENT_STAGES = [
-  "Currículo",
-  "Triagem",
-  "Entrevista",
-  "Teste",
-  "Aprovado",
-  "Reprovado",
 ];
 const defaultRetentionStages: NonNullable<CommercialDetails["stages"]> = [
   {
@@ -13559,7 +13569,7 @@ function DirectSalesView({
     ),
   ];
   const filtered = sales.filter(({ item, detail }) => {
-    if (month && !detail.saleDate.startsWith(month)) return false;
+    if (!inDateRange(detail.saleDate, month)) return false;
     if (seller !== "all" && detail.seller !== seller) return false;
     if (
       product !== "all" &&
@@ -13615,21 +13625,14 @@ function DirectSalesView({
       <section className="direct-sales-summary panel">
         <div>
           <span>Período selecionado</span>
-          <strong>
-            {month
-              ? new Date(`${month}-02T12:00:00`).toLocaleDateString("pt-BR", {
-                  month: "long",
-                  year: "numeric",
-                })
-              : "Todos os períodos"}
-          </strong>
+          <strong>{dateRangeLabel(month)}</strong>
         </div>
         <div>
           <span>Vendas encontradas</span>
           <strong>{filtered.length}</strong>
         </div>
         <div className="direct-sales-total">
-          <span>Valor total do mês</span>
+          <span>Valor total do período</span>
           <strong>{formatMoney(total)}</strong>
           <small>Descontos já aplicados</small>
         </div>
@@ -13643,14 +13646,11 @@ function DirectSalesView({
             placeholder="Pesquisar por ID, nome, origem ou versão"
           />
         </label>
-        <label>
-          Mês
-          <input
-            type="month"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-          />
-        </label>
+        <DateRangeFilter
+          value={month}
+          onChange={setMonth}
+          label="Período das vendas"
+        />
         <label>
           Vendedor
           <SearchablePeopleSelect
@@ -19973,6 +19973,9 @@ type EnterpriseFeature = {
   notes: string;
 };
 type EnterpriseUnit = {
+  followUp?: NonNullable<ReturnType<typeof parseJourney>>;
+  followUpOwner?: string;
+  followUpUpdatedAt?: string;
   sourceLeadId?: string;
   saleObservation?: string;
   trainingRequired?: boolean;
@@ -20044,6 +20047,11 @@ const parseEnterpriseNetwork = (value: string): EnterpriseNetwork | null => {
             ? entry.units.map((unit) => ({
                 id: unit.id ?? networkId(),
                 customerId: unit.customerId,
+                followUp: unit.followUp
+                  ? (parseJourney(JSON.stringify(unit.followUp)) ?? undefined)
+                  : undefined,
+                followUpOwner: unit.followUpOwner,
+                followUpUpdatedAt: unit.followUpUpdatedAt,
                 sourceLeadId: unit.sourceLeadId,
                 saleObservation: unit.saleObservation,
                 trainingRequired:
@@ -20096,7 +20104,7 @@ const enterpriseNetworkFor = (
     ...network,
     units: network.units.map((unit) => ({
       ...unit,
-      ...(records.length
+      ...(records.length || unit.followUp
         ? strategicTracking(unit, item.id, records)
         : {
             trainingPending:
@@ -20453,15 +20461,17 @@ function EnterpriseNetworksModule({
             <EmptyState text="Nenhuma rede cadastrada." />
           ) : (
             <>
-              {filtered.map((item) => (
-                <EnterpriseNetworkCard
-                  key={item.id}
-                  item={item}
-                  network={enterpriseNetworkFor(item)}
-                  featureOptions={featureOptions}
-                  onOpen={() => setSelected(item)}
-                />
-              ))}
+              <PaginatedItems mode="kanban" label="cards">
+                {filtered.map((item) => (
+                  <EnterpriseNetworkCard
+                    key={item.id}
+                    item={item}
+                    network={enterpriseNetworkFor(item)}
+                    featureOptions={featureOptions}
+                    onOpen={() => setSelected(item)}
+                  />
+                ))}
+              </PaginatedItems>
             </>
           )}
         </section>
@@ -20818,10 +20828,21 @@ function EnterpriseNetworkDrawer({
         .sort()
         .at(-1)
     : undefined;
-  const unitJourney = unit
+  const legacyJourney = unit
     ? (strategicUnitJourney(unit, item.id, items)?.record as
         WorkItem | undefined)
     : undefined;
+  const unitJourney = unit?.followUp
+    ? {
+        ...item,
+        title: unit.name,
+        customer_id: unit.customerId || null,
+        customer_name: unit.name,
+        owner: unit.followUpOwner || item.owner,
+        description: JSON.stringify(unit.followUp),
+        updated_at: unit.followUpUpdatedAt || item.updated_at,
+      }
+    : legacyJourney;
   const openedJourneyDetail = openedJourney
     ? parseJourney(openedJourney.description)
     : null;
@@ -20948,44 +20969,17 @@ function EnterpriseNetworkDrawer({
         },
       ],
     });
-    const result = await operate(
-      {
-        action: "createWorkItem",
-        module: "cs",
-        recordType: "Acompanhamento de ativação",
-        title: unit.name,
-        customerId: linkedCustomer?.id || unit.customerId || null,
-        customerName: unit.name,
-        owner: item.owner || currentUser.displayName,
-        team: "Sucesso do Cliente · Ativação",
-        status: "Em acompanhamento",
-        priority: "P3",
-        amountCents: 0,
-        description,
-      },
-      "Acompanhamento da unidade criado com sucesso.",
-    );
-    if (!result || !result.id) return;
-    await acknowledge();
+    // The journey belongs to the unit; opening it never creates another board card.
     setOpenedJourney({
-      id: result.id,
-      module: "cs",
-      record_type: "Acompanhamento de ativação",
+      ...item,
       title: unit.name,
       customer_id: linkedCustomer?.id || unit.customerId || null,
       customer_name: unit.name,
-      owner: item.owner || currentUser.displayName,
-      team: "Sucesso do Cliente · Ativação",
-      status: "Em acompanhamento",
-      priority: "P3",
-      due_at: null,
-      sla_due_at: null,
-      amount_cents: 0,
+      owner: unit.followUpOwner || item.owner || currentUser.displayName,
       description,
-      version: 1,
       created_at: createdAt,
-      updated_at: createdAt,
     });
+    await acknowledge();
   };
   return (
     <>
@@ -21321,40 +21315,38 @@ function EnterpriseNetworkDrawer({
             unitId: unit.id,
             unitName: unit.name,
           }}
-          onConferenceResolved={async (phase) => {
-            if (phase !== "finished" || unit.status === "Finalizado") return;
-            await save(
-              {
-                ...network,
-                units: network.units.map((entry) =>
-                  entry.id === unit.id
-                    ? {
-                        ...entry,
-                        status: "Finalizado",
-                        lastAnalysis: new Date().toISOString().slice(0, 10),
-                      }
-                    : entry,
-                ),
-              },
-              `Unidade ${unit.name} finalizada após aprovação da conferência.`,
-            );
-          }}
           onClose={() => setOpenedJourney(null)}
           operate={operate}
           onSave={async (
             payload,
             success = "Acompanhamento atualizado com sucesso.",
           ) => {
-            const result = await operate(
+            const nextJourney = parseJourney(
+              String(payload.description || openedJourney.description),
+            );
+            if (!nextJourney) return false;
+            const updatedAt = new Date().toISOString();
+            const result = await save(
               {
-                action: "updateWorkItem",
-                id: openedJourney.id,
-                title: openedJourney.title,
-                owner: openedJourney.owner,
-                customerName: openedJourney.customer_name,
-                amountCents: openedJourney.amount_cents,
-                version: openedJourney.version,
-                ...payload,
+                ...network,
+                units: network.units.map((entry) =>
+                  entry.id === unit.id
+                    ? {
+                        ...entry,
+                        followUp: nextJourney,
+                        followUpOwner: String(
+                          payload.owner || openedJourney.owner,
+                        ),
+                        followUpUpdatedAt: updatedAt,
+                        pendingFollowUp: false,
+                        status:
+                          nextJourney.phase === "finished"
+                            ? "Finalizado"
+                            : nextJourney.status || entry.status,
+                        lastAnalysis: updatedAt.slice(0, 10),
+                      }
+                    : entry,
+                ),
               },
               success,
             );
@@ -22275,7 +22267,7 @@ function CustomerSuccessModule({
             </p>
           </div>
         ) : (
-          <PaginatedItems mode="cards" label="registros">
+          <PaginatedItems mode="kanban" label="registros">
             {filtered.map((item) => {
               const journey = parseCsJourney(item.description);
               return (
@@ -23751,16 +23743,18 @@ function RecruitmentView({
                 }
               </b>
             </header>
-            {candidates
-              .filter((candidate) => candidate.status === stage.name)
-              .map((candidate) => (
-                <RecruitmentCandidateCard
-                  candidate={candidate}
-                  busy={busy}
-                  key={candidate.id}
-                  onSelect={() => setSelected(candidate)}
-                />
-              ))}
+            <PaginatedItems mode="kanban" label="cards">
+              {candidates
+                .filter((candidate) => candidate.status === stage.name)
+                .map((candidate) => (
+                  <RecruitmentCandidateCard
+                    candidate={candidate}
+                    busy={busy}
+                    key={candidate.id}
+                    onSelect={() => setSelected(candidate)}
+                  />
+                ))}
+            </PaginatedItems>
           </article>
         ))}
       </section>
@@ -23873,15 +23867,12 @@ function RecruitmentWorkflowView({
   const stageTemplates = catalogs
     .filter((entry) => entry.catalog === "recruitmentStageTemplate")
     .filter((entry) => recruitmentTemplateStages(entry).length > 0);
-  const defaultStages = stageTemplates[0]
-    ? recruitmentTemplateStages(stageTemplates[0])
-    : configuredStages;
+  const defaultStages = recruitmentStages(
+    stageTemplates[0]
+      ? recruitmentTemplateStages(stageTemplates[0])
+      : configuredStages,
+  );
   const info = (item: WorkItem) => recruitmentProcessDetails(item.description);
-  const processStages = process
-    ? info(process).stages?.filter(Boolean).length
-      ? info(process).stages!.filter(Boolean)
-      : defaultStages
-    : defaultStages;
   const allCandidates = data.items.filter(
     (item) => item.module === "admin" && item.record_type === "Candidato",
   );
@@ -23926,6 +23917,13 @@ function RecruitmentWorkflowView({
   const candidates = matchingCandidates
     .filter((item) => !process || info(item).processId === process.id)
     .filter(matchesCandidateSearch);
+  const processStages = recruitmentStages(
+    process ? info(process).stages : defaultStages,
+    defaultStages,
+    allCandidates
+      .filter((item) => !process || info(item).processId === process.id)
+      .map((item) => item.status),
+  );
   const saveProcess = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -24168,6 +24166,20 @@ function RecruitmentWorkflowView({
               </small>
             </span>
             <button
+              type="button"
+              className="secondary-button"
+              onClick={() =>
+                openAgendaComposer({
+                  module: "admin",
+                  entityId: process.id,
+                  title: `Entrevista · ${process.title}`,
+                  summary: info(process).vacancy || process.team,
+                })
+              }
+            >
+              <CalendarDays size={16} /> Agendar entrevista
+            </button>
+            <button
               className="primary-button"
               onClick={() => setNewCandidate(true)}
             >
@@ -24202,21 +24214,23 @@ function RecruitmentWorkflowView({
                   <b>
                     {
                       candidates.filter(
-                        (candidate) => candidate.status === stage,
+                        (candidate) => candidate.status.trim() === stage,
                       ).length
                     }
                   </b>
                 </header>
-                {candidates
-                  .filter((candidate) => candidate.status === stage)
-                  .map((candidate) => (
-                    <RecruitmentCandidateCard
-                      candidate={candidate}
-                      busy={busy}
-                      key={candidate.id}
-                      onSelect={() => setSelected(candidate)}
-                    />
-                  ))}
+                <PaginatedItems mode="kanban" label="cards">
+                  {candidates
+                    .filter((candidate) => candidate.status.trim() === stage)
+                    .map((candidate) => (
+                      <RecruitmentCandidateCard
+                        candidate={candidate}
+                        busy={busy}
+                        key={candidate.id}
+                        onSelect={() => setSelected(candidate)}
+                      />
+                    ))}
+                </PaginatedItems>
               </article>
             ))}
           </section>

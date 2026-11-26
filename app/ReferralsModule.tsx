@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { inDateRange, dateKey, dateRangeLabel } from "@/lib/date-range";
 
 import PaginatedItems from "@/app/PaginatedItems";
 
@@ -11,7 +13,6 @@ import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { CommissionConfirmationControl } from "@/app/CommissionConfirmations";
 import { useReminderFilter } from "@/app/ReminderFilters";
-import { commissionDate } from "@/lib/commission-rules";
 
 import {
   BadgeCheck,
@@ -113,7 +114,6 @@ const date = (value: string) =>
         new Date(`${value.slice(0, 10)}T12:00:00`),
       )
     : "—";
-const monthKey = (value: string) => commissionDate(value)?.slice(0, 7) ?? "";
 const uid = () => crypto.randomUUID();
 export function parseReferral(raw: string): ReferralDetail | null {
   try {
@@ -283,12 +283,12 @@ export default function ReferralsModule({
           .toLowerCase()
           .includes(query.toLowerCase())) &&
       (owner === "all" || item.owner === owner) &&
-      (!month ||
-        monthKey(
-          ["approved", "rejected"].includes(detail.phase)
-            ? detail.decisionAt || detail.date
-            : detail.date,
-        ) === month),
+      inDateRange(
+        ["approved", "rejected"].includes(detail.phase)
+          ? detail.decisionAt || detail.date
+          : detail.date,
+        month,
+      ),
   );
   const update = async (
     item: ReferralWorkItem,
@@ -466,61 +466,71 @@ export default function ReferralsModule({
             <option key={name}>{name}</option>
           ))}
         </select>
-        <label className="operational-month-filter">
-          <span>
-            {["tracking", "conference"].includes(tab)
-              ? "Mês/ano da indicação"
-              : "Mês/ano da decisão"}
-          </span>
-          <input
-            type="month"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-            title="Limpe o campo para consultar todos os meses"
-          />
-        </label>
+        <DateRangeFilter
+          value={month}
+          onChange={setMonth}
+          label="Período das indicações"
+        />
         <strong>{visible.length} registro(s)</strong>
-        {["approved", "rejected", "decisions"].includes(tab) && (
-          <CommissionConfirmationControl
-            module="referrals"
-            scope="referrals"
-            competence={month}
-            entries={visible.map(({ item }) => ({
-              id: item.id,
-              version: item.version,
-            }))}
-            complete={
-              Boolean(month) &&
-              visible.length > 0 &&
-              visible.every(({ detail }) =>
-                ["approved", "rejected"].includes(detail.phase),
-              )
-            }
-            canGenerate={canManage}
-            employee={owner}
-            filters={{
-              Competência: month,
-              Responsável: owner === "all" ? "Todos" : owner,
-              Busca: query || "Sem busca",
-              Decisão:
-                tab === "decisions"
-                  ? "Todas"
-                  : tab === "approved"
-                    ? "Aprovadas"
-                    : "Reprovadas",
-              Lembretes: {
-                all: "Todos",
-                today: "Para hoje",
-                scheduled: "Com agendamento",
-                none: "Sem agendamento",
-              }[reminderFilter.mode],
-            }}
-          />
-        )}
+        {["approved", "rejected", "decisions"].includes(tab) &&
+          [
+            ...new Set(
+              visible.map(({ detail }) =>
+                dateKey(detail.decisionAt || detail.date).slice(0, 7),
+              ),
+            ),
+          ]
+            .filter(Boolean)
+            .sort()
+            .map((confirmationMonth) => (
+              <CommissionConfirmationControl
+                key={confirmationMonth}
+                periodLabel={dateRangeLabel(month)}
+                module="referrals"
+                scope="referrals"
+                competence={confirmationMonth}
+                entries={visible
+                  .filter(
+                    ({ detail }) =>
+                      dateKey(detail.decisionAt || detail.date).slice(0, 7) ===
+                      confirmationMonth,
+                  )
+                  .map(({ item }) => ({
+                    id: item.id,
+                    version: item.version,
+                  }))}
+                complete={
+                  visible.length > 0 &&
+                  visible.every(({ detail }) =>
+                    ["approved", "rejected"].includes(detail.phase),
+                  )
+                }
+                canGenerate={canManage}
+                employee={owner}
+                filters={{
+                  Período: dateRangeLabel(month),
+                  Competência: confirmationMonth,
+                  Responsável: owner === "all" ? "Todos" : owner,
+                  Busca: query || "Sem busca",
+                  Decisão:
+                    tab === "decisions"
+                      ? "Todas"
+                      : tab === "approved"
+                        ? "Aprovadas"
+                        : "Reprovadas",
+                  Lembretes: {
+                    all: "Todos",
+                    today: "Para hoje",
+                    scheduled: "Com agendamento",
+                    none: "Sem agendamento",
+                  }[reminderFilter.mode],
+                }}
+              />
+            ))}
       </section>
       <div className="referral-grid">
         {
-          <PaginatedItems mode="cards" label="indicações">
+          <PaginatedItems mode="kanban" label="indicações">
             {visible.map(({ item, detail }) => (
               <article
                 data-reminder-entity-id={item.id}

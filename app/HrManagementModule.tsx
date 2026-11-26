@@ -1,4 +1,5 @@
 "use client";
+import PaginatedItems from "@/app/PaginatedItems";
 import { workspaceFileUrl } from "@/lib/workspace-upload";
 
 import CommentHistory from "@/app/CommentHistory";
@@ -355,14 +356,16 @@ export default function HrManagementModule({
           </div>
         ) : (
           <>
-            {visible.map(({ item, profile }) => (
-              <HrEmployeeCard
-                key={item.id}
-                item={item}
-                profile={profile}
-                onOpen={() => setSelected(item)}
-              />
-            ))}
+            <PaginatedItems mode="kanban" label="cards">
+              {visible.map(({ item, profile }) => (
+                <HrEmployeeCard
+                  key={item.id}
+                  item={item}
+                  profile={profile}
+                  onOpen={() => setSelected(item)}
+                />
+              ))}
+            </PaginatedItems>
           </>
         )}
       </section>

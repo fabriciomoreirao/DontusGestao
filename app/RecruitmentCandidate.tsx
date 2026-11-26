@@ -182,8 +182,14 @@ export function CandidateDrawer({
   const context = {
     module: "admin",
     entityId: candidate.id,
-    title: candidate.title,
-    summary: payload.vacancy || candidate.team,
+    title: `Entrevista · ${candidate.title}`,
+    summary: [
+      payload.vacancy || candidate.team,
+      candidate.customer_name,
+      candidate.owner,
+    ]
+      .filter(Boolean)
+      .join(" · "),
   };
   const stageOptions = [...new Set([candidate.status, ...stages])].filter(
     Boolean,
@@ -293,7 +299,7 @@ export function CandidateDrawer({
               onClick={() => openAgendaComposer(context)}
             >
               <CalendarDays size={14} />
-              Agendar
+              Agendar entrevista
             </button>
           </div>
         </header>
@@ -406,7 +412,7 @@ export function CandidateDrawer({
               </select>
             </label>
             <label className="candidate-field">
-              Feedback interno
+              Evolução / feedback interno
               <CommentInput
                 data-comment-input="true"
                 value={comment}

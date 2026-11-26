@@ -125,7 +125,7 @@ app.MapGet("/health/ready", async (OperationsDbContext db, CancellationToken can
         ? Results.Ok(new { status = "ready" })
         : Results.Problem(statusCode: 503, title: "Banco indisponível"));
 
-app.MapGet("/api/public-overview", async (string? month, HttpResponse response, OperationsDbContext db, CancellationToken cancellationToken) =>
+app.MapGet("/api/public-overview", async (string? month, string? from, string? to, bool? range, HttpResponse response, OperationsDbContext db, CancellationToken cancellationToken) =>
 {
     response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
     var localNow = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3));
@@ -134,14 +134,21 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         : new DateTime(localNow.Year, localNow.Month, 1);
     var localStart = new DateTimeOffset(reference.Year, reference.Month, 1, 0, 0, 0, TimeSpan.FromHours(-3));
     var localEnd = localStart.AddMonths(1);
+    if (range == true)
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var style = System.Globalization.DateTimeStyles.None;
+        var hasFrom = DateOnly.TryParseExact(from, "yyyy-MM-dd", culture, style, out var fromDate);
+        var hasTo = DateOnly.TryParseExact(to, "yyyy-MM-dd", culture, style, out var toDate);
+        if (!string.IsNullOrEmpty(from) && !hasFrom || !string.IsNullOrEmpty(to) && !hasTo || hasFrom && hasTo && fromDate > toDate)
+            return Results.Problem(statusCode: 400, title: "Informe um período válido.");
+        localStart = hasFrom ? new DateTimeOffset(fromDate.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(-3))
+            : DateTimeOffset.UnixEpoch.ToOffset(TimeSpan.FromHours(-3));
+        localEnd = hasTo ? new DateTimeOffset(toDate.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(-3)).AddDays(1)
+            : DateTimeOffset.MaxValue;
+    }
     var monthStart = localStart.ToUniversalTime();
     var monthEnd = localEnd.ToUniversalTime();
-    var chartEnd = localNow.Year == reference.Year && localNow.Month == reference.Month
-        ? new DateTimeOffset(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, localNow.Offset).AddDays(1)
-        : localEnd;
-    var days = Enumerable.Range(0, Math.Max(1, (int)(chartEnd - localStart).TotalDays))
-        .Select(index => localStart.AddDays(index).Date)
-        .ToList();
 
     var departments = await db.TaskDepartments.AsNoTracking()
         .Where(entry => entry.Active)
@@ -175,6 +182,25 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
              ((entry.CreatedAt >= monthStart && entry.CreatedAt < monthEnd) || (entry.UpdatedAt >= monthStart && entry.UpdatedAt < monthEnd))))
         .Select(entry => new { entry.Module, entry.RecordType, entry.Team, entry.Owner, entry.Status, entry.AmountCents, entry.Description, entry.CreatedAt, entry.UpdatedAt })
         .ToListAsync(cancellationToken);
+
+    var chartStart = localStart;
+    if (range == true && string.IsNullOrEmpty(from))
+    {
+        var earliest = tasks.Select(entry => entry.CreatedAt).Concat(commitments.Select(entry => entry.StartsAt))
+            .Concat(workItems.Where(entry => entry.Module != "goals").Select(entry => entry.CreatedAt)).DefaultIfEmpty(localNow).Min().ToOffset(TimeSpan.FromHours(-3));
+        chartStart = new DateTimeOffset(earliest.Year, earliest.Month, earliest.Day, 0, 0, 0, earliest.Offset);
+    }
+    var chartEnd = localEnd;
+    if (range == true && string.IsNullOrEmpty(to))
+    {
+        var latest = tasks.Select(entry => entry.CreatedAt).Concat(commitments.Select(entry => entry.StartsAt))
+            .Concat(workItems.Where(entry => entry.Module != "goals").Select(entry => entry.UpdatedAt)).Append(localNow).Max().ToOffset(TimeSpan.FromHours(-3));
+        chartEnd = new DateTimeOffset(latest.Year, latest.Month, latest.Day, 0, 0, 0, latest.Offset).AddDays(1);
+    }
+    else if (range != true && localEnd > localNow && chartStart <= localNow)
+        chartEnd = new DateTimeOffset(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, localNow.Offset).AddDays(1);
+    var days = Enumerable.Range(0, Math.Max(1, (int)(chartEnd - chartStart).TotalDays))
+        .Select(index => chartStart.AddDays(index).Date).ToList();
 
     var services = workItems.Where(entry => entry.Module == "support")
         .Select(entry => ParsePublicService(entry.Team, entry.Owner, entry.Status, entry.Description, entry.CreatedAt))
@@ -341,7 +367,12 @@ app.MapGet("/api/public-overview", async (string? month, HttpResponse response, 
         performanceGoals,
         saleEvents = await SalesCelebrationService.RecentAsync(db, cancellationToken),
         month = localStart.ToString("yyyy-MM"),
-        monthLabel = localStart.ToString("MMMM 'de' yyyy", new System.Globalization.CultureInfo("pt-BR")),
+        monthLabel = range == true
+            ? string.IsNullOrEmpty(from) && string.IsNullOrEmpty(to) ? "Todos os períodos"
+                : string.IsNullOrEmpty(from) ? $"Até {localEnd.AddDays(-1):dd/MM/yyyy}"
+                : string.IsNullOrEmpty(to) ? $"A partir de {localStart:dd/MM/yyyy}"
+                : $"{localStart:dd/MM/yyyy} a {localEnd.AddDays(-1):dd/MM/yyyy}"
+            : localStart.ToString("MMMM 'de' yyyy", new System.Globalization.CultureInfo("pt-BR")),
         refreshAfterSeconds = 15,
         overview = new
         {
@@ -1939,7 +1970,8 @@ operations.MapPost("", async (
             ok = true,
             id,
             internalChatModule = await internalChatService.GetModuleAsync(actor, cancellationToken,
-            roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId)
+            roomId: request.Action == "createInternalChatRoom" ? id : request.RoomId,
+            changedMessageId: request.Action == "sendInternalChatMessage" && request.ChatMessageDelta ? id : null)
         });
     if (request.Action?.Contains("Chat", StringComparison.Ordinal) == true
         || request.Action is "completeWhatsAppCoexistence" or "retryWhatsAppCoexistence")
@@ -2353,6 +2385,7 @@ sealed record ServiceRequestClassification(string Stage, string Priority, string
 
 public sealed class OperationsRequest
 {
+    public bool ChatMessageDelta { get; init; }
     public Dictionary<Guid, long>? KnownWorkItemVersions { get; init; }
     public Guid? CollaboratorId { get; init; }
     public IReadOnlyCollection<ReferralCommissionRuleInput>? ReferralRules { get; init; }

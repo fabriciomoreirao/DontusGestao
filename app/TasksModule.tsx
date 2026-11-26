@@ -1,4 +1,5 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
 import PaginatedItems from "@/app/PaginatedItems";
 
 import CustomerSelect from "@/app/CustomerSelect";
@@ -637,18 +638,11 @@ export default function TasksModule({
           </span>
         </div>
         <div className="tasks-heading-actions module-page-actions">
-          <label className="tasks-competence-filter">
-            <CalendarDays size={16} />
-            <span>Competência</span>
-            <input
-              type="month"
-              aria-label="Filtrar tarefas por competência"
-              value={month}
-              onChange={(event) => {
-                if (event.target.value) onMonthChange(event.target.value);
-              }}
-            />
-          </label>
+          <DateRangeFilter
+            value={month}
+            onChange={onMonthChange}
+            label="Período das tarefas"
+          />
           <button
             type="button"
             className="task-settings-button icon-only"
@@ -1086,123 +1080,128 @@ function Kanban({
               {column.length === 0 && (
                 <p className="task-column-empty">Nenhuma tarefa nesta etapa.</p>
               )}
-              {column.map((task) => (
-                <article
-                  draggable={!busy && canDrag(task)}
-                  tabIndex={0}
-                  role="button"
-                  className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`}
-                  data-reminder-entity-id={task.id}
-                  data-reminder-client-id={task.customerCode}
-                  data-reminder-customer-name={task.customerName}
-                  key={task.id}
-                  onDragStart={(e) => {
-                    beginKanbanDrag(e, "taskId", task.id);
-                    setDraggedId(task.id);
-                  }}
-                  onDragEnd={() => {
-                    setDraggedId("");
-                    document
-                      .querySelectorAll(".task-column.drag-over")
-                      .forEach((column) =>
-                        column.classList.remove("drag-over"),
-                      );
-                  }}
-                  onClick={() => onOpen(task)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.target === event.currentTarget &&
-                      (event.key === "Enter" || event.key === " ")
-                    ) {
-                      event.preventDefault();
-                      onOpen(task);
-                    }
-                  }}
-                >
-                  <div className="task-card-heading">
-                    <strong className="task-card-title">{task.title}</strong>
-                    <TaskClientStateBadge
-                      state={task.clientNotificationState}
-                    />
-                  </div>
-                  <div className="task-card-labels">
-                    <span className="task-card-type">
-                      <CircleDot size={13} />
-                      <span>{task.typeName}</span>
-                    </span>
-                    {taskPriorityRequest(task.history) && (
-                      <Flag
-                        className="task-priority-flag"
-                        size={15}
-                        aria-label="Prioridade solicitada"
+              <PaginatedItems mode="kanban" label="cards">
+                {column.map((task) => (
+                  <article
+                    draggable={!busy && canDrag(task)}
+                    tabIndex={0}
+                    role="button"
+                    className={`task-card ${task.completedAt ? "completed" : task.slaState === "Vencido" ? "overdue" : ""}`}
+                    data-reminder-entity-id={task.id}
+                    data-reminder-client-id={task.customerCode}
+                    data-reminder-customer-name={task.customerName}
+                    key={task.id}
+                    onDragStart={(e) => {
+                      beginKanbanDrag(e, "taskId", task.id);
+                      setDraggedId(task.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedId("");
+                      document
+                        .querySelectorAll(".task-column.drag-over")
+                        .forEach((column) =>
+                          column.classList.remove("drag-over"),
+                        );
+                    }}
+                    onClick={() => onOpen(task)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.target === event.currentTarget &&
+                        (event.key === "Enter" || event.key === " ")
+                      ) {
+                        event.preventDefault();
+                        onOpen(task);
+                      }
+                    }}
+                  >
+                    <div className="task-card-heading">
+                      <strong className="task-card-title">{task.title}</strong>
+                      <TaskClientStateBadge
+                        state={task.clientNotificationState}
                       />
+                    </div>
+                    <div className="task-card-labels">
+                      <span className="task-card-type">
+                        <CircleDot size={13} />
+                        <span>{task.typeName}</span>
+                      </span>
+                      {taskPriorityRequest(task.history) && (
+                        <Flag
+                          className="task-priority-flag"
+                          size={15}
+                          aria-label="Prioridade solicitada"
+                        />
+                      )}
+                    </div>
+                    <div className="task-card-meta">
+                      <span className="task-card-priority">
+                        <i style={{ background: task.priorityColor }} />
+                        {task.priorityName}
+                      </span>
+                      <span
+                        className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}
+                      >
+                        <Clock3 size={12} />{" "}
+                        {task.completedAt
+                          ? "Concluída"
+                          : `${task.slaState} · ${dt(task.slaDueAt)}`}
+                      </span>
+                    </div>
+                    <footer>
+                      <div className="task-card-sector-deadline">
+                        <span className="task-card-department">
+                          <UsersRound size={14} /> {task.departmentName}
+                        </span>
+                        <TaskDeliveryDeadline task={task} compact />
+                      </div>
+                      <span className="task-card-owner">
+                        <CollaboratorAvatar
+                          collaborator={collaborators.find(
+                            (item) => item.id === task.assigneeUserId,
+                          )}
+                        />
+                        <span>
+                          <small>Responsável</small>
+                          <b>{task.assigneeName}</b>
+                        </span>
+                        <ChevronRight
+                          size={17}
+                          className="task-card-open-icon"
+                        />
+                      </span>
+                    </footer>
+                    {canEdit && task.canModify && (
+                      <div className="task-card-bottom-actions">
+                        <span className="task-card-actions">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onEdit(task);
+                            }}
+                            title="Editar tarefa"
+                            aria-label="Editar tarefa"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="delete"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onDelete(task);
+                            }}
+                            title="Excluir tarefa"
+                            aria-label="Excluir tarefa"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </span>
+                      </div>
                     )}
-                  </div>
-                  <div className="task-card-meta">
-                    <span className="task-card-priority">
-                      <i style={{ background: task.priorityColor }} />
-                      {task.priorityName}
-                    </span>
-                    <span
-                      className={`sla-chip ${task.completedAt ? "completed" : task.slaState.toLowerCase().replaceAll(" ", "-")}`}
-                    >
-                      <Clock3 size={12} />{" "}
-                      {task.completedAt
-                        ? "Concluída"
-                        : `${task.slaState} · ${dt(task.slaDueAt)}`}
-                    </span>
-                  </div>
-                  <footer>
-                    <div className="task-card-sector-deadline">
-                      <span className="task-card-department">
-                        <UsersRound size={14} /> {task.departmentName}
-                      </span>
-                      <TaskDeliveryDeadline task={task} compact />
-                    </div>
-                    <span className="task-card-owner">
-                      <CollaboratorAvatar
-                        collaborator={collaborators.find(
-                          (item) => item.id === task.assigneeUserId,
-                        )}
-                      />
-                      <span>
-                        <small>Responsável</small>
-                        <b>{task.assigneeName}</b>
-                      </span>
-                      <ChevronRight size={17} className="task-card-open-icon" />
-                    </span>
-                  </footer>
-                  {canEdit && task.canModify && (
-                    <div className="task-card-bottom-actions">
-                      <span className="task-card-actions">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onEdit(task);
-                          }}
-                          title="Editar tarefa"
-                          aria-label="Editar tarefa"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="delete"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onDelete(task);
-                          }}
-                          title="Excluir tarefa"
-                          aria-label="Excluir tarefa"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </span>
-                    </div>
-                  )}
-                </article>
-              ))}
+                  </article>
+                ))}
+              </PaginatedItems>
             </div>
           </section>
         );

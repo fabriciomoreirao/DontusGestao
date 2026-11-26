@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { inDateRange } from "@/lib/date-range";
 
 import CustomerSelect from "@/app/CustomerSelect";
 import SaleObservation from "@/app/SaleObservation";
@@ -646,6 +648,8 @@ export default function CustomerSuccessJourneyModule({
         .filter((entry): entry is { item: WorkItem; journey: CsJourney } =>
           Boolean(
             entry.journey &&
+            !entry.journey.strategicAccount &&
+            !entry.journey.strategicNetworkId &&
             entry.journey.track === track &&
             (entry.journey.phase !== "validation" || validationAccess.view),
           ),
@@ -1136,7 +1140,7 @@ export default function CustomerSuccessJourneyModule({
       ) : view === "grid" ? (
         <div className="cs-pipeline-grid">
           {
-            <PaginatedItems mode="cards" label="acompanhamentos">
+            <PaginatedItems mode="kanban" label="acompanhamentos">
               {visible.map(({ item, journey }) => (
                 <JourneyCard
                   key={item.id}
@@ -2262,8 +2266,12 @@ export function JourneyDrawer({
   const copyJourneyLink = async () => {
     try {
       await navigator.clipboard.writeText(
-        cardShareUrl("cs", item.id, {
-          csFlow: journey.track === "retention" ? "evolution" : "onboarding",
+        cardShareUrl("cs", strategicContext?.networkId || item.id, {
+          csFlow: strategicContext
+            ? "enterprise"
+            : journey.track === "retention"
+              ? "evolution"
+              : "onboarding",
         }),
       );
       setLinkCopied(true);
@@ -3905,7 +3913,7 @@ function ScoreEvolutionPanel({ entries }: { entries: ScoreEvolutionEntry[] }) {
     months[0] || new Date().toISOString().slice(0, 7),
   );
   const visible = entries
-    .filter((entry) => (entry.period || entry.createdAt.slice(0, 7)) === period)
+    .filter((entry) => inDateRange(entry.createdAt || entry.period, period))
     .slice()
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
@@ -3918,14 +3926,11 @@ function ScoreEvolutionPanel({ entries }: { entries: ScoreEvolutionEntry[] }) {
             Histórico automático das alterações realizadas no acompanhamento.
           </p>
         </span>
-        <label>
-          Período
-          <input
-            type="month"
-            value={period}
-            onChange={(event) => setPeriod(event.target.value)}
-          />
-        </label>
+        <DateRangeFilter
+          value={period}
+          onChange={setPeriod}
+          label="Período da evolução"
+        />
       </header>
       {visible.length === 0 ? (
         <p className="cs-score-evolution-empty">

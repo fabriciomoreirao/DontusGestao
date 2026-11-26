@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { inDateRange, dateRangeLabel, dateRangeBounds } from "@/lib/date-range";
 
 import PaginatedItems from "@/app/PaginatedItems";
 import PhoneLink from "@/app/PhoneLink";
@@ -411,12 +413,15 @@ export default function CommissionsModule({
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .forEach((item) => {
       const sale = commercialCommissionSource(item, catalogs);
-      if (!sale || sale.day.slice(0, 7) !== competence) return;
+      if (!sale) return;
       const seller = sale.seller || item.owner;
       const employee = employees.find(
         (entry) => normalize(entry.displayName) === normalize(seller),
       );
-      const key = commissionEmployeeKey(employee?.id || "", seller);
+      const key =
+        sale.day.slice(0, 7) +
+        ":" +
+        commissionEmployeeKey(employee?.id || "", seller);
       monthlyOffsets.set(item.id, monthlySales.get(key) || 0);
       monthlySales.set(key, (monthlySales.get(key) || 0) + sale.valueCents);
     });
@@ -430,7 +435,7 @@ export default function CommissionsModule({
     if (scope === "commercial")
       items.forEach((item) => {
         const sale = commercialCommissionSource(item, catalogs);
-        if (!sale || sale.day.slice(0, 7) !== competence) return;
+        if (!sale || !inDateRange(sale.day, competence)) return;
         const detail = safe<Record<string, unknown>>(item.description) || {};
         const seller = sale.seller || item.owner || "Não atribuído";
         const employee = employees.find(
@@ -501,7 +506,7 @@ export default function CommissionsModule({
           if (!commissionStart) return;
           const entryMonth = commissionStart.slice(0, 7);
           if (
-            entryMonth !== competence ||
+            !inDateRange(commissionStart, competence) ||
             commissionStart >
               new Intl.DateTimeFormat("en-CA", {
                 timeZone: "America/Sao_Paulo",
@@ -626,7 +631,10 @@ export default function CommissionsModule({
       .filter(
         (entry) =>
           entry.detail.scope === scope &&
-          entry.detail.competence === competence &&
+          inDateRange(
+            entry.detail.routedAt || entry.detail.competence,
+            competence,
+          ) &&
           !sourceRows.some((row) => row.sourceKey === entry.detail.sourceKey),
       )
       .map(({ detail }) => ({
@@ -659,7 +667,7 @@ export default function CommissionsModule({
       (entry) =>
         entry.detail.sourceKey === row.sourceKey &&
         entry.detail.scope === scope &&
-        entry.detail.competence === competence,
+        entry.detail.competence === row.competence,
     );
     const record = saved?.item;
     const recordDetail = saved?.detail;
@@ -673,7 +681,9 @@ export default function CommissionsModule({
         : (recordDetail?.saleValueCents ?? row.saleValueCents);
     const monthlySalesCents =
       monthlySales.get(
-        commissionEmployeeKey(row.employeeId, row.employeeName),
+        row.competence +
+          ":" +
+          commissionEmployeeKey(row.employeeId, row.employeeName),
       ) || 0;
     const source = allItems.find((item) => item.id === row.sourceId);
     const productIndex = row.sourceKey.includes(":")
@@ -927,7 +937,7 @@ export default function CommissionsModule({
     if (!popup) return;
     const groups = [...new Set(finalRows.map((row) => row.employeeName))];
     popup.document.write(
-      `<!doctype html><html><head><title>Comissões Dontus · ${competence}</title><style>body{font:12px Arial;color:#122033;padding:32px}header{border-bottom:3px solid #087fea;padding-bottom:16px}h1{margin:0;font-size:26px}.employee{page-break-inside:avoid;margin:26px 0}.person{display:flex;align-items:center;gap:12px}.person img,.initial{width:52px;height:52px;border-radius:14px;object-fit:cover;background:#e5f2ff;display:grid;place-items:center;font-weight:bold}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #dce5ef;padding:8px;text-align:left}th{background:#edf6ff}.ok{color:#087a4d}.no{color:#b4233b}.total{text-align:right;font-size:15px;font-weight:bold;margin-top:10px}</style></head><body><header><h1>Dontus · Relatório de Comissões</h1><p>${escapeHtml(scopeLabel(scope))} · ${escapeHtml(monthLabel(competence))} · emitido em ${escapeHtml(date(new Date().toISOString()))}</p></header>${groups
+      `<!doctype html><html><head><title>Comissões Dontus · ${competence}</title><style>body{font:12px Arial;color:#122033;padding:32px}header{border-bottom:3px solid #087fea;padding-bottom:16px}h1{margin:0;font-size:26px}.employee{page-break-inside:avoid;margin:26px 0}.person{display:flex;align-items:center;gap:12px}.person img,.initial{width:52px;height:52px;border-radius:14px;object-fit:cover;background:#e5f2ff;display:grid;place-items:center;font-weight:bold}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #dce5ef;padding:8px;text-align:left}th{background:#edf6ff}.ok{color:#087a4d}.no{color:#b4233b}.total{text-align:right;font-size:15px;font-weight:bold;margin-top:10px}</style></head><body><header><h1>Dontus · Relatório de Comissões</h1><p>${escapeHtml(scopeLabel(scope))} · ${escapeHtml(dateRangeLabel(competence))} · emitido em ${escapeHtml(date(new Date().toISOString()))}</p></header>${groups
         .map((name) => {
           const group = finalRows.filter((row) => row.employeeName === name);
           const photo = group[0]?.employeePhoto;
@@ -1022,7 +1032,7 @@ export default function CommissionsModule({
       <section className="commission-summary">
         <article>
           <span>Competência</span>
-          <strong>{monthLabel(competence)}</strong>
+          <strong>{dateRangeLabel(competence)}</strong>
           <small>{visible.length} lançamento(s)</small>
         </article>
         <article>
@@ -1044,17 +1054,11 @@ export default function CommissionsModule({
         </article>
       </section>
       <section className="commission-filters panel reminder-filter-toolbar">
-        <label className="operational-month-filter">
-          <span>Mês/ano (competência)</span>
-          <input
-            type="month"
-            required
-            value={competence}
-            onChange={(event) =>
-              setCompetence(event.target.value || currentMonth())
-            }
-          />
-        </label>
+        <DateRangeFilter
+          value={competence}
+          onChange={setCompetence}
+          label="Período das comissões"
+        />
         {reminderFilter.control}
         <select
           value={employeeFilter}
@@ -1077,48 +1081,60 @@ export default function CommissionsModule({
           <option value="rejected">Reprovadas</option>
         </select>
         <strong>{visible.length} resultado(s)</strong>
-        <CommissionConfirmationControl
-          module="commissions"
-          scope={scope}
-          competence={competence}
-          entries={visible.flatMap((row) =>
-            row.record
-              ? [{ id: row.record.id, version: row.record.version }]
-              : [],
-          )}
-          complete={
-            visible.length > 0 &&
-            visible.every(
-              (row) =>
-                !row.needsReview &&
-                Boolean(row.record) &&
-                ["approved", "rejected"].includes(
-                  row.recordDetail?.decision || "",
-                ),
-            )
-          }
-          canGenerate={canApprove || canManage}
-          employee={employeeFilter}
-          filters={{
-            Setor: scopeLabel(scope),
-            Competência: competence,
-            Responsável: employeeFilter === "all" ? "Todos" : employeeFilter,
-            Decisão:
-              statusFilter === "all"
-                ? "Todas"
-                : statusFilter === "approved"
-                  ? "Aprovadas"
-                  : statusFilter === "rejected"
-                    ? "Reprovadas"
-                    : "Pendentes",
-            Lembretes: {
-              all: "Todos",
-              today: "Para hoje",
-              scheduled: "Com agendamento",
-              none: "Sem agendamento",
-            }[reminderFilter.mode],
-          }}
-        />
+        {[...new Set(visible.map((row) => row.competence))]
+          .sort()
+          .map((confirmationMonth) => (
+            <CommissionConfirmationControl
+              key={confirmationMonth}
+              periodLabel={dateRangeLabel(competence)}
+              module="commissions"
+              scope={scope}
+              competence={confirmationMonth}
+              entries={visible
+                .filter((row) => row.competence === confirmationMonth)
+                .flatMap((row) =>
+                  row.record
+                    ? [{ id: row.record.id, version: row.record.version }]
+                    : [],
+                )}
+              complete={
+                visible.length > 0 &&
+                visible
+                  .filter((row) => row.competence === confirmationMonth)
+                  .every(
+                    (row) =>
+                      !row.needsReview &&
+                      Boolean(row.record) &&
+                      ["approved", "rejected"].includes(
+                        row.recordDetail?.decision || "",
+                      ),
+                  )
+              }
+              canGenerate={canApprove || canManage}
+              employee={employeeFilter}
+              filters={{
+                Setor: scopeLabel(scope),
+                Período: dateRangeLabel(competence),
+                Competência: confirmationMonth,
+                Responsável:
+                  employeeFilter === "all" ? "Todos" : employeeFilter,
+                Decisão:
+                  statusFilter === "all"
+                    ? "Todas"
+                    : statusFilter === "approved"
+                      ? "Aprovadas"
+                      : statusFilter === "rejected"
+                        ? "Reprovadas"
+                        : "Pendentes",
+                Lembretes: {
+                  all: "Todos",
+                  today: "Para hoje",
+                  scheduled: "Com agendamento",
+                  none: "Sem agendamento",
+                }[reminderFilter.mode],
+              }}
+            />
+          ))}
       </section>
       <section className="commission-table">
         <div className="commission-row head">
@@ -1302,7 +1318,11 @@ export default function CommissionsModule({
       {manualOpen && (
         <ManualCommissionModal
           scope={scope}
-          competence={competence}
+          competence={(
+            dateRangeBounds(competence).from ||
+            dateRangeBounds(competence).to ||
+            currentMonth()
+          ).slice(0, 7)}
           employees={employees}
           customers={customers}
           busy={busy}

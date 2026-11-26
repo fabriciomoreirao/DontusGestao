@@ -22,6 +22,49 @@ const state = (rooms, snapshotAt = "2026-11-13T12:00:00Z", extra = {}) => ({
   ...extra,
 });
 
+test("a confirmação de envio preserva o histórico, não duplica mensagens e reaproveita as linhas sem alterações", () => {
+  const previous = {
+    id: "old",
+    createdAt: "2026-11-13T12:00:00Z",
+    body: "Histórico",
+  };
+  const next = {
+    id: "new",
+    createdAt: "2026-11-13T12:01:00Z",
+    body: "Nova mensagem",
+  };
+  const initial = state([room("a", 0, { messages: [previous] })]);
+  const patch = state(
+    [room("a", 0, { messages: [next], messagesPartial: true })],
+    "2026-11-13T12:01:01Z",
+    { isPartial: true },
+  );
+  const merged = mergeInternalChat(initial, patch);
+  assert.deepEqual(merged.rooms[0].messages, [previous, next]);
+  assert.equal(merged.rooms[0].messages[0], previous);
+  const repeated = mergeInternalChat(merged, patch);
+  assert.equal(repeated.rooms[0].messages.length, 2);
+  const full = mergeInternalChat(
+    repeated,
+    state(
+      [room("a", 0, { messages: [{ ...previous }, { ...next }] })],
+      "2026-11-13T12:01:02Z",
+    ),
+  );
+  assert.equal(full.rooms[0].messages[0], previous);
+  const edited = { ...next, body: "Texto editado" };
+  const changed = mergeInternalChat(
+    full,
+    state(
+      [room("a", 0, { messages: [edited], messagesPartial: true })],
+      "2026-11-13T12:01:03Z",
+      { isPartial: true },
+    ),
+  );
+  assert.equal(changed.rooms[0].messages.length, 2);
+  assert.equal(changed.rooms[0].messages[1].body, "Texto editado");
+});
+
 test("cada aba soma mensagens e inclui conversas e grupos arquivados apenas em arquivadas", () => {
   assert.deepEqual(
     chatUnreadTotals([

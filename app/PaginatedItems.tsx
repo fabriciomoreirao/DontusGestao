@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -65,7 +66,7 @@ export default function PaginatedItems({
   table?: boolean;
   pageSize?: number;
   resetKey?: string;
-  mode?: "list" | "cards";
+  mode?: "list" | "cards" | "kanban";
   source?: RecordPath;
   onRows?: (rows: unknown[]) => void;
 }) {
@@ -82,6 +83,10 @@ export default function PaginatedItems({
     keys,
   ]);
   const source = explicitSource ?? context?.resolve(keys);
+  if (mode === "kanban")
+    return (
+      <KanbanCardBatch key={identity} rows={rows} keys={keys} label={label} />
+    );
   if (mode === "cards" || context?.disabled || !source) return <>{children}</>;
   return (
     <SizedRecordList
@@ -97,6 +102,55 @@ export default function PaginatedItems({
     />
   );
 }
+
+function subscribeCardNavigation(onChange: () => void) {
+  window.addEventListener("popstate", onChange);
+  return () => window.removeEventListener("popstate", onChange);
+}
+
+function requestedCard() {
+  const params = new URLSearchParams(window.location.search);
+  return (params.get("card") || params.get("cancellation") || "").toLowerCase();
+}
+
+function KanbanCardBatch({
+  rows,
+  keys,
+  label,
+}: {
+  rows: ReactNode[];
+  keys: string[];
+  label: string;
+}) {
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const requested = useSyncExternalStore(
+    subscribeCardNavigation,
+    requestedCard,
+    () => "",
+  );
+  const requestedIndex = keys.indexOf(requested);
+  const visibleLimit = Math.max(
+    limit,
+    Math.ceil((requestedIndex + 1) / DEFAULT_PAGE_SIZE) * DEFAULT_PAGE_SIZE,
+  );
+  const remaining = Math.max(0, rows.length - visibleLimit);
+  return (
+    <>
+      {rows.slice(0, visibleLimit)}
+      {remaining > 0 && (
+        <button
+          type="button"
+          className="commercial-column-more kanban-column-more"
+          aria-label={`Ver mais ${label} (${remaining} restantes)`}
+          onClick={() => setLimit(visibleLimit + DEFAULT_PAGE_SIZE)}
+        >
+          Ver mais ({remaining})
+        </button>
+      )}
+    </>
+  );
+}
+
 function SizedRecordList({
   identity,
   defaultSize,

@@ -1385,20 +1385,22 @@ function DevelopmentColumn({
       <div>
         {items.length ? (
           <>
-            {items.map((item) => (
-              <DevelopmentCard
-                item={item}
-                canEdit={canEdit}
-                canDelete={canDelete}
-                onOpen={() => onOpen(item)}
-                onDelete={() => void onDelete(item)}
-                onDragStart={(event) => {
-                  event.dataTransfer.effectAllowed = "move";
-                  beginKanbanDrag(event, "workItemId", item.id);
-                }}
-                key={item.id}
-              />
-            ))}
+            <PaginatedItems mode="kanban" label="cards">
+              {items.map((item) => (
+                <DevelopmentCard
+                  item={item}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  onOpen={() => onOpen(item)}
+                  onDelete={() => void onDelete(item)}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    beginKanbanDrag(event, "workItemId", item.id);
+                  }}
+                  key={item.id}
+                />
+              ))}
+            </PaginatedItems>
           </>
         ) : (
           <p>Arraste um card para esta etapa.</p>

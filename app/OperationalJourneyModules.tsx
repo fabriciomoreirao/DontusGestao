@@ -934,110 +934,114 @@ export function LiaJourneyModule(props: CommonProps) {
         </div>
       ) : (
         <div className="journey-board">
-          {visible.map((item) => {
-            const d = parseDetail(item.description);
-            const responsible = employees.find(
-              (employee) => employee.displayName === item.owner,
-            );
-            const lastInteraction =
-              (d.history ?? []).at(-1)?.at || d.startDate || item.created_at;
-            return (
-              <article
-                data-reminder-entity-id={item.id}
-                className="journey-card"
-                key={item.id}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    setSelected(item);
-                  }
-                }}
-                onClick={() => setSelected(item)}
-              >
-                <div className="journey-card-top">
-                  <span className="journey-avatar">
-                    {(item.customer_name || item.title)
-                      .slice(0, 2)
-                      .toUpperCase()}
-                  </span>
-                  <span className="status-pill">
-                    {liaStageForStatus(item.status, liaStages).label.replace(
-                      /^\d+\. /,
-                      "",
-                    )}
-                  </span>
-                </div>
-                <h3>{item.customer_name || item.title}</h3>
-                <small>
-                  ID {d.clientId || item.customer_id || item.id.slice(0, 6)}
-                </small>
-                <span className="lia-plan-chip">
-                  Plano LIA: {liaContractedPlan(d) || "Não informado"}
-                </span>
-                <div className="journey-meta">
-                  <span>
-                    <CalendarDays size={14} />
-                    {daysSince(d.startDate || item.created_at)} dias em
-                    acompanhamento
-                  </span>
-                  <span
-                    className={
-                      daysSince(lastInteraction) >= 5
-                        ? "journey-inactive-alert"
-                        : ""
+          <PaginatedItems mode="kanban" label="cards">
+            {visible.map((item) => {
+              const d = parseDetail(item.description);
+              const responsible = employees.find(
+                (employee) => employee.displayName === item.owner,
+              );
+              const lastInteraction =
+                (d.history ?? []).at(-1)?.at || d.startDate || item.created_at;
+              return (
+                <article
+                  data-reminder-entity-id={item.id}
+                  className="journey-card"
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      setSelected(item);
                     }
-                  >
-                    <Clock3 size={14} />
-                    {daysSince(lastInteraction)} dia(s) sem interação
+                  }}
+                  onClick={() => setSelected(item)}
+                >
+                  <div className="journey-card-top">
+                    <span className="journey-avatar">
+                      {(item.customer_name || item.title)
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </span>
+                    <span className="status-pill">
+                      {liaStageForStatus(item.status, liaStages).label.replace(
+                        /^\d+\. /,
+                        "",
+                      )}
+                    </span>
+                  </div>
+                  <h3>{item.customer_name || item.title}</h3>
+                  <small>
+                    ID {d.clientId || item.customer_id || item.id.slice(0, 6)}
+                  </small>
+                  <span className="lia-plan-chip">
+                    Plano LIA: {liaContractedPlan(d) || "Não informado"}
                   </span>
-                  <span
-                    className="journey-owner-chip"
-                    data-collaborator-name={item.owner}
-                  >
-                    <i
-                      style={
-                        responsible?.photoDataUrl
-                          ? {
-                              backgroundImage: `url("${responsible.photoDataUrl}")`,
-                            }
-                          : undefined
+                  <div className="journey-meta">
+                    <span>
+                      <CalendarDays size={14} />
+                      {daysSince(d.startDate || item.created_at)} dias em
+                      acompanhamento
+                    </span>
+                    <span
+                      className={
+                        daysSince(lastInteraction) >= 5
+                          ? "journey-inactive-alert"
+                          : ""
                       }
-                    />
-                    {item.owner || "Fila compartilhada"}
-                  </span>
-                </div>
-                <SaleObservation text={d.saleObservation} compact />
-                <div className="lia-card-form-state">
-                  <LiaFormStatus
-                    requests={formRequests.filter(
-                      (entry) => entry.workItemId === item.id,
-                    )}
-                  />
-                  {formRequests.some(
-                    (entry) =>
-                      entry.workItemId === item.id && entry.submittedAt,
-                  ) && (
-                    <a
-                      href={`/lia-form-responses/${item.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(event) => event.stopPropagation()}
                     >
-                      Ver respostas ↗
-                    </a>
-                  )}
-                </div>
-                <footer>
-                  <span>
-                    <PhoneLink phone={d.whatsapp || "WhatsApp não informado"} />
-                  </span>
-                  <ChevronRight size={17} />
-                </footer>
-              </article>
-            );
-          })}
+                      <Clock3 size={14} />
+                      {daysSince(lastInteraction)} dia(s) sem interação
+                    </span>
+                    <span
+                      className="journey-owner-chip"
+                      data-collaborator-name={item.owner}
+                    >
+                      <i
+                        style={
+                          responsible?.photoDataUrl
+                            ? {
+                                backgroundImage: `url("${responsible.photoDataUrl}")`,
+                              }
+                            : undefined
+                        }
+                      />
+                      {item.owner || "Fila compartilhada"}
+                    </span>
+                  </div>
+                  <SaleObservation text={d.saleObservation} compact />
+                  <div className="lia-card-form-state">
+                    <LiaFormStatus
+                      requests={formRequests.filter(
+                        (entry) => entry.workItemId === item.id,
+                      )}
+                    />
+                    {formRequests.some(
+                      (entry) =>
+                        entry.workItemId === item.id && entry.submittedAt,
+                    ) && (
+                      <a
+                        href={`/lia-form-responses/${item.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        Ver respostas ↗
+                      </a>
+                    )}
+                  </div>
+                  <footer>
+                    <span>
+                      <PhoneLink
+                        phone={d.whatsapp || "WhatsApp não informado"}
+                      />
+                    </span>
+                    <ChevronRight size={17} />
+                  </footer>
+                </article>
+              );
+            })}
+          </PaginatedItems>
           {!visible.length && (
             <div className="empty-state">
               <ClipboardCheck />
@@ -1978,31 +1982,33 @@ export function MarketingManagementModule({
               <strong>{stage}</strong>
               <span>{records.filter((i) => i.status === stage).length}</span>
             </header>
-            {records
-              .filter(
-                (i) =>
-                  i.status === stage &&
-                  (!query ||
-                    `${i.title} ${i.team}`
-                      .toLowerCase()
-                      .includes(query.toLowerCase())),
-              )
-              .map((i) => (
-                <article
-                  data-reminder-entity-id={i.id}
-                  className="standard-card"
-                  onClick={() => setSelected(i)}
-                  key={i.id}
-                >
-                  <small>{i.record_type}</small>
-                  <h3>{i.title}</h3>
-                  <p>{parseDetail(i.description).sector || i.team}</p>
-                  <footer>
-                    <span>{i.owner || "Fila compartilhada"}</span>
-                    <ChevronRight />
-                  </footer>
-                </article>
-              ))}
+            <PaginatedItems mode="kanban" label="cards">
+              {records
+                .filter(
+                  (i) =>
+                    i.status === stage &&
+                    (!query ||
+                      `${i.title} ${i.team}`
+                        .toLowerCase()
+                        .includes(query.toLowerCase())),
+                )
+                .map((i) => (
+                  <article
+                    data-reminder-entity-id={i.id}
+                    className="standard-card"
+                    onClick={() => setSelected(i)}
+                    key={i.id}
+                  >
+                    <small>{i.record_type}</small>
+                    <h3>{i.title}</h3>
+                    <p>{parseDetail(i.description).sector || i.team}</p>
+                    <footer>
+                      <span>{i.owner || "Fila compartilhada"}</span>
+                      <ChevronRight />
+                    </footer>
+                  </article>
+                ))}
+            </PaginatedItems>
           </section>
         ))}
       </div>

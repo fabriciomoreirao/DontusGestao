@@ -1540,6 +1540,7 @@ public sealed partial class OperationsService(OperationsDbContext db) : IOperati
         await ConfiguredRecordFields.ValidateAsync(db, command.Description, item.Description, cancellationToken);
         GoalProgress.Validate(item.Module, command.Description);
         CsDistributionService.Assignment? distribution = null;
+        await PrepareStrategicFollowupAssignmentsAsync(item, command.Description, actor, cancellationToken);
         if (command.ResponsibleUserId.HasValue)
         {
             if (item.Module != "cs" || !TryReadJourneyIdentity(item.Description, out var kind, out _, out _) || kind != "csJourney" ||

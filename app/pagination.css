@@ -58,6 +58,22 @@
   padding: 0 !important;
   border: 0;
 }
+.app-shell button.kanban-column-more {
+  grid-column: 1 / -1;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+}
+.app-shell button.kanban-column-more:focus-visible {
+  outline: 2px solid var(--primary, #2563eb);
+  outline-offset: 2px;
+}
+@media (max-width: 520px) {
+  .app-shell button.kanban-column-more {
+    min-height: 44px;
+  }
+}
 .record-page-size,
 .app-shell .record-page-size {
   display: flex;

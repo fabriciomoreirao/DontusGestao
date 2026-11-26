@@ -50,7 +50,7 @@ public sealed class PublicRecruitmentService(OperationsDbContext db, IOperations
                 curriculumName = file.Name,
                 curriculumData = input.CurriculumUrl,
                 comments = Array.Empty<object>()
-            }), null, "publicRecruitment", process.Id, stage ?? "Currículo"), actor, ct);
+            }), null, "publicRecruitment", process.Id, stage?.Trim() ?? "Currículo"), actor, ct);
     }
 
     private async Task<WorkItem> ProcessAsync(Guid id, CancellationToken ct) =>

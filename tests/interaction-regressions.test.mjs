@@ -230,7 +230,7 @@ test("mantém o clique de indicadores estável e copia o padrão do processo sel
   assertCode.match(operations, /stageTemplateName: template\?\.name/);
   // [^{}]+ keeps the search inside the same object, now that line breaks are ignored.
   assertCode.match(operations, /stageTemplateName:[^{}]+stages \}\)/);
-  assertCode.match(operations, /const processStages = process/);
+  assertCode.match(operations, /const processStages = recruitmentStages/);
 });
 
 test("mantém os novos fluxos de CRM, evolução, metas e animações", async () => {
@@ -711,7 +711,7 @@ test("mantém ficha, lembretes, desenvolvimento e indicadores integrados", async
   assertCode.match(css, /\.employee-modal/);
 });
 
-test("integra chamados públicos, competência mensal e rolagem do chat", async () => {
+test("integra chamados públicos, período selecionável e rolagem do chat", async () => {
   const [app, requests, chat, api, screens, compose, css] = await Promise.all([
     readFile(new URL("../app/OperationsApp.tsx", import.meta.url), "utf8"),
     readFile(
@@ -738,7 +738,8 @@ test("integra chamados públicos, competência mensal e rolagem do chat", async 
   ]);
   assertCode.match(app, /label: "Chamados"/);
   assertCode.match(app, /label: "Acompanhamento de chamados"/);
-  assertCode.match(app, /topbar-month-filter/);
+  assertCode.match(app, /operation-function-tools/);
+  assertCode.doesNotMatch(app, /topbar-period-filter/);
   assertCode.doesNotMatch(app, /Competência do Kanban/);
   assertCode.match(app, /brasiliaMonthKey/);
   assertCode.match(app, /label: "Chamados", count: serviceRequests\.length/);

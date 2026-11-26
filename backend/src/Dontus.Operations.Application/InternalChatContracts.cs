@@ -30,6 +30,7 @@ public sealed record InternalChatRoomDto(
     IReadOnlyCollection<InternalChatMessageDto> Messages)
 {
     public bool IsMuted { get; init; }
+    public bool MessagesPartial { get; init; }
 }
 
 public sealed record InternalChatModuleDto(
@@ -65,7 +66,7 @@ public sealed record InternalChatAttachmentDto(string FullPath, string FileName,
 
 public interface IInternalChatService
 {
-    Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30, Guid? roomId = null);
+    Task<InternalChatModuleDto> GetModuleAsync(ActorContext actor, CancellationToken cancellationToken = default, int historyDays = 30, Guid? roomId = null, Guid? changedMessageId = null);
     Task<Guid> CreateRoomAsync(CreateInternalChatRoomCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task<Guid> SendMessageAsync(SendInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default);
     Task EditMessageAsync(EditInternalChatMessageCommand command, ActorContext actor, CancellationToken cancellationToken = default);

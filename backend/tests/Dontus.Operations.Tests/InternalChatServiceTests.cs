@@ -8,6 +8,26 @@ namespace Dontus.Operations.Tests;
 
 public sealed class InternalChatServiceTests
 {
+    [Fact]
+    public async Task Sending_projection_returns_only_the_confirmed_message_and_keeps_membership_checks()
+    {
+        await using var db = CreateContext();
+        var sender = AddUser(db, "delta-sender@test", "Remetente");
+        var reader = AddUser(db, "delta-reader@test", "Leitor");
+        var outsider = AddUser(db, "delta-outsider@test", "Outro");
+        await db.SaveChangesAsync(); var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new(null, null, false, [reader.Id]), Actor(sender));
+        await service.SendMessageAsync(new(room, "Histórico preservado", "text"), Actor(sender));
+        var sent = await service.SendMessageAsync(new(room, "Mensagem nova", "text"), Actor(sender));
+        var patch = await service.GetModuleAsync(Actor(sender), roomId: room, changedMessageId: sent);
+        var changed = Assert.Single(patch.Rooms);
+        Assert.True(patch.IsPartial); Assert.True(changed.MessagesPartial);
+        Assert.Equal(sent, Assert.Single(changed.Messages).Id);
+        var complete = Assert.Single((await service.GetModuleAsync(Actor(sender), roomId: room)).Rooms);
+        Assert.False(complete.MessagesPartial); Assert.Equal(2, complete.Messages.Count);
+        Assert.Empty((await service.GetModuleAsync(Actor(outsider), roomId: room, changedMessageId: sent)).Rooms);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

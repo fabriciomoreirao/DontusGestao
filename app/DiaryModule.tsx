@@ -291,7 +291,7 @@ export default function DiaryModule({
         <section className="diary-cancelled">
           <h2>Cancelados ({cancelled.length})</h2>
           {
-            <PaginatedItems mode="cards" label="registros do diário">
+            <PaginatedItems mode="kanban" label="registros do diário">
               {cancelled.map((entry) => (
                 <DiaryEntryCard
                   key={entry.id}
@@ -401,7 +401,7 @@ function DiaryColumn({
           <p>{empty}</p>
         </div>
       ) : (
-        <PaginatedItems mode="cards" label="registros do diário">
+        <PaginatedItems mode="kanban" label="registros do diário">
           {entries.map((entry) => (
             <DiaryEntryCard
               key={entry.id}

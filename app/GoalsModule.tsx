@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import { overlapsDateRange, dateRangeLabel } from "@/lib/date-range";
 
 import PaginatedItems from "@/app/PaginatedItems";
 
@@ -281,8 +283,7 @@ export default function GoalsModule({
   const visible = goals.filter(
     ({ item, goal }) =>
       reminderFilter.matches({ entityId: item.id, title: item.title }) &&
-      goal.periodStart.slice(0, 7) <= month &&
-      goal.periodEnd.slice(0, 7) >= month &&
+      overlapsDateRange(goal.periodStart, goal.periodEnd, month) &&
       (employeeFilter === "all" || goal.employeeId === employeeFilter) &&
       (!query ||
         normalize(
@@ -434,12 +435,7 @@ export default function GoalsModule({
           <CalendarDays />
           <span>
             <small>Competência</small>
-            <strong>
-              {new Intl.DateTimeFormat("pt-BR", {
-                month: "long",
-                year: "numeric",
-              }).format(new Date(`${month}-02T12:00:00`))}
-            </strong>
+            <strong>{dateRangeLabel(month)}</strong>
           </span>
         </article>
       </section>
@@ -453,10 +449,10 @@ export default function GoalsModule({
           />
         </label>
         {reminderFilter.control}
-        <input
-          type="month"
+        <DateRangeFilter
           value={month}
-          onChange={(event) => setMonth(event.target.value)}
+          onChange={setMonth}
+          label="Período das metas"
         />
         <select
           value={employeeFilter}

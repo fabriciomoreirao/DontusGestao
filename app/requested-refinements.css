@@ -952,7 +952,7 @@
   margin-top: 8px;
   max-height: 220px;
 }
-.app-shell:has(.internal-chat-page) .agenda-persistent-alerts {
+.app-shell.internal-chat-active .agenda-persistent-alerts {
   bottom: 84px;
 }
 .task-edit-form .checkbox-multiselect-popover {
