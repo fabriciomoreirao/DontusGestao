@@ -45,6 +45,14 @@ card em Acompanhamentos. Os vínculos antigos continuam disponíveis pela unidad
 No **Processo seletivo**, o quadro usa as etapas do processo, com etapas padrão
 quando não houver configuração, e mantém visíveis candidaturas de etapas antigas.
 O card mostra contato, currículo e evolução, com **Agendar entrevista** no topo.
+No **CRM Comercial**, confirmar o ganho mantém a escolha de exibir a venda na TV.
+Depois, selecione somente o tipo de acompanhamento: **Enviar sem agendamento**
+encaminha o card sem exigir ID e versão nem criar um compromisso. **Verificar
+horários disponíveis** mantém as regras de dias úteis, feriados, bloqueios e três
+compromissos por horário. Ao selecionar o horário, **Agendar e enviar** abre o
+modal de versão e ID. O backend usa os cadastros ativos **Treinamento** e
+**Agendado**; reserva, encaminhamento e atualização do cliente são confirmados
+juntos. Falhas aparecem no modal, preservam o preenchimento e desfazem a operação.
 Na **Agenda**, somente os status **Agendado** e **Concluído** ocupam o horário do
 responsável; os demais liberam esse horário. A troca para um status que ocupa
 horário também verifica conflitos.
