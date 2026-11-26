@@ -436,25 +436,25 @@ export default function ServiceRecordsModule({
                 ))}
               </select>
             </label>
-            <label>
-            <span>Setor</span>
-            <select
-              aria-label="Filtrar atendimentos por setor"
-              value={sector}
-              onChange={(event) => setSector(event.target.value)}
-            >
-              <option value="all">Todos os setores ({records.length})</option>
-              {sectorOptions.map((name) => (
-                <option value={name} key={name}>
-                  {name} (
-                  {records.filter((entry) => entry.detail.sector === name).length}
-                  )
-                </option>
-              ))}
-            </select>
-          </label>
           </div>
-          <div className="operation-filter-bottom">
+          <div className="operation-filter-bottom service-filter-period">
+            <label className="service-filter-sector">
+              <span>Setor</span>
+              <select
+                aria-label="Filtrar atendimentos por setor"
+                value={sector}
+                onChange={(event) => setSector(event.target.value)}
+              >
+                <option value="all">Todos os setores ({records.length})</option>
+                {sectorOptions.map((name) => (
+                  <option value={name} key={name}>
+                    {name} (
+                    {records.filter((entry) => entry.detail.sector === name).length}
+                    )
+                  </option>
+                ))}
+              </select>
+            </label>
             <DateRangeFilter
               value={period}
               onChange={onPeriodChange}

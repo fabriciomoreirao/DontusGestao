@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import KanbanScrollRail from "./KanbanScrollRail";
 import { endKanbanDrag, suppressKanbanClick } from "@/lib/kanban-drag";
 import { kanbanHorizontalScrollSpeed, kanbanScrollSpeed } from "@/lib/kanban-autoscroll";
 
@@ -124,5 +123,5 @@ export default function KanbanDragSupport() {
       end();
     };
   }, []);
-  return <KanbanScrollRail selector={scrollSurfaces} />;
+  return null;
 }

@@ -1,4 +1,5 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
 import PaginatedItems from "@/app/PaginatedItems";
 
 import CustomerSelect from "@/app/CustomerSelect";
@@ -29,7 +30,6 @@ import {
   Paperclip,
   Pencil,
   Plus,
-  Search,
   Settings2,
   ShieldAlert,
   Sparkles,
@@ -210,6 +210,9 @@ function FlagBadges({
 }
 
 export default function SuggestionsModule({
+  period,
+  onPeriodChange,
+  onClearPeriod,
   module,
   customers,
   canCreate,
@@ -220,6 +223,9 @@ export default function SuggestionsModule({
   uploadAttachments,
   onOpenSettings,
 }: {
+  period: string;
+  onPeriodChange: (value: string) => void;
+  onClearPeriod: () => void;
   module: SuggestionModuleData;
   customers: Customer[];
   canCreate: boolean;
@@ -366,46 +372,131 @@ export default function SuggestionsModule({
   const configured = activeStatuses.length > 0 && activePriorities.length > 0;
   return (
     <section className="suggestions-page">
-      <header className="suggestions-header module-page-header">
-        <div className="module-page-title">
-          <span className="module-page-title-icon">
-            <Sparkles size={21} />
-          </span>
-          <span className="module-page-copy">
-            <span className="eyebrow">MÓDULO DE MELHORIAS</span>
-            <h1>Sugestões</h1>
-            <p>
-              Registre ideias, acompanhe decisões e visualize a evolução de cada
-              sugestão.
-            </p>
-          </span>
-        </div>
-        <div className="commercial-header-actions module-page-actions">
-          {onOpenSettings && (
-            <button
-              className="icon-button commercial-settings-button"
-              onClick={onOpenSettings}
-              aria-label="Configurar Sugestões"
-              title="Configurar Sugestões"
-            >
-              <Settings2 size={18} />
-            </button>
-          )}
-          {canCreate && (
-            <button
-              className="primary-button"
-              disabled={!configured}
-              onClick={() => {
-                setSavedDraft(null);
-                setCreating(true);
-              }}
-            >
-              <Plus size={17} /> Nova sugestão
-            </button>
-          )}
-        </div>
-      </header>
+      <div className="operation-board-panel">
+        <header className="suggestions-header module-page-header">
+          <div className="module-page-title">
+            <span className="module-page-title-icon">
+              <Sparkles size={21} />
+            </span>
+            <span className="module-page-copy">
+              <span className="eyebrow">MÓDULO DE MELHORIAS</span>
+              <h1>Sugestões</h1>
+              <p>
+                Registre ideias, acompanhe decisões e visualize a evolução de cada
+                sugestão.
+              </p>
+            </span>
+          </div>
+          <div className="commercial-header-actions module-page-actions">
+            {onOpenSettings && (
+              <button
+                className="icon-button commercial-settings-button"
+                onClick={onOpenSettings}
+                aria-label="Configurar Sugestões"
+                title="Configurar Sugestões"
+              >
+                <Settings2 size={18} />
+              </button>
+            )}
+            {canCreate && (
+              <button
+                className="primary-button"
+                disabled={!configured}
+                onClick={() => {
+                  setSavedDraft(null);
+                  setCreating(true);
+                }}
+              >
+                <Plus size={17} /> Nova sugestão
+              </button>
+            )}
+          </div>
+        </header>
 
+        <div className="operation-filter-panel standard-filter-row">
+          <label>
+            <span>Pesquisar</span>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Pesquisar por protocolo, nome, cliente ou descrição..."
+            />
+          </label>
+          {reminderFilter.control}
+          <label>
+            <span>Status</span>
+            <select
+              value={effectiveStatusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="">Todos os status</option>
+              {activeStatuses.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Prioridade</span>
+            <select
+              value={effectivePriorityFilter}
+              onChange={(event) => setPriorityFilter(event.target.value)}
+            >
+              <option value="">Todas as prioridades</option>
+              {activePriorities.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+
+        </div>
+        <div className="operation-filter-bottom standard-filter-period">
+          <DateRangeFilter value={period} onChange={onPeriodChange} label="Datas" showClear={false} />
+          <button
+            type="button"
+            className="secondary-button operation-filter-clear"
+            aria-label="Limpar todos os filtros"
+            onClick={() => {
+              onClearPeriod();
+              setSearch("");
+              setStatusFilter("");
+              setPriorityFilter("");
+              reminderFilter.setMode("all");
+            }}
+          >
+            Limpar
+          </button>
+        </div>
+        <div className="operation-board-footer">
+          <span className="suggestion-result-count">
+            {filtered.length} resultado{filtered.length === 1 ? "" : "s"}
+          </span>
+          <div
+            className="commercial-view-switch segmented"
+            role="group"
+            aria-label="Visualização das sugestões"
+          >
+            <button
+              className={view === "list" ? "active" : ""}
+              aria-pressed={view === "list"}
+              onClick={() => setView("list")}
+            >
+              <List size={16} /> Lista
+            </button>
+            <button
+              className={view === "kanban" ? "active" : ""}
+              aria-pressed={view === "kanban"}
+              onClick={() => setView("kanban")}
+            >
+              <Columns3 size={16} /> Kanban
+            </button>
+          </div>
+        </div>
+      </div>
       {!configured && (
         <div className="suggestion-setup-warning">
           <Settings2 size={20} />
@@ -418,76 +509,6 @@ export default function SuggestionsModule({
           </span>
         </div>
       )}
-
-      <div className="suggestion-toolbar panel reminder-filter-toolbar">
-        <label className="suggestion-search">
-          <Search size={17} />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Pesquisar por protocolo, nome, cliente ou descrição..."
-          />
-        </label>
-        {reminderFilter.control}
-        <select
-          value={effectiveStatusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
-        >
-          <option value="">Todos os status</option>
-          {activeStatuses.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={effectivePriorityFilter}
-          onChange={(event) => setPriorityFilter(event.target.value)}
-        >
-          <option value="">Todas as prioridades</option>
-          {activePriorities.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.name}
-            </option>
-          ))}
-        </select>
-
-        <span className="suggestion-result-count">
-          {filtered.length} resultado{filtered.length === 1 ? "" : "s"}
-        </span>
-        <button
-          type="button"
-          className="secondary-button operation-filter-clear"
-          aria-label="Limpar todos os filtros"
-          onClick={() => {
-            setSearch("");
-            setStatusFilter("");
-            setPriorityFilter("");
-            reminderFilter.setMode("all");
-          }}
-        >
-          Limpar
-        </button>
-      </div>
-
-      <div
-        className="suggestion-view-switch"
-        role="tablist"
-        aria-label="Visualização das sugestões"
-      >
-        <button
-          className={view === "list" ? "active" : ""}
-          onClick={() => setView("list")}
-        >
-          <List size={16} /> Lista
-        </button>
-        <button
-          className={view === "kanban" ? "active" : ""}
-          onClick={() => setView("kanban")}
-        >
-          <Columns3 size={16} /> Kanban
-        </button>
-      </div>
 
       {view === "list" ? (
         <SuggestionList

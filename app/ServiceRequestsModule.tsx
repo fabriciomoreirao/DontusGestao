@@ -1,4 +1,5 @@
 "use client";
+import DateRangeFilter from "@/app/DateRangeFilter";
 import PaginatedItems from "@/app/PaginatedItems";
 
 import CommentHistory from "@/app/CommentHistory";
@@ -142,6 +143,9 @@ type AiIntegrationSettings = {
   updatedBy?: string;
 };
 type Props = {
+  period: string;
+  onPeriodChange: (value: string) => void;
+  onClearPeriod: () => void;
   onForward?: (detail: ServiceRequestDetail, sourceId: string) => void;
   mode: "triage" | "followup";
   items: WorkItem[];
@@ -205,6 +209,9 @@ const stageIcon = (stage: string) =>
               : Bot;
 
 export default function ServiceRequestsModule({
+  period,
+  onPeriodChange,
+  onClearPeriod,
   mode,
   items,
   customers,
@@ -323,84 +330,93 @@ export default function ServiceRequestsModule({
   };
   return (
     <section className="service-request-module">
-      <header className="module-page-header">
-        <div className="module-page-title">
-          <span className="module-page-title-icon">
-            <Headphones size={21} />
-          </span>
-          <span className="module-page-copy">
-            <span className="eyebrow">
-              {mode === "triage"
-                ? "MÓDULO · CENTRAL DE CHAMADOS"
-                : "OPERAÇÃO · EXPERIÊNCIA DO CLIENTE"}
+      <div className="operation-board-panel">
+        <header className="module-page-header">
+          <div className="module-page-title">
+            <span className="module-page-title-icon">
+              <Headphones size={21} />
             </span>
-            <h1>
-              {mode === "triage" ? "Chamados" : "Acompanhamento de chamados"}
-            </h1>
-            <p>
-              {mode === "triage"
-                ? "Triagem inteligente e encaminhamento para a ferramenta responsável."
-                : "Chamados de todos os tipos, organizados por setor até a conclusão."}
-            </p>
-          </span>
-        </div>
-        {mode === "triage" && (
-          <div className="module-page-actions service-request-head-actions">
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => setAiSettingsOpen(true)}
-            >
-              <Settings size={16} /> Configurar IA
-            </button>
-            <a
-              className="primary-button"
-              href="/?public=chamados"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink size={16} /> Abrir formulário público
-            </a>
+            <span className="module-page-copy">
+              <span className="eyebrow">
+                {mode === "triage"
+                  ? "MÓDULO · CENTRAL DE CHAMADOS"
+                  : "OPERAÇÃO · EXPERIÊNCIA DO CLIENTE"}
+              </span>
+              <h1>
+                {mode === "triage" ? "Chamados" : "Acompanhamento de chamados"}
+              </h1>
+              <p>
+                {mode === "triage"
+                  ? "Triagem inteligente e encaminhamento para a ferramenta responsável."
+                  : "Chamados de todos os tipos, organizados por setor até a conclusão."}
+              </p>
+            </span>
           </div>
-        )}
-      </header>
-      <section className="service-request-toolbar reminder-filter-toolbar compact-operational-filters service-compact-filters">
-        <label>
-          <span>Buscar chamado</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Protocolo, ID, cliente ou resumo"
-          />
-        </label>
-        <label>
-          <span>Setor responsável</span>
-          <select
-            aria-label="Filtrar chamados por setor"
-            value={sector}
-            onChange={(event) => setSector(event.target.value)}
+          <div className="module-page-actions service-request-head-actions">
+            {mode === "triage" && (
+              <>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setAiSettingsOpen(true)}
+                >
+                  <Settings size={16} /> Configurar IA
+                </button>
+                <a
+                  className="primary-button"
+                  href="/?public=chamados"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink size={16} /> Abrir formulário público
+                </a>
+                </>
+            )}
+          </div>
+        </header>
+        <section className="operation-filter-panel standard-filter-row">
+          <label>
+            <span>Pesquisar</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Protocolo, ID, cliente ou resumo"
+            />
+          </label>
+          <label>
+            <span>Setor responsável</span>
+            <select
+              aria-label="Filtrar chamados por setor"
+              value={sector}
+              onChange={(event) => setSector(event.target.value)}
+            >
+              <option value="all">Todos os setores</option>
+              {["Suporte", "Sucesso do Cliente", "Comercial"].map((name) => (
+                <option key={name}>{name}</option>
+              ))}
+            </select>
+          </label>
+          {reminderFilter.control}
+
+        </section>
+        <div className="operation-filter-bottom standard-filter-period">
+          <DateRangeFilter value={period} onChange={onPeriodChange} label="Datas" showClear={false} />
+          <button
+            type="button"
+            className="secondary-button operation-filter-clear"
+            aria-label="Limpar todos os filtros"
+            onClick={() => {
+              onClearPeriod();
+              setQuery("");
+              setSector("all");
+              reminderFilter.setMode("all");
+            }}
           >
-            <option value="all">Todos os setores</option>
-            {["Suporte", "Sucesso do Cliente", "Comercial"].map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
-        {reminderFilter.control}
-        <b>{visible.length} chamado(s)</b>
-        <button
-          type="button"
-          className="secondary-button operation-filter-clear"
-          aria-label="Limpar todos os filtros"
-          onClick={() => {
-            setQuery("");
-            setSector("all");
-            reminderFilter.setMode("all");
-          }}
-        >
-          Limpar
-        </button>
-      </section>
+            Limpar
+          </button>
+        </div>
+        <div className="operation-board-footer">{visible.length} chamado(s)</div>
+      </div>
       <section className={`service-request-board ${mode}`}>
         {stages.map((stage) => (
           <div

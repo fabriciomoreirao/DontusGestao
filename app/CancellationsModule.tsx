@@ -1089,85 +1089,112 @@ export default function CancellationsModule({
           </span>
         </article>
       </section>
-      <nav className="cancellation-tabs">
-        {STAGES.map((entry) => (
-          <button
-            className={stage === entry.id ? "active" : ""}
-            style={{ "--cancel-stage": entry.color } as CSSProperties}
-            onClick={() => setStage(entry.id)}
-            onDragOver={(event) => {
-              if (canEdit && dragging) event.preventDefault();
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              const item =
-                records.find(
-                  (record) =>
-                    record.item.id === readKanbanDrop(event, "text/plain"),
-                )?.item ?? dragging;
-              if (item) {
-                void move(item, entry.id);
-                setStage(entry.id);
-              }
-            }}
-            key={entry.id}
+      <div className="review-workspace-panel">
+        <div className="review-workspace-navigation">
+          <nav
+            className="cancellation-tabs"
+            aria-label="Etapas dos cancelamentos"
           >
-            <i />
-            {entry.label}
-            <b>{stageCounts[entry.id]}</b>
-          </button>
-        ))}
-      </nav>
-      <section className="cancellation-toolbar reminder-filter-toolbar">
-        <label>
-          <Search size={16} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar protocolo, ID, cliente, motivo ou plano"
-          />
-        </label>
-        {reminderFilter.control}
-        <select
-          value={owner}
-          onChange={(event) => setOwner(event.target.value)}
+            {STAGES.map((entry) => (
+              <button
+                type="button"
+                aria-pressed={stage === entry.id}
+                className={stage === entry.id ? "active" : ""}
+                style={{ "--cancel-stage": entry.color } as CSSProperties}
+                onClick={() => setStage(entry.id)}
+                onDragOver={(event) => {
+                  if (canEdit && dragging) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const item =
+                    records.find(
+                      (record) =>
+                        record.item.id === readKanbanDrop(event, "text/plain"),
+                    )?.item ?? dragging;
+                  if (item) {
+                    void move(item, entry.id);
+                    setStage(entry.id);
+                  }
+                }}
+                key={entry.id}
+              >
+                <i />
+                {entry.label}
+                <b>{stageCounts[entry.id]}</b>
+              </button>
+            ))}
+          </nav>
+          <span className="review-result-count">
+            {visible.length} {visible.length === 1 ? "registro" : "registros"}
+          </span>
+        </div>
+        <section
+          className="review-filter-panel"
+          aria-label="Filtros de cancelamentos"
         >
-          <option value="all">Todos os responsáveis</option>
-          {owners.map((name) => (
-            <option key={name}>{name}</option>
-          ))}
-        </select>
-        <select
-          value={sector}
-          onChange={(event) => setSector(event.target.value)}
-        >
-          <option value="all">Todos os setores</option>
-          {sectors.map((name) => (
-            <option key={name}>{name}</option>
-          ))}
-        </select>
-        <DateRangeFilter
-          showClear={false}
-          value={month}
-          onChange={setMonth}
-          label="Período das solicitações"
-        />
-        <strong>{visible.length} registro(s)</strong>
-        <button
-          type="button"
-          className="secondary-button operation-filter-clear"
-          aria-label="Limpar todos os filtros"
-          onClick={() => {
-            setQuery("");
-            setOwner("all");
-            setSector("all");
-            setMonth(dateKey(new Date()).slice(0, 7));
-            reminderFilter.setMode("all");
-          }}
-        >
-          Limpar
-        </button>
-      </section>
+          <div className="review-filter-grid cancellation-filter-grid">
+            <label className="review-search-field">
+              <span>Pesquisar</span>
+              <span className="review-search-control">
+                <Search size={17} aria-hidden="true" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Protocolo, ID, cliente, motivo ou plano"
+                />
+              </span>
+            </label>
+            <label>
+              <span>Responsável</span>
+              <select
+                value={owner}
+                onChange={(event) => setOwner(event.target.value)}
+              >
+                <option value="all">Todos os responsáveis</option>
+                {owners.map((name) => (
+                  <option key={name}>{name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Setor</span>
+              <select
+                value={sector}
+                onChange={(event) => setSector(event.target.value)}
+              >
+                <option value="all">Todos os setores</option>
+                {sectors.map((name) => (
+                  <option key={name}>{name}</option>
+                ))}
+              </select>
+            </label>
+            {reminderFilter.control}
+          </div>
+          <div className="review-filter-period">
+            <DateRangeFilter
+              showClear={false}
+              value={month}
+              onChange={setMonth}
+              label="Datas das solicitações"
+            />
+            <button
+              type="button"
+              className="secondary-button operation-filter-clear"
+              aria-label="Limpar todos os filtros"
+              onClick={() => {
+                setQuery("");
+                setOwner("all");
+                setSector("all");
+                setMonth(dateKey(new Date()).slice(0, 7));
+                reminderFilter.setMode("all");
+              }}
+            >
+              Limpar
+            </button>
+          </div>
+        </section>
+      </div>
       <section className="cancellation-board">
         {STAGES.filter((entry) => entry.id === stage).map((column) => (
           <div

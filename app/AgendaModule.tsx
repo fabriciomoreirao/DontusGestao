@@ -497,7 +497,7 @@ export default function AgendaModule({
             </button>
           </div>
         </header>
-        <section className="agenda-filters operation-filter-panel" aria-label="Filtros da agenda">
+        <section className="agenda-filters operation-filter-panel agenda-standard-filters" aria-label="Filtros da agenda">
           <div className="agenda-filter-controls">
             <label className="agenda-filter-field">
               <span>Agenda</span>
@@ -576,8 +576,6 @@ export default function AgendaModule({
                 </small>
               </span>
             </label>
-          </div>
-          <div className="operation-filter-bottom">
             <button
               type="button"
               className="secondary-button operation-filter-clear"

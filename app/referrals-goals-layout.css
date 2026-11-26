@@ -1,0 +1,313 @@
+/* Shared filter layout for referrals and goals. */
+.app-shell .content .review-workspace-panel {
+  container: review-workspace / inline-size;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.app-shell .content .review-workspace-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 0;
+}
+
+.app-shell
+  .content
+  .review-workspace-navigation
+  > :is(.referral-tabs, .cancellation-tabs) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .content .review-result-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-shell .content .review-filter-panel {
+  padding: 20px;
+}
+
+.app-shell .content .review-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+}
+
+.app-shell .content .review-filter-grid > label {
+  display: grid;
+  grid-template-rows: 16px 42px;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.app-shell
+  .content
+  .review-filter-grid
+  :is(select, input, .review-search-control) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--input, var(--surface));
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.app-shell .content .review-filter-grid select {
+  padding: 0 12px;
+}
+
+.app-shell .content .review-search-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.app-shell .content .review-search-control > svg {
+  flex: 0 0 17px;
+  color: var(--muted);
+}
+
+.app-shell .content .review-filter-grid .review-search-control > input {
+  height: 40px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.app-shell .content .review-search-control:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.app-shell .content .review-filter-period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.app-shell .content .review-filter-period > .date-range-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.app-shell .content .review-filter-period .date-range-filter > label {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.app-shell .content .review-filter-period input[type="date"] {
+  box-sizing: border-box;
+  width: 150px;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.app-shell .content .review-filter-period > .operation-filter-clear {
+  height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.app-shell .content :is(.referral-metrics, .goals-summary) {
+  display: grid;
+  gap: 14px;
+}
+
+.app-shell .content .referral-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.app-shell .content .goals-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.app-shell .content :is(.referral-metrics, .goals-summary) > article {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.app-shell .content :is(.referral-metrics, .goals-summary) > article > svg {
+  box-sizing: content-box;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  padding: 11px;
+  border-radius: 11px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.app-shell .content :is(.referral-metrics, .goals-summary) > article > span {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-shell .content :is(.referral-metrics, .goals-summary) small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.app-shell .content :is(.referral-metrics, .goals-summary) strong {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.app-shell .content .goals-summary > article:last-child strong {
+  font-size: 20px;
+  text-transform: none;
+}
+
+.app-shell .content .goals-summary > article:last-child strong::first-letter {
+  text-transform: uppercase;
+}
+
+.app-shell .content .goals-module .goals-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container review-workspace (max-width: 760px) {
+  .app-shell .content .review-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-shell .content .review-filter-grid > .review-search-field {
+    grid-column: 1 / -1;
+  }
+}
+
+@container review-workspace (max-width: 450px) {
+  .app-shell .content .review-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell .content .review-filter-period input[type="date"] {
+    width: 138px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .app-shell .content :is(.referral-metrics, .goals-summary) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .app-shell .content .goals-module .goals-grid,
+  .app-shell .content .goals-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell .content :is(.referral-metrics, .goals-summary) > article {
+    padding: 14px;
+  }
+}
+
+.app-shell .content .commission-table > .commission-table-summary {
+  padding: 12px 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-shell .content .commission-table-summary > strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.app-shell .content .commission-filter-confirmations {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.app-shell .content .commission-filter-confirmations:empty {
+  display: none;
+}
+
+.app-shell .content .commission-filter-confirmations > .confirmation-control {
+  min-width: 0;
+  border-top: 0;
+}
+
+.app-shell .content .review-filter-grid.cancellation-filter-grid {
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+}
+
+@container review-workspace (max-width: 1000px) {
+  .app-shell .content .review-filter-grid.cancellation-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-shell
+    .content
+    .review-filter-grid.cancellation-filter-grid
+    > .review-search-field {
+    grid-column: auto;
+  }
+}
+
+@container review-workspace (max-width: 450px) {
+  .app-shell .content .review-filter-grid.cancellation-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

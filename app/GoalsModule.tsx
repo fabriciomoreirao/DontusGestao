@@ -435,52 +435,73 @@ export default function GoalsModule({
           <CalendarDays />
           <span>
             <small>Competência</small>
-            <strong>{dateRangeLabel(month)}</strong>
+            <strong>
+              {/^\d{4}-\d{2}$/.test(month)
+                ? new Intl.DateTimeFormat("pt-BR", {
+                    month: "long",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  }).format(new Date(month + "-01T12:00:00Z"))
+                : dateRangeLabel(month)}
+            </strong>
           </span>
         </article>
       </section>
-      <section className="goals-filters panel reminder-filter-toolbar">
-        <label>
-          <Search />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar meta, setor ou colaborador"
+      <section
+        className="review-workspace-panel review-filter-panel"
+        aria-label="Filtros de metas"
+      >
+        <div className="review-filter-grid">
+          <label className="review-search-field">
+            <span>Pesquisar</span>
+            <span className="review-search-control">
+              <Search size={17} aria-hidden="true" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Meta, setor ou colaborador"
+              />
+            </span>
+          </label>
+          <label>
+            <span>Colaborador</span>
+            <select
+              value={employeeFilter}
+              onChange={(event) => setEmployeeFilter(event.target.value)}
+            >
+              <option value="all">Todos os colaboradores</option>
+              {employees
+                .filter((entry) => entry.active)
+                .map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.displayName}
+                  </option>
+                ))}
+            </select>
+          </label>
+          {reminderFilter.control}
+        </div>
+        <div className="review-filter-period">
+          <DateRangeFilter
+            showClear={false}
+            value={month}
+            onChange={setMonth}
+            label="Datas das metas"
           />
-        </label>
-        {reminderFilter.control}
-        <DateRangeFilter
-          showClear={false}
-          value={month}
-          onChange={setMonth}
-          label="Período das metas"
-        />
-        <select
-          value={employeeFilter}
-          onChange={(event) => setEmployeeFilter(event.target.value)}
-        >
-          <option value="all">Todos os colaboradores</option>
-          {employees
-            .filter((entry) => entry.active)
-            .map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.displayName}
-              </option>
-            ))}
-        </select>
-        <button
-          type="button"
-          className="secondary-button operation-filter-clear"
-          aria-label="Limpar todos os filtros"
-          onClick={() => {
-            setQuery("");
-            setEmployeeFilter("all");
-            setMonth(dateKey(new Date()).slice(0, 7));
-            reminderFilter.setMode("all");
-          }}
-        >
-          Limpar
-        </button>
+          <button
+            type="button"
+            className="secondary-button operation-filter-clear"
+            aria-label="Limpar todos os filtros"
+            onClick={() => {
+              setQuery("");
+              setEmployeeFilter("all");
+              setMonth(dateKey(new Date()).slice(0, 7));
+              reminderFilter.setMode("all");
+            }}
+          >
+            Limpar
+          </button>
+        </div>
       </section>
       {summary.error && (
         <p className="form-error" role="alert">

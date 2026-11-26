@@ -4176,7 +4176,7 @@ export default function OperationsApp() {
                         showFunctionPeriod) && (
                         <OperationIndicatorsLauncher
                           pageKey={`${active}:${commercialFlow}:${csFlow}`}
-                          period={showFunctionPeriod && active !== "support" && !(active === "commercial" && commercialFlow === "crm") ? kanbanMonth : undefined}
+                          period={showFunctionPeriod && !["support", "serviceRequests", "serviceFollowup", "suggestions", "waitingQueue"].includes(active) && !(active === "commercial" && commercialFlow !== "qualification") ? kanbanMonth : undefined}
                           onPeriodChange={setKanbanMonth}
                           onOpen={
                             canViewOperationIndicators
@@ -4410,6 +4410,9 @@ export default function OperationsApp() {
                       )}
                       {active === "waitingQueue" && (
                         <WaitingQueueModule
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() => setKanbanMonth(brasiliaMonthKey())}
                           items={kanbanItems}
                           employees={
                             data.waitingQueueDirectory?.employees ??
@@ -4615,6 +4618,9 @@ export default function OperationsApp() {
                       )}
                       {active === "suggestions" && monthSuggestionModule && (
                         <SuggestionsModule
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() => setKanbanMonth(brasiliaMonthKey())}
                           module={monthSuggestionModule}
                           customers={data.customers}
                           canCreate={userCan(
@@ -4637,6 +4643,9 @@ export default function OperationsApp() {
                       {(active === "serviceRequests" ||
                         active === "serviceFollowup") && (
                         <ServiceRequestsModule
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() => setKanbanMonth(brasiliaMonthKey())}
                           canCreateTargets={[
                             "tasks",
                             "ti",
@@ -9376,11 +9385,14 @@ export function CustomersView({
             </span>
           }
         />
+        <div className="customer-register-navigation">
         <nav
           className="customer-register-tabs"
           aria-label="Cadastros de clientes"
         >
           <button
+            type="button"
+            aria-pressed={section === "customers"}
             className={section === "customers" ? "active" : ""}
             onClick={() => {
               setSection("customers");
@@ -9390,6 +9402,8 @@ export function CustomersView({
             <UsersRound size={16} /> Clientes <b>{customers.length}</b>
           </button>
           <button
+            type="button"
+            aria-pressed={section === "networks"}
             className={section === "networks" ? "active" : ""}
             onClick={() => {
               setSection("networks");
@@ -9399,6 +9413,11 @@ export function CustomersView({
             <Users size={16} /> Redes e franquias <b>{networks.length}</b>
           </button>
         </nav>
+            <span className="toolbar-summary customer-board-footer">
+              <b>{section === "customers" ? filtered.length : filteredNetworks.length}</b>{" "}
+              registros
+            </span>
+        </div>
         <div
           className={`customer-filter-panel operation-filter-panel ${section === "networks" ? "network-filter" : ""}`}
         >
@@ -9475,28 +9494,20 @@ export function CustomersView({
               </label>
             </>
           )}
-          <div className="operation-filter-bottom">
-            <button
-              className="secondary-button operation-filter-clear"
-              type="button"
-              aria-label="Limpar todos os filtros"
-              onClick={() => {
-                setFilter("");
-                setStatus("");
-                setProject("");
-                setGraceDays("");
-              }}
-            >
-              Limpar
-            </button>
-          </div>
+          <button
+            className="secondary-button operation-filter-clear"
+            type="button"
+            aria-label="Limpar todos os filtros"
+            onClick={() => {
+              setFilter("");
+              setStatus("");
+              setProject("");
+              setGraceDays("");
+            }}
+          >
+            Limpar
+          </button>
         </div>
-        <footer className="operation-board-footer customer-board-footer">
-          <span>
-            <b>{section === "customers" ? filtered.length : filteredNetworks.length}</b>{" "}
-            registros
-          </span>
-        </footer>
       </section>
       {section === "customers" ? (
         <div className="table-card">
@@ -12983,8 +12994,8 @@ function CommercialLeadsModule({
     <section
       className={`commercial-leads-module commercial-${view}-view ${flow === "crm" ? "commercial-original-layout" : ""} ${flow === "retention" ? "retention-crm-module" : ""}`}
     >
-      {flow === "crm" ? (
-        <section className="operation-board-panel" aria-label="Painel do CRM Comercial">
+      {flow !== "qualification" ? (
+        <section className="operation-board-panel" aria-label={commercialFlowLabel(flow)}>
           {pageHeader}
           {filters}
           <div className="crm-filter-period">
@@ -12998,10 +13009,12 @@ function CommercialLeadsModule({
               Limpar
             </button>
           </div>
-          <div className="operation-board-footer">
-            {summary}
-            {viewSwitch}
-          </div>
+          {flow === "crm" && (
+            <div className="operation-board-footer">
+              {summary}
+              {viewSwitch}
+            </div>
+          )}
         </section>
       ) : (
         <>

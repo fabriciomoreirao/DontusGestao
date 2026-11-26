@@ -39,6 +39,7 @@ import "./nov24-chat-recruitment.css";
 import "./list-pagination-refinements.css";
 import "./chat-layout.css";
 import "./workspace-tables.css";
+import "./referrals-goals-layout.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
