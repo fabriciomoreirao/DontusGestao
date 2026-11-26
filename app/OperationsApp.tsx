@@ -10221,7 +10221,7 @@ function ModuleView({
                   {statusItems.length === 0 ? (
                     <p className="column-empty">Solte um card aqui</p>
                   ) : (
-                    <PaginatedItems mode="cards" label="registros">
+                    <PaginatedItems mode="kanban" label="registros">
                       {statusItems.map((item) => (
                         <WorkCard
                           key={item.id}
@@ -20411,15 +20411,17 @@ function EnterpriseNetworksModule({
             <EmptyState text="Nenhuma rede cadastrada." />
           ) : (
             <>
-              {filtered.map((item) => (
-                <EnterpriseNetworkCard
-                  key={item.id}
-                  item={item}
-                  network={enterpriseNetworkFor(item)}
-                  featureOptions={featureOptions}
-                  onOpen={() => setSelected(item)}
-                />
-              ))}
+              <PaginatedItems mode="kanban" label="cards">
+                {filtered.map((item) => (
+                  <EnterpriseNetworkCard
+                    key={item.id}
+                    item={item}
+                    network={enterpriseNetworkFor(item)}
+                    featureOptions={featureOptions}
+                    onOpen={() => setSelected(item)}
+                  />
+                ))}
+              </PaginatedItems>
             </>
           )}
         </section>
@@ -22215,7 +22217,7 @@ function CustomerSuccessModule({
             </p>
           </div>
         ) : (
-          <PaginatedItems mode="cards" label="registros">
+          <PaginatedItems mode="kanban" label="registros">
             {filtered.map((item) => {
               const journey = parseCsJourney(item.description);
               return (
@@ -23691,16 +23693,18 @@ function RecruitmentView({
                 }
               </b>
             </header>
-            {candidates
-              .filter((candidate) => candidate.status === stage.name)
-              .map((candidate) => (
-                <RecruitmentCandidateCard
-                  candidate={candidate}
-                  busy={busy}
-                  key={candidate.id}
-                  onSelect={() => setSelected(candidate)}
-                />
-              ))}
+            <PaginatedItems mode="kanban" label="cards">
+              {candidates
+                .filter((candidate) => candidate.status === stage.name)
+                .map((candidate) => (
+                  <RecruitmentCandidateCard
+                    candidate={candidate}
+                    busy={busy}
+                    key={candidate.id}
+                    onSelect={() => setSelected(candidate)}
+                  />
+                ))}
+            </PaginatedItems>
           </article>
         ))}
       </section>
@@ -24165,16 +24169,18 @@ function RecruitmentWorkflowView({
                     }
                   </b>
                 </header>
-                {candidates
-                  .filter((candidate) => candidate.status.trim() === stage)
-                  .map((candidate) => (
-                    <RecruitmentCandidateCard
-                      candidate={candidate}
-                      busy={busy}
-                      key={candidate.id}
-                      onSelect={() => setSelected(candidate)}
-                    />
-                  ))}
+                <PaginatedItems mode="kanban" label="cards">
+                  {candidates
+                    .filter((candidate) => candidate.status.trim() === stage)
+                    .map((candidate) => (
+                      <RecruitmentCandidateCard
+                        candidate={candidate}
+                        busy={busy}
+                        key={candidate.id}
+                        onSelect={() => setSelected(candidate)}
+                      />
+                    ))}
+                </PaginatedItems>
               </article>
             ))}
           </section>

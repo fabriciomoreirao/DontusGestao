@@ -530,7 +530,7 @@ export default function ReferralsModule({
       </section>
       <div className="referral-grid">
         {
-          <PaginatedItems mode="cards" label="indicações">
+          <PaginatedItems mode="kanban" label="indicações">
             {visible.map(({ item, detail }) => (
               <article
                 data-reminder-entity-id={item.id}

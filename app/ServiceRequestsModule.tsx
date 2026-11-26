@@ -1,4 +1,5 @@
 "use client";
+import PaginatedItems from "@/app/PaginatedItems";
 
 import CommentHistory from "@/app/CommentHistory";
 import PhoneLink, { PhoneInput } from "@/app/PhoneLink";
@@ -409,62 +410,64 @@ export default function ServiceRequestsModule({
               <b>{visible.filter((item) => item.status === stage).length}</b>
             </header>
             <div>
-              {visible
-                .filter((item) => item.status === stage)
-                .map((item) => {
-                  const detail = parse(item.description)!;
-                  const Icon = stageIcon(stage);
-                  return (
-                    <article
-                      data-reminder-entity-id={item.id}
-                      draggable={canEdit}
-                      onDragStart={(event: DragEvent<HTMLElement>) => {
-                        setDragging(item.id);
-                        beginKanbanDrag(event, "text/plain", item.id);
-                      }}
-                      onDragEnd={() => setDragging("")}
-                      onClick={() => setSelected(item)}
-                      key={item.id}
-                    >
-                      <span className="service-request-card-icon">
-                        <Icon size={16} />
-                      </span>
-                      <strong>{detail.fullName}</strong>
-                      <small>
-                        {detail.protocol} · ID {detail.clientId}
-                      </small>
-                      <p>{detail.summary}</p>
-                      {canEdit && (
-                        <button
-                          className="service-request-delete"
-                          type="button"
-                          disabled={busy}
-                          title="Excluir chamado"
-                          aria-label={`Excluir chamado ${detail.protocol}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void remove(item);
-                          }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                      <footer>
-                        <span>
-                          {detail.sector || item.team} ·{" "}
-                          {detail.classification || detail.aiClassification}
+              <PaginatedItems mode="kanban" label="cards">
+                {visible
+                  .filter((item) => item.status === stage)
+                  .map((item) => {
+                    const detail = parse(item.description)!;
+                    const Icon = stageIcon(stage);
+                    return (
+                      <article
+                        data-reminder-entity-id={item.id}
+                        draggable={canEdit}
+                        onDragStart={(event: DragEvent<HTMLElement>) => {
+                          setDragging(item.id);
+                          beginKanbanDrag(event, "text/plain", item.id);
+                        }}
+                        onDragEnd={() => setDragging("")}
+                        onClick={() => setSelected(item)}
+                        key={item.id}
+                      >
+                        <span className="service-request-card-icon">
+                          <Icon size={16} />
                         </span>
-                        <time>{dt(item.updated_at)}</time>
-                      </footer>
-                      {detail.routedTo && (
-                        <em>
-                          <CheckCircle2 size={12} /> Enviado para{" "}
-                          {detail.routedTo}
-                        </em>
-                      )}
-                    </article>
-                  );
-                })}
+                        <strong>{detail.fullName}</strong>
+                        <small>
+                          {detail.protocol} · ID {detail.clientId}
+                        </small>
+                        <p>{detail.summary}</p>
+                        {canEdit && (
+                          <button
+                            className="service-request-delete"
+                            type="button"
+                            disabled={busy}
+                            title="Excluir chamado"
+                            aria-label={`Excluir chamado ${detail.protocol}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void remove(item);
+                            }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                        <footer>
+                          <span>
+                            {detail.sector || item.team} ·{" "}
+                            {detail.classification || detail.aiClassification}
+                          </span>
+                          <time>{dt(item.updated_at)}</time>
+                        </footer>
+                        {detail.routedTo && (
+                          <em>
+                            <CheckCircle2 size={12} /> Enviado para{" "}
+                            {detail.routedTo}
+                          </em>
+                        )}
+                      </article>
+                    );
+                  })}
+              </PaginatedItems>
             </div>
           </div>
         ))}

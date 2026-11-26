@@ -741,7 +741,7 @@ function QueueColumn({
           <p className="waiting-queue-empty">Nenhum cliente nesta coluna.</p>
         ) : (
           <PaginatedItems
-            mode={tone === "contacted" ? "list" : "cards"}
+            mode={tone === "contacted" ? "list" : "kanban"}
             source={["items"]}
             resetKey={tone}
             label="contatos"

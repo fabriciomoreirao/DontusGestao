@@ -482,81 +482,83 @@ export default function MarketingWorkspaceModule({
                   }
                 </span>
               </header>
-              {visible
-                .filter(
-                  (record) => marketingStage(record.item.status) === stage,
-                )
-                .map(({ item, detail }) => (
-                  <article
-                    className="standard-card marketing-card"
-                    draggable={canEdit}
-                    data-reminder-entity-id={item.id}
-                    data-reminder-customer-name={
-                      item.customer_name || item.title
-                    }
-                    onDragStart={(event) => {
-                      setDragging(item);
-                      beginKanbanDrag(event, "text/plain", item.id);
-                    }}
-                    onDragEnd={() => {
-                      setDragging(null);
-                      setDropStage("");
-                    }}
-                    onClick={() => !dragging && setSelected(item)}
-                    key={item.id}
-                  >
-                    <small>{detail.type}</small>
-                    <h3>{item.title}</h3>
-                    <p>
-                      {detail.campaign ||
-                        detail.summary ||
-                        "Sem campanha vinculada"}
-                    </p>
-                    <div>
-                      <span>{detail.channel || "Canal não informado"}</span>
-                      <span>{date(detail.dueDate)}</span>
-                    </div>
-                    {detail.attachments.length > 0 && (
-                      <span className="marketing-media-count">
-                        <ImageIcon size={13} />
-                        {detail.attachments.length} arquivo(s)
-                      </span>
-                    )}
-                    <footer>
-                      <span
-                        className="marketing-owner-chip"
-                        data-collaborator-name={item.owner}
-                      >
-                        {item.owner || "Fila de Marketing"}
-                      </span>
-                      <ChevronRight size={16} />
-                    </footer>
-                    {canEdit && (
-                      <span className="marketing-card-actions">
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditing(item);
-                          }}
+              <PaginatedItems mode="kanban" label="cards">
+                {visible
+                  .filter(
+                    (record) => marketingStage(record.item.status) === stage,
+                  )
+                  .map(({ item, detail }) => (
+                    <article
+                      className="standard-card marketing-card"
+                      draggable={canEdit}
+                      data-reminder-entity-id={item.id}
+                      data-reminder-customer-name={
+                        item.customer_name || item.title
+                      }
+                      onDragStart={(event) => {
+                        setDragging(item);
+                        beginKanbanDrag(event, "text/plain", item.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragging(null);
+                        setDropStage("");
+                      }}
+                      onClick={() => !dragging && setSelected(item)}
+                      key={item.id}
+                    >
+                      <small>{detail.type}</small>
+                      <h3>{item.title}</h3>
+                      <p>
+                        {detail.campaign ||
+                          detail.summary ||
+                          "Sem campanha vinculada"}
+                      </p>
+                      <div>
+                        <span>{detail.channel || "Canal não informado"}</span>
+                        <span>{date(detail.dueDate)}</span>
+                      </div>
+                      {detail.attachments.length > 0 && (
+                        <span className="marketing-media-count">
+                          <ImageIcon size={13} />
+                          {detail.attachments.length} arquivo(s)
+                        </span>
+                      )}
+                      <footer>
+                        <span
+                          className="marketing-owner-chip"
+                          data-collaborator-name={item.owner}
                         >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          className="delete"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void operate(
-                              { action: "deleteWorkItem", id: item.id },
-                              "Item de Marketing excluído.",
-                            );
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </span>
-                    )}
-                  </article>
-                ))}
+                          {item.owner || "Fila de Marketing"}
+                        </span>
+                        <ChevronRight size={16} />
+                      </footer>
+                      {canEdit && (
+                        <span className="marketing-card-actions">
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setEditing(item);
+                            }}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            className="delete"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void operate(
+                                { action: "deleteWorkItem", id: item.id },
+                                "Item de Marketing excluído.",
+                              );
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </span>
+                      )}
+                    </article>
+                  ))}
+              </PaginatedItems>
             </section>
           ))}
         </div>
@@ -1028,41 +1030,43 @@ function CampaignWorkspace({
                 {visible.filter(({ item }) => item.status === stage).length}
               </span>
             </header>
-            {visible
-              .filter(({ item }) => item.status === stage)
-              .map(({ item, detail }) => (
-                <article
-                  data-reminder-entity-id={item.id}
-                  className="standard-card campaign-card"
-                  draggable={canEdit}
-                  key={item.id}
-                  onDragStart={(event) => {
-                    beginKanbanDrag(event, "text/plain", item.id);
-                    setDragging(item);
-                  }}
-                  onDragEnd={() => setDragging(null)}
-                  onClick={() => !dragging && setSelected(item)}
-                >
-                  <small>{stage}</small>
-                  <h3>{detail.name}</h3>
-                  <p>{detail.description}</p>
-                  <div>
-                    <span>
-                      <CalendarDays size={13} /> {date(detail.startDate)}
-                    </span>
-                    <span>{detail.attachments.length} arquivo(s)</span>
-                  </div>
-                  <footer>
-                    <span
-                      className="marketing-owner-chip"
-                      data-collaborator-name={item.owner}
-                    >
-                      {item.owner || "Marketing"}
-                    </span>
-                    <ChevronRight size={16} />
-                  </footer>
-                </article>
-              ))}
+            <PaginatedItems mode="kanban" label="cards">
+              {visible
+                .filter(({ item }) => item.status === stage)
+                .map(({ item, detail }) => (
+                  <article
+                    data-reminder-entity-id={item.id}
+                    className="standard-card campaign-card"
+                    draggable={canEdit}
+                    key={item.id}
+                    onDragStart={(event) => {
+                      beginKanbanDrag(event, "text/plain", item.id);
+                      setDragging(item);
+                    }}
+                    onDragEnd={() => setDragging(null)}
+                    onClick={() => !dragging && setSelected(item)}
+                  >
+                    <small>{stage}</small>
+                    <h3>{detail.name}</h3>
+                    <p>{detail.description}</p>
+                    <div>
+                      <span>
+                        <CalendarDays size={13} /> {date(detail.startDate)}
+                      </span>
+                      <span>{detail.attachments.length} arquivo(s)</span>
+                    </div>
+                    <footer>
+                      <span
+                        className="marketing-owner-chip"
+                        data-collaborator-name={item.owner}
+                      >
+                        {item.owner || "Marketing"}
+                      </span>
+                      <ChevronRight size={16} />
+                    </footer>
+                  </article>
+                ))}
+            </PaginatedItems>
           </section>
         ))}
       </div>

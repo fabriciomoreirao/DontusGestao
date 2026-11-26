@@ -32,6 +32,9 @@ Os filtros antes limitados ao mês permitem selecionar **De** e **Até**, inclui
 os dois dias no horário de Brasília, atravessar meses/anos ou limpar os limites.
 O período do quadro fica nas ações da funcionalidade, ao lado de **Indicadores**.
 Os controles quebram linha em telas menores e o cabeçalho global mantém a navegação.
+Os quadros CRM e Kanban exibem inicialmente **10 cards por coluna**. **Ver mais**
+acrescenta dez cards naquela coluna e informa quantos ainda estão ocultos. Pesquisa
+e filtros consideram todos os registros; contadores e totais continuam completos.
 Listas, indicadores, totais e painel público usam o período informado. Em
 Comissões, as faixas continuam sendo calculadas por competência e as confirmações
 são separadas por mês, mesmo quando a consulta abrange vários meses.

@@ -1140,7 +1140,7 @@ export default function CustomerSuccessJourneyModule({
       ) : view === "grid" ? (
         <div className="cs-pipeline-grid">
           {
-            <PaginatedItems mode="cards" label="acompanhamentos">
+            <PaginatedItems mode="kanban" label="acompanhamentos">
               {visible.map(({ item, journey }) => (
                 <JourneyCard
                   key={item.id}
