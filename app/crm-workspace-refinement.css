@@ -862,6 +862,82 @@
   width: 100%;
   min-width: 0;
 }
+.app-shell .content .commercial-original-layout.commercial-leads-module {
+  container: crm-workspace / inline-size;
+}
+
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  > .commercial-lead-filters.panel {
+  grid-template-columns: minmax(0, 1.65fr) repeat(5, minmax(0, 1fr)) !important;
+  gap: 12px;
+  overflow: visible;
+}
+
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  > .commercial-lead-filters.panel::before {
+  content: none;
+}
+
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  > .commercial-lead-filters.panel > label {
+  grid-template-rows: auto 42px;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  > .commercial-lead-filters.panel :is(input, select, .people-picker-trigger) {
+  border-radius: 9px;
+  font-weight: 500;
+}
+
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  .operation-function-tools,
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  .date-range-filter {
+  align-items: center;
+}
+
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  .date-range-filter > label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.app-shell .content .commercial-original-layout.commercial-leads-module
+  .date-range-filter > button {
+  border-color: transparent;
+  background: transparent;
+}
+
+@container crm-workspace (max-width: 1130px) {
+  .app-shell .content .commercial-original-layout.commercial-leads-module
+    > .commercial-lead-filters.panel {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@container crm-workspace (max-width: 560px) {
+  .app-shell .content .commercial-original-layout.commercial-leads-module
+    > .commercial-lead-filters.panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@container crm-workspace (max-width: 340px) {
+  .app-shell .content .commercial-original-layout.commercial-leads-module
+    > .commercial-lead-filters.panel {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
 .commercial-traffic-indicators {
   display: grid;
   gap: 20px;
