@@ -642,6 +642,7 @@ export default function TasksModule({
             value={month}
             onChange={onMonthChange}
             label="Período das tarefas"
+            className="tasks-heading-period"
           />
           <button
             type="button"
