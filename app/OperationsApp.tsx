@@ -112,7 +112,6 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   Check,
-  CheckCheck,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -182,7 +181,9 @@ import {
   buildNotifications,
   newlyReceived,
   ownMutationNotificationIds,
+  type AppNotification,
 } from "@/lib/notifications";
+import NotificationCenter from "@/app/NotificationCenter";
 import {
   isReminderForToday,
   pendingLinkedReminders,
@@ -1273,6 +1274,44 @@ export default function OperationsApp() {
                 : null,
             },
             reminderClock,
+          )
+        : [],
+    [
+      notificationUser,
+      notificationItems,
+      notificationAccess,
+      notificationQueueDirectory,
+      notificationCustomers,
+      notificationTasks,
+      notificationNotices,
+      notificationAgenda,
+      notificationSuggestions,
+      notificationUserId,
+      reminderClock,
+    ],
+  );
+  // Histórico do painel: as mesmas notificações, mas incluindo as já lidas. Fica separado de
+  // recordNotifications para não entrar no som, no contador do sino nem na lista de não lidas.
+  const recordNotificationHistory = useMemo(
+    () =>
+      notificationUser && notificationItems
+        ? buildNotifications(
+            {
+              user: notificationUser,
+              items: notificationItems,
+              access: notificationAccess,
+              waitingQueueDirectory: notificationQueueDirectory,
+              customers: notificationCustomers,
+              taskModule: notificationTasks,
+              noticesModule: notificationNotices,
+              agendaModule: notificationAgenda,
+              suggestionModule: notificationSuggestions,
+              internalChatModule: notificationUserId
+                ? { currentUserId: notificationUserId, rooms: [] }
+                : null,
+            },
+            reminderClock,
+            { includeRead: true },
           )
         : [],
     [
@@ -3055,6 +3094,16 @@ export default function OperationsApp() {
       /^(task|chat|notice|reminder)-/.test(entry.id) ||
       !dismissedNotificationIds.has(entry.id),
   );
+  // Notificações já lidas, mais recentes primeiro, para o painel mostrar as últimas mesmo
+  // depois de marcadas: as lidas no servidor (tarefas, avisos, lembretes) e as dispensadas
+  // neste navegador (chegadas, comentários, agenda).
+  const notificationHistory = recordNotificationHistory
+    .filter((entry) =>
+      /^(task|notice|reminder)-/.test(entry.id)
+        ? entry.read === true
+        : dismissedNotificationIds.has(entry.id),
+    )
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const notificationTotal = notificationEntries.reduce(
     (total, entry) =>
       total + (entry.category === "chat" ? entry.count || 1 : 1),
@@ -3365,28 +3414,32 @@ export default function OperationsApp() {
     : indicatorsOpen
       ? "Indicadores · " + (currentDestination?.label || MODULES[active].label)
       : currentDestination?.label || MODULES[active].label;
-  const markAllNotificationsRead = async () => {
-    const visibleNotificationIds = notificationEntries.map((entry) => entry.id);
-    const requests: Array<Record<string, unknown>> = [
+  // Pedidos ao servidor para marcar como lidas as notificações escolhidas. As de
+  // chegada, comentário e agenda não têm registro no servidor e só são guardadas no navegador.
+  const notificationReadRequests = (
+    selected: AppNotification[],
+  ): Array<Record<string, unknown>> => {
+    const ids = new Set(selected.map((entry) => entry.id));
+    return [
       ...(data.taskModule?.notifications
-        .filter((entry) =>
-          policyNotifications.some(
-            (notification) => notification.id === `task-${entry.id}`,
-          ),
-        )
+        .filter((entry) => ids.has(`task-${entry.id}`))
         .map((entry) => ({
           action: "markTaskNotificationRead",
           notificationId: entry.id,
         })) ?? []),
       ...(data.noticesModule?.notices
-        .filter((entry) =>
-          policyNotifications.some(
-            (notification) => notification.id === `notice-${entry.id}`,
-          ),
-        )
+        .filter((entry) => ids.has(`notice-${entry.id}`))
         .map((entry) => ({ action: "markNoticeRead", id: entry.id })) ?? []),
       ...(data.internalChatModule?.rooms
-        .filter((entry) => entry.unreadCount > 0)
+        .filter(
+          (entry) =>
+            entry.unreadCount > 0 &&
+            selected.some(
+              (notification) =>
+                notification.category === "chat" &&
+                notification.sourceId === entry.id,
+            ),
+        )
         .map((entry) => ({
           action: "markInternalChatRoomRead",
           roomId: entry.id,
@@ -3395,7 +3448,7 @@ export default function OperationsApp() {
         .filter(
           ({ item }) =>
             userCan(data.user, "reminders", "edit") &&
-            policyNotifications.some(
+            selected.some(
               (entry) =>
                 entry.category === "reminder" && entry.sourceId === item.id,
             ),
@@ -3415,19 +3468,74 @@ export default function OperationsApp() {
           }),
         })),
     ];
-    const finishLocally = () => {
+  };
+  const postNotificationReads = (requests: Array<Record<string, unknown>>) =>
+    Promise.all(
+      requests.map(async (payload) => {
+        // keepalive: o clique numa notificação pode recarregar a página logo em seguida.
+        const response = await fetch("/api/operations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: true,
+        });
+        if (!response.ok)
+          throw new Error("Falha ao atualizar uma notificação.");
+      }),
+    );
+  const dismissNotificationsLocally = (ids: string[]) =>
+    setDismissedNotificationIds((current) => {
+      const next = new Set([...current, ...ids]);
+      try {
+        localStorage.setItem(
+          `dontus:read-operational-notifications:${data.user.email}`,
+          JSON.stringify([...next].slice(-2000)),
+        );
+      } catch {
+        /* armazenamento local indisponível */
+      }
+      return next;
+    });
+  // Leitura automática do painel (3 s visível) e clique numa notificação: marca só as
+  // escolhidas, em segundo plano, sem travar a tela nem fechar o painel.
+  const markNotificationsRead = async (selected: AppNotification[]) => {
+    const readable = selected.filter((entry) => entry.category !== "chat");
+    if (!readable.length) return;
+    const ids = readable.map((entry) => entry.id);
+    const requests = notificationReadRequests(readable);
+    dismissNotificationsLocally(ids);
+    if (!requests.length) return;
+    try {
+      await postNotificationReads(requests);
+      await load(true);
+    } catch {
       setDismissedNotificationIds((current) => {
-        const next = new Set([...current, ...visibleNotificationIds]);
-        try {
-          localStorage.setItem(
-            `dontus:read-operational-notifications:${data.user.email}`,
-            JSON.stringify([...next].slice(-2000)),
-          );
-        } catch {
-          /* armazenamento local indisponível */
-        }
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
         return next;
       });
+      setToast({
+        kind: "error",
+        message: "Não foi possível marcar a notificação como lida.",
+      });
+    }
+  };
+  const markAllNotificationsRead = async () => {
+    const visibleNotificationIds = notificationEntries.map((entry) => entry.id);
+    // Como antes: todas as notificações do sistema e todas as conversas com mensagens não lidas.
+    const requests = [
+      ...notificationReadRequests(
+        policyNotifications.filter((entry) => entry.category !== "chat"),
+      ),
+      ...(data.internalChatModule?.rooms
+        .filter((entry) => entry.unreadCount > 0)
+        .map((entry) => ({
+          action: "markInternalChatRoomRead",
+          roomId: entry.id,
+        })) ?? []),
+    ];
+    const finishLocally = () => {
+      dismissNotificationsLocally(visibleNotificationIds);
       setNotificationCenterOpen(false);
       setToast({
         kind: "success",
@@ -3440,17 +3548,7 @@ export default function OperationsApp() {
     }
     setBusy(true);
     try {
-      await Promise.all(
-        requests.map(async (payload) => {
-          const response = await fetch("/api/operations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          if (!response.ok)
-            throw new Error("Falha ao atualizar uma notificação.");
-        }),
-      );
+      await postNotificationReads(requests);
       await load(true);
       finishLocally();
     } catch {
@@ -3990,86 +4088,38 @@ export default function OperationsApp() {
                       )}
                     </button>
                     {notificationCenterOpen && (
-                      <section className="notification-center">
-                        <header>
-                          <span>
-                            <strong>Notificações</strong>
-                            <small>Chegadas e comentários para você</small>
-                          </span>
-                          <div className="notification-center-head-actions">
-                            {notificationTotal > 0 && (
-                              <button
-                                className="mark-all-read"
-                                disabled={busy}
-                                onClick={() => void markAllNotificationsRead()}
-                              >
-                                <CheckCheck size={15} />
-                                Marcar todas como vistas
-                              </button>
-                            )}
-                            <button
-                              onClick={() => setNotificationCenterOpen(false)}
-                              aria-label="Fechar notificações"
-                            >
-                              <X size={15} />
-                            </button>
-                          </div>
-                        </header>
-                        <div>
-                          {notificationEntries.length === 0 ? (
-                            <p>Nenhuma notificação pendente.</p>
-                          ) : (
-                            notificationEntries.map((entry) => (
-                              <button
-                                data-reminder-entity-id={entry.id}
-                                key={entry.id}
-                                onClick={() => {
-                                  if (
-                                    !/^(task|chat|notice|reminder)-/.test(
-                                      entry.id,
-                                    )
-                                  ) {
-                                    setDismissedNotificationIds((current) => {
-                                      const next = new Set([
-                                        ...current,
-                                        entry.id,
-                                      ]);
-                                      try {
-                                        localStorage.setItem(
-                                          `dontus:read-operational-notifications:${data.user.email}`,
-                                          JSON.stringify(
-                                            [...next].slice(-2000),
-                                          ),
-                                        );
-                                      } catch {}
-                                      return next;
-                                    });
-                                  }
-                                  setNotificationCenterOpen(false);
-                                  if (entry.roomId) {
-                                    setChatRoomTarget(entry.roomId);
-                                    navigate("internalChat");
-                                    return;
-                                  }
-                                  if (entry.targetUrl) {
-                                    window.location.href = entry.targetUrl;
-                                    return;
-                                  }
-                                  navigate(entry.module as ModuleKey);
-                                }}
-                              >
-                                <span>
-                                  <strong>{entry.title}</strong>
-                                  <small>
-                                    {entry.meta} · {dateTime(entry.at)}
-                                  </small>
-                                </span>
-                                <ChevronRight size={15} />
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      </section>
+                      <NotificationCenter
+                        entries={notificationEntries}
+                        history={notificationHistory}
+                        busy={busy}
+                        onClose={() => setNotificationCenterOpen(false)}
+                        onMarkAll={() => void markAllNotificationsRead()}
+                        onRead={(selected) =>
+                          void markNotificationsRead(selected)
+                        }
+                        onOpen={(entry) => {
+                          // Abrir uma notificação também a marca como lida (as de chat
+                          // são lidas ao abrir a conversa).
+                          if (
+                            entry.category !== "chat" &&
+                            notificationEntries.some(
+                              (current) => current.id === entry.id,
+                            )
+                          )
+                            void markNotificationsRead([entry]);
+                          setNotificationCenterOpen(false);
+                          if (entry.roomId) {
+                            setChatRoomTarget(entry.roomId);
+                            navigate("internalChat");
+                            return;
+                          }
+                          if (entry.targetUrl) {
+                            window.location.href = entry.targetUrl;
+                            return;
+                          }
+                          navigate(entry.module as ModuleKey);
+                        }}
+                      />
                     )}
                   </div>
                 </div>

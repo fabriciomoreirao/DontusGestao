@@ -36,6 +36,7 @@ import "./upload-filter-refinements.css";
 import "./sale-observation.css";
 import "./nov24-chat-recruitment.css";
 import "./list-pagination-refinements.css";
+import "./chat-layout.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

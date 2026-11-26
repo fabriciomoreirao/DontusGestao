@@ -1,0 +1,341 @@
+/* Chat interno: estrutura em duas colunas, como no modelo aprovado.
+   Coluna da esquerda: título com o menu de 3 pontos (Expandir e Personalizar), busca,
+   arquivadas e conversas. Coluna da direita: o estado vazio ou a conversa. Todas as
+   cores vêm das variáveis de tema, então vale para os temas claro e escuro. */
+.app-shell .internal-chat-page .internal-chat-shell {
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+/* ---- Coluna da lista ---- */
+.app-shell .internal-chat-page .internal-chat-sidebar {
+  padding: 14px 12px 10px;
+  gap: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel-elevated, var(--surface));
+}
+
+.internal-chat-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px 10px;
+}
+
+/* Mais específico que .app-shell .main h1 (tamanho de até 30 px). O peso precisa de
+   !important porque `.content h1` também usa !important para fixar 850. */
+.app-shell .main .internal-chat-sidebar-head h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.internal-chat-compose {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.internal-chat-compose:hover,
+.internal-chat-compose:focus-visible {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  outline: none;
+}
+
+.app-shell .internal-chat-page .internal-chat-search {
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.app-shell .internal-chat-page .internal-chat-search svg {
+  left: 12px;
+  color: var(--muted);
+}
+
+.app-shell .internal-chat-page .internal-chat-search input {
+  height: 100%;
+  padding-left: 36px;
+  border: 0;
+  background: transparent;
+  font-size: 0.82rem;
+}
+
+.app-shell .internal-chat-page .internal-chat-list-filters {
+  display: block;
+  padding: 8px 0 0;
+}
+
+.app-shell .internal-chat-page .internal-chat-list-filters > button {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-shell .internal-chat-page .internal-chat-list-filters > button.active {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
+}
+
+.internal-chat-list-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 6px 4px;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.internal-chat-groups-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.internal-chat-groups-toggle:hover {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.internal-chat-groups-toggle.active {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--line));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
+}
+
+.app-shell .internal-chat-page .internal-chat-room-list {
+  padding: 0;
+}
+
+.app-shell .internal-chat-page .internal-chat-room {
+  min-height: 56px;
+  padding: 6px 8px;
+  gap: 10px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted);
+}
+
+.app-shell .internal-chat-page .internal-chat-room:hover {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.app-shell .internal-chat-page .internal-chat-room.active {
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+
+.app-shell .internal-chat-page .internal-chat-room-copy strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.app-shell .internal-chat-page .internal-chat-room-copy small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.internal-chat-avatar-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+}
+
+.internal-chat-presence-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--panel-elevated, var(--surface));
+  border-radius: 50%;
+  background: #9aa5b4;
+}
+
+.internal-chat-presence-dot.online {
+  background: #22a867;
+}
+
+/* ---- Coluna da conversa ---- */
+.app-shell .internal-chat-page .internal-chat-conversation {
+  background: var(--surface);
+}
+
+.app-shell .internal-chat-page .internal-chat-welcome {
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+  padding: 24px;
+  color: var(--muted);
+}
+
+.internal-chat-empty-illustration {
+  margin-bottom: 10px;
+  color: color-mix(in srgb, var(--primary) 55%, var(--surface));
+}
+
+.app-shell .internal-chat-page .internal-chat-welcome h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.9rem;
+  font-weight: 800;
+}
+
+.app-shell .internal-chat-page .internal-chat-welcome p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.app-shell
+  .internal-chat-page
+  .internal-chat-conversation
+  > .internal-chat-privacy {
+  min-height: 0;
+  flex: 0 0 auto;
+  padding: 0 22px 18px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Celular: a lista e a conversa se alternam. */
+@media (max-width: 900px) {
+  .app-shell .internal-chat-page .internal-chat-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Avatares da lista: círculos maiores, como no modelo; o grupo ganha o fundo claro. */
+.app-shell .internal-chat-page .internal-chat-room .internal-chat-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: none;
+  font-size: 0.8rem;
+}
+
+.app-shell
+  .internal-chat-page
+  .internal-chat-room
+  .internal-chat-avatar.group:not(.has-photo) {
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+  color: var(--primary);
+}
+
+/* ---- Menu de 3 pontos do título (Expandir e Personalizar) ---- */
+.internal-chat-sidebar-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.internal-chat-sidebar-tools .internal-chat-menu-button {
+  color: var(--muted);
+}
+
+.internal-chat-sidebar-tools .internal-chat-menu-button:hover,
+.internal-chat-sidebar-tools .internal-chat-menu-button[aria-expanded="true"] {
+  color: var(--ink);
+}
+
+.internal-chat-menu {
+  position: relative;
+}
+
+.internal-chat-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 190px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 14px 34px rgba(8, 28, 48, 0.18);
+}
+
+.internal-chat-menu-list > button {
+  min-height: 38px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.internal-chat-menu-list > button:hover,
+.internal-chat-menu-list > button:focus-visible {
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+  outline: none;
+}
+
+/* ---- Caixa de mensagem: cresce sozinha com o texto ---- */
+.app-shell .internal-chat-page .internal-chat-composer textarea {
+  height: auto;
+  min-height: 44px;
+  max-height: min(40vh, 320px);
+  field-sizing: content;
+  resize: none;
+  overflow-y: auto;
+}
+
+.app-shell .internal-chat-page .internal-chat-message-editor > textarea {
+  min-height: 84px;
+  max-height: min(50vh, 360px);
+  field-sizing: content;
+  resize: none;
+  overflow-y: auto;
+}

@@ -32,8 +32,8 @@ import {
   LogOut,
   Mic,
   Square,
-  MessageCircleMore,
-  Palette,
+  Ellipsis,
+  Settings,
   Paperclip,
   Pencil,
   Trash2,
@@ -42,6 +42,7 @@ import {
   Plus,
   Reply,
   Search,
+  SquarePen,
   Send,
   SmilePlus,
   UsersRound,
@@ -382,6 +383,26 @@ export default function InternalChatModule({
     {},
   );
   const [creatingGroup, setCreatingGroup] = useState(false);
+  // Menu de 3 pontos do título (Expandir e Personalizar): fecha ao clicar fora ou com Esc.
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const chatMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!chatMenuOpen) return;
+    const close = (event: Event) => {
+      if (
+        event instanceof KeyboardEvent
+          ? event.key === "Escape"
+          : !chatMenuRef.current?.contains(event.target as Node)
+      )
+        setChatMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [chatMenuOpen]);
   const [archivedView, setArchivedView] = useState(false);
   const [groupsOnly, setGroupsOnly] = useState(false);
   const selectedInitialRoom = useRef<string | undefined>(undefined);
@@ -1044,84 +1065,112 @@ export default function InternalChatModule({
     <div
       className={`internal-chat-page ${expanded ? "internal-chat-expanded" : ""}`}
     >
-      <header className="page-header internal-chat-page-header module-page-header">
-        <div className="module-page-title">
-          <span className="module-page-title-icon">
-            <MessageCircleMore size={21} />
-          </span>
-          <span className="module-page-copy">
-            <span className="eyebrow">MÓDULO · COMUNICAÇÃO</span>
-            <h1>Chat interno</h1>
-            <p>
-              Todos os colaboradores disponíveis, conversas privadas e grupos da
-              sua equipe.
-            </p>
-          </span>
-        </div>
-        <div className="module-page-actions">
-          <button
-            type="button"
-            className="secondary-button chat-expand-button"
-            onClick={() => expandChat(!expanded)}
-          >
-            {expanded ? <ArrowLeft size={17} /> : <Maximize2 size={17} />}
-            <span>{expanded ? "Voltar" : "Expandir chat"}</span>
-          </button>
-          <button
-            type="button"
-            className="secondary-button chat-appearance-open"
-            onClick={() => setAppearanceOpen(true)}
-          >
-            <Palette size={17} />
-            Personalizar chat
-          </button>
-          {canCreateGroup && (
-            <button
-              className="primary-button"
-              onClick={() => setCreatingGroup(true)}
-            >
-              <Plus size={17} /> Novo grupo
-            </button>
-          )}
-        </div>
-      </header>
-
       <section
         className={`internal-chat-shell ${selectedKey ? "show-conversation" : ""}`}
       >
         <aside className="internal-chat-sidebar">
+          <div className="internal-chat-sidebar-head">
+            <h1>Chat interno</h1>
+            <div className="internal-chat-sidebar-tools">
+              {canCreateGroup && (
+                <button
+                  type="button"
+                  className="internal-chat-compose"
+                  onClick={() => setCreatingGroup(true)}
+                  aria-label="Novo grupo"
+                  title="Novo grupo"
+                >
+                  <SquarePen size={20} />
+                </button>
+              )}
+              <div className="internal-chat-menu" ref={chatMenuRef}>
+                <button
+                  type="button"
+                  className="internal-chat-compose internal-chat-menu-button"
+                  onClick={() => setChatMenuOpen((open) => !open)}
+                  aria-label="Opções do chat"
+                  aria-haspopup="menu"
+                  aria-expanded={chatMenuOpen}
+                  title="Opções do chat"
+                >
+                  <Ellipsis size={20} />
+                </button>
+                {chatMenuOpen && (
+                  <div
+                    className="internal-chat-menu-list"
+                    role="menu"
+                    aria-label="Opções do chat"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="chat-expand-button"
+                      onClick={() => {
+                        setChatMenuOpen(false);
+                        expandChat(!expanded);
+                      }}
+                    >
+                      {expanded ? (
+                        <ArrowLeft size={16} />
+                      ) : (
+                        <Maximize2 size={16} />
+                      )}
+                      {expanded ? "Voltar" : "Expandir chat"}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="chat-appearance-open"
+                      onClick={() => {
+                        setChatMenuOpen(false);
+                        setAppearanceOpen(true);
+                      }}
+                    >
+                      <Settings size={16} />
+                      Personalizar chat
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
           <div className="internal-chat-search">
             <Search size={16} />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar colaboradores ou grupos..."
+              placeholder="Buscar pessoa ou grupo"
+              aria-label="Buscar pessoa ou grupo"
             />
           </div>
           <div
             className="internal-chat-list-filters"
             role="group"
-            aria-label="Filtros das conversas"
+            aria-label="Conversas arquivadas"
           >
-            <button
-              type="button"
-              className={groupsOnly ? "active" : ""}
-              aria-pressed={groupsOnly}
-              onClick={() => setGroupsOnly((value) => !value)}
-            >
-              <UsersRound size={15} />
-              Somente grupos
-              <UnreadBadge count={unreadTotals.groups} />
-            </button>
             <button
               type="button"
               className={archivedView ? "active" : ""}
               aria-pressed={archivedView}
               onClick={() => setArchivedView((value) => !value)}
             >
-              <Archive size={15} />
+              <Archive size={16} />
               Arquivadas
               <UnreadBadge count={unreadTotals.archived} />
+            </button>
+          </div>
+          <div className="internal-chat-list-label">
+            <span>{archivedView ? "ARQUIVADAS" : "CONVERSAS"}</span>
+            <button
+              type="button"
+              className={`internal-chat-groups-toggle${groupsOnly ? " active" : ""}`}
+              aria-pressed={groupsOnly}
+              onClick={() => setGroupsOnly((value) => !value)}
+              title="Mostrar somente grupos"
+            >
+              <UsersRound size={13} />
+              Só grupos
+              <UnreadBadge count={unreadTotals.groups} />
             </button>
           </div>
           <span className="sr-only" role="status" aria-atomic="true">
@@ -1152,11 +1201,16 @@ export default function InternalChatModule({
                   }}
                   key={entry.key}
                 >
-                  <Avatar
-                    name={entry.name}
-                    photo={entry.photoDataUrl}
-                    group={entry.isGroup}
-                  />
+                  <span className="internal-chat-avatar-wrap">
+                    <Avatar
+                      name={entry.name}
+                      photo={entry.photoDataUrl}
+                      group={entry.isGroup}
+                    />
+                    {entry.user && (
+                      <PresenceDot user={entry.user} now={presenceNow} />
+                    )}
+                  </span>
                   <span className="internal-chat-room-copy">
                     <strong>
                       {userHasBirthdayToday(entry.user) && (
@@ -1166,9 +1220,6 @@ export default function InternalChatModule({
                         <Pin size={12} />
                       )}
                       <span>{entry.name}</span>
-                      {entry.user && (
-                        <PresenceBadge user={entry.user} now={presenceNow} />
-                      )}
                     </strong>
                     <small>
                       {last
@@ -1197,10 +1248,6 @@ export default function InternalChatModule({
               );
             })}
           </div>
-          <div className="internal-chat-privacy">
-            <LockKeyhole size={14} />
-            <span>Conversas visíveis somente para os participantes.</span>
-          </div>
         </aside>
 
         <main
@@ -1208,16 +1255,20 @@ export default function InternalChatModule({
           style={chatAppearanceStyle(appearance) as CSSProperties}
         >
           {!selectedConversation ? (
-            <div className="internal-chat-welcome">
-              <div>
-                <MessageCircleMore size={38} />
+            <>
+              <div className="internal-chat-welcome">
+                <ChatEmptyIllustration />
+                <h2>Vamos conversar?</h2>
+                <p>
+                  Selecione uma pessoa ou grupo na lista ao lado.
+                  <br />A conversa começa quando você envia a primeira mensagem.
+                </p>
               </div>
-              <h2>Escolha um colaborador</h2>
-              <p>
-                A conversa será criada automaticamente ao enviar a primeira
-                mensagem.
-              </p>
-            </div>
+              <div className="internal-chat-privacy">
+                <LockKeyhole size={14} />
+                <span>Conversas privadas entre os participantes</span>
+              </div>
+            </>
           ) : (
             <>
               <header
@@ -2036,18 +2087,59 @@ function buildConversations(
   });
 }
 
+function presenceTitle(user: InternalChatUser, online: boolean) {
+  return online
+    ? "Conectado ao sistema"
+    : user.lastSeenAt
+      ? `Último acesso: ${new Date(user.lastSeenAt).toLocaleString("pt-BR")}`
+      : "Desconectado do sistema";
+}
+
+// Ponto de presença sobre o avatar, na lista de conversas.
+function PresenceDot({ user, now }: { user: InternalChatUser; now: number }) {
+  const online = userIsOnline(user, now);
+  return (
+    <i
+      className={`internal-chat-presence-dot ${online ? "online" : "offline"}`}
+      title={presenceTitle(user, online)}
+      role="img"
+      aria-label={online ? "Online" : "Offline"}
+    />
+  );
+}
+
+function ChatEmptyIllustration() {
+  return (
+    <svg
+      className="internal-chat-empty-illustration"
+      viewBox="0 0 132 100"
+      width="132"
+      height="100"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path
+        d="M92 8c18 0 32 12 32 28 0 8-3.6 15-9.4 20.2L118 70l-17-6.3a37 37 0 0 1-9 1.1c-18 0-32-12-32-28S74 8 92 8Z"
+        opacity="0.5"
+      />
+      <path d="M40 30c18 0 33 12.5 33 28.5S58 87 40 87a38 38 0 0 1-9.6-1.2L12 93l5.4-17.6C11.5 70.2 8 64.7 8 58.5 8 42.5 22 30 40 30Z" />
+      <circle cx="28" cy="58.5" r="3.2" fill="currentColor" stroke="none" />
+      <circle cx="40" cy="58.5" r="3.2" fill="currentColor" stroke="none" />
+      <circle cx="52" cy="58.5" r="3.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function PresenceBadge({ user, now }: { user: InternalChatUser; now: number }) {
   const online = userIsOnline(user, now);
   return (
     <small
       className={`chat-presence ${online ? "online" : "offline"}`}
-      title={
-        online
-          ? "Conectado ao sistema"
-          : user.lastSeenAt
-            ? `Último acesso: ${new Date(user.lastSeenAt).toLocaleString("pt-BR")}`
-            : "Desconectado do sistema"
-      }
+      title={presenceTitle(user, online)}
     >
       <i aria-hidden="true" />
       {online ? "Online" : "Offline"}
@@ -2219,7 +2311,6 @@ const MessageBubble = memo(function MessageBubble({
                 aria-label="Editar mensagem"
                 autoFocus
                 rows={3}
-                maxLength={4000}
                 value={editBody}
                 onChange={(event) => setEditBody(event.target.value)}
                 onKeyDown={(event) => {

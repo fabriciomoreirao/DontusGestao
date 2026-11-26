@@ -52,7 +52,7 @@ public sealed record TaskAttachmentDto(Guid Id, Guid? CommentId, string FileName
 
 public sealed record TaskNotificationDto(
     Guid Id, Guid TaskId, long TaskNumber, string EventType, string Message,
-    bool Read, DateTimeOffset CreatedAt);
+    bool Read, DateTimeOffset CreatedAt, string ActorName = "");
 
 public sealed record CorporateTaskDto(
     Guid Id, long Number, string Protocol, string Title, string Description,

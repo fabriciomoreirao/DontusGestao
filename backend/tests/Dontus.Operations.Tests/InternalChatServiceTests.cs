@@ -474,6 +474,33 @@ public sealed class InternalChatServiceTests
         Assert.Empty(Assert.Single(Assert.Single((await service.GetModuleAsync(Actor(reader))).Rooms).Messages).Mentions);
     }
 
+    [Fact]
+    public async Task Long_messages_are_accepted_and_only_the_safety_cap_stops_them()
+    {
+        await using var db = CreateContext();
+        var owner = AddUser(db, "long-owner@test", "Dono"); owner.IsCoordinator = true;
+        var peer = AddUser(db, "long-peer@test", "Colega");
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var room = await service.CreateRoomAsync(new("Textos longos", null, true, [peer.Id]), Actor(owner));
+
+        // Antes o limite era de 4.000 caracteres.
+        var id = await service.SendMessageAsync(new(room, new string('a', 20_000), "text"), Actor(owner));
+        var sent = await db.InternalChatMessages.SingleAsync(x => x.Id == id);
+        Assert.Equal(20_000, sent.Body.Length);
+
+        await service.EditMessageAsync(new(room, id, new string('b', 30_000), sent.Version), Actor(owner));
+        Assert.Equal(30_000, (await db.InternalChatMessages.SingleAsync(x => x.Id == id)).Body.Length);
+
+        var atCap = await service.SendMessageAsync(new(room, new string('c', InternalChatService.MaxMessageLength), "text"), Actor(owner));
+        Assert.NotEqual(Guid.Empty, atCap);
+        await Assert.ThrowsAsync<DomainException>(() =>
+            service.SendMessageAsync(new(room, new string('c', InternalChatService.MaxMessageLength + 1), "text"), Actor(owner)));
+        var current = await db.InternalChatMessages.SingleAsync(x => x.Id == id);
+        await Assert.ThrowsAsync<DomainException>(() =>
+            service.EditMessageAsync(new(room, id, new string('d', InternalChatService.MaxMessageLength + 1), current.Version), Actor(owner)));
+    }
+
     private static InternalChatService CreateService(OperationsDbContext db, RealtimeBroker? realtime = null)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
