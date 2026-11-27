@@ -620,6 +620,18 @@ export default function DevelopmentModule({
           {(tab === "process" ? processRecords : filteredRecords).length}{" "}
           demanda(s)
         </span>
+        <button
+          type="button"
+          className="secondary-button operation-filter-clear"
+          aria-label="Limpar todos os filtros"
+          onClick={() => {
+            setQuery("");
+            setProcessOwner("all");
+            reminderFilter.setMode("all");
+          }}
+        >
+          Limpar
+        </button>
       </section>
       {tab === "triage" && (
         <TriageView

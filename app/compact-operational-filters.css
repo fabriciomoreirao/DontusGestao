@@ -162,3 +162,612 @@
     grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
 }
+
+/* Shared layout for operational filters. */
+.app-shell .content .operation-filter-panel {
+  container: operation-filters / inline-size;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px 16px !important;
+}
+
+.app-shell .content .operation-filter-panel :is(
+  .task-filter-controls,
+  .service-filter-grid,
+  .agenda-filter-controls
+) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 164px), 1fr)) !important;
+  align-items: end;
+  gap: 10px 12px;
+  overflow: visible;
+}
+
+.app-shell .content .operation-filter-panel .service-filter-grid > label:nth-child(n) {
+  grid-column: auto;
+}
+
+.app-shell .content .customer-filter-panel.operation-filter-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px 12px;
+}
+
+.app-shell .content .customer-filter-panel.operation-filter-panel.network-filter {
+  grid-template-columns: minmax(0, 420px);
+}
+
+.app-shell .content .agenda-filters.operation-filter-panel {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+.agenda-filters.operation-filter-panel .agenda-filter-controls {
+  grid-column: 1 / -1;
+}
+
+.operation-filter-panel .operation-filter-search,
+.app-shell .content .operation-filter-panel:is(.customer-filter-panel) > label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.app-shell .content .operation-filter-panel :is(
+  .operation-filter-search > label,
+  .agenda-filter-field,
+  .customer-filter-panel > label,
+  .service-filter-grid > label > span,
+  .task-filter-controls > label > span,
+  .reminder-filter-field > span,
+  .date-range-filter > label
+),
+.app-shell .content .customer-filter-panel.operation-filter-panel > label {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.app-shell .content .operation-filter-panel :is(
+  select,
+  input:not([type="checkbox"]),
+  .people-picker-trigger
+):not(.people-picker-native) {
+  min-height: 42px !important;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 9px;
+  font-size: 13px !important;
+}
+
+.app-shell .content .operation-filter-panel .field-search {
+  min-width: 0;
+  margin: 0;
+}
+
+.operation-filter-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: end;
+  min-width: 0;
+}
+
+.operation-filter-bottom {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+}
+
+.customer-filter-panel .operation-filter-bottom,
+.agenda-filters .operation-filter-bottom {
+  margin-top: 0;
+}
+
+.operation-filter-bottom .toolbar-summary {
+  margin-inline-start: auto;
+  align-self: center;
+}
+
+.agenda-filters .operation-filter-bottom {
+  grid-column: 1;
+}
+
+.operation-filter-bottom .date-range-filter {
+  width: auto;
+}
+
+.operation-filter-bottom .date-range-filter > label {
+  flex: 0 1 auto;
+}
+
+.operation-filter-bottom .date-range-filter input[type="date"] {
+  width: 138px;
+}
+
+.app-shell .content .operation-filter-panel .operation-filter-clear {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+@media (max-width: 900px) {
+  .app-shell .content .customer-filter-panel.operation-filter-panel:not(.network-filter) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .app-shell .content .customer-filter-panel.operation-filter-panel:not(.network-filter),
+  .app-shell .content .agenda-filters.operation-filter-panel {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+
+.app-shell .content .operation-board-panel > :is(
+  .customer-filter-panel.operation-filter-panel,
+  .service-filter-panel.operation-filter-panel,
+  .agenda-filters.operation-filter-panel
+) {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .content .operation-board-panel > .agenda-filters.operation-filter-panel {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.operation-board-panel > .agenda-board-footer {
+  justify-content: flex-end;
+}
+.app-shell .content .operation-board-panel
+  > .customer-filter-panel.operation-filter-panel
+  :is(.field-search, select, .operation-filter-clear) {
+  box-sizing: border-box;
+  min-height: 42px;
+  border: 1px solid var(--line) !important;
+  border-radius: 9px;
+  background: var(--input, var(--surface)) !important;
+}
+
+.app-shell .content .operation-board-panel
+  > .customer-filter-panel.operation-filter-panel .field-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.app-shell .content .operation-board-panel
+  > .customer-filter-panel.operation-filter-panel .field-search > input {
+  min-height: 40px !important;
+  padding: 0;
+  background: transparent;
+}
+
+.app-shell .content .operation-board-panel
+  > .customer-filter-panel.operation-filter-panel select {
+  padding-inline: 10px;
+}
+
+.app-shell .content .operation-board-panel
+  > .customer-filter-panel.operation-filter-panel .operation-filter-clear {
+  padding-inline: 16px;
+}
+
+.customer-board-footer {
+  font-size: 12px;
+  color: var(--ink);
+}
+
+
+/* Shared appearance for operational and reporting filters. */
+.app-shell .content :is(
+  .reminder-filter-toolbar,
+  .commercial-lead-filters,
+  .cs-journey-filters,
+  .journey-filterbar,
+  .operation-bi-filters,
+  .audit-filters,
+  .chat-report-filters,
+  .cancellation-indicator-filters,
+  .cancellation-responsibility-filters,
+  .confirmation-report-filters,
+  .lia-adjustment-filters,
+  .lia-prompt-bi-filters,
+  .support-access-shared-filters,
+  .wa-campaign-filters,
+  .wa-template-filters
+) {
+  --workspace-filter-height: 42px;
+  --workspace-filter-radius: 9px;
+}
+
+.app-shell .content :is(
+  .reminder-filter-toolbar, .commercial-lead-filters, .cs-journey-filters,
+  .journey-filterbar, .operation-bi-filters, .audit-filters, .chat-report-filters,
+  .cancellation-indicator-filters, .cancellation-responsibility-filters,
+  .confirmation-report-filters, .lia-adjustment-filters, .lia-prompt-bi-filters,
+  .support-access-shared-filters, .wa-campaign-filters, .wa-template-filters
+) label {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.app-shell .content :is(
+  .reminder-filter-toolbar, .commercial-lead-filters, .cs-journey-filters,
+  .journey-filterbar, .operation-bi-filters, .audit-filters, .chat-report-filters,
+  .cancellation-indicator-filters, .cancellation-responsibility-filters,
+  .confirmation-report-filters, .lia-adjustment-filters, .lia-prompt-bi-filters,
+  .support-access-shared-filters, .wa-campaign-filters, .wa-template-filters
+) :is(select:not(.people-picker-native), input:not([type="checkbox"], [type="radio"], [type="hidden"]), .people-picker-trigger) {
+  min-height: var(--workspace-filter-height);
+  max-width: 100%;
+  border-radius: var(--workspace-filter-radius);
+  font-size: 13px;
+}
+
+.app-shell .content .reminder-filter-toolbar > .operation-filter-clear {
+  align-self: end;
+  justify-self: start;
+  min-height: var(--workspace-filter-height, 42px);
+  padding-inline: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--workspace-filter-radius, 9px);
+  background: var(--surface);
+}
+
+.app-shell .content .operation-board-panel > .standard-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.app-shell .content .standard-filter-row > label {
+  display: grid;
+  flex: 1 1 155px;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-shell .content .standard-filter-row > label:first-child {
+  flex-grow: 2;
+}
+
+.standard-filter-row .suggestion-result-count {
+  align-self: center;
+}
+
+.app-shell .content .operation-filter-panel .agenda-filter-controls > .operation-filter-clear {
+  justify-self: start;
+}
+
+.app-shell .content .service-filter-period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px 12px;
+}
+
+.app-shell .content .service-filter-period > .service-filter-sector {
+  display: grid;
+  flex: 0 1 240px;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-shell .content .service-filter-period > .date-range-filter {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .operation-filter-bottom .date-range-filter input[type="date"] {
+    max-width: 100%;
+  }
+}
+
+/* Customer navigation and filters share the panel's left alignment. */
+.app-shell .content .customer-register-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 14px 16px 0;
+}
+
+.app-shell .content .customer-register-navigation .customer-register-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .content .customer-register-navigation .customer-board-footer {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-shell .content .operation-board-panel > .customer-filter-panel.operation-filter-panel {
+  display: grid !important;
+  grid-template-columns: minmax(260px, 2fr) repeat(3, minmax(150px, 1fr)) auto !important;
+  align-items: end;
+  gap: 12px;
+  padding: 14px 16px 16px !important;
+}
+
+.app-shell .content .customer-filter-panel.operation-filter-panel > :is(label, .operation-filter-search) {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  grid-column: auto;
+  align-self: end;
+}
+
+.app-shell .content .customer-filter-panel.operation-filter-panel > label {
+  display: grid;
+  grid-template-rows: 16px 42px;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.app-shell .content .customer-filter-panel.operation-filter-panel .operation-filter-search > .field-search {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.app-shell .content .customer-filter-panel.operation-filter-panel .operation-filter-search > label {
+  line-height: 16px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.app-shell .content .customer-filter-panel.operation-filter-panel > .operation-filter-clear {
+  align-self: end;
+  height: 42px;
+}
+
+.app-shell .content .operation-board-panel > .customer-filter-panel.operation-filter-panel.network-filter {
+  grid-template-columns: minmax(240px, 560px) auto !important;
+  justify-content: start;
+}
+
+@media (max-width: 1150px) {
+  .app-shell .content .operation-board-panel > .customer-filter-panel.operation-filter-panel:not(.network-filter) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 540px) {
+  .app-shell .content .operation-board-panel > .customer-filter-panel.operation-filter-panel,
+  .app-shell .content .operation-board-panel > .customer-filter-panel.operation-filter-panel.network-filter {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+/* Keep the agenda controls in a full-width grid inside its shared panel. */
+.app-shell .content .operation-board-panel > .agenda-filters.operation-filter-panel {
+  display: block !important;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.app-shell .content .operation-board-panel .agenda-filter-controls {
+  display: grid !important;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(180px, 0.8fr) auto !important;
+  align-items: end;
+  gap: 12px;
+}
+
+.app-shell .content .operation-board-panel .agenda-filter-field {
+  width: 100%;
+  max-width: none;
+}
+
+.app-shell .content .operation-board-panel .agenda-room-visibility {
+  box-sizing: border-box;
+  align-self: end;
+  align-items: center !important;
+  height: 42px;
+  min-height: 42px;
+  margin: 0;
+  padding: 0 12px;
+}
+
+.app-shell .content .operation-board-panel .agenda-room-visibility strong {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.app-shell .content .operation-board-panel .agenda-room-visibility small {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.app-shell .content .operation-board-panel > .standard-filter-period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 0;
+  padding: 0 16px 16px;
+}
+
+.app-shell .content .standard-filter-period :is(input[type="date"], .operation-filter-clear) {
+  height: 42px;
+  min-height: 42px;
+}
+
+.app-shell .content .operation-board-panel > .standard-filter-row :is(input:not([type="checkbox"]), select, .people-picker-trigger) {
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.app-shell .content .operation-board-panel > .standard-filter-row > label {
+  margin: 0;
+}
+
+@container operation-filters (max-width: 1000px) {
+  .app-shell .content .operation-board-panel .agenda-filter-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@container operation-filters (max-width: 650px) {
+  .app-shell .content .operation-board-panel .agenda-filter-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@container operation-filters (max-width: 400px) {
+  .app-shell .content .operation-board-panel .agenda-filter-controls {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+.app-shell .content .suggestion-filter-summary > .suggestion-result-count {
+  display: flex;
+  align-items: center;
+  align-self: end;
+  min-height: 42px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.app-shell .content .suggestion-filter-footer > .suggestion-filter-summary {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: end;
+  gap: 12px;
+  max-width: 100%;
+  margin-inline-start: auto;
+}
+
+.app-shell .content .suggestion-filter-summary > .commercial-view-switch {
+  flex: 0 0 auto;
+}
+.app-shell .content .operation-board-panel .filter-row-summary {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: end;
+  gap: 12px;
+  min-height: 42px;
+  max-width: 100%;
+  margin: 0;
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+}
+
+.app-shell .content .operation-board-panel .agenda-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  min-width: 0;
+}
+.app-shell .content .service-filter-panel.operation-filter-panel .service-filter-grid {
+  grid-template-columns: minmax(0, 1.6fr) repeat(5, minmax(0, 1fr)) !important;
+}
+
+@container operation-filters (max-width: 1100px) {
+  .app-shell .content .service-filter-panel.operation-filter-panel .service-filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@container operation-filters (max-width: 650px) {
+  .app-shell .content .service-filter-panel.operation-filter-panel .service-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@container operation-filters (max-width: 420px) {
+  .app-shell .content .service-filter-panel.operation-filter-panel .service-filter-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+.app-shell .content .agenda-calendar-card > .agenda-calendar-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.app-shell .content .agenda-calendar-navigation {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.app-shell .content .agenda-calendar-view-switch {
+  grid-column: 3;
+  justify-self: end;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  width: auto;
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .app-shell .content .agenda-calendar-card > .agenda-calendar-title {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .app-shell .content .agenda-calendar-navigation {
+    grid-column: 1;
+    gap: 8px;
+  }
+
+  .app-shell .content .agenda-calendar-view-switch {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 540px) {
+  .app-shell .content .agenda-calendar-card > .agenda-calendar-title {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell .content .agenda-calendar-view-switch {
+    grid-column: 1;
+  }
+}

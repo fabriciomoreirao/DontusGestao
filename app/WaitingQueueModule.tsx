@@ -1,5 +1,6 @@
 "use client";
 
+import DateRangeFilter from "@/app/DateRangeFilter";
 import PaginatedItems from "@/app/PaginatedItems";
 import MediaUploadField from "@/app/MediaUploadField";
 import FilePreview from "@/app/FilePreview";
@@ -20,7 +21,6 @@ import {
   Link2,
   Pencil,
   Save,
-  Search,
   Settings,
   Trash2,
   UserRound,
@@ -389,6 +389,9 @@ function destinationPayload(
 }
 
 export default function WaitingQueueModule({
+  period,
+  onPeriodChange,
+  onClearPeriod,
   items,
   employees,
   departments,
@@ -397,6 +400,9 @@ export default function WaitingQueueModule({
   operate,
   onOpenSettings,
 }: {
+  period: string;
+  onPeriodChange: (value: string) => void;
+  onClearPeriod: () => void;
   items: WorkItem[];
   employees: Employee[];
   departments: Department[];
@@ -491,32 +497,77 @@ export default function WaitingQueueModule({
   );
   return (
     <section className="waiting-queue-module">
-      <header className="module-page-header">
-        <div className="module-page-title">
-          <span className="module-page-title-icon">
-            <Clock3 size={21} />
-          </span>
-          <span className="module-page-copy">
-            <span className="eyebrow">OPERAÇÃO · ATENDIMENTO</span>
-            <h1>Fila de Espera</h1>
-            <p>
-              Encaminhamentos recebidos pelo Portal Dontus, organizados por
-              setor e responsável.
-            </p>
-          </span>
-        </div>
-        <div className="module-page-actions">
-          {onOpenSettings && (
-            <button
-              className="icon-button"
-              onClick={onOpenSettings}
-              title="Configurar tipos de solicitação"
+      <div className="operation-board-panel">
+        <header className="module-page-header">
+          <div className="module-page-title">
+            <span className="module-page-title-icon">
+              <Clock3 size={21} />
+            </span>
+            <span className="module-page-copy">
+              <span className="eyebrow">OPERAÇÃO · ATENDIMENTO</span>
+              <h1>Fila de Espera</h1>
+              <p>
+                Encaminhamentos recebidos pelo Portal Dontus, organizados por
+                setor e responsável.
+              </p>
+            </span>
+          </div>
+          <div className="module-page-actions">
+            {onOpenSettings && (
+              <button
+                className="icon-button"
+                onClick={onOpenSettings}
+                title="Configurar tipos de solicitação"
+              >
+                <Settings size={18} />
+              </button>
+            )}
+          </div>
+        </header>
+        <div className="operation-filter-panel standard-filter-row">
+          <label>
+            <span>Pesquisar</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar cliente, ID, WhatsApp, solicitação ou resumo"
+            />
+          </label>
+          <label>
+            <span>Setor de destino</span>
+            <select
+              aria-label="Filtrar por setor de destino"
+              value={sector}
+              onChange={(event) => setSector(event.target.value)}
             >
-              <Settings size={18} />
-            </button>
-          )}
+              <option value="all">Todos os setores</option>
+              {sectorOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {reminderFilter.control}
+
         </div>
-      </header>
+        <div className="operation-filter-bottom standard-filter-period">
+          <DateRangeFilter value={period} onChange={onPeriodChange} label="Datas" showClear={false} />
+          <button
+            type="button"
+            className="secondary-button operation-filter-clear"
+            aria-label="Limpar todos os filtros"
+            onClick={() => {
+              onClearPeriod();
+              setQuery("");
+              setSector("all");
+              reminderFilter.setMode("all");
+            }}
+          >
+            Limpar
+          </button>
+        </div>
+      </div>
       <section className="waiting-queue-metrics">
         <article>
           <Clock3 />
@@ -554,32 +605,6 @@ export default function WaitingQueueModule({
           <CheckCircle2 size={15} /> Contato feito <b>{contacted.length}</b>
         </button>
       </nav>
-      <div className="reminder-filter-toolbar waiting-queue-filters">
-        <label className="waiting-queue-search">
-          <Search size={17} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar cliente, ID, WhatsApp, solicitação ou resumo"
-          />
-        </label>
-        <label className="waiting-queue-sector">
-          Setor de destino
-          <select
-            aria-label="Filtrar por setor de destino"
-            value={sector}
-            onChange={(event) => setSector(event.target.value)}
-          >
-            <option value="all">Todos os setores</option>
-            {sectorOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {reminderFilter.control}
-      </div>
       <div className="waiting-queue-columns single">
         {tab === "waiting" ? (
           <QueueColumn

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chatDayKey, chatDayLabel } from "../lib/chat-days.ts";
-import { kanbanScrollSpeed } from "../lib/kanban-autoscroll.ts";
+import { kanbanHorizontalScrollSpeed, kanbanScrollSpeed } from "../lib/kanban-autoscroll.ts";
 import { strategicTracking } from "../lib/enterprise-tracking.ts";
 import { canMoveTask } from "../lib/task-movement.ts";
 import { canInteractWithTask } from "../lib/task-interaction.ts";
@@ -22,6 +22,12 @@ test("rolagem do Kanban acelera nas duas bordas e para no centro e fora do quadr
   assert.equal(kanbanScrollSpeed(900, 100, 900), 20);
   assert.ok(kanbanScrollSpeed(850, 100, 900) > 0);
   assert.equal(kanbanScrollSpeed(1100, 100, 900), 0);
+});
+test("rolagem horizontal continua nas margens internas da janela e ignora coordenadas externas", () => {
+  assert.equal(kanbanHorizontalScrollSpeed(8, 260, 1100, 1280), -20);
+  assert.equal(kanbanHorizontalScrollSpeed(1272, 260, 1100, 1280), 20);
+  assert.equal(kanbanHorizontalScrollSpeed(700, 260, 1100, 1280), 0);
+  assert.equal(kanbanHorizontalScrollSpeed(-1, 260, 1100, 1280), 0);
 });
 test("unidades manuais sem jornada não possuem treinamento pendente e o comercial novo possui", () => {
   assert.equal(

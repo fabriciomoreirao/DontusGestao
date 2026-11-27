@@ -1,5 +1,6 @@
 "use client";
 import { uploadWorkspaceFile } from "@/lib/workspace-upload";
+import DateRangeFilter from "@/app/DateRangeFilter";
 import PaginatedItems from "@/app/PaginatedItems";
 
 import CommentHistory from "@/app/CommentHistory";
@@ -75,6 +76,9 @@ type CurrentUser = {
   isCoordinator: boolean;
 };
 type Props = {
+  period: string;
+  onPeriodChange: (value: string) => void;
+  onClearPeriod: () => void;
   items: Item[];
   campaignItems?: Item[];
   employees: Employee[];
@@ -213,6 +217,9 @@ function parseCampaign(value: string): CampaignDetail | null {
 }
 
 export default function MarketingWorkspaceModule({
+  period,
+  onPeriodChange,
+  onClearPeriod,
   items,
   campaignItems = items,
   employees,
@@ -399,62 +406,96 @@ export default function MarketingWorkspaceModule({
           )}
         </div>
       </header>
-      <nav className="marketing-area-tabs" aria-label="Áreas do Marketing">
-        {TYPES.map((entry) => {
-          const Icon = entry.icon;
-          const count =
-            entry.id === "all"
-              ? records.length
-              : records.filter((record) => record.detail.type === entry.id)
-                  .length;
-          return (
+      <div className="review-workspace-panel">
+        <nav className="marketing-area-tabs" aria-label="Áreas do Marketing">
+          {TYPES.map((entry) => {
+            const Icon = entry.icon;
+            const count =
+              entry.id === "all"
+                ? records.length
+                : records.filter((record) => record.detail.type === entry.id)
+                    .length;
+            return (
+              <button
+                key={entry.id}
+                className={area === entry.id ? "active" : ""}
+                onClick={() => setArea(entry.id)}
+              >
+                <Icon size={15} />
+                <span>{entry.label}</span>
+                <b>{count}</b>
+              </button>
+            );
+          })}
+        </nav>
+        <section className="review-filter-panel">
+          <div className="review-filter-grid">
+            <label>
+              <span>Pesquisar</span>
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Pesquisar campanha, canal ou responsável"
+              />
+            </label>
+            {reminderFilter.control}
+            <label>
+              <span>Responsável</span>
+              <select
+                value={owner}
+                onChange={(event) => setOwner(event.target.value)}
+              >
+                <option value="all">Todos os responsáveis</option>
+                {owners.map((entry) => (
+                  <option key={entry}>{entry}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="review-filter-period">
+            <DateRangeFilter
+              value={period}
+              onChange={onPeriodChange}
+              showClear={false}
+              label="Datas do Marketing"
+            />
             <button
-              key={entry.id}
-              className={area === entry.id ? "active" : ""}
-              onClick={() => setArea(entry.id)}
+              type="button"
+              className="secondary-button operation-filter-clear"
+              aria-label="Limpar todos os filtros"
+              onClick={() => {
+                onClearPeriod();
+                setQuery("");
+                setOwner("all");
+                reminderFilter.setMode("all");
+              }}
             >
-              <Icon size={15} />
-              <span>{entry.label}</span>
-              <b>{count}</b>
+              Limpar
             </button>
-          );
-        })}
-      </nav>
-      <section className="marketing-toolbar reminder-filter-toolbar">
-        <label>
-          <Search size={16} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Pesquisar campanha, canal ou responsável"
-          />
-        </label>
-        {reminderFilter.control}
-        <select
-          value={owner}
-          onChange={(event) => setOwner(event.target.value)}
-        >
-          <option value="all">Todos os responsáveis</option>
-          {owners.map((entry) => (
-            <option key={entry}>{entry}</option>
-          ))}
-        </select>
-        <strong>{visible.length} item(ns)</strong>
-        <div>
-          <button
-            className={view === "kanban" ? "active" : ""}
-            onClick={() => setView("kanban")}
-          >
-            <Columns3 size={15} />
-          </button>
-          <button
-            className={view === "list" ? "active" : ""}
-            onClick={() => setView("list")}
-          >
-            <List size={15} />
-          </button>
-        </div>
-      </section>
+            <span className="filter-row-summary">
+              {visible.length} itens
+              <span className="commercial-view-switch segmented">
+                <button
+                  type="button"
+                  aria-pressed={view === "list"}
+                  className={view === "list" ? "active" : ""}
+                  onClick={() => setView("list")}
+                >
+                  <List size={15} /> Lista
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={view === "kanban"}
+                  className={view === "kanban" ? "active" : ""}
+                  onClick={() => setView("kanban")}
+                >
+                  <Columns3 size={15} /> Kanban
+                </button>
+              </span>
+            </span>
+          </div>
+        </section>
+      </div>
       {view === "kanban" ? (
         <div className="standard-kanban marketing-kanban">
           {STAGES.map((stage) => (

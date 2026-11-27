@@ -11,6 +11,7 @@ import InternalChatDraftComposer from "@/app/InternalChatDraftComposer";
 
 import { chatDayKey, chatDayLabel } from "@/lib/chat-days";
 import { chatUnreadTotals } from "@/lib/internal-chat-state";
+import { isCloseToChatEnd, syncChatEnd } from "@/lib/chat-scroll";
 import { messagePreview, parsePoll } from "@/lib/chat-message-preview";
 
 import {
@@ -467,6 +468,7 @@ export default function InternalChatModule({
   const gifInput = useRef<HTMLInputElement>(null);
   const groupPhotoInput = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const messageContentRef = useRef<HTMLDivElement>(null);
   const historyScrollAnchor = useRef<{
     roomId: string;
     height: number;
@@ -540,7 +542,10 @@ export default function InternalChatModule({
     const anchor = historyScrollAnchor.current;
     const container = messagesRef.current;
     if (anchor && container && anchor.roomId === selectedRoom?.id) {
-      container.scrollTop = anchor.top + container.scrollHeight - anchor.height;
+      container.scrollTo({
+        top: anchor.top + container.scrollHeight - anchor.height,
+        behavior: "instant",
+      });
       historyScrollAnchor.current = null;
     }
   }, [
@@ -651,45 +656,57 @@ export default function InternalChatModule({
     return birthDate?.slice(5, 10) === todayInBrasilia;
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const messages = messagesRef.current;
     if (!messages) return;
-    if (scrolledRoom.current !== selectedRoom?.id) {
-      followingMessages.current = true;
-      scrolledRoom.current = selectedRoom?.id;
-    }
-    if (!followingMessages.current) return;
-    const frame = window.requestAnimationFrame(() =>
-      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" }),
+    const roomChanged = scrolledRoom.current !== selectedRoom?.id;
+    scrolledRoom.current = selectedRoom?.id;
+    followingMessages.current = syncChatEnd(
+      messages,
+      followingMessages.current,
+      roomChanged,
     );
-    return () => window.cancelAnimationFrame(frame);
-  }, [selectedRoom?.id, latestVisibleMessageId]);
+  }, [effectiveSelectedKey, selectedRoom?.id, latestVisibleMessageId]);
+
+  useLayoutEffect(() => {
+    const messages = messagesRef.current;
+    const content = messageContentRef.current;
+    if (!messages || !content) return;
+    const observer = new ResizeObserver(() => {
+      syncChatEnd(messages, followingMessages.current, false);
+    });
+    observer.observe(messages);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [effectiveSelectedKey]);
 
   useEffect(() => {
     const container = messagesRef.current;
     const readVisibleRoom = () => {
       if (!container) return;
-      followingMessages.current =
-        container.scrollHeight - container.scrollTop - container.clientHeight <
-        48;
       const lastMessage = selectedRoom?.messages.at(-1);
       if (
         !document.hidden &&
         document.hasFocus() &&
-        followingMessages.current &&
+        isCloseToChatEnd(container) &&
         selectedRoom?.unreadCount &&
         lastMessage
       )
         void markRead(selectedRoom.id, lastMessage.id);
     };
+    const handleScroll = () => {
+      if (!container) return;
+      followingMessages.current = isCloseToChatEnd(container);
+      readVisibleRoom();
+    };
     readVisibleRoom();
     document.addEventListener("visibilitychange", readVisibleRoom);
     window.addEventListener("focus", readVisibleRoom);
-    container?.addEventListener("scroll", readVisibleRoom, { passive: true });
+    container?.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       document.removeEventListener("visibilitychange", readVisibleRoom);
       window.removeEventListener("focus", readVisibleRoom);
-      container?.removeEventListener("scroll", readVisibleRoom);
+      container?.removeEventListener("scroll", handleScroll);
     };
   }, [
     markRead,
@@ -1709,71 +1726,73 @@ export default function InternalChatModule({
               )}
               <div className="internal-chat-history">
                 <div className="internal-chat-messages" ref={messagesRef}>
-                  {sendError && <p role="alert">{sendError}</p>}
-                  {selectedRoom &&
-                    (hasEarlierMessages ||
-                      !historyExhausted[selectedRoom.id]) && (
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        disabled={historyLoading}
-                        onClick={() => void loadOlderMessages()}
-                      >
-                        {historyLoading
-                          ? "Carregando..."
-                          : hasEarlierMessages
-                            ? "Mostrar mensagens anteriores"
-                            : "Carregar mais conversas (30 dias anteriores)"}
-                      </button>
-                    )}
-                  {historyError && <p role="alert">{historyError}</p>}
-                  {!visibleMessages.length && (
-                    <div className="internal-chat-first-message">
-                      <SmilePlus size={23} />
-                      <strong>Diga olá!</strong>
-                      <span>
-                        Envie a primeira mensagem para iniciar esta conversa
-                        privada.
-                      </span>
-                    </div>
-                  )}
-                  {displayedMessages.map((item, index) => (
-                    <Fragment key={item.id}>
-                      {(index === 0 ||
-                        chatDayKey(displayedMessages[index - 1].createdAt) !==
-                          chatDayKey(item.createdAt)) && (
-                        <div className="chat-day-separator">
-                          <time dateTime={chatDayKey(item.createdAt)}>
-                            {chatDayLabel(item.createdAt, presenceNow)}
-                          </time>
-                        </div>
+                  <div className="internal-chat-message-content" ref={messageContentRef}>
+                    {sendError && <p role="alert">{sendError}</p>}
+                    {selectedRoom &&
+                      (hasEarlierMessages ||
+                        !historyExhausted[selectedRoom.id]) && (
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          disabled={historyLoading}
+                          onClick={() => void loadOlderMessages()}
+                        >
+                          {historyLoading
+                            ? "Carregando..."
+                            : hasEarlierMessages
+                              ? "Mostrar mensagens anteriores"
+                              : "Carregar mais conversas (30 dias anteriores)"}
+                        </button>
                       )}
-                      <MessageBubble
-                        onReply={selectReply}
-                        message={item}
-                        showSeenReceipt={item.id === lastSeenMessageId}
-                        now={presenceNow}
-                        onReact={reactMessage}
-                        own={item.senderUserId === module.currentUserId}
-                        birthday={userHasBirthdayToday(
-                          module.users.find(
-                            (user) => user.id === item.senderUserId,
-                          ),
+                    {historyError && <p role="alert">{historyError}</p>}
+                    {!visibleMessages.length && (
+                      <div className="internal-chat-first-message">
+                        <SmilePlus size={23} />
+                        <strong>Diga olá!</strong>
+                        <span>
+                          Envie a primeira mensagem para iniciar esta conversa
+                          privada.
+                        </span>
+                      </div>
+                    )}
+                    {displayedMessages.map((item, index) => (
+                      <Fragment key={item.id}>
+                        {(index === 0 ||
+                          chatDayKey(displayedMessages[index - 1].createdAt) !==
+                            chatDayKey(item.createdAt)) && (
+                          <div className="chat-day-separator">
+                            <time dateTime={chatDayKey(item.createdAt)}>
+                              {chatDayLabel(item.createdAt, presenceNow)}
+                            </time>
+                          </div>
                         )}
-                        currentUserId={module.currentUserId}
-                        group={Boolean(selectedRoom?.isGroup)}
-                        canCreate={canCreate}
-                        canEdit={canEdit}
-                        busy={busy}
-                        onEdit={editMessage}
-                        onDelete={deleteMessage}
-                        onVote={votePoll}
-                        onPin={togglePin}
-                        onPreview={setMediaPreview}
-                      />
-                    </Fragment>
-                  ))}
-                  <div aria-hidden="true" />
+                        <MessageBubble
+                          onReply={selectReply}
+                          message={item}
+                          showSeenReceipt={item.id === lastSeenMessageId}
+                          now={presenceNow}
+                          onReact={reactMessage}
+                          own={item.senderUserId === module.currentUserId}
+                          birthday={userHasBirthdayToday(
+                            module.users.find(
+                              (user) => user.id === item.senderUserId,
+                            ),
+                          )}
+                          currentUserId={module.currentUserId}
+                          group={Boolean(selectedRoom?.isGroup)}
+                          canCreate={canCreate}
+                          canEdit={canEdit}
+                          busy={busy}
+                          onEdit={editMessage}
+                          onDelete={deleteMessage}
+                          onVote={votePoll}
+                          onPin={togglePin}
+                          onPreview={setMediaPreview}
+                        />
+                      </Fragment>
+                    ))}
+                    <div aria-hidden="true" />
+                  </div>
                 </div>
               </div>
               {!canCreate && (

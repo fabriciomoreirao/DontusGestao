@@ -384,28 +384,28 @@ export default function ReferralsModule({
         <article>
           <UserCheck />
           <span>
-            <small>EM ACOMPANHAMENTO</small>
+            <small>Em acompanhamento</small>
             <strong>{counts.tracking}</strong>
           </span>
         </article>
         <article>
           <ShieldCheck />
           <span>
-            <small>EM CONFERÊNCIA</small>
+            <small>Em conferência</small>
             <strong>{counts.conference}</strong>
           </span>
         </article>
         <article>
           <CheckCircle2 />
           <span>
-            <small>APROVADAS</small>
+            <small>Aprovadas</small>
             <strong>{counts.approved}</strong>
           </span>
         </article>
         <article>
           <CircleDollarSign />
           <span>
-            <small>COMISSÕES APROVADAS</small>
+            <small>Comissões aprovadas</small>
             <strong>
               {money(
                 records
@@ -419,115 +419,151 @@ export default function ReferralsModule({
           </span>
         </article>
       </section>
-      <nav className="referral-tabs">
-        {(
-          [
-            ["tracking", "Acompanhamento"],
-            ["conference", "Conferência"],
-            ["rejected", "Reprovados"],
-            ["approved", "Aprovados"],
-            ["decisions", "Todas as decisões"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            className={tab === id ? "active" : ""}
-            onClick={() => setTab(id)}
-            key={id}
-          >
-            {label}
-            <b>
-              {id === "decisions"
-                ? counts.approved + counts.rejected
-                : counts[id]}
-            </b>
-          </button>
-        ))}
-      </nav>
-      <section className="referral-toolbar reminder-filter-toolbar">
-        <label>
-          <Search size={16} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar ID, profissional, módulo ou responsável"
-          />
-        </label>
-        {reminderFilter.control}
-        <select
-          value={owner}
-          onChange={(event) => setOwner(event.target.value)}
-        >
-          <option value="all">Todos os responsáveis</option>
-          {[
-            ...new Set(
-              records.map((entry) => entry.item.owner).filter(Boolean),
-            ),
-          ].map((name) => (
-            <option key={name}>{name}</option>
-          ))}
-        </select>
-        <DateRangeFilter
-          value={month}
-          onChange={setMonth}
-          label="Período das indicações"
-        />
-        <strong>{visible.length} registro(s)</strong>
-        {["approved", "rejected", "decisions"].includes(tab) &&
-          [
-            ...new Set(
-              visible.map(({ detail }) =>
-                dateKey(detail.decisionAt || detail.date).slice(0, 7),
-              ),
-            ),
-          ]
-            .filter(Boolean)
-            .sort()
-            .map((confirmationMonth) => (
-              <CommissionConfirmationControl
-                key={confirmationMonth}
-                periodLabel={dateRangeLabel(month)}
-                module="referrals"
-                scope="referrals"
-                competence={confirmationMonth}
-                entries={visible
-                  .filter(
-                    ({ detail }) =>
-                      dateKey(detail.decisionAt || detail.date).slice(0, 7) ===
-                      confirmationMonth,
-                  )
-                  .map(({ item }) => ({
-                    id: item.id,
-                    version: item.version,
-                  }))}
-                complete={
-                  visible.length > 0 &&
-                  visible.every(({ detail }) =>
-                    ["approved", "rejected"].includes(detail.phase),
-                  )
-                }
-                canGenerate={canManage}
-                employee={owner}
-                filters={{
-                  Período: dateRangeLabel(month),
-                  Competência: confirmationMonth,
-                  Responsável: owner === "all" ? "Todos" : owner,
-                  Busca: query || "Sem busca",
-                  Decisão:
-                    tab === "decisions"
-                      ? "Todas"
-                      : tab === "approved"
-                        ? "Aprovadas"
-                        : "Reprovadas",
-                  Lembretes: {
-                    all: "Todos",
-                    today: "Para hoje",
-                    scheduled: "Com agendamento",
-                    none: "Sem agendamento",
-                  }[reminderFilter.mode],
-                }}
-              />
+      <div className="review-workspace-panel">
+        <div className="review-workspace-navigation">
+          <nav className="referral-tabs" aria-label="Etapas das indicações">
+            {(
+              [
+                ["tracking", "Acompanhamento"],
+                ["conference", "Conferência"],
+                ["rejected", "Reprovados"],
+                ["approved", "Aprovados"],
+                ["decisions", "Todas as decisões"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                type="button"
+                aria-pressed={tab === id}
+                className={tab === id ? "active" : ""}
+                onClick={() => setTab(id)}
+                key={id}
+              >
+                {label}
+                <b>
+                  {id === "decisions"
+                    ? counts.approved + counts.rejected
+                    : counts[id]}
+                </b>
+              </button>
             ))}
-      </section>
+          </nav>
+          <span className="review-result-count">
+            {visible.length} registros
+          </span>
+        </div>
+        <section
+          className="review-filter-panel"
+          aria-label="Filtros de indicações"
+        >
+          <div className="review-filter-grid">
+            <label className="review-search-field">
+              <span>Pesquisar</span>
+              <span className="review-search-control">
+                <Search size={17} aria-hidden="true" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="ID, profissional, módulo ou responsável"
+                />
+              </span>
+            </label>
+            <label>
+              <span>Responsável</span>
+              <select
+                value={owner}
+                onChange={(event) => setOwner(event.target.value)}
+              >
+                <option value="all">Todos os responsáveis</option>
+                {[
+                  ...new Set(
+                    records.map((entry) => entry.item.owner).filter(Boolean),
+                  ),
+                ].map((name) => (
+                  <option key={name}>{name}</option>
+                ))}
+              </select>
+            </label>
+            {reminderFilter.control}
+          </div>
+          <div className="review-filter-period">
+            <DateRangeFilter
+              showClear={false}
+              value={month}
+              onChange={setMonth}
+              label="Datas das indicações"
+            />
+            <button
+              type="button"
+              className="secondary-button operation-filter-clear"
+              aria-label="Limpar todos os filtros"
+              onClick={() => {
+                setQuery("");
+                setOwner("all");
+                setMonth(dateKey(new Date()).slice(0, 7));
+                reminderFilter.setMode("all");
+              }}
+            >
+              Limpar
+            </button>
+          </div>
+        </section>
+      </div>
+      {["approved", "rejected", "decisions"].includes(tab) &&
+        [
+          ...new Set(
+            visible.map(({ detail }) =>
+              dateKey(detail.decisionAt || detail.date).slice(0, 7),
+            ),
+          ),
+        ]
+          .filter(Boolean)
+          .sort()
+          .map((confirmationMonth) => (
+            <CommissionConfirmationControl
+              key={confirmationMonth}
+              periodLabel={dateRangeLabel(month)}
+              module="referrals"
+              scope="referrals"
+              competence={confirmationMonth}
+              entries={visible
+                .filter(
+                  ({ detail }) =>
+                    dateKey(detail.decisionAt || detail.date).slice(0, 7) ===
+                    confirmationMonth,
+                )
+                .map(({ item }) => ({
+                  id: item.id,
+                  version: item.version,
+                }))}
+              complete={
+                visible.length > 0 &&
+                visible.every(({ detail }) =>
+                  ["approved", "rejected"].includes(detail.phase),
+                )
+              }
+              canGenerate={canManage}
+              employee={owner}
+              filters={{
+                Período: dateRangeLabel(month),
+                Competência: confirmationMonth,
+                Responsável: owner === "all" ? "Todos" : owner,
+                Busca: query || "Sem busca",
+                Decisão:
+                  tab === "decisions"
+                    ? "Todas"
+                    : tab === "approved"
+                      ? "Aprovadas"
+                      : "Reprovadas",
+                Lembretes: {
+                  all: "Todos",
+                  today: "Para hoje",
+                  scheduled: "Com agendamento",
+                  none: "Sem agendamento",
+                }[reminderFilter.mode],
+              }}
+            />
+          ))}
+
       <div className="referral-grid">
         {
           <PaginatedItems mode="kanban" label="indicações">
@@ -1169,6 +1205,8 @@ function ReferralSettings({
             ] as const
           ).map(([id, label]) => (
             <button
+              type="button"
+              aria-pressed={tab === id}
               className={tab === id ? "active" : ""}
               onClick={() => {
                 setTab(id);
@@ -1401,6 +1439,8 @@ export function ReferralSettingsPage({
           ] as const
         ).map(([id, label]) => (
           <button
+            type="button"
+            aria-pressed={tab === id}
             className={tab === id ? "active" : ""}
             onClick={() => {
               setTab(id);

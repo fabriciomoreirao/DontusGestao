@@ -71,3 +71,9 @@
     width: 100%;
   }
 }
+
+.app-shell .content .module-page-header > .operation-function-tools {
+  margin-inline-start: auto;
+  order: 1;
+  align-self: center;
+}
