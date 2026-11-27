@@ -4156,6 +4156,8 @@ export default function OperationsApp() {
                         title={operationContext.title}
                         contextKey="commercial:retention"
                         items={indicatorItems}
+                        catalogs={data.customerModule?.catalogs ?? []}
+                        initialPeriod={kanbanMonth}
                         onClose={closeIndicatorsPage}
                       />
                     ) : (
@@ -16445,7 +16447,12 @@ function CommercialLeadDrawer({
       });
   };
   const sendToOnboarding = async (
-    scheduled?: { date: string; time: string; description: string },
+    scheduled?: {
+      date: string;
+      time: string;
+      description: string;
+      agendaTypeId: string;
+    },
     details?: { clientId: string; version: string },
   ) => {
     if (routingInFlight.current) return false;
@@ -16501,11 +16508,12 @@ function CommercialLeadDrawer({
                   scheduled.time,
                 ),
                 description: scheduled.description,
+                agendaTypeId: scheduled.agendaTypeId,
               }
             : {}),
         },
         scheduled
-          ? "Treinamento agendado e cliente encaminhado com sucesso."
+          ? "Compromisso agendado e cliente encaminhado com sucesso."
           : "Cliente encaminhado para acompanhamento.",
       );
       if (!result)
@@ -16522,9 +16530,15 @@ function CommercialLeadDrawer({
     description: string;
     customerId: string;
     version: string;
+    agendaTypeId: string;
   }) =>
     sendToOnboarding(
-      { date: slotDate, time: slot, description: details.description },
+      {
+        date: slotDate,
+        time: slot,
+        description: details.description,
+        agendaTypeId: details.agendaTypeId,
+      },
       { clientId: details.customerId, version: details.version },
     );
   const qualifyAndCopy = async () => {
@@ -17764,6 +17778,7 @@ function CommercialLeadDrawer({
         )}
         {showScheduleModal && slot && activationCalendar && (
           <CommercialAgendaScheduleModal
+            types={agendaModule?.types ?? []}
             calendarName={activationCalendar.name}
             date={slotDate}
             time={slot}
@@ -17778,6 +17793,7 @@ function CommercialLeadDrawer({
                 description: details.description,
                 customerId: details.clientId,
                 version: details.version,
+                agendaTypeId: details.agendaTypeId,
               });
               if (saved) {
                 setShowScheduleModal(false);
@@ -18867,6 +18883,7 @@ function RetentionLeadEditModal({
 }
 
 function CommercialAgendaScheduleModal({
+  types,
   calendarName,
   date,
   time,
@@ -18876,6 +18893,7 @@ function CommercialAgendaScheduleModal({
   onClose,
   onConfirm,
 }: {
+  types: Array<{ id: string; name: string; active: boolean }>;
   calendarName: string;
   date: string;
   time: string;
@@ -18887,16 +18905,21 @@ function CommercialAgendaScheduleModal({
     description: string;
     clientId: string;
     version: string;
+    agendaTypeId: string;
   }) => Promise<void>;
 }) {
   const [description, setDescription] = useState("");
   const [clientId, setClientId] = useState(initialClientId);
   const [version, setVersion] = useState(initialVersion);
+  const [agendaTypeId, setAgendaTypeId] = useState("");
+  const agendaTypes = selectableAgendaTypes(types);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const submittingRef = useRef(false);
   const valid =
-    /^\d{6}$/.test(clientId.replace(/\D/g, "")) && Boolean(version.trim());
+    /^\d{6}$/.test(clientId.replace(/\D/g, "")) &&
+    Boolean(version.trim()) &&
+    agendaTypes.some((type) => type.id === agendaTypeId);
   return (
     <ModalShell
       title="Agendar e enviar para acompanhamento"
@@ -18912,7 +18935,7 @@ function CommercialAgendaScheduleModal({
           setSubmitting(true);
           setError("");
           try {
-            await onConfirm({ description, clientId, version });
+            await onConfirm({ description, clientId, version, agendaTypeId });
           } catch (caught) {
             setError(
               caught instanceof Error
@@ -18944,6 +18967,27 @@ function CommercialAgendaScheduleModal({
             }
             placeholder="000000"
           />
+        </label>
+        <label className="wide">
+          Tipo de agendamento *
+          <select
+            aria-label="Tipo de agendamento *"
+            value={agendaTypeId}
+            onChange={(event) => setAgendaTypeId(event.target.value)}
+            required
+          >
+            <option value="">Selecione o tipo</option>
+            {agendaTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+          {!agendaTypes.length && (
+            <small role="status">
+              Nenhum tipo ativo. Cadastre um tipo nas configurações da Agenda.
+            </small>
+          )}
         </label>
         <label className="wide">
           Descrição do compromisso

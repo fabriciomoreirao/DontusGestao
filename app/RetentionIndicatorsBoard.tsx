@@ -1,6 +1,8 @@
 "use client";
 
 import PaginatedItems from "@/app/PaginatedItems";
+import DateRangeFilter from "@/app/DateRangeFilter";
+import "./retention-indicators.css";
 import { useMemo, useState } from "react";
 import {
   Activity,
@@ -19,34 +21,38 @@ import { DistributionChart } from "@/app/AnalyticsCharts";
 import { useFieldIndicatorAnalysis } from "@/app/FieldIndicatorAnalysis";
 import {
   retentionEntries,
+  matchesRetentionPeriod,
   summarizeRetention,
   type RetentionEntry,
 } from "@/lib/retention-indicators";
 type Item = RetentionEntry["item"];
-const monthLabel = (key: string) => `${key.slice(5, 7)}/${key.slice(2, 4)}`;
 const percent = (part: number, total: number) =>
   total ? `${Math.round((part / total) * 100)}%` : "0%";
 export default function RetentionIndicatorsBoard({
   title,
   contextKey,
   items,
+  catalogs = [],
+  initialPeriod = "",
   onClose,
 }: {
   title: string;
   contextKey: string;
   items: Item[];
+  catalogs?: Array<{ catalog: string; name: string; description: string }>;
+  initialPeriod?: string;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"overview" | "versions" | "team" | "fields">(
     "overview",
   );
-  const [month, setMonth] = useState("all");
+  const [period, setPeriod] = useState(initialPeriod);
   const [owner, setOwner] = useState("all");
   const [version, setVersion] = useState("all");
   const [crm, setCrm] = useState("all");
   const flowEntries = useMemo(
-    () => retentionEntries(items, contextKey),
-    [items, contextKey],
+    () => retentionEntries(items, contextKey, catalogs),
+    [items, contextKey, catalogs],
   );
   const crmOptions = [
     ...new Set(
@@ -71,11 +77,11 @@ export default function RetentionIndicatorsBoard({
     () =>
       all.filter(
         (entry) =>
-          (month === "all" || entry.date.startsWith(month)) &&
+          matchesRetentionPeriod(entry, period) &&
           (owner === "all" || entry.seller === owner) &&
           (version === "all" || entry.version === version),
       ),
-    [all, month, owner, version],
+    [all, period, owner, version],
   );
   const report = useMemo(() => summarizeRetention(scoped), [scoped]);
   const {
@@ -141,27 +147,12 @@ export default function RetentionIndicatorsBoard({
               ))}
             </select>
           </label>
-          <label>
-            Competência
-            <select
-              value={month}
-              onChange={(event) => setMonth(event.target.value)}
-            >
-              <option value="all">Todo o período</option>
-              {[
-                ...new Set(
-                  all.map((entry) => entry.date.slice(0, 7)).filter(Boolean),
-                ),
-              ]
-                .sort()
-                .reverse()
-                .map((entry) => (
-                  <option key={entry} value={entry}>
-                    {monthLabel(entry)}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <DateRangeFilter
+            value={period}
+            onChange={setPeriod}
+            label="Período dos indicadores de retenção"
+            showClear={false}
+          />
           <label>
             Responsável
             <SearchablePeopleSelect
@@ -189,7 +180,7 @@ export default function RetentionIndicatorsBoard({
           </label>
           <button
             onClick={() => {
-              setMonth("all");
+              setPeriod("");
               setOwner("all");
               setVersion("all");
               setCrm("all");
@@ -210,6 +201,11 @@ export default function RetentionIndicatorsBoard({
             { id: "fields", label: "Campos preenchidos" },
           ]}
         />
+        <p className="analytics-method-note">
+          O período considera a criação ou a última atualização do card, como no
+          kanban. Sucesso inclui a etapa de envio para onboarding, as etapas
+          configuradas como ganho e os encaminhamentos registrados.
+        </p>
         <section
           role="tabpanel"
           id={`retention-panel-${tab}`}

@@ -3,6 +3,7 @@ import DateRangeFilter from "@/app/DateRangeFilter";
 import { overlapsDateRange } from "@/lib/date-range";
 import PaginatedItems from "@/app/PaginatedItems";
 import CsFeaturesIndicators from "@/app/CsFeaturesIndicators";
+import CsFeatureEvolutionIndicators from "@/app/CsFeatureEvolutionIndicators";
 import { parseJourney } from "@/app/CustomerSuccessJourneyModule";
 import CommercialAnalyticsBoard from "@/app/CommercialAnalyticsBoard";
 import FollowupRiskIndicators from "@/app/FollowupRiskIndicators";
@@ -2373,7 +2374,7 @@ function GenericOperationIndicatorsBoard({
             </label>
           </div>
         )}
-        {tab !== "prompts" && (
+        {tab !== "prompts" && tab !== "feature-evolution" && (
           <section className="operation-bi-filters">
             <Filter />
             <label>
@@ -2461,6 +2462,7 @@ function GenericOperationIndicatorsBoard({
             ...(module === "cs" && !contextKey.includes("enterprise")
               ? [
                   { id: "features", label: "Features" },
+                  { id: "feature-evolution", label: "Evolução de features" },
                   { id: "critical", label: "Clientes críticos" },
                   ...(!contextKey.includes("evolution")
                     ? [{ id: "training", label: "Treinamentos em haver" }]
@@ -2478,7 +2480,9 @@ function GenericOperationIndicatorsBoard({
           aria-labelledby={`indicator-tab-${tab}`}
           className="indicator-panel"
         >
-          {tab === "features" ? (
+          {tab === "feature-evolution" ? (
+            <CsFeatureEvolutionIndicators items={base} />
+          ) : tab === "features" ? (
             <CsFeaturesIndicators items={scoped} catalogs={catalogs} />
           ) : tab === "critical" || tab === "training" ? (
             <FollowupRiskIndicators
@@ -3240,6 +3244,7 @@ export default function OperationIndicatorsBoard(props: {
         title={props.title}
         contextKey={props.contextKey ?? ""}
         items={props.items}
+        catalogs={props.catalogs}
         onClose={props.onClose}
       />
     );

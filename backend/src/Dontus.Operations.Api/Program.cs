@@ -1216,7 +1216,7 @@ operations.MapPost("", async (
         case "sendCommercialAgendaFollowup":
             id = await commercialFollowup.SendAsync(new(request.Id ?? throw new DomainException("Card comercial obrigatório."),
                 request.Version ?? 0, request.CommercialFollowupTrack ?? "", request.CommercialClientId, request.ProductVersion,
-                request.Owner, request.AgendaId, request.ResponsibleUserId, request.StartsAt, request.Description), actor, cancellationToken);
+                request.Owner, request.AgendaId, request.ResponsibleUserId, request.StartsAt, request.Description, request.AgendaTypeId), actor, cancellationToken);
             break;
         case "routeServiceRequest":
             id = await serviceRequestRouting.RouteAsync(request.Id ?? throw new DomainException("Chamado obrigatório."),

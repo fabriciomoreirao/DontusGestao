@@ -80,10 +80,9 @@ public sealed class CommercialFollowupService(OperationsDbContext db, IOperation
         {
             var agendaId = command.AgendaId ?? throw new DomainException("Selecione uma agenda ativa.");
             var responsible = command.ResponsibleUserId ?? throw new DomainException("Selecione o responsável pelo agendamento.");
-            // Resolve the existing catalog on the server. Old workspace snapshots
-            // must not silently prevent the request or select an unrelated type.
-            var type = await db.AgendaTypes.AsNoTracking().FirstOrDefaultAsync(x => x.Active && x.Name.Trim().ToLower() == "treinamento", ct)
-                ?? throw new DomainException("O tipo Treinamento precisa estar ativo no cadastro da Agenda.");
+            var typeId = command.AgendaTypeId ?? throw new DomainException("Selecione o tipo de agendamento.");
+            var type = await db.AgendaTypes.AsNoTracking().SingleOrDefaultAsync(x => x.Active && x.Id == typeId, ct)
+                ?? throw new DomainException("O tipo de agendamento selecionado não está ativo. Atualize os tipos da Agenda e selecione novamente.");
             var status = await db.AgendaStatuses.AsNoTracking().FirstOrDefaultAsync(x => x.Active && x.Name.Trim().ToLower() == "agendado", ct)
                 ?? throw new DomainException("O status Agendado precisa estar ativo no cadastro da Agenda.");
             var startsAt = command.StartsAt!.Value;

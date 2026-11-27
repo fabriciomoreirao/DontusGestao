@@ -1,0 +1,27 @@
+.cs-feature-evolution {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.cs-feature-evolution-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+.cs-feature-evolution-filters > label {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.cs-feature-evolution-filters .date-range-filter {
+  flex: 2 1 290px;
+}
+.cs-feature-evolution caption {
+  text-align: left;
+  padding: 12px;
+  font-weight: 600;
+}
+.cs-feature-evolution .analytics-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+}
