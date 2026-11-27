@@ -24173,6 +24173,13 @@ button:not(:disabled):active {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
+.cs-conference-panel .cs-decision-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.cs-conference-panel .cs-decision-summary > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .cs-decision-summary span {
   padding: 10px;
   display: grid;
