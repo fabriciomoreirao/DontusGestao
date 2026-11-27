@@ -36,18 +36,18 @@ public sealed class CommercialFollowupServiceTests
     [Theory]
     [InlineData("activation")]
     [InlineData("retention")]
-    public async Task Scheduling_resolves_training_and_scheduled_status_from_the_current_database_and_links_the_journey(string track)
+    public async Task Scheduling_uses_the_selected_active_type_without_requiring_training_and_links_the_journey(string track)
     {
         await using var db = Context();
         var (lead, actor, calendar) = await Seed(db);
-        var type = new AgendaType { Name = "Treinamento" };
+        var type = new AgendaType { Name = "Kick off personalizado" };
         var status = new AgendaStatus { Name = "Agendado" };
         db.AddRange(type, status, new AgendaType { Name = "Apresentação comercial" }, new AgendaStatus { Name = "Aguardando" });
         await db.SaveChangesAsync();
         var responsible = await db.Users.SingleAsync();
         var start = DateTimeOffset.Parse("2026-11-27T14:00:00-03:00");
         var result = await Service(db).SendAsync(new(lead.Id, lead.Version, track, "123456", "Essencial", "Coordenação CS",
-            calendar.Id, responsible.Id, start, "Preparar treinamento"), actor);
+            calendar.Id, responsible.Id, start, "Preparar reunião", type.Id), actor);
         var booking = Assert.Single(await db.AgendaCommitments.ToArrayAsync());
         Assert.Equal(type.Id, booking.AgendaTypeId); Assert.Equal(status.Id, booking.AgendaStatusId);
         Assert.Equal(start, booking.StartsAt); Assert.Equal(start.AddHours(1), booking.EndsAt);
@@ -62,18 +62,37 @@ public sealed class CommercialFollowupServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task A_missing_active_training_or_scheduled_status_returns_a_clear_error_before_creating_records(bool missingStatus)
+    public async Task An_inactive_selected_type_or_missing_scheduled_status_returns_an_error_before_creating_records(bool missingStatus)
     {
         await using var db = Context();
         var (lead, actor, calendar) = await Seed(db);
-        db.Add(new AgendaType { Name = "Treinamento", Active = missingStatus });
+        var type = new AgendaType { Name = "Reunião", Active = missingStatus };
+        db.Add(type);
         db.Add(new AgendaStatus { Name = "Agendado", Active = !missingStatus });
         await db.SaveChangesAsync();
         var user = await db.Users.SingleAsync();
         var error = await Assert.ThrowsAsync<DomainException>(() => Service(db).SendAsync(new(lead.Id, lead.Version, "activation", "123456", "Essencial", "CS",
-            calendar.Id, user.Id, DateTimeOffset.Parse("2026-11-27T14:00:00-03:00"), null), actor));
-        Assert.Contains(missingStatus ? "Agendado" : "Treinamento", error.Message);
+            calendar.Id, user.Id, DateTimeOffset.Parse("2026-11-27T14:00:00-03:00"), null, type.Id), actor));
+        Assert.Contains(missingStatus ? "Agendado" : "tipo de agendamento", error.Message);
         Assert.Empty(await db.AgendaCommitments.ToArrayAsync()); Assert.Single(await db.WorkItems.ToArrayAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Missing_or_unknown_type_does_not_fall_back_to_training(bool unknown)
+    {
+        await using var db = Context();
+        var (lead, actor, calendar) = await Seed(db);
+        db.AddRange(new AgendaType { Name = "Treinamento" }, new AgendaStatus { Name = "Agendado" });
+        await db.SaveChangesAsync();
+        var user = await db.Users.SingleAsync();
+        var error = await Assert.ThrowsAsync<DomainException>(() => Service(db).SendAsync(new(lead.Id, lead.Version, "activation", "123456", "Essencial", "CS",
+            calendar.Id, user.Id, DateTimeOffset.Parse("2026-11-27T14:00:00-03:00"), null, unknown ? Guid.NewGuid() : null), actor));
+        Assert.Equal(400, error.StatusCode);
+        Assert.Contains("tipo de agendamento", error.Message);
+        Assert.Empty(await db.AgendaCommitments.ToArrayAsync());
+        Assert.Single(await db.WorkItems.ToArrayAsync());
     }
 
     [Theory]

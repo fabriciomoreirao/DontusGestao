@@ -2,6 +2,9 @@ import { customerSuccessScore } from "./commission-rules.ts";
 
 export type FeatureSnapshot = {
   createdAt: string;
+  actor?: string;
+  responsible?: string;
+  featuresBase?: string[];
   score: number;
   previousScore: number;
   featuresActive?: string[];
@@ -57,6 +60,8 @@ export function featureProgress(
   const history = (journey.scoreEvolution ?? [])
     .filter(
       (s) =>
+        s &&
+        typeof s === "object" &&
         Number.isFinite(s.score) &&
         Number.isFinite(s.previousScore) &&
         Number.isFinite(Date.parse(s.createdAt)),

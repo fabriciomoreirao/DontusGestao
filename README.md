@@ -50,7 +50,8 @@ Depois, selecione somente o tipo de acompanhamento: **Enviar sem agendamento**
 encaminha o card sem exigir ID e versão nem criar um compromisso. **Verificar
 horários disponíveis** mantém as regras de dias úteis, feriados, bloqueios e três
 compromissos por horário. Ao selecionar o horário, **Agendar e enviar** abre o
-modal de versão e ID. O backend usa os cadastros ativos **Treinamento** e
+modal de versão, ID e **Tipo de agendamento**, com os tipos ativos cadastrados nas
+configurações da Agenda. O backend valida o tipo selecionado e o status
 **Agendado**; reserva, encaminhamento e atualização do cliente são confirmados
 juntos. Falhas aparecem no modal, preservam o preenchimento e desfazem a operação.
 Na **Agenda**, somente os status **Agendado** e **Concluído** ocupam o horário do
@@ -62,6 +63,15 @@ em uso e Plus permanecem visíveis nos cards a partir de **Acompanhamento**, inc
 na conferência e após o encerramento. As seleções são preservadas nas mudanças de
 etapa e só podem ser alteradas em **Acompanhamento** ou **Conferência**, com
 salvamento automático e validação da regra pelo servidor.
+Nos indicadores desses acompanhamentos, a aba **Evolução de features** mostra
+cada alteração, scores, funcionalidades, responsável e autor. Os filtros usam a
+data da evolução e o responsável registrado naquele momento. Registros antigos
+sem responsável no histórico usam o responsável atual, com essa indicação na tela.
+
+Os indicadores do **CRM Retenção** reconhecem como sucesso o envio para onboarding,
+as etapas configuradas como ganho e os encaminhamentos registrados. O período é
+o mesmo do kanban: criação ou última atualização do card. Totais e resultados por
+colaborador consideram todos os registros filtrados antes da paginação.
 
 As listas oferecem o seletor **10 / 30 / 50 / 100** no canto superior esquerdo,
 com dez registros por padrão e retorno a dez ao reabrir a página. Pesquisa, filtros

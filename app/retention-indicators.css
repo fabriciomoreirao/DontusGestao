@@ -1,0 +1,26 @@
+.retention-bi-board .retention-bi-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.retention-bi-board .retention-bi-filters > label {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.retention-bi-board .retention-bi-filters .date-range-filter {
+  flex: 2 1 290px;
+}
+.retention-bi-board .retention-bi-filters > svg {
+  align-self: center;
+}
+.retention-bi-board .retention-bi-panel {
+  min-width: 0;
+}
+.retention-bi-board .retention-bi-table {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.retention-bi-board .retention-bi-table > div {
+  min-width: 680px;
+}

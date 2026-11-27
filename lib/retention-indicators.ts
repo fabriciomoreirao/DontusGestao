@@ -1,5 +1,7 @@
 import { indicatorDetail, type IndicatorRecord } from "./field-indicators.ts";
 import { scopeCommercialIndicatorItems } from "./commercial-indicators.ts";
+import { inDateRange } from "./date-range.ts";
+import { crmResponsible } from "./crm-responsibles.ts";
 
 type Source = { id: string; module?: string; description?: string };
 export type RetentionEntry = {
@@ -20,7 +22,40 @@ const clean = (value: string) =>
   value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
     .toLowerCase();
+
+type FunnelCatalog = { catalog: string; name: string; description: string };
+function retentionStageOutcomes(catalogs: readonly FunnelCatalog[]) {
+  const outcomes = new Map<string, { won: boolean; lost: boolean }>();
+  for (const catalog of catalogs) {
+    if (catalog.catalog !== "funnelStage") continue;
+    const config = indicatorDetail(catalog);
+    const stages = config.s ?? config.stages;
+    if (!Array.isArray(stages)) continue;
+    for (const stage of stages) {
+      if (!stage || typeof stage !== "object") continue;
+      const name = Array.isArray(stage) ? stage[0] : stage.name;
+      const won = Array.isArray(stage) ? stage[2] : stage.won;
+      const lost = Array.isArray(stage) ? stage[3] : stage.lost;
+      if (typeof name === "string")
+        outcomes.set(`${clean(catalog.name)}:${clean(name)}`, {
+          won: won === true || won === 1,
+          lost: lost === true || lost === 1,
+        });
+    }
+  }
+  return outcomes;
+}
+
+/** Match the CRM board's creation/update period before pagination. */
+export function matchesRetentionPeriod(entry: RetentionEntry, period: string) {
+  return (
+    inDateRange(entry.item.created_at, period) ||
+    inDateRange(entry.item.updated_at, period)
+  );
+}
 
 /** Build once per snapshot. Other modules can contain large embedded files. */
 export function retentionOnboardingLeadIds(items: readonly Source[]) {
@@ -40,14 +75,24 @@ export function retentionOnboardingLeadIds(items: readonly Source[]) {
 export function retentionEntries(
   items: RetentionEntry["item"][],
   context: string,
+  catalogs: readonly FunnelCatalog[] = [],
 ): RetentionEntry[] {
   const forwarded = retentionOnboardingLeadIds(items);
+  const outcomes = retentionStageOutcomes(catalogs);
   return scopeCommercialIndicatorItems(items, context).map((item) => {
     const detail = indicatorDetail(item),
       stage = text(detail.stage, item.status) || "Sem etapa";
-    const failed = /sem sucesso|perdid|cancelad|reprovad/.test(
-      clean(`${stage} ${item.status}`),
+    const configured = outcomes.get(
+      `${clean(text(detail.funnel))}:${clean(stage)}`,
     );
+    const failed =
+      configured?.lost ||
+      /sem sucesso|perdid|cancelad|reprovad/.test(clean(stage));
+    const successfulStage =
+      configured?.won ||
+      /(?:enviad|encaminhad|direcionad).*\b(?:onboarding|acompanhamento)\b|\bcom sucesso\b|\bganh[oa]\b/.test(
+        clean(stage),
+      );
     const sent =
       detail.onboarding &&
       typeof detail.onboarding === "object" &&
@@ -60,13 +105,12 @@ export function retentionEntries(
         0,
         10,
       ),
-      seller:
-        text(detail.seller, detail.sellerName, item.owner) || "Não atribuído",
+      seller: text(crmResponsible(item), detail.sellerName) || "Não atribuído",
       version: text(detail.version) || "Sem versão",
       crm: text(detail.funnel) || "Sem CRM",
       outcome: failed
         ? "failure"
-        : sent || forwarded.has(item.id)
+        : successfulStage || sent || forwarded.has(item.id)
           ? "success"
           : "process",
     };

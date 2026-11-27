@@ -154,6 +154,7 @@ type ScoreEvolutionEntry = {
   id: string;
   createdAt: string;
   actor: string;
+  responsible?: string;
   period: string;
   score: number;
   previousScore: number;
@@ -2127,7 +2128,8 @@ export function JourneyDrawer({
     )
       return false;
     const previous = {
-      status: journey.phase === "tracking" ? status : journey.status || phaseName,
+      status:
+        journey.phase === "tracking" ? status : journey.status || phaseName,
       usage: journey.phase === "tracking" ? usage : journey.usage || "",
       callStatus:
         journey.phase === "tracking" ? callStatus : journey.callStatus || "",
@@ -2172,6 +2174,7 @@ export function JourneyDrawer({
               id: crypto.randomUUID(),
               createdAt,
               actor: currentUser.displayName,
+              responsible: item.owner || "Não atribuído",
               period: createdAt.slice(0, 7),
               score: nextScore,
               previousScore,
