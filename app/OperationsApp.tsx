@@ -371,6 +371,8 @@ import {
   strategicTracking,
   pendingStrategicUnits,
   lastStrategicInteraction,
+  enterpriseInteractionTypes,
+  splitEnterpriseHistory,
 } from "@/lib/enterprise-tracking";
 const RetentionIndicatorsBoard = lazy(
   () => import("@/app/RetentionIndicatorsBoard"),
@@ -21506,13 +21508,7 @@ function EnterpriseInteractionsModal({
   const [meetingLink, setMeetingLink] = useState("");
   const [details, setDetails] = useState("");
   const [scheduling, setScheduling] = useState(false);
-  const interactionTypes = [
-    "Comentário",
-    "Reunião",
-    "Alinhamento",
-    "Ligação",
-    "WhatsApp",
-  ];
+  const { comments, history } = splitEnterpriseHistory(network.history);
   const register = async () => {
     if (!title.trim() || !details.trim()) return;
     const createdAt = new Date(`${date}T12:00:00`).toISOString();
@@ -21529,7 +21525,7 @@ function EnterpriseInteractionsModal({
     };
     const result = await onSave(
       { ...network, history: [...network.history, entry] },
-      "Interação registrada no histórico da rede.",
+      "Interação registrada na rede.",
     );
     if (result) {
       setTitle("");
@@ -21563,6 +21559,35 @@ function EnterpriseInteractionsModal({
       "Compromisso agendado e registrado nas interações da rede.",
     );
   };
+  const renderInteraction = (entry: EnterpriseHistory) => (
+    <article data-reminder-entity-id={entry.id} key={entry.id}>
+      <i />
+      <div>
+        <strong>{entry.title || entry.type}</strong>
+        <small>
+          {entry.type} · {dateTime(entry.createdAt)} · {entry.user}
+          {entry.unitId
+            ? ` · ${network.units.find((networkUnit) => networkUnit.id === entry.unitId)?.name ?? "Unidade"}`
+            : ""}
+        </small>
+        {entry.participants && <em>Participantes: {entry.participants}</em>}
+        <p>
+          <CommentContent text={entry.text} />
+        </p>
+        {entry.scheduledFor && (
+          <span>
+            <CalendarDays size={13} /> Agendado para{" "}
+            {dateTime(entry.scheduledFor)}
+          </span>
+        )}
+        {entry.meetingLink && (
+          <a href={entry.meetingLink} target="_blank" rel="noreferrer">
+            <ExternalLink size={13} /> Abrir link da reunião
+          </a>
+        )}
+      </div>
+    </article>
+  );
   return (
     <div
       className="drawer-backdrop enterprise-interactions-backdrop"
@@ -21604,7 +21629,7 @@ function EnterpriseInteractionsModal({
                   disabled={!canEdit}
                   onChange={(event) => setType(event.target.value)}
                 >
-                  {interactionTypes.map((entry) => (
+                  {enterpriseInteractionTypes.map((entry) => (
                     <option key={entry}>{entry}</option>
                   ))}
                 </select>
@@ -21677,57 +21702,34 @@ function EnterpriseInteractionsModal({
               </button>
             </div>
           </section>
-          <section className="enterprise-interaction-history">
+          <details className="enterprise-interaction-history enterprise-interaction-system-history">
+            <summary>
+              <span>
+                <Clock3 size={17} /> Histórico <b>{history.length}</b>
+              </span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </summary>
+            <div className="enterprise-timeline">
+              <CommentHistory label="registros">
+                {history.length ? (
+                  history.map(renderInteraction)
+                ) : (
+                  <p>Nenhuma alteração registrada.</p>
+                )}
+              </CommentHistory>
+            </div>
+          </details>
+          <section className="enterprise-interaction-history enterprise-interaction-comments">
             <h3>
-              Histórico de interações <b>{network.history.length}</b>
+              <MessageSquareText size={17} /> Comentários{" "}
+              <b>{comments.length}</b>
             </h3>
             <div className="enterprise-timeline">
               <CommentHistory>
-                {network.history.length === 0 ? (
-                  <p>Nenhuma interação registrada.</p>
+                {comments.length ? (
+                  comments.map(renderInteraction)
                 ) : (
-                  network.history
-                    .slice()
-                    .reverse()
-                    .map((entry) => (
-                      <article
-                        data-reminder-entity-id={entry.id}
-                        key={entry.id}
-                      >
-                        <i />
-                        <div>
-                          <strong>{entry.title || entry.type}</strong>
-                          <small>
-                            {entry.type} · {dateTime(entry.createdAt)} ·{" "}
-                            {entry.user}
-                            {entry.unitId
-                              ? ` · ${network.units.find((networkUnit) => networkUnit.id === entry.unitId)?.name ?? "Unidade"}`
-                              : ""}
-                          </small>
-                          {entry.participants && (
-                            <em>Participantes: {entry.participants}</em>
-                          )}
-                          <p>
-                            <CommentContent text={entry.text} />
-                          </p>
-                          {entry.scheduledFor && (
-                            <span>
-                              <CalendarDays size={13} /> Agendado para{" "}
-                              {dateTime(entry.scheduledFor)}
-                            </span>
-                          )}
-                          {entry.meetingLink && (
-                            <a
-                              href={entry.meetingLink}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              <ExternalLink size={13} /> Abrir link da reunião
-                            </a>
-                          )}
-                        </div>
-                      </article>
-                    ))
+                  <p>Nenhum comentário registrado.</p>
                 )}
               </CommentHistory>
             </div>

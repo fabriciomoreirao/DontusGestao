@@ -143,6 +143,36 @@ export function pendingStrategicUnits(units: { pendingFollowUp?: boolean }[]) {
   return units.filter((unit) => unit.pendingFollowUp === true).length;
 }
 
+export const enterpriseInteractionTypes = [
+  "Comentário",
+  "Reunião",
+  "Alinhamento",
+  "Ligação",
+  "WhatsApp",
+] as const;
+
+/** Keep manual contacts separate from system changes without rewriting stored history. */
+export function splitEnterpriseHistory<T extends { type?: string }>(
+  entries: readonly T[],
+) {
+  const comments: T[] = [],
+    history: T[] = [];
+  for (const entry of [...entries].reverse()) {
+    const type = (entry.type || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+    const manual =
+      !type ||
+      /^(comentarios?|reuniao|alinhamento|ligacao|whatsapp|mensagem|contato|observacao|analise|follow.?up)$/.test(
+        type,
+      );
+    (manual ? comments : history).push(entry);
+  }
+  return { comments, history };
+}
+
 export function lastStrategicInteraction(
   history: { createdAt: string; type: string; unitId?: string }[],
   unitId?: string,

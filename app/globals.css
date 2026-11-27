@@ -46403,11 +46403,43 @@ img[src^="data:image"] {
   text-transform: uppercase;
   letter-spacing: 0.055em;
 }
-.enterprise-interaction-history > h3 b {
+.enterprise-interaction-history > h3 b,
+.enterprise-interaction-system-history > summary b {
   padding: 3px 7px;
   border-radius: 99px;
   color: var(--primary);
   background: var(--primary-soft);
+}
+.enterprise-interaction-system-history {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+.enterprise-interaction-system-history > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+.enterprise-interaction-system-history > summary::-webkit-details-marker {
+  display: none;
+}
+.enterprise-interaction-system-history > summary > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.enterprise-interaction-system-history[open] > summary > svg {
+  transform: rotate(180deg);
+}
+.enterprise-interaction-system-history[open] > .enterprise-timeline {
+  margin-top: 10px;
 }
 .enterprise-interaction-history .enterprise-timeline {
   max-height: 310px;

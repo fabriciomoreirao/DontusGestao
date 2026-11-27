@@ -7,9 +7,11 @@ import { ChevronDown } from "lucide-react";
 export default function CommentHistory({
   children,
   newestFirst = true,
+  label = "comentários",
 }: {
   children: ReactNode;
   newestFirst?: boolean;
+  label?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const rows = Children.toArray(children);
@@ -29,8 +31,8 @@ export default function CommentHistory({
         >
           <ChevronDown size={16} />
           {expanded
-            ? "Mostrar os últimos 5 comentários"
-            : `Ver mais comentários (${rows.length - 5})`}
+            ? `Mostrar os últimos 5 ${label}`
+            : `Ver mais ${label} (${rows.length - 5})`}
         </button>
       )}
     </div>
