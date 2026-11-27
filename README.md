@@ -42,6 +42,9 @@ são separadas por mês, mesmo quando a consulta abrange vários meses.
 Em **Contas estratégicas**, **Abrir acompanhamento** mantém a evolução,
 agendamentos, conferência e finalização dentro da própria unidade, sem criar um
 card em Acompanhamentos. Os vínculos antigos continuam disponíveis pela unidade.
+Nas interações da rede, os comentários e contatos manuais ficam em **Comentários**.
+Atualizações internas e demais alterações aparecem em **Histórico**, recolhido
+inicialmente, com contagem e expansão próprias. Os registros anteriores são preservados.
 No **Processo seletivo**, o quadro usa as etapas do processo, com etapas padrão
 quando não houver configuração, e mantém visíveis candidaturas de etapas antigas.
 O card mostra contato, currículo e evolução, com **Agendar entrevista** no topo.
