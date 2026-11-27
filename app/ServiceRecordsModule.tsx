@@ -7,6 +7,8 @@ import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { activeCatalogEntries } from "@/lib/catalog-options";
 import { assignmentPerson } from "@/lib/assignment-people";
+import { normalizeWorkspaceSearch } from "@/lib/workspace-navigation";
+import { inDateRange } from "@/lib/date-range";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
@@ -216,9 +218,7 @@ export default function ServiceRecordsModule({
   ) => Promise<OperationResult>;
   onOpenSettings?: () => void;
 }) {
-  const [queryId, setQueryId] = useState("");
-  const [queryName, setQueryName] = useState("");
-  const [date, setDate] = useState("");
+  const [clientQuery, setClientQuery] = useState("");
   const [responsible, setResponsible] = useState("all");
   const [version, setVersion] = useState("all");
   const [problem, setProblem] = useState("all");
@@ -263,8 +263,7 @@ export default function ServiceRecordsModule({
   );
   const reminderFilter = useReminderFilter("support");
   const visible = useMemo(() => {
-    const idNeedle = queryId.trim().toLocaleLowerCase("pt-BR");
-    const nameNeedle = queryName.trim().toLocaleLowerCase("pt-BR");
+    const clientNeedle = normalizeWorkspaceSearch(clientQuery);
     return records.filter(({ item, detail }) => {
       return (
         reminderFilter.matches({
@@ -272,13 +271,13 @@ export default function ServiceRecordsModule({
           clientId: detail.clientCode,
           title: detail.customerName,
         }) &&
-        (!idNeedle ||
-          detail.clientCode.toLocaleLowerCase("pt-BR").includes(idNeedle)) &&
-        (!nameNeedle ||
-          detail.customerName
-            .toLocaleLowerCase("pt-BR")
-            .includes(nameNeedle)) &&
-        (!date || detail.date === date) &&
+        inDateRange(detail.date || item.created_at, period) &&
+        (!clientNeedle ||
+          normalizeWorkspaceSearch(
+            detail.clientCode +
+              " " +
+              (detail.customerName || item.customer_name),
+          ).includes(clientNeedle)) &&
         (responsible === "all" || detail.responsible === responsible) &&
         (version === "all" || detail.version === version) &&
         (problem === "all" || detail.problem === problem) &&
@@ -288,9 +287,8 @@ export default function ServiceRecordsModule({
     });
   }, [
     records,
-    queryId,
-    queryName,
-    date,
+    clientQuery,
+    period,
     responsible,
     version,
     problem,
@@ -319,7 +317,10 @@ export default function ServiceRecordsModule({
   };
   return (
     <section className="service-records-module">
-      <section className="operation-board-panel" aria-label="Painel de atendimentos">
+      <section
+        className="operation-board-panel"
+        aria-label="Painel de atendimentos"
+      >
         <header className="service-records-header module-page-header">
           <div className="module-page-title">
             <span className="service-title-icon module-page-title-icon">
@@ -360,31 +361,17 @@ export default function ServiceRecordsModule({
           </div>
         </header>
 
-        <section className="service-filter-panel operation-filter-panel" aria-label="Filtros de atendimentos">
-          <div className="service-filter-grid reminder-filter-toolbar">
+        <section
+          className="service-filter-panel operation-filter-panel"
+          aria-label="Filtros de atendimentos"
+        >
+          <div className="service-filter-grid">
             <label>
-              <span>ID do cliente</span>
+              <span>Cliente</span>
               <input
-                value={queryId}
-                onChange={(event) => setQueryId(event.target.value)}
-                placeholder="ID do cliente"
-              />
-            </label>
-            {reminderFilter.control}
-            <label>
-              <span>Nome do cliente</span>
-              <input
-                value={queryName}
-                onChange={(event) => setQueryName(event.target.value)}
-                placeholder="Nome do cliente"
-              />
-            </label>
-            <label>
-              <span>Dia específico</span>
-              <input
-                type="date"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
+                value={clientQuery}
+                onChange={(event) => setClientQuery(event.target.value)}
+                placeholder="Nome ou ID do cliente"
               />
             </label>
             <label>
@@ -401,13 +388,13 @@ export default function ServiceRecordsModule({
               </SearchablePeopleSelect>
             </label>
             <label>
-              <span>Versão</span>
+              <span>Status</span>
               <select
-                value={version}
-                onChange={(event) => setVersion(event.target.value)}
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
               >
-                <option value="all">Todas versões</option>
-                {versions.map((entry) => (
+                <option value="all">Todos status</option>
+                {statuses.map((entry) => (
                   <option key={entry}>{entry}</option>
                 ))}
               </select>
@@ -425,17 +412,18 @@ export default function ServiceRecordsModule({
               </select>
             </label>
             <label>
-              <span>Status</span>
+              <span>Versão</span>
               <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
+                value={version}
+                onChange={(event) => setVersion(event.target.value)}
               >
-                <option value="all">Todos status</option>
-                {statuses.map((entry) => (
+                <option value="all">Todas versões</option>
+                {versions.map((entry) => (
                   <option key={entry}>{entry}</option>
                 ))}
               </select>
             </label>
+            {reminderFilter.control}
           </div>
           <div className="operation-filter-bottom service-filter-period">
             <label className="service-filter-sector">
@@ -449,7 +437,10 @@ export default function ServiceRecordsModule({
                 {sectorOptions.map((name) => (
                   <option value={name} key={name}>
                     {name} (
-                    {records.filter((entry) => entry.detail.sector === name).length}
+                    {
+                      records.filter((entry) => entry.detail.sector === name)
+                        .length
+                    }
                     )
                   </option>
                 ))}
@@ -466,9 +457,7 @@ export default function ServiceRecordsModule({
               className="secondary-button operation-filter-clear"
               aria-label="Limpar todos os filtros"
               onClick={() => {
-                setQueryId("");
-                setQueryName("");
-                setDate("");
+                setClientQuery("");
                 setResponsible("all");
                 setVersion("all");
                 setProblem("all");
@@ -482,7 +471,6 @@ export default function ServiceRecordsModule({
             </button>
           </div>
         </section>
-
       </section>
 
       <section className="service-list" aria-label="Lista de atendimentos">
@@ -506,9 +494,7 @@ export default function ServiceRecordsModule({
           <PaginatedItems
             label="atendimentos"
             resetKey={JSON.stringify([
-              queryId,
-              queryName,
-              date,
+              clientQuery,
               responsible,
               version,
               problem,

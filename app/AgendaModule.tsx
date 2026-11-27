@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import {
   COMMERCIAL_AVAILABILITY_BLOCK_PREFIX,
@@ -448,6 +449,43 @@ export default function AgendaModule({
     setCreating(true);
   };
 
+  const pendingViewFocus = useRef<"month" | "week" | "day" | null>(null);
+  const viewControls = (
+    <div
+      className="commercial-view-switch segmented agenda-calendar-view-switch"
+      role="group"
+      aria-label="Modo de visualização"
+    >
+      {(
+        [
+          ["month", "Mês"],
+          ["week", "Semana"],
+          ["day", "Dia"],
+        ] as const
+      ).map(([value, label]) => (
+        <button
+          type="button"
+          className={calendarView === value ? "active" : ""}
+          ref={(button) => {
+            if (button && pendingViewFocus.current === value) {
+              button.focus({ preventScroll: true });
+              pendingViewFocus.current = null;
+            }
+          }}
+          onClick={() => {
+            if (calendarView === value) return;
+            pendingViewFocus.current = value;
+            setCalendarView(value);
+          }}
+          aria-pressed={calendarView === value}
+          key={value}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <>
       <section className="operation-board-panel" aria-label="Painel da agenda">
@@ -497,7 +535,10 @@ export default function AgendaModule({
             </button>
           </div>
         </header>
-        <section className="agenda-filters operation-filter-panel agenda-standard-filters" aria-label="Filtros da agenda">
+        <section
+          className="agenda-filters operation-filter-panel agenda-standard-filters"
+          aria-label="Filtros da agenda"
+        >
           <div className="agenda-filter-controls">
             <label className="agenda-filter-field">
               <span>Agenda</span>
@@ -576,42 +617,23 @@ export default function AgendaModule({
                 </small>
               </span>
             </label>
-            <button
-              type="button"
-              className="secondary-button operation-filter-clear"
-              aria-label="Limpar todos os filtros"
-              onClick={() => {
-                setCalendarFilter("all");
-                setTypeFilter("all");
-                setCollaboratorFilter("all");
-                setShowMeetingRoomCommitments(true);
-              }}
-            >
-              Limpar
-            </button>
-          </div>
-        </section>
-        <footer className="operation-board-footer agenda-board-footer">
-          <div className="commercial-view-switch segmented" role="group" aria-label="Modo de visualização">
-            {(
-              [
-                ["month", "Mês"],
-                ["week", "Semana"],
-                ["day", "Dia"],
-              ] as const
-            ).map(([value, label]) => (
+            <div className="agenda-filter-actions">
               <button
                 type="button"
-                className={calendarView === value ? "active" : ""}
-                onClick={() => setCalendarView(value)}
-                aria-pressed={calendarView === value}
-                key={value}
+                className="secondary-button operation-filter-clear"
+                aria-label="Limpar todos os filtros"
+                onClick={() => {
+                  setCalendarFilter("all");
+                  setTypeFilter("all");
+                  setCollaboratorFilter("all");
+                  setShowMeetingRoomCommitments(true);
+                }}
               >
-                {label}
+                Limpar
               </button>
-            ))}
+            </div>
           </div>
-        </footer>
+        </section>
       </section>
       {setupRequired && (
         <div className="agenda-setup-note">
@@ -627,6 +649,7 @@ export default function AgendaModule({
       )}
       {calendarView === "month" ? (
         <MonthCalendar
+          viewControls={viewControls}
           month={month}
           commitments={visibleCommitments}
           calendars={module.calendars}
@@ -659,6 +682,7 @@ export default function AgendaModule({
         />
       ) : (
         <ScheduleCalendar
+          viewControls={viewControls}
           view={calendarView}
           anchor={month}
           commitments={visibleCommitments}
@@ -1230,6 +1254,7 @@ function AvailabilityBlockForm({
 }
 
 function MonthCalendar({
+  viewControls,
   month,
   commitments,
   calendars,
@@ -1239,6 +1264,7 @@ function MonthCalendar({
   onOpenDay,
   onCreate,
 }: {
+  viewControls: ReactNode;
   month: Date;
   commitments: AgendaCommitment[];
   calendars: AgendaCalendar[];
@@ -1262,21 +1288,24 @@ function MonthCalendar({
   return (
     <section className="agenda-calendar-card">
       <header className="agenda-calendar-title">
-        <button
-          className="icon-button"
-          onClick={onPrevious}
-          aria-label="Mês anterior"
-        >
-          <ChevronLeft size={19} />
-        </button>
-        <h2>{monthFormatter.format(month)}</h2>
-        <button
-          className="icon-button"
-          onClick={onNext}
-          aria-label="Próximo mês"
-        >
-          <ChevronRight size={19} />
-        </button>
+        <div className="agenda-calendar-navigation">
+          <button
+            className="icon-button"
+            onClick={onPrevious}
+            aria-label="Mês anterior"
+          >
+            <ChevronLeft size={19} />
+          </button>
+          <h2>{monthFormatter.format(month)}</h2>
+          <button
+            className="icon-button"
+            onClick={onNext}
+            aria-label="Próximo mês"
+          >
+            <ChevronRight size={19} />
+          </button>
+        </div>
+        {viewControls}
       </header>
       <div className="agenda-weekdays">
         {Array.from({ length: 7 }, (_, index) => (
@@ -1364,6 +1393,7 @@ function MonthCalendar({
 }
 
 function ScheduleCalendar({
+  viewControls,
   view,
   anchor,
   commitments,
@@ -1375,6 +1405,7 @@ function ScheduleCalendar({
   onOpenCommitment,
   onCreate,
 }: {
+  viewControls: ReactNode;
   view: "week" | "day";
   anchor: Date;
   commitments: AgendaCommitment[];
@@ -1411,21 +1442,24 @@ function ScheduleCalendar({
   return (
     <section className={`agenda-calendar-card agenda-time-calendar ${view}`}>
       <header className="agenda-calendar-title">
-        <button
-          className="icon-button"
-          onClick={onPrevious}
-          aria-label="Período anterior"
-        >
-          <ChevronLeft size={19} />
-        </button>
-        <h2>{label}</h2>
-        <button
-          className="icon-button"
-          onClick={onNext}
-          aria-label="Próximo período"
-        >
-          <ChevronRight size={19} />
-        </button>
+        <div className="agenda-calendar-navigation">
+          <button
+            className="icon-button"
+            onClick={onPrevious}
+            aria-label="Período anterior"
+          >
+            <ChevronLeft size={19} />
+          </button>
+          <h2>{label}</h2>
+          <button
+            className="icon-button"
+            onClick={onNext}
+            aria-label="Próximo período"
+          >
+            <ChevronRight size={19} />
+          </button>
+        </div>
+        {viewControls}
       </header>
       <div className="agenda-time-scroll" ref={scroll} style={gridStyle}>
         <div className="agenda-time-head">

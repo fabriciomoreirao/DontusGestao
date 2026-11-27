@@ -24702,13 +24702,7 @@ button:not(:disabled):active {
 .service-filter-grid label:nth-child(-n + 3) {
   grid-column: span 4;
 }
-.service-filter-grid label > span {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-}
+
 .service-filter-grid :is(input, select) {
   min-width: 0;
   min-height: 38px;
@@ -53980,7 +53974,11 @@ form:is(.modal, .modal-shell):not(.modal-side-panel):not(.suggestion-side-panel)
   border-color: color-mix(in srgb, #8b5cf6 42%, var(--line));
   color: #7c3aed;
   background: color-mix(in srgb, #8b5cf6 7%, var(--surface));
-  box-shadow: 0 3px 10px color-mix(in srgb, #8b5cf6 9%, transparent);
+  box-shadow: none;
+}
+.agenda-room-visibility:has(input:focus-visible) {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
 }
 .agenda-room-visibility input {
   position: absolute;

@@ -1,0 +1,31 @@
+.crm-native-scrollbar {
+  position: fixed;
+  bottom: 0;
+  z-index: 30;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  background: Canvas;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  direction: ltr;
+}
+
+.crm-native-scrollbar[hidden] {
+  display: none;
+}
+
+.crm-native-scrollbar-track {
+  height: 1px;
+}
+
+.crm-native-scrollbar:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.crm-native-scrollbar-active {
+  scroll-snap-type: none !important;
+}

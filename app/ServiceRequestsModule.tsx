@@ -370,7 +370,7 @@ export default function ServiceRequestsModule({
                 >
                   <ExternalLink size={16} /> Abrir formulário público
                 </a>
-                </>
+              </>
             )}
           </div>
         </header>
@@ -397,10 +397,14 @@ export default function ServiceRequestsModule({
             </select>
           </label>
           {reminderFilter.control}
-
         </section>
         <div className="operation-filter-bottom standard-filter-period">
-          <DateRangeFilter value={period} onChange={onPeriodChange} label="Datas" showClear={false} />
+          <DateRangeFilter
+            value={period}
+            onChange={onPeriodChange}
+            label="Datas"
+            showClear={false}
+          />
           <button
             type="button"
             className="secondary-button operation-filter-clear"
@@ -414,8 +418,10 @@ export default function ServiceRequestsModule({
           >
             Limpar
           </button>
+          <div className="filter-row-summary" role="status">
+            {visible.length} chamado(s)
+          </div>
         </div>
-        <div className="operation-board-footer">{visible.length} chamado(s)</div>
       </div>
       <section className={`service-request-board ${mode}`}>
         {stages.map((stage) => (

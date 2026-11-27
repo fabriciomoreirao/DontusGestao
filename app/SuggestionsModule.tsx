@@ -454,7 +454,7 @@ export default function SuggestionsModule({
 
 
         </div>
-        <div className="operation-filter-bottom standard-filter-period">
+        <div className="operation-filter-bottom standard-filter-period suggestion-filter-footer">
           <DateRangeFilter value={period} onChange={onPeriodChange} label="Datas" showClear={false} />
           <button
             type="button"
@@ -470,30 +470,30 @@ export default function SuggestionsModule({
           >
             Limpar
           </button>
-        </div>
-        <div className="operation-board-footer">
-          <span className="suggestion-result-count">
-            {filtered.length} resultado{filtered.length === 1 ? "" : "s"}
-          </span>
-          <div
-            className="commercial-view-switch segmented"
-            role="group"
-            aria-label="Visualização das sugestões"
-          >
-            <button
-              className={view === "list" ? "active" : ""}
-              aria-pressed={view === "list"}
-              onClick={() => setView("list")}
+          <div className="suggestion-filter-summary">
+            <span className="suggestion-result-count">
+              {filtered.length} resultado{filtered.length === 1 ? "" : "s"}
+            </span>
+            <div
+              className="commercial-view-switch segmented"
+              role="group"
+              aria-label="Visualização das sugestões"
             >
-              <List size={16} /> Lista
-            </button>
-            <button
-              className={view === "kanban" ? "active" : ""}
-              aria-pressed={view === "kanban"}
-              onClick={() => setView("kanban")}
-            >
-              <Columns3 size={16} /> Kanban
-            </button>
+              <button
+                className={view === "list" ? "active" : ""}
+                aria-pressed={view === "list"}
+                onClick={() => setView("list")}
+              >
+                <List size={16} /> Lista
+              </button>
+              <button
+                className={view === "kanban" ? "active" : ""}
+                aria-pressed={view === "kanban"}
+                onClick={() => setView("kanban")}
+              >
+                <Columns3 size={16} /> Kanban
+              </button>
+            </div>
           </div>
         </div>
       </div>

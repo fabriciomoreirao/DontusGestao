@@ -5,7 +5,7 @@ import { dateRangeBounds, dateKey, dateRangeLabel } from "@/lib/date-range";
 import PaginatedItems from "@/app/PaginatedItems";
 import { useMemo, useState } from "react";
 import CommercialIndicatorClients from "@/app/CommercialIndicatorClients";
-import { ArrowLeft, BarChart3, Filter } from "lucide-react";
+import { ArrowLeft, BarChart3 } from "lucide-react";
 import IndicatorTabs from "@/app/IndicatorTabs";
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 import { DistributionChart, TrendChart } from "@/app/AnalyticsCharts";
@@ -265,116 +265,129 @@ export default function CommercialAnalyticsBoard({
             { id: "totals", label: "Totais em conjunto" },
           ]}
         />
-        <section className="operation-bi-filters commercial-analytics-filters">
-          <Filter />
-          <label>
-            Visualização
-            <select
-              aria-label="Periodicidade dos indicadores"
-              value={mode}
-              onChange={(event) =>
-                setMode(event.target.value as "month" | "week")
-              }
-            >
-              <option value="month">Período</option>
-              <option value="week">Semanal</option>
-            </select>
-          </label>
-          {mode === "month" ? (
-            <DateRangeFilter
-              value={month}
-              onChange={setMonth}
-              label="Período dos indicadores"
-            />
-          ) : (
+        <section
+          className="review-workspace-panel review-filter-panel"
+          aria-label="Filtros dos indicadores do CRM"
+        >
+          <div className="review-filter-grid analytics-filter-grid">
             <label>
-              Semana de
-              <input
-                type="date"
-                aria-label="Semana dos indicadores"
-                value={week}
-                onChange={(event) => {
-                  if (event.target.value) setWeek(event.target.value);
-                }}
-              />
+              <span>Visualização</span>
+              <select
+                aria-label="Periodicidade dos indicadores"
+                value={mode}
+                onChange={(event) =>
+                  setMode(event.target.value as "month" | "week")
+                }
+              >
+                <option value="month">Período</option>
+                <option value="week">Semanal</option>
+              </select>
             </label>
-          )}
-          <label>
-            CRM
-            <select
-              aria-label="Filtrar indicadores por CRM"
-              value={funnel}
-              onChange={(event) => setFunnel(event.target.value)}
+            <label>
+              <span>CRM</span>
+              <select
+                aria-label="Filtrar indicadores por CRM"
+                value={funnel}
+                onChange={(event) => setFunnel(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {[
+                  ...new Set(
+                    tab === "campaigns"
+                      ? paidTrafficCohort(items).map(
+                          (entry) => entry.originFunnel,
+                        )
+                      : source.map((entry) => entry.funnel),
+                  ),
+                ]
+                  .sort()
+                  .map((name) => (
+                    <option key={name}>{name}</option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              <span>Vendedor</span>
+              <SearchablePeopleSelect
+                searchLabel="Vendedor"
+                value={seller}
+                onChange={(event) => setSeller(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {[...new Set(source.map((entry) => entry.seller))]
+                  .sort()
+                  .map((name) => (
+                    <option key={name}>{name}</option>
+                  ))}
+              </SearchablePeopleSelect>
+            </label>
+            <label>
+              <span>Etapa</span>
+              <select
+                value={stage}
+                onChange={(event) => setStage(event.target.value)}
+              >
+                <option value="all">Todas</option>
+                {[...new Set(source.map((entry) => entry.stage))]
+                  .sort()
+                  .map((name) => (
+                    <option key={name}>{name}</option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              <span>Origem</span>
+              <select
+                value={origin}
+                onChange={(event) => setOrigin(event.target.value)}
+              >
+                <option value="all">Todas</option>
+                {[...new Set(source.map((entry) => entry.origin))]
+                  .sort()
+                  .map((name) => (
+                    <option key={name}>{name}</option>
+                  ))}
+              </select>
+            </label>
+          </div>
+          <div className="review-filter-period">
+            {mode === "month" ? (
+              <DateRangeFilter
+                showClear={false}
+                value={month}
+                onChange={setMonth}
+                label="Período dos indicadores"
+              />
+            ) : (
+              <label className="analytics-week-field">
+                Semana de
+                <input
+                  type="date"
+                  aria-label="Semana dos indicadores"
+                  value={week}
+                  onChange={(event) => {
+                    if (event.target.value) setWeek(event.target.value);
+                  }}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              className="secondary-button operation-filter-clear"
+              aria-label="Limpar todos os filtros"
+              onClick={() => {
+                setMode("month");
+                setMonth(dateKey(new Date()).slice(0, 7));
+                setWeek(dateKey(new Date()));
+                setSeller("all");
+                setFunnel("all");
+                setStage("all");
+                setOrigin("all");
+              }}
             >
-              <option value="all">Todos</option>
-              {[
-                ...new Set(
-                  tab === "campaigns"
-                    ? paidTrafficCohort(items).map(
-                        (entry) => entry.originFunnel,
-                      )
-                    : source.map((entry) => entry.funnel),
-                ),
-              ]
-                .sort()
-                .map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-            </select>
-          </label>
-          <label>
-            Vendedor
-            <SearchablePeopleSelect
-              searchLabel="Vendedor"
-              value={seller}
-              onChange={(event) => setSeller(event.target.value)}
-            >
-              <option value="all">Todos</option>
-              {[...new Set(source.map((entry) => entry.seller))]
-                .sort()
-                .map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-            </SearchablePeopleSelect>
-          </label>
-          <label>
-            Etapa
-            <select
-              value={stage}
-              onChange={(event) => setStage(event.target.value)}
-            >
-              <option value="all">Todas</option>
-              {[...new Set(source.map((entry) => entry.stage))]
-                .sort()
-                .map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-            </select>
-          </label>
-          <label>
-            Origem
-            <select
-              value={origin}
-              onChange={(event) => setOrigin(event.target.value)}
-            >
-              <option value="all">Todas</option>
-              {[...new Set(source.map((entry) => entry.origin))]
-                .sort()
-                .map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-            </select>
-          </label>
-          <button
-            onClick={() => {
-              setSeller("all");
-              setFunnel("all");
-              setStage("all");
-              setOrigin("all");
-            }}
-          >
-            Limpar
-          </button>
+              Limpar
+            </button>
+          </div>
         </section>
         <p className="commercial-period-note">
           <strong>

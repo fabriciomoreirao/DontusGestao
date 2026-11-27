@@ -524,9 +524,6 @@ export default function TasksModule({
   )
     ? assignee
     : "";
-  const selectedDepartment = module.departments.find(
-    (item) => item.id === departmentFilter,
-  );
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("pt-BR");
@@ -635,7 +632,6 @@ export default function TasksModule({
             </span>
           </div>
           <div className="tasks-heading-actions module-page-actions">
-
             <button
               type="button"
               className="task-settings-button icon-only"
@@ -831,44 +827,59 @@ export default function TasksModule({
             >
               Limpar
             </button>
+            <footer className="operation-board-footer filter-row-summary">
+              <div className="task-board-summary">
+                <span>
+                  <b>{filtered.length}</b> {filtered.length === 1 ? "tarefa" : "tarefas"}
+                </span>
+              </div>
+              <div className="task-board-view-controls">
+                <div className="task-board-quick-filters">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={onlyMine}
+                      onChange={(event) => setOnlyMine(event.target.checked)}
+                    />
+                    Somente minhas
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={onlyPriority}
+                      onChange={(event) =>
+                        setOnlyPriority(event.target.checked)
+                      }
+                    />
+                    Prioridade sinalizada
+                  </label>
+                </div>
+                <div
+                  className="commercial-view-switch segmented"
+                  role="group"
+                  aria-label="Visualização das tarefas"
+                >
+                  <button
+                    type="button"
+                    className={view === "list" ? "active" : ""}
+                    aria-pressed={view === "list"}
+                    onClick={() => setView("list")}
+                  >
+                    <List size={15} /> Lista
+                  </button>
+                  <button
+                    type="button"
+                    className={view === "kanban" ? "active" : ""}
+                    aria-pressed={view === "kanban"}
+                    onClick={() => setView("kanban")}
+                  >
+                    <Columns3 size={15} /> Kanban
+                  </button>
+                </div>
+              </div>
+            </footer>
           </div>
         </form>
-        <footer className="operation-board-footer">
-          <div className="task-board-summary">
-            <span>{selectedDepartment?.name ?? "Visão consolidada"}</span>
-            <span><b>{filtered.length}</b> {filtered.length === 1 ? "tarefa" : "tarefas"}</span>
-          </div>
-          <div className="task-board-view-controls">
-            <div className="task-board-quick-filters">
-              <label>
-                <input type="checkbox" checked={onlyMine} onChange={(event) => setOnlyMine(event.target.checked)} />
-                Somente minhas
-              </label>
-              <label>
-                <input type="checkbox" checked={onlyPriority} onChange={(event) => setOnlyPriority(event.target.checked)} />
-                Prioridade sinalizada
-              </label>
-            </div>
-          <div className="commercial-view-switch segmented" role="group" aria-label="Visualização das tarefas">
-            <button
-              type="button"
-              className={view === "list" ? "active" : ""}
-              aria-pressed={view === "list"}
-              onClick={() => setView("list")}
-            >
-              <List size={15} /> Lista
-            </button>
-            <button
-              type="button"
-              className={view === "kanban" ? "active" : ""}
-              aria-pressed={view === "kanban"}
-              onClick={() => setView("kanban")}
-            >
-              <Columns3 size={15} /> Kanban
-            </button>
-          </div>
-          </div>
-        </footer>
       </section>
       <div
         className="task-workspace-content"
