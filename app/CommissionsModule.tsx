@@ -1053,90 +1053,122 @@ export default function CommissionsModule({
           <small>{approved.length} aprovação(ões)</small>
         </article>
       </section>
-      <section className="commission-filters panel reminder-filter-toolbar">
-        <DateRangeFilter
-          value={competence}
-          onChange={setCompetence}
-          label="Período das comissões"
-        />
-        {reminderFilter.control}
-        <select
-          value={employeeFilter}
-          onChange={(event) => setEmployeeFilter(event.target.value)}
-        >
-          <option value="all">Todos os colaboradores</option>
-          {[...new Set(scopedRows.map((row) => row.employeeName))].map(
-            (name) => (
-              <option key={name}>{name}</option>
-            ),
-          )}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
-        >
-          <option value="all">Todas as decisões</option>
-          <option value="pending">Pendentes</option>
-          <option value="approved">Aprovadas</option>
-          <option value="rejected">Reprovadas</option>
-        </select>
-        <strong>{visible.length} resultado(s)</strong>
-        {[...new Set(visible.map((row) => row.competence))]
-          .sort()
-          .map((confirmationMonth) => (
-            <CommissionConfirmationControl
-              key={confirmationMonth}
-              periodLabel={dateRangeLabel(competence)}
-              module="commissions"
-              scope={scope}
-              competence={confirmationMonth}
-              entries={visible
-                .filter((row) => row.competence === confirmationMonth)
-                .flatMap((row) =>
-                  row.record
-                    ? [{ id: row.record.id, version: row.record.version }]
-                    : [],
-                )}
-              complete={
-                visible.length > 0 &&
-                visible
+      <section
+        className="review-workspace-panel review-filter-panel"
+        aria-label="Filtros de comissões"
+      >
+        <div className="review-filter-grid">
+          <label>
+            <span>Colaborador</span>
+            <select
+              value={employeeFilter}
+              onChange={(event) => setEmployeeFilter(event.target.value)}
+            >
+              <option value="all">Todos os colaboradores</option>
+              {[...new Set(scopedRows.map((row) => row.employeeName))].map(
+                (name) => (
+                  <option key={name}>{name}</option>
+                ),
+              )}
+            </select>
+          </label>
+          <label>
+            <span>Decisão</span>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">Todas as decisões</option>
+              <option value="pending">Pendentes</option>
+              <option value="approved">Aprovadas</option>
+              <option value="rejected">Reprovadas</option>
+            </select>
+          </label>
+          {reminderFilter.control}
+        </div>
+        <div className="review-filter-period">
+          <DateRangeFilter
+            value={competence}
+            onChange={setCompetence}
+            label="Datas das comissões"
+            showClear={false}
+          />
+          <button
+            type="button"
+            className="secondary-button operation-filter-clear"
+            onClick={() => {
+              setCompetence(currentMonth());
+              setEmployeeFilter("all");
+              setStatusFilter("all");
+              reminderFilter.setMode("all");
+            }}
+            aria-label="Limpar todos os filtros"
+          >
+            Limpar
+          </button>
+        </div>
+        <div className="commission-filter-confirmations">
+          {[...new Set(visible.map((row) => row.competence))]
+            .sort()
+            .map((confirmationMonth) => (
+              <CommissionConfirmationControl
+                key={confirmationMonth}
+                periodLabel={dateRangeLabel(competence)}
+                module="commissions"
+                scope={scope}
+                competence={confirmationMonth}
+                entries={visible
                   .filter((row) => row.competence === confirmationMonth)
-                  .every(
-                    (row) =>
-                      !row.needsReview &&
-                      Boolean(row.record) &&
-                      ["approved", "rejected"].includes(
-                        row.recordDetail?.decision || "",
-                      ),
-                  )
-              }
-              canGenerate={canApprove || canManage}
-              employee={employeeFilter}
-              filters={{
-                Setor: scopeLabel(scope),
-                Período: dateRangeLabel(competence),
-                Competência: confirmationMonth,
-                Responsável:
-                  employeeFilter === "all" ? "Todos" : employeeFilter,
-                Decisão:
-                  statusFilter === "all"
-                    ? "Todas"
-                    : statusFilter === "approved"
-                      ? "Aprovadas"
-                      : statusFilter === "rejected"
-                        ? "Reprovadas"
-                        : "Pendentes",
-                Lembretes: {
-                  all: "Todos",
-                  today: "Para hoje",
-                  scheduled: "Com agendamento",
-                  none: "Sem agendamento",
-                }[reminderFilter.mode],
-              }}
-            />
-          ))}
+                  .flatMap((row) =>
+                    row.record
+                      ? [{ id: row.record.id, version: row.record.version }]
+                      : [],
+                  )}
+                complete={
+                  visible.length > 0 &&
+                  visible
+                    .filter((row) => row.competence === confirmationMonth)
+                    .every(
+                      (row) =>
+                        !row.needsReview &&
+                        Boolean(row.record) &&
+                        ["approved", "rejected"].includes(
+                          row.recordDetail?.decision || "",
+                        ),
+                    )
+                }
+                canGenerate={canApprove || canManage}
+                employee={employeeFilter}
+                filters={{
+                  Setor: scopeLabel(scope),
+                  Período: dateRangeLabel(competence),
+                  Competência: confirmationMonth,
+                  Responsável:
+                    employeeFilter === "all" ? "Todos" : employeeFilter,
+                  Decisão:
+                    statusFilter === "all"
+                      ? "Todas"
+                      : statusFilter === "approved"
+                        ? "Aprovadas"
+                        : statusFilter === "rejected"
+                          ? "Reprovadas"
+                          : "Pendentes",
+                  Lembretes: {
+                    all: "Todos",
+                    today: "Para hoje",
+                    scheduled: "Com agendamento",
+                    none: "Sem agendamento",
+                  }[reminderFilter.mode],
+                }}
+              />
+            ))}
+        </div>
       </section>
       <section className="commission-table">
+        <div className="commission-table-summary" role="status">
+          <strong>{visible.length}</strong>{" "}
+          {visible.length === 1 ? "resultado" : "resultados"}
+        </div>
         <div className="commission-row head">
           <span>Cliente / produto</span>
           <span>Colaborador</span>

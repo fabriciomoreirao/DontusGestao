@@ -1,10 +1,14 @@
 "use client";
+
+import DateRangeFilter from "@/app/DateRangeFilter";
 import PaginatedItems from "@/app/PaginatedItems";
 
 import SearchablePeopleSelect from "@/app/SearchablePeopleSelect";
 
 import { activeCatalogEntries } from "@/lib/catalog-options";
 import { assignmentPerson } from "@/lib/assignment-people";
+import { normalizeWorkspaceSearch } from "@/lib/workspace-navigation";
+import { inDateRange } from "@/lib/date-range";
 
 import { useReminderFilter } from "@/app/ReminderFilters";
 
@@ -19,7 +23,6 @@ import {
   Pencil,
   Plus,
   Save,
-  Search,
   Settings,
   Trash2,
   UserRound,
@@ -181,6 +184,9 @@ const displayDate = (value: string) =>
 
 export default function ServiceRecordsModule({
   items,
+  period,
+  onPeriodChange,
+  onClearPeriod,
   customers,
   catalogs,
   employees,
@@ -194,6 +200,9 @@ export default function ServiceRecordsModule({
   onOpenSettings,
 }: {
   items: WorkItem[];
+  period: string;
+  onPeriodChange: (value: string) => void;
+  onClearPeriod: () => void;
   customers: Customer[];
   catalogs: Catalog[];
   employees: Employee[];
@@ -209,9 +218,7 @@ export default function ServiceRecordsModule({
   ) => Promise<OperationResult>;
   onOpenSettings?: () => void;
 }) {
-  const [queryId, setQueryId] = useState("");
-  const [queryName, setQueryName] = useState("");
-  const [date, setDate] = useState("");
+  const [clientQuery, setClientQuery] = useState("");
   const [responsible, setResponsible] = useState("all");
   const [version, setVersion] = useState("all");
   const [problem, setProblem] = useState("all");
@@ -256,8 +263,7 @@ export default function ServiceRecordsModule({
   );
   const reminderFilter = useReminderFilter("support");
   const visible = useMemo(() => {
-    const idNeedle = queryId.trim().toLocaleLowerCase("pt-BR");
-    const nameNeedle = queryName.trim().toLocaleLowerCase("pt-BR");
+    const clientNeedle = normalizeWorkspaceSearch(clientQuery);
     return records.filter(({ item, detail }) => {
       return (
         reminderFilter.matches({
@@ -265,13 +271,13 @@ export default function ServiceRecordsModule({
           clientId: detail.clientCode,
           title: detail.customerName,
         }) &&
-        (!idNeedle ||
-          detail.clientCode.toLocaleLowerCase("pt-BR").includes(idNeedle)) &&
-        (!nameNeedle ||
-          detail.customerName
-            .toLocaleLowerCase("pt-BR")
-            .includes(nameNeedle)) &&
-        (!date || detail.date === date) &&
+        inDateRange(detail.date || item.created_at, period) &&
+        (!clientNeedle ||
+          normalizeWorkspaceSearch(
+            detail.clientCode +
+              " " +
+              (detail.customerName || item.customer_name),
+          ).includes(clientNeedle)) &&
         (responsible === "all" || detail.responsible === responsible) &&
         (version === "all" || detail.version === version) &&
         (problem === "all" || detail.problem === problem) &&
@@ -281,9 +287,8 @@ export default function ServiceRecordsModule({
     });
   }, [
     records,
-    queryId,
-    queryName,
-    date,
+    clientQuery,
+    period,
     responsible,
     version,
     problem,
@@ -312,146 +317,160 @@ export default function ServiceRecordsModule({
   };
   return (
     <section className="service-records-module">
-      <header className="service-records-header module-page-header">
-        <div className="module-page-title">
-          <span className="service-title-icon module-page-title-icon">
-            <Headphones size={20} />
-          </span>
-          <span className="module-page-copy">
-            <h1>Atendimentos</h1>
-            <p>Registros de atendimento ao cliente, organizados por setor.</p>
-          </span>
-        </div>
-        <div className="module-page-actions">
-          {onOpenSettings && (
-            <button
-              className="icon-button"
-              onClick={onOpenSettings}
-              aria-label="Configurar atendimentos"
-              title="Configurar atendimentos"
-            >
-              <Settings size={18} />
-            </button>
-          )}
-          {canCreate && (
-            <>
+      <section
+        className="operation-board-panel"
+        aria-label="Painel de atendimentos"
+      >
+        <header className="service-records-header module-page-header">
+          <div className="module-page-title">
+            <span className="service-title-icon module-page-title-icon">
+              <Headphones size={20} />
+            </span>
+            <span className="module-page-copy">
+              <h1>Atendimentos</h1>
+              <p>Registros de atendimento ao cliente, organizados por setor.</p>
+            </span>
+          </div>
+          <div className="module-page-actions">
+            {onOpenSettings && (
               <button
-                className="secondary-button"
-                onClick={() => setModal("bulk")}
+                className="icon-button"
+                onClick={onOpenSettings}
+                aria-label="Configurar atendimentos"
+                title="Configurar atendimentos"
               >
-                <Layers3 size={16} /> Inserção em massa
+                <Settings size={18} />
               </button>
-              <button
-                className="primary-button"
-                onClick={() => setModal("single")}
-              >
-                <Plus size={16} /> Inserir atendimento
-              </button>
-            </>
-          )}
-        </div>
-      </header>
-
-      <div className="module-sector-filter">
-        <label>
-          <span>Setor</span>
-          <select
-            aria-label="Filtrar atendimentos por setor"
-            value={sector}
-            onChange={(event) => setSector(event.target.value)}
-          >
-            <option value="all">Todos os setores ({records.length})</option>
-            {sectorOptions.map((name) => (
-              <option value={name} key={name}>
-                {name} (
-                {records.filter((entry) => entry.detail.sector === name).length}
-                )
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <section className="service-filter-panel">
-        <header>
-          <Search size={14} /> FILTROS DE PESQUISA
+            )}
+            {canCreate && (
+              <>
+                <button
+                  className="secondary-button"
+                  onClick={() => setModal("bulk")}
+                >
+                  <Layers3 size={16} /> Inserção em massa
+                </button>
+                <button
+                  className="primary-button"
+                  onClick={() => setModal("single")}
+                >
+                  <Plus size={16} /> Inserir atendimento
+                </button>
+              </>
+            )}
+          </div>
         </header>
-        <div className="service-filter-grid reminder-filter-toolbar">
-          <label>
-            <span>ID do cliente</span>
-            <input
-              value={queryId}
-              onChange={(event) => setQueryId(event.target.value)}
-              placeholder="ID do cliente"
+
+        <section
+          className="service-filter-panel operation-filter-panel"
+          aria-label="Filtros de atendimentos"
+        >
+          <div className="service-filter-grid">
+            <label>
+              <span>Cliente</span>
+              <input
+                value={clientQuery}
+                onChange={(event) => setClientQuery(event.target.value)}
+                placeholder="Nome ou ID do cliente"
+              />
+            </label>
+            <label>
+              <span>Responsável</span>
+              <SearchablePeopleSelect
+                searchLabel="Responsável"
+                value={responsible}
+                onChange={(event) => setResponsible(event.target.value)}
+              >
+                <option value="all">Todos os responsáveis</option>
+                {responsibleOptions.map((entry) => (
+                  <option key={entry}>{entry}</option>
+                ))}
+              </SearchablePeopleSelect>
+            </label>
+            <label>
+              <span>Status</span>
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+              >
+                <option value="all">Todos status</option>
+                {statuses.map((entry) => (
+                  <option key={entry}>{entry}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Problema</span>
+              <select
+                value={problem}
+                onChange={(event) => setProblem(event.target.value)}
+              >
+                <option value="all">Todos problemas</option>
+                {problems.map((entry) => (
+                  <option key={entry}>{entry}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Versão</span>
+              <select
+                value={version}
+                onChange={(event) => setVersion(event.target.value)}
+              >
+                <option value="all">Todas versões</option>
+                {versions.map((entry) => (
+                  <option key={entry}>{entry}</option>
+                ))}
+              </select>
+            </label>
+            {reminderFilter.control}
+          </div>
+          <div className="operation-filter-bottom service-filter-period">
+            <label className="service-filter-sector">
+              <span>Setor</span>
+              <select
+                aria-label="Filtrar atendimentos por setor"
+                value={sector}
+                onChange={(event) => setSector(event.target.value)}
+              >
+                <option value="all">Todos os setores ({records.length})</option>
+                {sectorOptions.map((name) => (
+                  <option value={name} key={name}>
+                    {name} (
+                    {
+                      records.filter((entry) => entry.detail.sector === name)
+                        .length
+                    }
+                    )
+                  </option>
+                ))}
+              </select>
+            </label>
+            <DateRangeFilter
+              value={period}
+              onChange={onPeriodChange}
+              label="Datas dos atendimentos"
+              showClear={false}
             />
-          </label>
-          {reminderFilter.control}
-          <label>
-            <span>Nome do cliente</span>
-            <input
-              value={queryName}
-              onChange={(event) => setQueryName(event.target.value)}
-              placeholder="Nome do cliente"
-            />
-          </label>
-          <label>
-            <span>Data</span>
-            <input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-            />
-          </label>
-          <label>
-            <span>Responsável</span>
-            <SearchablePeopleSelect
-              searchLabel="Responsável"
-              value={responsible}
-              onChange={(event) => setResponsible(event.target.value)}
+            <button
+              type="button"
+              className="secondary-button operation-filter-clear"
+              aria-label="Limpar todos os filtros"
+              onClick={() => {
+                setClientQuery("");
+                setResponsible("all");
+                setVersion("all");
+                setProblem("all");
+                setStatus("all");
+                setSector("all");
+                reminderFilter.setMode("all");
+                onClearPeriod();
+              }}
             >
-              <option value="all">Todos os responsáveis</option>
-              {responsibleOptions.map((entry) => (
-                <option key={entry}>{entry}</option>
-              ))}
-            </SearchablePeopleSelect>
-          </label>
-          <label>
-            <span>Versão</span>
-            <select
-              value={version}
-              onChange={(event) => setVersion(event.target.value)}
-            >
-              <option value="all">Todas versões</option>
-              {versions.map((entry) => (
-                <option key={entry}>{entry}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Problema</span>
-            <select
-              value={problem}
-              onChange={(event) => setProblem(event.target.value)}
-            >
-              <option value="all">Todos problemas</option>
-              {problems.map((entry) => (
-                <option key={entry}>{entry}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Status</span>
-            <select
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-            >
-              <option value="all">Todos status</option>
-              {statuses.map((entry) => (
-                <option key={entry}>{entry}</option>
-              ))}
-            </select>
-          </label>
-        </div>
+              Limpar
+            </button>
+          </div>
+        </section>
       </section>
 
       <section className="service-list" aria-label="Lista de atendimentos">
@@ -475,9 +494,7 @@ export default function ServiceRecordsModule({
           <PaginatedItems
             label="atendimentos"
             resetKey={JSON.stringify([
-              queryId,
-              queryName,
-              date,
+              clientQuery,
               responsible,
               version,
               problem,

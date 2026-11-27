@@ -13,3 +13,16 @@ export function kanbanScrollSpeed(
     return Math.round(20 * Math.min(1, (pointer - end + width) / width));
   return 0;
 }
+
+/** Keep the gutters beside the board usable without crossing the browser edge. */
+export function kanbanHorizontalScrollSpeed(
+  pointer: number,
+  boardLeft: number,
+  boardRight: number,
+  viewportWidth: number,
+) {
+  if (pointer < 0 || pointer >= viewportWidth) return 0;
+  const left = Math.max(0, boardLeft);
+  const right = Math.min(viewportWidth, boardRight);
+  return kanbanScrollSpeed(Math.max(left, Math.min(right, pointer)), left, right);
+}

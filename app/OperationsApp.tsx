@@ -2412,6 +2412,7 @@ export default function OperationsApp() {
         message:
           caught instanceof Error ? caught.message : "Falha na operação.",
       });
+      if (payload.action === "sendCommercialAgendaFollowup") throw caught;
       return false;
     } finally {
       setBusy(false);
@@ -2871,40 +2872,43 @@ export default function OperationsApp() {
     payload: Record<string, unknown>,
     success: string,
   ): Promise<OperationResult> =>
-    new Promise((resolve) => {
-      const choosingWin = payload.action === "chooseCommercialWinNotification";
-      const win = pendingWinChoice(
-        dataRef.current?.items.find((item) => item.id === payload.id),
-        choosingWin ? { ...payload, action: "createWorkItem" } : payload,
-        dataRef.current?.customerModule?.catalogs ?? [],
-      );
-      if (
-        win &&
-        (choosingWin || typeof payload.notifyPublicWin !== "boolean")
-      ) {
-        setWinNotification({
-          payload,
-          success,
-          resolve,
-          customer: win.customer_name || win.title,
+    payload.action === "sendCommercialAgendaFollowup"
+      ? executeOperation(payload, success)
+      : new Promise((resolve) => {
+          const choosingWin =
+            payload.action === "chooseCommercialWinNotification";
+          const win = pendingWinChoice(
+            dataRef.current?.items.find((item) => item.id === payload.id),
+            choosingWin ? { ...payload, action: "createWorkItem" } : payload,
+            dataRef.current?.customerModule?.catalogs ?? [],
+          );
+          if (
+            win &&
+            (choosingWin || typeof payload.notifyPublicWin !== "boolean")
+          ) {
+            setWinNotification({
+              payload,
+              success,
+              resolve,
+              customer: win.customer_name || win.title,
+            });
+            return;
+          }
+          if (choosingWin) {
+            resolve({});
+            return;
+          }
+          const action = String(payload.action ?? "").toLowerCase();
+          // Atualizações rápidas (comentários, status, kanban e marcações) são aplicadas diretamente.
+          // A confirmação central fica restrita a exclusões e edições abertas pelos botões dos cards.
+          const requiresConfirmation =
+            action.startsWith("delete") || payload.requireConfirmation === true;
+          if (!requiresConfirmation) {
+            void executeOperation(payload, success).then(resolve);
+            return;
+          }
+          setConfirmation({ payload, success, resolve });
         });
-        return;
-      }
-      if (choosingWin) {
-        resolve({});
-        return;
-      }
-      const action = String(payload.action ?? "").toLowerCase();
-      // Atualizações rápidas (comentários, status, kanban e marcações) são aplicadas diretamente.
-      // A confirmação central fica restrita a exclusões e edições abertas pelos botões dos cards.
-      const requiresConfirmation =
-        action.startsWith("delete") || payload.requireConfirmation === true;
-      if (!requiresConfirmation) {
-        void executeOperation(payload, success).then(resolve);
-        return;
-      }
-      setConfirmation({ payload, success, resolve });
-    });
 
   const cancelOperation = () => {
     const request = confirmation;
@@ -4176,7 +4180,22 @@ export default function OperationsApp() {
                         showFunctionPeriod) && (
                         <OperationIndicatorsLauncher
                           pageKey={`${active}:${commercialFlow}:${csFlow}`}
-                          period={showFunctionPeriod ? kanbanMonth : undefined}
+                          period={
+                            showFunctionPeriod &&
+                            ![
+                              "support",
+                              "serviceRequests",
+                              "serviceFollowup",
+                              "suggestions",
+                              "waitingQueue",
+                            ].includes(active) &&
+                            !(
+                              active === "commercial" &&
+                              commercialFlow !== "qualification"
+                            )
+                              ? kanbanMonth
+                              : undefined
+                          }
                           onPeriodChange={setKanbanMonth}
                           onOpen={
                             canViewOperationIndicators
@@ -4239,6 +4258,8 @@ export default function OperationsApp() {
                         <CommercialLeadsModule
                           key={commercialFlow}
                           flow={commercialFlow}
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
                           catalogs={data.customerModule.catalogs}
                           customers={data.customers}
                           items={kanbanItems}
@@ -4385,7 +4406,12 @@ export default function OperationsApp() {
                       )}
                       {active === "support" && data.customerModule && (
                         <ServiceRecordsModule
-                          items={kanbanItems}
+                          items={data.items}
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() =>
+                            setKanbanMonth(brasiliaMonthKey())
+                          }
                           customers={data.customers}
                           catalogs={data.customerModule.catalogs}
                           employees={assignmentEmployees}
@@ -4405,6 +4431,11 @@ export default function OperationsApp() {
                       )}
                       {active === "waitingQueue" && (
                         <WaitingQueueModule
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() =>
+                            setKanbanMonth(brasiliaMonthKey())
+                          }
                           items={kanbanItems}
                           employees={
                             data.waitingQueueDirectory?.employees ??
@@ -4541,6 +4572,11 @@ export default function OperationsApp() {
                       )}
                       {active === "marketing" && (
                         <MarketingWorkspaceModule
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() =>
+                            setKanbanMonth(brasiliaMonthKey())
+                          }
                           items={kanbanItems}
                           campaignItems={data.items.filter(
                             (item) => item.module === "marketing",
@@ -4610,6 +4646,11 @@ export default function OperationsApp() {
                       )}
                       {active === "suggestions" && monthSuggestionModule && (
                         <SuggestionsModule
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() =>
+                            setKanbanMonth(brasiliaMonthKey())
+                          }
                           module={monthSuggestionModule}
                           customers={data.customers}
                           canCreate={userCan(
@@ -4632,6 +4673,11 @@ export default function OperationsApp() {
                       {(active === "serviceRequests" ||
                         active === "serviceFollowup") && (
                         <ServiceRequestsModule
+                          period={kanbanMonth}
+                          onPeriodChange={setKanbanMonth}
+                          onClearPeriod={() =>
+                            setKanbanMonth(brasiliaMonthKey())
+                          }
                           canCreateTargets={[
                             "tasks",
                             "ti",
@@ -4720,6 +4766,9 @@ export default function OperationsApp() {
                           module={monthTaskModule}
                           month={kanbanMonth}
                           onMonthChange={setKanbanMonth}
+                          onClearPeriod={() =>
+                            setKanbanMonth(brasiliaMonthKey())
+                          }
                           customers={data.customers}
                           user={data.user}
                           canCreate={userCan(data.user, "tasks", "create")}
@@ -8101,7 +8150,7 @@ function OperationIndicatorsLauncher({
               <span>Indicadores</span>
             </button>
           )}
-          {period !== undefined && (
+          {period !== undefined && !target.closest(".marketing-workspace") && (
             <DateRangeFilter
               value={period}
               onChange={onPeriodChange}
@@ -9344,140 +9393,170 @@ export function CustomersView({
   );
   return (
     <>
-      <PageHeader
-        eyebrow="MÓDULO · CLIENTES"
-        title="Clientes"
-        description="Controle a base de clientes, redes, franquias e informações de assinatura."
-        action={
-          <span className="commercial-header-actions">
-            {onOpenSettings && (
-              <button
-                className="icon-button commercial-settings-button"
-                type="button"
-                onClick={onOpenSettings}
-                title="Configurar opções do cadastro de clientes"
-                aria-label="Configurar opções do cadastro de clientes"
-              >
-                <Settings size={18} />
-              </button>
-            )}
-            {canCreate && section === "customers" && (
-              <button className="primary-button" onClick={onCreate}>
-                <Plus size={17} /> Cadastrar cliente
-              </button>
-            )}
+      <section
+        className="operation-board-panel"
+        aria-label="Painel de clientes"
+      >
+        <PageHeader
+          eyebrow="MÓDULO · CLIENTES"
+          title="Clientes"
+          description="Controle a base de clientes, redes, franquias e informações de assinatura."
+          action={
+            <span className="commercial-header-actions">
+              {onOpenSettings && (
+                <button
+                  className="icon-button commercial-settings-button"
+                  type="button"
+                  onClick={onOpenSettings}
+                  title="Configurar opções do cadastro de clientes"
+                  aria-label="Configurar opções do cadastro de clientes"
+                >
+                  <Settings size={18} />
+                </button>
+              )}
+              {canCreate && section === "customers" && (
+                <button className="primary-button" onClick={onCreate}>
+                  <Plus size={17} /> Cadastrar cliente
+                </button>
+              )}
+            </span>
+          }
+        />
+        <div className="customer-register-navigation">
+          <nav
+            className="customer-register-tabs"
+            aria-label="Cadastros de clientes"
+          >
+            <button
+              type="button"
+              aria-pressed={section === "customers"}
+              className={section === "customers" ? "active" : ""}
+              onClick={() => {
+                setSection("customers");
+                setFilter("");
+              }}
+            >
+              <UsersRound size={16} /> Clientes <b>{customers.length}</b>
+            </button>
+            <button
+              type="button"
+              aria-pressed={section === "networks"}
+              className={section === "networks" ? "active" : ""}
+              onClick={() => {
+                setSection("networks");
+                setFilter("");
+              }}
+            >
+              <Users size={16} /> Redes e franquias <b>{networks.length}</b>
+            </button>
+          </nav>
+          <span className="toolbar-summary customer-board-footer">
+            <b>
+              {section === "customers"
+                ? filtered.length
+                : filteredNetworks.length}
+            </b>{" "}
+            registros
           </span>
-        }
-      />
-      <nav
-        className="customer-register-tabs"
-        aria-label="Cadastros de clientes"
-      >
-        <button
-          className={section === "customers" ? "active" : ""}
-          onClick={() => {
-            setSection("customers");
-            setFilter("");
-          }}
-        >
-          <UsersRound size={16} /> Clientes <b>{customers.length}</b>
-        </button>
-        <button
-          className={section === "networks" ? "active" : ""}
-          onClick={() => {
-            setSection("networks");
-            setFilter("");
-          }}
-        >
-          <Users size={16} /> Redes e franquias <b>{networks.length}</b>
-        </button>
-      </nav>
-      <div
-        className={`customer-filter-panel ${section === "networks" ? "network-filter" : ""}`}
-      >
-        <div className="field-search">
-          <Search size={17} />
-          <input
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            aria-label={
-              section === "networks"
-                ? "Buscar rede ou franquia"
-                : "Buscar cliente"
-            }
-            placeholder={
-              section === "networks"
-                ? "Nome da rede, franquia ou responsável"
-                : "Nome, ID, documento, e-mail ou telefone"
-            }
-          />
         </div>
-        {section === "customers" && (
-          <>
-            <label>
-              Status
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-              >
-                <option value="">Todos</option>
-                {[
-                  ...new Set(
-                    catalogs
-                      .filter(
-                        (item) => item.catalog === "status" && item.active,
-                      )
-                      .map((item) => item.name),
-                  ),
-                ].map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Projeto
-              <select
-                value={project}
-                onChange={(event) => setProject(event.target.value)}
-              >
-                <option value="">Todos</option>
-                {catalogs
-                  .filter((item) => item.catalog === "project" && item.active)
-                  .map((item) => (
-                    <option key={item.id}>{item.name}</option>
+        <div
+          className={`customer-filter-panel operation-filter-panel ${section === "networks" ? "network-filter" : ""}`}
+        >
+          <div className="operation-filter-search">
+            <label htmlFor="customer-register-search">Pesquisar</label>
+            <div className="field-search">
+              <Search size={17} />
+              <input
+                id="customer-register-search"
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                aria-label={
+                  section === "networks"
+                    ? "Buscar rede ou franquia"
+                    : "Buscar cliente"
+                }
+                placeholder={
+                  section === "networks"
+                    ? "Nome da rede, franquia ou responsável"
+                    : "Nome, ID, documento, e-mail ou telefone"
+                }
+              />
+            </div>
+          </div>
+          {section === "customers" && (
+            <>
+              <label>
+                Status
+                <select
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {[
+                    ...new Set(
+                      catalogs
+                        .filter(
+                          (item) => item.catalog === "status" && item.active,
+                        )
+                        .map((item) => item.name),
+                    ),
+                  ].map((name) => (
+                    <option key={name}>{name}</option>
                   ))}
-              </select>
-            </label>
-            <label>
-              Dias de tolerância
-              <select
-                value={graceDays}
-                onChange={(event) => setGraceDays(event.target.value)}
-              >
-                <option value="">Todos</option>
-                {catalogs
-                  .filter((item) => item.catalog === "graceDays" && item.active)
-                  .map((item) => (
-                    <option key={item.id}>{item.name}</option>
-                  ))}
-              </select>
-            </label>
-          </>
-        )}
-        <div className="toolbar-summary">
-          <strong>
-            {section === "customers"
-              ? filtered.length
-              : filteredNetworks.length}
-          </strong>{" "}
-          registros
+                </select>
+              </label>
+              <label>
+                Projeto
+                <select
+                  value={project}
+                  onChange={(event) => setProject(event.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {catalogs
+                    .filter((item) => item.catalog === "project" && item.active)
+                    .map((item) => (
+                      <option key={item.id}>{item.name}</option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Dias de tolerância
+                <select
+                  value={graceDays}
+                  onChange={(event) => setGraceDays(event.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {catalogs
+                    .filter(
+                      (item) => item.catalog === "graceDays" && item.active,
+                    )
+                    .map((item) => (
+                      <option key={item.id}>{item.name}</option>
+                    ))}
+                </select>
+              </label>
+            </>
+          )}
+          <button
+            className="secondary-button operation-filter-clear"
+            type="button"
+            aria-label="Limpar todos os filtros"
+            onClick={() => {
+              setFilter("");
+              setStatus("");
+              setProject("");
+              setGraceDays("");
+            }}
+          >
+            Limpar
+          </button>
         </div>
-      </div>
+      </section>
       {section === "customers" ? (
         <div className="table-card">
           <div className="data-table customers-table">
             <div className="table-row table-head">
-              <span>ID · Cliente</span>
+              <span>Cliente</span>
               <span>Projeto</span>
               <span>Versão</span>
               <span>Contato</span>
@@ -9507,9 +9586,13 @@ export function CustomersView({
                             ID / documento: {customer.document_masked}
                           </small>
                         )}
-                        <small title={customer.legal_name}>
-                          {customer.legal_name}
-                        </small>
+                        {customer.legal_name.trim() &&
+                          normalizeWorkspaceSearch(customer.legal_name) !==
+                            normalizeWorkspaceSearch(customer.trade_name) && (
+                            <small title={customer.legal_name}>
+                              {customer.legal_name}
+                            </small>
+                          )}
                       </span>
                       {Boolean(customer.strategic) && (
                         <em>
@@ -9519,7 +9602,7 @@ export function CustomersView({
                     </span>
                     <span>{customer.project || "—"}</span>
                     <span>{customer.product_version || "—"}</span>
-                    <span>
+                    <span className="customer-table-contact">
                       <strong>
                         <PhoneLink phone={customer.phone || "—"} />
                       </strong>
@@ -9528,7 +9611,7 @@ export function CustomersView({
                     <span>{customer.subscription || "—"}</span>
                     <span>
                       <b
-                        className={`status-pill ${statusTone(customer.status)}`}
+                        className={`status-pill ${normalizeWorkspaceSearch(customer.status) === "cliente" ? "positive" : statusTone(customer.status)}`}
                       >
                         {customer.status || "Não definido"}
                       </b>
@@ -12305,6 +12388,8 @@ const commercialLabelColor = (label: string) => {
 
 function CommercialLeadsModule({
   flow,
+  period,
+  onPeriodChange,
   catalogs,
   customers,
   items,
@@ -12321,6 +12406,8 @@ function CommercialLeadsModule({
   onOpenSettings,
 }: {
   flow: CommercialFlow;
+  period: string;
+  onPeriodChange: (value: string) => void;
   catalogs: CustomerCatalogOption[];
   customers: Customer[];
   items: WorkItem[];
@@ -12619,6 +12706,7 @@ function CommercialLeadsModule({
         ? "Contato concluído e retorno ao acompanhamento iniciado."
         : "Lead movido com sucesso.",
     );
+    if (moved && flow === "crm" && targetStage?.won) setSelected(leadItem);
     if (!moved || !completesRetentionReturn) return;
     const sourceJourney = items.find(
       (entry) => entry.id === lead.sourceJourneyId,
@@ -12714,228 +12802,285 @@ function CommercialLeadsModule({
       />
     );
 
+  const canSwitchView = Boolean(
+    activeFunnel && stages.length && flow !== "retention",
+  );
+  const clearCrmFilters = () => {
+    setQuery("");
+    chooseFunnel(funnels[0]?.entry.id ?? "");
+    setOwner("all");
+    setTemperature("all");
+    setProductFilter("all");
+    setReminderFilter("all");
+    onPeriodChange(brasiliaMonthKey());
+  };
+  const pageHeader = (
+    <PageHeader
+      eyebrow={`OPERAÇÃO · ${commercialFlowLabel(flow).toUpperCase()}`}
+      title={commercialFlowLabel(flow)}
+      description={
+        flow === "retention"
+          ? "Gerencie clientes, tratativas e etapas do processo de retenção."
+          : "Acompanhe oportunidades, etapas, interações e próximos follow-ups em um só fluxo."
+      }
+      action={
+        <span className="commercial-header-actions">
+          {onOpenSettings && (
+            <button
+              className="icon-button commercial-settings-button"
+              type="button"
+              onClick={() => {
+                window.sessionStorage.setItem(
+                  "dontus:commercial-settings-area",
+                  flow === "retention" ? "retention" : "crm",
+                );
+                if (flow === "retention")
+                  window.sessionStorage.setItem(
+                    "dontus:commercial-settings-tab",
+                    "funnelStage",
+                  );
+                onOpenSettings();
+              }}
+              aria-label={`Configurar ${commercialFlowLabel(flow)}`}
+              title={`Configurar ${commercialFlowLabel(flow)}`}
+            >
+              <Settings size={18} />
+            </button>
+          )}
+          {flow !== "qualification" && flow !== "retention" && (
+            <button
+              className="secondary-button direct-sales-shortcut"
+              type="button"
+              onClick={() => setDirectSalesOpen(true)}
+            >
+              <CircleDollarSign size={17} /> Venda direta
+            </button>
+          )}
+          {canCreate &&
+            (flow === "retention" ? (
+              <span className="retention-add-wrap">
+                <button
+                  className="primary-button"
+                  type="button"
+                  aria-expanded={retentionAddMenuOpen}
+                  onClick={() => setRetentionAddMenuOpen((open) => !open)}
+                >
+                  <Plus size={17} /> Adicionar cliente <ChevronDown size={15} />
+                </button>
+                {retentionAddMenuOpen && (
+                  <span className="retention-add-menu">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRetentionAddMenuOpen(false);
+                        setCreating(true);
+                      }}
+                    >
+                      <UserRound size={15} /> Cliente individual
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRetentionAddMenuOpen(false);
+                        setRetentionBulkOpen(true);
+                      }}
+                    >
+                      <UsersRound size={15} /> Inserção em massa
+                    </button>
+                  </span>
+                )}
+              </span>
+            ) : (
+              <button
+                className="primary-button"
+                onClick={() => setCreating(true)}
+              >
+                <Plus size={17} /> Novo lead
+              </button>
+            ))}
+        </span>
+      }
+    />
+  );
+  const summary = flow !== "retention" && (
+    <section className="commercial-value-summary" aria-label="Resumo comercial">
+      {flow === "qualification" && (
+        <span>
+          Oportunidades visíveis <b>{leads.length}</b>
+        </span>
+      )}
+      <strong>
+        Valor total <b>{formatMoney(totalPipelineValue)}</b>
+      </strong>
+    </section>
+  );
+  const filters = (
+    <section
+      className="commercial-lead-filters panel"
+      aria-label="Filtros do CRM"
+    >
+      <label className="crm-search-field">
+        Pesquisar
+        <span className="crm-search-control">
+          <Search size={17} />
+          <input
+            aria-label="Pesquisar no CRM"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Nome, telefone ou cliente"
+          />
+        </span>
+      </label>
+      <label>
+        {flow === "crm" ? "Funil" : "Funil selecionado"}
+        <select
+          value={activeFunnel?.entry.id ?? ""}
+          onChange={(event) => chooseFunnel(event.target.value)}
+          disabled={funnels.length === 0}
+        >
+          {funnels.length === 0 && (
+            <option value="">Nenhum funil disponível</option>
+          )}
+          {funnels.map(({ entry }) => (
+            <option value={entry.id} key={entry.id}>
+              {entry.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Responsável
+        <SearchablePeopleSelect
+          searchLabel="Responsável"
+          value={owner}
+          onChange={(event) => setOwner(event.target.value)}
+        >
+          <option value="all">Todos</option>
+          {owners.map((entry) => (
+            <option key={entry}>{entry}</option>
+          ))}
+        </SearchablePeopleSelect>
+      </label>
+      <label>
+        Temperatura
+        <select
+          value={temperature}
+          onChange={(event) => setTemperature(event.target.value)}
+        >
+          <option value="all">Todas</option>
+          {temperatures.map((entry) => (
+            <option value={entry.name} key={entry.id}>
+              {entry.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Produto
+        <select
+          aria-label="Filtrar CRM por produto"
+          value={productFilter}
+          onChange={(event) => setProductFilter(event.target.value)}
+        >
+          <option value="all">Todos os produtos</option>
+          {[
+            ...new Set([
+              ...activeCatalogs
+                .filter((entry) => entry.catalog === "commercialProduct")
+                .map((entry) => entry.name),
+              ...items.flatMap(
+                (item) =>
+                  parseCommercialLead(item.description)?.products.map(
+                    (product) => product.product,
+                  ) || [],
+              ),
+            ]),
+          ]
+            .sort()
+            .map((product) => (
+              <option key={product}>{product}</option>
+            ))}
+        </select>
+      </label>
+      <label>
+        Lembretes
+        <select
+          aria-label="Filtrar CRM por lembretes"
+          value={reminderFilter}
+          onChange={(event) => setReminderFilter(event.target.value)}
+        >
+          <option value="all">Todos</option>
+          <option value="today">Lembretes para hoje</option>
+          <option value="scheduled">Com lembrete agendado</option>
+          <option value="none">Sem lembrete agendado</option>
+        </select>
+      </label>
+    </section>
+  );
+  const viewSwitch = canSwitchView && (
+    <div
+      className="commercial-view-switch segmented"
+      role="tablist"
+      aria-label="Visualização dos leads"
+    >
+      <button
+        className={view === "list" ? "active" : ""}
+        onClick={() => setView("list")}
+      >
+        <List size={15} /> Lista
+      </button>
+      <button
+        className={view === "kanban" ? "active" : ""}
+        onClick={() => setView("kanban")}
+      >
+        <Columns3 size={15} /> Kanban
+      </button>
+    </div>
+  );
   return (
     <section
       className={`commercial-leads-module commercial-${view}-view ${flow === "crm" ? "commercial-original-layout" : ""} ${flow === "retention" ? "retention-crm-module" : ""}`}
     >
-      <PageHeader
-        eyebrow={`OPERAÇÃO · ${commercialFlowLabel(flow).toUpperCase()}`}
-        title={commercialFlowLabel(flow)}
-        description={
-          flow === "retention"
-            ? "Gerencie clientes, tratativas e etapas do processo de retenção."
-            : "Acompanhe oportunidades, etapas, interações e próximos follow-ups em um só fluxo."
-        }
-        action={
-          <span className="commercial-header-actions">
-            {onOpenSettings && (
-              <button
-                className="icon-button commercial-settings-button"
-                type="button"
-                onClick={() => {
-                  window.sessionStorage.setItem(
-                    "dontus:commercial-settings-area",
-                    flow === "retention" ? "retention" : "crm",
-                  );
-                  if (flow === "retention")
-                    window.sessionStorage.setItem(
-                      "dontus:commercial-settings-tab",
-                      "funnelStage",
-                    );
-                  onOpenSettings();
-                }}
-                aria-label={`Configurar ${commercialFlowLabel(flow)}`}
-                title={`Configurar ${commercialFlowLabel(flow)}`}
-              >
-                <Settings size={18} />
-              </button>
-            )}
-            {flow !== "qualification" && flow !== "retention" && (
-              <button
-                className="secondary-button direct-sales-shortcut"
-                type="button"
-                onClick={() => setDirectSalesOpen(true)}
-              >
-                <CircleDollarSign size={17} /> Venda direta
-              </button>
-            )}
-            {canCreate &&
-              (flow === "retention" ? (
-                <span className="retention-add-wrap">
-                  <button
-                    className="primary-button"
-                    type="button"
-                    aria-expanded={retentionAddMenuOpen}
-                    onClick={() => setRetentionAddMenuOpen((open) => !open)}
-                  >
-                    <Plus size={17} /> Adicionar cliente{" "}
-                    <ChevronDown size={15} />
-                  </button>
-                  {retentionAddMenuOpen && (
-                    <span className="retention-add-menu">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRetentionAddMenuOpen(false);
-                          setCreating(true);
-                        }}
-                      >
-                        <UserRound size={15} /> Cliente individual
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRetentionAddMenuOpen(false);
-                          setRetentionBulkOpen(true);
-                        }}
-                      >
-                        <UsersRound size={15} /> Inserção em massa
-                      </button>
-                    </span>
-                  )}
-                </span>
-              ) : (
-                <button
-                  className="primary-button"
-                  onClick={() => setCreating(true)}
-                >
-                  <Plus size={17} /> Novo lead
-                </button>
-              ))}
-          </span>
-        }
-      />
-      {flow !== "retention" && (
+      {flow !== "qualification" ? (
         <section
-          className="commercial-value-summary"
-          aria-label="Resumo comercial"
+          className="operation-board-panel"
+          aria-label={commercialFlowLabel(flow)}
         >
-          <span>
-            Oportunidades visíveis <b>{leads.length}</b>
-          </span>
-          <strong>
-            Valor total <b>{formatMoney(totalPipelineValue)}</b>
-          </strong>
-        </section>
-      )}
-      <section className="commercial-lead-filters panel">
-        <label className="crm-search-field">
-          Pesquisar
-          <span className="crm-search-control">
-            <Search size={17} />
-            <input
-              aria-label="Pesquisar no CRM"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Nome, telefone ou cliente"
+          {pageHeader}
+          {filters}
+          <div className="crm-filter-period">
+            <DateRangeFilter
+              value={period}
+              onChange={onPeriodChange}
+              label="Datas do CRM"
+              showClear={false}
             />
-          </span>
-        </label>
-        <label>
-          Funil selecionado
-          <select
-            value={activeFunnel?.entry.id ?? ""}
-            onChange={(event) => chooseFunnel(event.target.value)}
-            disabled={funnels.length === 0}
-          >
-            {funnels.length === 0 && (
-              <option value="">Nenhum funil disponível</option>
+            <button
+              type="button"
+              className="secondary-button"
+              aria-label="Limpar todos os filtros"
+              onClick={clearCrmFilters}
+            >
+              Limpar
+            </button>
+            {flow === "crm" && (
+              <div className="operation-board-footer filter-row-summary">
+                {summary}
+                {viewSwitch}
+              </div>
             )}
-            {funnels.map(({ entry }) => (
-              <option value={entry.id} key={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Responsável
-          <SearchablePeopleSelect
-            searchLabel="Responsável"
-            value={owner}
-            onChange={(event) => setOwner(event.target.value)}
-          >
-            <option value="all">Todos</option>
-            {owners.map((entry) => (
-              <option key={entry}>{entry}</option>
-            ))}
-          </SearchablePeopleSelect>
-        </label>
-        <label>
-          Temperatura
-          <select
-            value={temperature}
-            onChange={(event) => setTemperature(event.target.value)}
-          >
-            <option value="all">Todas</option>
-            {temperatures.map((entry) => (
-              <option value={entry.name} key={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Produto
-          <select
-            aria-label="Filtrar CRM por produto"
-            value={productFilter}
-            onChange={(event) => setProductFilter(event.target.value)}
-          >
-            <option value="all">Todos os produtos</option>
-            {[
-              ...new Set([
-                ...activeCatalogs
-                  .filter((entry) => entry.catalog === "commercialProduct")
-                  .map((entry) => entry.name),
-                ...items.flatMap(
-                  (item) =>
-                    parseCommercialLead(item.description)?.products.map(
-                      (product) => product.product,
-                    ) || [],
-                ),
-              ]),
-            ]
-              .sort()
-              .map((product) => (
-                <option key={product}>{product}</option>
-              ))}
-          </select>
-        </label>
-        <label>
-          Lembretes
-          <select
-            aria-label="Filtrar CRM por lembretes"
-            value={reminderFilter}
-            onChange={(event) => setReminderFilter(event.target.value)}
-          >
-            <option value="all">Todos</option>
-            <option value="today">Lembretes para hoje</option>
-            <option value="scheduled">Com lembrete agendado</option>
-            <option value="none">Sem lembrete agendado</option>
-          </select>
-        </label>
-      </section>
-      {activeFunnel && stages.length > 0 && flow !== "retention" && (
-        <>
-          <div
-            className="commercial-view-switch segmented"
-            role="tablist"
-            aria-label="Visualização dos leads"
-          >
-            <button
-              className={view === "list" ? "active" : ""}
-              onClick={() => setView("list")}
-            >
-              <List size={15} /> Lista
-            </button>
-            <button
-              className={view === "kanban" ? "active" : ""}
-              onClick={() => setView("kanban")}
-            >
-              <Columns3 size={15} /> Kanban
-            </button>
           </div>
+        </section>
+      ) : (
+        <>
+          {pageHeader}
+          {summary}
+          {filters}
+          {viewSwitch}
+        </>
+      )}
+      {canSwitchView && (
+        <>
           {view === "list" && (
             <CommercialLeadList
               leads={leads}
@@ -16050,12 +16195,16 @@ function CommercialLeadDrawer({
     campaignId: lead.campaignId ?? "",
   });
   const [linkCopied, setLinkCopied] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(
+    () =>
+      flow === "crm" &&
+      !lead.onboarding &&
+      stages.some((entry) => entry.name === lead.stage && entry.won),
+  );
   const [showAvailability, setShowAvailability] = useState(false);
   const [followUpTrack, setFollowUpTrack] = useState<FollowUpTrack>(
     flow === "retention" ? "retention" : "activation",
   );
-  const [liaPlan, setLiaPlan] = useState(liaContractedPlan(lead));
   const schedulingNow = useActivityClock();
   const minimumScheduleDate = commercialDateKey(schedulingNow);
   const [slotDate, setSlotDate] = useState(minimumScheduleDate);
@@ -16075,6 +16224,8 @@ function CommercialLeadDrawer({
     lead.onboarding?.version || lead.version || "",
   );
   const [clientIdError, setClientIdError] = useState("");
+  const [routingBusy, setRoutingBusy] = useState(false);
+  const routingInFlight = useRef(false);
   const linkedCustomer =
     customers.find((entry) => entry.id === item.customer_id) ??
     customers.find(
@@ -16294,215 +16445,88 @@ function CommercialLeadDrawer({
       });
   };
   const sendToOnboarding = async (
-    scheduled?: {
-      date: string;
-      time: string;
-      startsAt: string;
-      commitmentId?: string;
-    },
+    scheduled?: { date: string; time: string; description: string },
     details?: { clientId: string; version: string },
   ) => {
+    if (routingInFlight.current) return false;
     const cleanClientId = (details?.clientId ?? clientId).replace(/\D/g, "");
-    if (!/^\d{6}$/.test(cleanClientId)) {
-      setClientIdError("Informe o ID do cliente com 6 números.");
-      return false;
-    }
-    const isLia = followUpTrack === "lia";
-    if (isLia && !liaPlan.trim()) {
-      setClientIdError(
-        "Informe o plano LIA contratado antes de encaminhar o cliente.",
+    const version = (details?.version ?? releaseVersion).trim();
+    if (scheduled && !/^\d{6}$/.test(cleanClientId))
+      throw new Error("Informe o ID do cliente com 6 números.");
+    if (scheduled && !version) throw new Error("Informe a versão do cliente.");
+    const responsible = scheduled
+      ? (agendaModule?.collaborators.find(
+          (entry) =>
+            entry.agendaIds?.includes(activationCalendar?.id ?? "") &&
+            (entry.id === destinationEmployee?.id ||
+              entry.name === destinationEmployee?.displayName),
+        ) ??
+        agendaModule?.collaborators.find((entry) =>
+          entry.agendaIds?.includes(activationCalendar?.id ?? ""),
+        ))
+      : undefined;
+    if (scheduled && !activationCalendar)
+      throw new Error(
+        "Nenhuma agenda do destino está disponível para agendamento.",
       );
-      return false;
-    }
-    const journey = isLia
-      ? {
-          kind: "liaJourney",
-          sourceLeadId: item.id,
-          liaPlan: liaPlan.trim(),
-          whatsapp: lead.phone,
-          products: lead.products,
-          clientId: cleanClientId,
-          startDate: new Date().toISOString(),
-          kickoffDate: scheduled?.date ?? "",
-          kickoffTime: scheduled?.time ?? "",
-          sector: "Comercial",
-          requestType: "Cliente ganho",
-          history: [
-            {
-              id: crypto.randomUUID(),
-              text: "Cliente encaminhado pelo CRM para a LIA.",
-              at: new Date().toISOString(),
-              author: lead.seller || item.owner,
-            },
-          ],
-        }
-      : {
-          kind: "csJourney",
-          track: followUpTrack,
-          phase: "validation",
-          sourceLeadId: item.id,
-          clientId: cleanClientId,
-          scheduledAt: scheduled?.startsAt ?? "",
-          scheduling: scheduled ? "scheduled" : "not-scheduled",
-          commerciallyApproved: true,
-          firstMeetingAt: scheduled?.startsAt ?? "",
-          firstMeetingTime: scheduled?.time ?? "",
-          firstMeetingCommitmentId: scheduled?.commitmentId,
-          trainingAt: "",
-          rescheduledAt: "",
-          status: "Pendente",
-          featuresBase: [],
-          featuresActive: [],
-          featuresPlus: [],
-          labels: [],
-          follows: [
-            {
-              kind: "Origem comercial",
-              text: scheduled
-                ? `Cliente enviado para acompanhamento de ${followUpTrackLabel(followUpTrack)} com Kick off agendado em ${scheduled.date} às ${scheduled.time}.`
-                : `Cliente enviado para acompanhamento de ${followUpTrackLabel(followUpTrack)}.`,
-              createdAt: new Date().toISOString(),
-              actor: lead.seller || item.owner,
-            },
-          ],
-        };
-    const created = await onAgendaOperation(
-      {
-        action: "createWorkItem",
-        module: isLia ? "lia" : "cs",
-        recordType: isLia
-          ? "Projeto LIA"
-          : followUpTrack === "activation"
-            ? "Acompanhamento de ativação"
-            : "Acompanhamento de retenção",
-        title: item.title,
-        customerId: linkedCustomer?.id ?? item.customer_id,
-        customerName: lead.customer || item.customer_name,
-        owner: isLia ? "Fila compartilhada" : destinationOwner,
-        team: isLia
-          ? "LIA"
-          : followUpTrack === "activation"
-            ? "Sucesso do Cliente · Ativação"
-            : "Sucesso do Cliente · Retenção",
-        status: isLia ? "Validacao" : undefined,
-        priority: "P3",
-        amountCents: item.amount_cents,
-        description: JSON.stringify(journey),
-      },
-      `Cliente enviado para acompanhamento ${followUpTrackLabel(followUpTrack)}.`,
-    );
-    if (created) {
-      if (linkedCustomer)
-        await onAgendaOperation(
-          {
-            action: "updateCustomer",
-            id: linkedCustomer.id,
-            status: "Cliente",
-            documentMasked: cleanClientId,
-            productVersion: details?.version ?? releaseVersion,
-            owner: lead.seller || item.owner,
-            ...(isLia ? {} : { csOwner: destinationOwner }),
-            monthlyRevenueCents: item.amount_cents,
-          },
-          "Lead convertido em cliente.",
-        );
-      await saveLead({
-        ...lead,
-        ...(isLia ? { liaPlan: liaPlan.trim() } : {}),
-        clientId: cleanClientId,
-        stage: wonStage,
-        onboarding: {
-          status: scheduled ? "scheduled" : "sent",
-          date: scheduled?.date,
-          time: scheduled?.time,
-          commitmentId: scheduled?.commitmentId,
-          sentAt: new Date().toISOString(),
-          clientId: cleanClientId,
-          version: details?.version ?? releaseVersion,
-          commerciallyApproved: true,
+    if (scheduled && !responsible)
+      throw new Error(
+        "Nenhum responsável está vinculado à agenda do destino. Confira o cadastro da Agenda.",
+      );
+    if (
+      scheduled &&
+      !availableSlotsFor(scheduled.date, schedulingNow).includes(scheduled.time)
+    )
+      throw new Error(
+        "Este horário não está mais disponível. Escolha outro horário.",
+      );
+    routingInFlight.current = true;
+    setRoutingBusy(true);
+    try {
+      const result = await onAgendaOperation(
+        {
+          action: "sendCommercialAgendaFollowup",
+          id: item.id,
+          version: item.version,
+          commercialFollowupTrack: followUpTrack,
+          commercialClientId: cleanClientId || undefined,
+          productVersion: version || undefined,
+          owner: destinationOwner,
+          ...(scheduled
+            ? {
+                agendaId: activationCalendar!.id,
+                responsibleUserId: responsible!.id,
+                startsAt: commercialSlotStartsAt(
+                  scheduled.date,
+                  scheduled.time,
+                ),
+                description: scheduled.description,
+              }
+            : {}),
         },
-      });
+        scheduled
+          ? "Treinamento agendado e cliente encaminhado com sucesso."
+          : "Cliente encaminhado para acompanhamento.",
+      );
+      if (!result)
+        throw new Error(
+          "Não foi possível concluir o encaminhamento. Tente novamente.",
+        );
+      return true;
+    } finally {
+      routingInFlight.current = false;
+      setRoutingBusy(false);
     }
   };
-  const scheduleOnboarding = async ({
-    description,
-    customerId,
-    version,
-  }: {
+  const scheduleOnboarding = (details: {
     description: string;
     customerId: string;
     version: string;
-  }) => {
-    const cleanClientId = customerId.replace(/\D/g, "");
-    if (!/^\d{6}$/.test(cleanClientId)) {
-      setClientIdError("Informe o ID do cliente com 6 números.");
-      return false;
-    }
-    if (!version.trim()) return false;
-    if (followUpTrack === "lia" && !liaPlan.trim()) {
-      setClientIdError("Informe o plano LIA contratado antes de agendar.");
-      return false;
-    }
-    const type = findJourneyAgendaType(
-      agendaModule?.types ?? [],
-      "Treinamento",
+  }) =>
+    sendToOnboarding(
+      { date: slotDate, time: slot, description: details.description },
+      { clientId: details.customerId, version: details.version },
     );
-    const status = agendaModule?.statuses.find((entry) => entry.active);
-    const responsible =
-      agendaModule?.collaborators.find(
-        (entry) =>
-          Boolean(
-            activationCalendar &&
-            entry.agendaIds?.includes(activationCalendar.id),
-          ) &&
-          (entry.id === destinationEmployee?.id ||
-            entry.name === destinationEmployee?.displayName),
-      ) ??
-      agendaModule?.collaborators.find((entry) =>
-        Boolean(
-          activationCalendar &&
-          entry.agendaIds?.includes(activationCalendar.id),
-        ),
-      );
-    if (!activationCalendar || !type || !status || !responsible || !slot)
-      return false;
-    if (!availableSlotsFor(slotDate, Date.now()).includes(slot)) {
-      setClientIdError(
-        "Este horário não está mais disponível. Escolha outro horário.",
-      );
-      setShowScheduleModal(false);
-      return false;
-    }
-    const startsAt = commercialSlotStartsAt(slotDate, slot);
-    const endsAt = new Date(
-      new Date(startsAt).getTime() + 60 * 60 * 1000,
-    ).toISOString();
-    const created = await onAgendaOperation(
-      {
-        action: "createAgendaCommitment",
-        agendaId: activationCalendar.id,
-        agendaTypeId: type.id,
-        agendaStatusId: status.id,
-        responsibleUserId: responsible.id,
-        title: `Kick off (${version.trim()}) - ID: ${cleanClientId}`,
-        description:
-          description || `Kick off comercial de ${lead.customer || item.title}`,
-        startsAt,
-        endsAt,
-        participantUserIds: [],
-        recurrence: "none",
-      },
-      "Kick off agendado com sucesso.",
-    );
-    if (created) {
-      await sendToOnboarding(
-        { date: slotDate, time: slot, startsAt, commitmentId: created.id },
-        { clientId: cleanClientId, version: version.trim() },
-      );
-      return true;
-    }
-    return false;
-  };
   const qualifyAndCopy = async () => {
     const target = crmFunnels.find(
       (entry) => entry.entry.id === targetFunnelId,
@@ -16647,10 +16671,14 @@ function CommercialLeadDrawer({
           }}
           onSave={saveLead}
           onSendToOnboarding={async () => {
-            await sendToOnboarding(undefined, {
-              clientId: lead.clientId || clientId,
-              version: lead.version || releaseVersion,
-            });
+            try {
+              await sendToOnboarding(undefined, {
+                clientId: lead.clientId || clientId,
+                version: lead.version || releaseVersion,
+              });
+            } catch {
+              // The operation already displays the backend error in the notification toast.
+            }
           }}
         />
         {editing && (
@@ -17189,7 +17217,12 @@ function CommercialLeadDrawer({
                             },
                           ],
                         }).then((saved) => {
-                          if (saved) setShowOnboarding(true);
+                          if (saved) {
+                            setCheckingSlots(false);
+                            setShowAvailability(false);
+                            setSlot("");
+                            setShowOnboarding(true);
+                          }
                         });
                       }}
                     >
@@ -17290,43 +17323,7 @@ function CommercialLeadDrawer({
                     )}
                   </select>
                 </label>
-                {showOnboarding && (
-                  <>
-                    <label>
-                      ID do cliente *
-                      <input
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={clientId}
-                        onChange={(event) => {
-                          setClientId(
-                            event.target.value.replace(/\D/g, "").slice(0, 6),
-                          );
-                          setClientIdError("");
-                        }}
-                        placeholder="000000"
-                      />
-                    </label>
-                    <label>
-                      Versão *
-                      <input
-                        value={releaseVersion}
-                        onChange={(event) =>
-                          setReleaseVersion(event.target.value)
-                        }
-                        placeholder="Ex.: Essencial"
-                      />
-                    </label>
-                  </>
-                )}
               </div>
-              {showOnboarding && followUpTrack === "lia" && (
-                <LiaPlanField
-                  catalogs={catalogs}
-                  value={liaPlan}
-                  onChange={setLiaPlan}
-                />
-              )}
               <p>
                 {!showOnboarding
                   ? "Consulte os horários disponíveis do CS antes de fechar a oportunidade."
@@ -17343,20 +17340,22 @@ function CommercialLeadDrawer({
                 <div className="drawer-actions">
                   <button
                     className="secondary-button"
-                    disabled={
-                      busy ||
-                      !clientId ||
-                      !releaseVersion ||
-                      (followUpTrack === "lia" && !liaPlan.trim())
-                    }
+                    disabled={busy || routingBusy}
                     onClick={() =>
-                      void sendToOnboarding(undefined, {
-                        clientId,
-                        version: releaseVersion,
-                      })
+                      void sendToOnboarding()
+                        .then((sent) => {
+                          if (sent) onClose();
+                        })
+                        .catch((error: unknown) =>
+                          setClientIdError(
+                            error instanceof Error
+                              ? error.message
+                              : "Não foi possível encaminhar o cliente.",
+                          ),
+                        )
                     }
                   >
-                    Enviar sem agendamento
+                    {routingBusy ? "Enviando…" : "Enviar sem agendamento"}
                   </button>
                   <button
                     className="primary-button"
@@ -17453,9 +17452,7 @@ function CommercialLeadDrawer({
                     <button
                       type="button"
                       className="primary-button commercial-schedule-submit"
-                      disabled={
-                        busy || (followUpTrack === "lia" && !liaPlan.trim())
-                      }
+                      disabled={busy || routingBusy}
                       onClick={() => setShowScheduleModal(true)}
                     >
                       Agendar e enviar
@@ -17772,7 +17769,7 @@ function CommercialLeadDrawer({
             time={slot}
             initialClientId={clientId}
             initialVersion={releaseVersion}
-            busy={busy}
+            busy={busy || routingBusy}
             onClose={() => setShowScheduleModal(false)}
             onConfirm={async (details) => {
               setClientId(details.clientId);
@@ -18895,15 +18892,39 @@ function CommercialAgendaScheduleModal({
   const [description, setDescription] = useState("");
   const [clientId, setClientId] = useState(initialClientId);
   const [version, setVersion] = useState(initialVersion);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const submittingRef = useRef(false);
   const valid =
     /^\d{6}$/.test(clientId.replace(/\D/g, "")) && Boolean(version.trim());
   return (
     <ModalShell
-      title="Agendar e enviar para Onboarding"
+      title="Agendar e enviar para acompanhamento"
       subtitle={`${calendarName} · ${date} às ${time}`}
       onClose={onClose}
     >
-      <div className="form-grid">
+      <form
+        className="form-grid"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (!valid || busy || submittingRef.current) return;
+          submittingRef.current = true;
+          setSubmitting(true);
+          setError("");
+          try {
+            await onConfirm({ description, clientId, version });
+          } catch (caught) {
+            setError(
+              caught instanceof Error
+                ? caught.message
+                : "Não foi possível agendar e enviar. Tente novamente.",
+            );
+          } finally {
+            submittingRef.current = false;
+            setSubmitting(false);
+          }
+        }}
+      >
         <label>
           Versão *
           <input
@@ -18933,19 +18954,25 @@ function CommercialAgendaScheduleModal({
             placeholder="Adicione os detalhes para a agenda."
           />
         </label>
+        {error && (
+          <p className="commercial-schedule-error wide" role="alert">
+            {error}
+          </p>
+        )}
         <div className="form-actions wide">
-          <button type="button" onClick={onClose}>
+          <button type="button" onClick={onClose} disabled={submitting || busy}>
             Cancelar
           </button>
           <button
             className="primary-button"
-            disabled={busy || !valid}
-            onClick={() => void onConfirm({ description, clientId, version })}
+            type="submit"
+            disabled={busy || submitting || !valid}
           >
-            <Save size={15} /> Agendar e enviar
+            <Save size={15} />{" "}
+            {submitting ? "Agendando e enviando…" : "Agendar e enviar"}
           </button>
         </div>
-      </div>
+      </form>
     </ModalShell>
   );
 }
@@ -20393,66 +20420,91 @@ function EnterpriseNetworksModule({
         </article>
       </section>
 
-      <section className="enterprise-filters panel reminder-filter-toolbar">
-        <label className="commercial-search">
-          <Search size={17} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Pesquisar rede ou responsável"
-          />
-        </label>
-        {reminderFilter.control}
-        <label>
-          Status
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="all">Todos os status</option>
-            {[
-              ...new Set(
-                networks
-                  .map(
-                    (item) => parseEnterpriseNetwork(item.description)?.status,
-                  )
-                  .filter(Boolean),
-              ),
-            ].map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Responsável
-          <SearchablePeopleSelect
-            searchLabel="Responsável"
-            value={owner}
-            onChange={(event) => setOwner(event.target.value)}
-          >
-            <option value="all">Todos os responsáveis</option>
-            {[
-              ...new Set(networks.map((item) => item.owner).filter(Boolean)),
-            ].map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </SearchablePeopleSelect>
-        </label>
-        <div className="enterprise-view-switch">
+      <section className="review-workspace-panel review-filter-panel">
+        <div className="review-filter-grid cancellation-filter-grid">
+          <label>
+            <span>Pesquisar</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Pesquisar rede ou responsável"
+            />
+          </label>
+          {reminderFilter.control}
+          <label>
+            <span>Status</span>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="all">Todos os status</option>
+              {[
+                ...new Set(
+                  networks
+                    .map(
+                      (item) =>
+                        parseEnterpriseNetwork(item.description)?.status,
+                    )
+                    .filter(Boolean),
+                ),
+              ].map((name) => (
+                <option key={name}>{name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Responsável</span>
+            <SearchablePeopleSelect
+              searchLabel="Responsável"
+              value={owner}
+              onChange={(event) => setOwner(event.target.value)}
+            >
+              <option value="all">Todos os responsáveis</option>
+              {[
+                ...new Set(networks.map((item) => item.owner).filter(Boolean)),
+              ].map((name) => (
+                <option key={name}>{name}</option>
+              ))}
+            </SearchablePeopleSelect>
+          </label>
+        </div>
+        <div className="review-filter-period">
           <button
-            className={enterpriseView === "grid" ? "active" : ""}
-            onClick={() => setEnterpriseView("grid")}
-            aria-label="Visualizar em cards"
+            type="button"
+            className="secondary-button operation-filter-clear"
+            onClick={() => {
+              setQuery("");
+              setStatus("all");
+              setOwner("all");
+              reminderFilter.setMode("all");
+            }}
           >
-            <Columns3 size={15} />
+            Limpar
           </button>
-          <button
-            className={enterpriseView === "list" ? "active" : ""}
-            onClick={() => setEnterpriseView("list")}
-            aria-label="Visualizar em lista"
-          >
-            <List size={15} />
-          </button>
+          <div className="filter-row-summary">
+            <div
+              className="commercial-view-switch segmented"
+              role="group"
+              aria-label="Visualização das contas estratégicas"
+            >
+              <button
+                type="button"
+                className={enterpriseView === "list" ? "active" : ""}
+                onClick={() => setEnterpriseView("list")}
+                aria-label="Visualizar em lista"
+              >
+                <List size={15} /> Lista
+              </button>
+              <button
+                type="button"
+                className={enterpriseView === "grid" ? "active" : ""}
+                onClick={() => setEnterpriseView("grid")}
+                aria-label="Visualizar em cards"
+              >
+                <Columns3 size={15} /> Cards
+              </button>
+            </div>
+          </div>
         </div>
       </section>
       {enterpriseView === "grid" ? (

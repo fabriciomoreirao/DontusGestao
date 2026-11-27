@@ -339,3 +339,7 @@
   resize: none;
   overflow-y: auto;
 }
+
+.internal-chat-message-content {
+  display: flow-root;
+}

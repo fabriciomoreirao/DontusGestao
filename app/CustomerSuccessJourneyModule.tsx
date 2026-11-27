@@ -1193,6 +1193,7 @@ export default function CustomerSuccessJourneyModule({
 
       {selected && (
         <JourneyDrawer
+          key={selected.id}
           distribution={distribution?.find((board) => board.track === track)}
           item={selected}
           journey={parseJourney(selected.description)!}
@@ -2050,9 +2051,9 @@ export function JourneyDrawer({
   const defaultBaseFeatures = featureTokens(
     allFeatureOptions.filter(catalogFeatureIsBase).map((entry) => entry.name),
   );
-  const [featuresBase, setFeaturesBase] = useState(
-    journey.featuresBase.length ? journey.featuresBase : defaultBaseFeatures,
-  );
+  const canEditFeatures =
+    canEdit && (journey.phase === "tracking" || journey.phase === "conference");
+  const [featuresBase, setFeaturesBase] = useState(journey.featuresBase);
   const [featuresActive, setFeaturesActive] = useState(journey.featuresActive);
   const [featuresPlus, setFeaturesPlus] = useState(journey.featuresPlus);
   const [labels, setLabels] = useState(journey.labels);
@@ -2113,16 +2114,29 @@ export function JourneyDrawer({
     "idle" | "saved" | "error"
   >("idle");
   const persistEvolution = async (patch: Partial<CsJourney>) => {
-    if (!canEdit || busy || savingEvolution) return false;
+    const featureChanged = [
+      "featuresBase",
+      "featuresActive",
+      "featuresPlus",
+    ].some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+    if (
+      !canEdit ||
+      busy ||
+      savingEvolution ||
+      (featureChanged && !canEditFeatures)
+    )
+      return false;
     const previous = {
-      status,
-      usage,
-      callStatus,
+      status: journey.phase === "tracking" ? status : journey.status || phaseName,
+      usage: journey.phase === "tracking" ? usage : journey.usage || "",
+      callStatus:
+        journey.phase === "tracking" ? callStatus : journey.callStatus || "",
       featuresBase,
       featuresActive,
       featuresPlus,
-      labels,
-      usageByDay,
+      labels: journey.phase === "tracking" ? labels : journey.labels,
+      usageByDay:
+        journey.phase === "tracking" ? usageByDay : journey.usageByDay || {},
     };
     const next = { ...previous, ...patch };
     const display = (value: typeof previous) => {
@@ -2147,11 +2161,6 @@ export function JourneyDrawer({
         { ...journey, ...next },
         defaultBaseFeatures,
       );
-      const featureChanged = [
-        "featuresBase",
-        "featuresActive",
-        "featuresPlus",
-      ].some((key) => Object.prototype.hasOwnProperty.call(patch, key));
       const createdAt = now();
       const summary = featureChanged
         ? `Score atualizado de ${previousScore}% para ${nextScore}%. Base: ${next.featuresBase.length}; em uso: ${next.featuresActive.length}; Plus: ${next.featuresPlus.length}.`
@@ -2243,9 +2252,9 @@ export function JourneyDrawer({
     return save(
       {
         ...requestCsConference(journey, now()),
-        featuresBase,
-        featuresActive,
-        featuresPlus,
+        ...(canEditFeatures
+          ? { featuresBase, featuresActive, featuresPlus }
+          : {}),
         labels: nextLabels,
         usage,
         callStatus,
@@ -2649,6 +2658,66 @@ export function JourneyDrawer({
       `Cliente retomado no CRM Retenção. Cópia ${copied.id || "criada"} inserida na etapa ${firstStage}.`,
     );
   };
+
+  const featureBoard = (
+    <section className="cs-feature-board">
+      <header>
+        <div>
+          <span className="eyebrow">FEATURES</span>
+          <h3>Aderência do cliente</h3>
+          <p>
+            {canEditFeatures
+              ? "Selecione várias opções. O score compara a base contratada com as funcionalidades efetivamente em uso."
+              : "Features registradas. Edição disponível em Acompanhamento e Conferência."}
+          </p>
+        </div>
+        <strong className={score >= 70 ? "good" : score >= 40 ? "warn" : "bad"}>
+          Health Score: {score}%
+        </strong>
+      </header>
+      <FeaturePicker
+        alwaysVisible={canEditFeatures ? defaultBaseFeatures : []}
+        label="BASE CONTRATADA"
+        options={options("csFeatureBase")}
+        selected={featuresBase}
+        onChange={(value) => persistEvolution({ featuresBase: value })}
+        disabled={!canEditFeatures || busy || savingEvolution}
+      />
+      <FeaturePicker
+        alwaysVisible={canEditFeatures ? featuresBase : []}
+        label="EM USO"
+        options={activeFeatureOptions}
+        selected={featuresActive}
+        onChange={(value) => persistEvolution({ featuresActive: value })}
+        disabled={!canEditFeatures || busy || savingEvolution}
+      />
+      <FeaturePicker
+        label="PLUS"
+        options={options("csFeaturePlus")}
+        selected={featuresPlus}
+        onChange={(value) => persistEvolution({ featuresPlus: value })}
+        disabled={!canEditFeatures || busy || savingEvolution}
+      />
+      {journey.phase === "conference" && (
+        <p className={`cs-autosave-status ${evolutionSaveState}`} role="status">
+          {savingEvolution
+            ? "Salvando features..."
+            : evolutionSaveState === "error"
+              ? "Não foi possível salvar. Tente selecionar novamente."
+              : evolutionSaveState === "saved"
+                ? "Alterações salvas automaticamente."
+                : "As seleções são salvas automaticamente."}
+        </p>
+      )}
+    </section>
+  );
+  const showFeaturesOutsideTracking =
+    journey.phase !== "tracking" &&
+    (journey.phase === "conference" ||
+      isClosedCsJourney(journey.phase) ||
+      featuresBase.length > 0 ||
+      featuresActive.length > 0 ||
+      featuresPlus.length > 0);
 
   return (
     <div
@@ -3354,54 +3423,7 @@ export function JourneyDrawer({
                   </select>
                 </label>
               </div>
-              <section className="cs-feature-board">
-                <header>
-                  <div>
-                    <span className="eyebrow">FEATURES</span>
-                    <h3>Aderência do cliente</h3>
-                    <p>
-                      Selecione várias opções. O score compara a base contratada
-                      com as funcionalidades efetivamente em uso.
-                    </p>
-                  </div>
-                  <strong
-                    className={
-                      score >= 70 ? "good" : score >= 40 ? "warn" : "bad"
-                    }
-                  >
-                    Health Score: {score}%
-                  </strong>
-                </header>
-                <FeaturePicker
-                  alwaysVisible={defaultBaseFeatures}
-                  label="BASE CONTRATADA"
-                  options={options("csFeatureBase")}
-                  selected={featuresBase}
-                  onChange={(value) =>
-                    persistEvolution({ featuresBase: value })
-                  }
-                  disabled={!canEdit || busy || savingEvolution}
-                />
-                <FeaturePicker
-                  alwaysVisible={featuresBase}
-                  label="EM USO"
-                  options={activeFeatureOptions}
-                  selected={featuresActive}
-                  onChange={(value) =>
-                    persistEvolution({ featuresActive: value })
-                  }
-                  disabled={!canEdit || busy || savingEvolution}
-                />
-                <FeaturePicker
-                  label="PLUS"
-                  options={options("csFeaturePlus")}
-                  selected={featuresPlus}
-                  onChange={(value) =>
-                    persistEvolution({ featuresPlus: value })
-                  }
-                  disabled={!canEdit || busy || savingEvolution}
-                />
-              </section>
+              {featureBoard}
               <FeaturePicker
                 label="ETIQUETAS"
                 options={options("csLabel")}
@@ -3480,6 +3502,8 @@ export function JourneyDrawer({
               </div>
             </section>
           )}
+
+          {showFeaturesOutsideTracking && featureBoard}
 
           {journey.phase === "conference" && (
             <section className="cs-drawer-panel cs-conference-panel">
